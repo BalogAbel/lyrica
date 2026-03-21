@@ -6,8 +6,8 @@ Use AI to accelerate delivery while keeping the repository, not the toolchain, a
 
 ## Required Loop
 
-1. Spec
-2. Plan
+1. Spec in `docs/specs/`
+2. Plan in `docs/plans/`
 3. Implement
 4. Test
 5. Document
@@ -18,6 +18,7 @@ Each step must leave an artifact in the repository when it changes durable proje
 
 - No tool lock-in for critical knowledge.
 - Do not rely on tool-local prompts as the only place a decision exists.
+- Do not rely on tool-named repository folders as the only durable record of product or architecture decisions.
 - If architecture, product scope, testing rules, or workflow changes, update the repository documents in the same change.
 - Prefer small commits that preserve traceability between decisions and implementation.
 

@@ -13,6 +13,7 @@ This repository uses AI-assisted development, but the repository itself remains 
 5. Authorization rules must be implemented in backend-enforced layers, not delegated to the Flutter UI.
 6. TDD is the default implementation discipline for behavior changes.
 7. Every mergeable change must leave the repository in a clearer state than before.
+8. Specs and implementation plans must live in vendor-neutral repository paths such as `docs/specs/` and `docs/plans/`, not only in tool-named directories.
 
 ## Documentation Duties
 
@@ -26,6 +27,8 @@ Update these files whenever their subject changes:
 - `docs/testing/testing-strategy.md` for testing rules
 - `docs/workflows/` for engineering and AI workflows
 - `docs/integrations/freeshow.md` for presentation integration boundaries
+- `docs/specs/` for change specs
+- `docs/plans/` for implementation plans
 
 ## Commit Expectations
 
@@ -35,8 +38,8 @@ Update these files whenever their subject changes:
 
 ## AI Workflow Summary
 
-1. Update or create the spec in the repository.
-2. Update or create the implementation plan in the repository.
+1. Update or create the spec in `docs/specs/`.
+2. Update or create the implementation plan in `docs/plans/`.
 3. Implement with tests first where behavior is introduced or changed.
 4. Verify locally.
 5. Update documentation.

@@ -1,6 +1,6 @@
 # Lyrica
 
-Lyrica is a cloud-first worship and music collaboration platform with strong offline support for teams that need reliable song, plan, and session workflows across Android, iOS, and Web.
+Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and an offline-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
 This repository is the canonical source of truth for:
 
@@ -10,15 +10,15 @@ This repository is the canonical source of truth for:
 - Testing strategy and CI expectations
 - AI-assisted engineering rules and documentation obligations
 
-## Current Scope
+## Foundation Status
 
-- Monorepo with Flutter client application
-- Supabase backend foundation
-- MVP targets: Android, iOS, Web
-- Offline-first architecture with Drift
-- ChordPro as the canonical song format
-- Capability-based authorization enforced in Postgres with RLS
-- Documentation-first delivery with ADRs and workflow guides
+- Monorepo with one Flutter app under `apps/lyrica_app`
+- Supabase schema, RLS policies, and seed data under `supabase/`
+- MVP platforms: Android, iOS, and Web
+- Drift selected as the local store and sync-queue foundation
+- ChordPro defined as the canonical editable song format
+- Capability-based authorization enforced in Postgres, not in Flutter
+- Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
 
 Desktop platforms are intentionally out of scope for the MVP, but the architecture must not block later support for macOS, Windows, or Linux.
 
@@ -29,7 +29,7 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 ├── .github/                # CI workflows
 ├── apps/
 │   └── lyrica_app/         # Flutter application
-├── docs/                   # Product, domain, architecture, testing, workflow docs
+├── docs/                   # Product, domain, architecture, workflow, specs, plans
 ├── scripts/                # Developer entrypoints
 └── supabase/               # SQL migrations, seeds, local Supabase config
 ```
@@ -52,13 +52,15 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 - [Testing strategy](docs/testing/testing-strategy.md)
 - [AI development workflow](docs/workflows/ai-development.md)
 - [FreeShow integration boundary](docs/integrations/freeshow.md)
+- [Current audit spec](docs/specs/2026-03-21-repository-audit-refinement.md)
+- [Current audit plan](docs/plans/2026-03-21-repository-audit-refinement.md)
 
 ## Development Workflow
 
 The expected engineering loop is:
 
-1. Capture or update the spec in the repository.
-2. Write or update the implementation plan in the repository.
+1. Capture or update the spec in `docs/specs/`.
+2. Write or update the implementation plan in `docs/plans/`.
 3. Implement via TDD.
 4. Run verification locally and in CI.
 5. Update documentation before merge.
@@ -83,8 +85,17 @@ See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.m
 ./scripts/db-seed.sh
 ./scripts/run-app.sh
 ./scripts/run-tests.sh
+./scripts/verify.sh
 ```
+
+`./scripts/verify.sh` runs the Flutter quality gates and, when the Supabase CLI is available, migration linting as well.
+
+## Local Development Notes
+
+- The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
+- Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
+- Seed data is organization-scoped demo content. Membership rows still depend on authenticated users created in the local Supabase instance.
 
 ## Status
 
-This repository currently contains the initial production-oriented foundation: architecture, domain documentation, ADRs, Supabase schema/RLS baseline, CI workflow definitions, developer scripts, and a Flutter application shell aligned to the documented architecture.
+This repository contains a refined production-oriented foundation: architecture and workflow documents with concrete rules, a hardened Supabase schema and RLS baseline, realistic verification scripts, CI quality gates, and a minimal Flutter shell aligned to the documented boundaries.

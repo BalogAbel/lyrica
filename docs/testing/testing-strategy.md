@@ -18,6 +18,11 @@ Cover:
 - Sync orchestration decisions
 - ChordPro parsing and metadata mapping rules
 
+Current foundation baseline:
+
+- capability code stability tests in Flutter
+- offline policy tests in Flutter
+
 ### Widget Tests
 
 Cover:
@@ -41,6 +46,7 @@ Cover:
 Cover:
 
 - Migration validity
+- Migration application in a local Supabase stack when the CLI is available
 - SQL function behavior
 - RLS policy expectations
 - Seed script idempotency where applicable
@@ -50,10 +56,13 @@ Cover:
 - `dart format --set-exit-if-changed`
 - `flutter analyze`
 - `flutter test`
-- Migration validation in CI
+- `./scripts/check-migrations.sh`
+
+`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting when the Supabase CLI is installed.
 
 ## AI-Assisted Development Rules
 
 - AI may accelerate implementation, but it does not replace tests.
 - If a new behavior is introduced, at least one test must demonstrate the intended behavior.
 - Repository documentation must be updated when tests reveal changed assumptions.
+- If backend tooling is unavailable locally, CI must still keep the corresponding verification path enforced.

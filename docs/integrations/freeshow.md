@@ -12,6 +12,7 @@ Lyrica must preserve future compatibility by:
 - Modeling attachments separately from canonical song content
 - Avoiding presentation-tool-specific fields in core song aggregates
 - Preserving ordered session item structures that can later be exported
+- Keeping FreeShow decisions in repository docs and ADRs rather than in tool-local prompts
 
 ## Planned Integration Surface
 

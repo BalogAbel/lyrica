@@ -24,6 +24,8 @@ Client layers:
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
 
+The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; concrete infrastructure adapters arrive with the first data-backed feature slice.
+
 ### Backend
 
 Supabase provides:
@@ -36,6 +38,13 @@ Supabase provides:
 
 Authorization is backend-enforced. The Flutter client consumes capability results only for UX affordances.
 
+Backend policy helpers are responsible for:
+
+- deriving organization membership scope from `auth.uid()`
+- mapping memberships and roles into capabilities
+- preventing cross-organization references through foreign keys and RLS
+- keeping membership management rules centralized instead of scattering role checks
+
 ## Data Flow
 
 1. UI reads from local Drift-backed projections.
@@ -46,11 +55,14 @@ Authorization is backend-enforced. The Flutter client consumes capability result
 6. Conflicts are detected via `version` and `base_version`.
 7. MVP conflict handling is manual and explicit.
 
+The repository currently documents this flow and keeps the client-side policy surface executable, but it does not yet ship end-user sync execution screens.
+
 ## Multi-Tenancy
 
 - Organization is the top-level tenant boundary.
 - Group membership narrows access within an organization.
 - Queries and writes must always include organization scoping.
+- Cross-table references must preserve organization scope at the database level.
 - No client-side bypass of authorization assumptions is allowed.
 
 ## Offline Strategy
@@ -61,12 +73,15 @@ Authorization is backend-enforced. The Flutter client consumes capability result
 - Explicit sync status on offline-managed records
 - Web support uses the same domain/application contracts even if storage implementation evolves
 
+Until full Drift tables are introduced, repository docs and client contracts must keep the offline metadata vocabulary stable.
+
 ## Simplicity Rules
 
 - Do not expose the raw domain graph directly in basic UX flows.
 - Do not over-engineer sync into CRDTs for the MVP.
 - Do not place authorization policy in Flutter.
 - Do not treat PDF as editable song source.
+- Do not keep durable workflow knowledge only in tool-specific directories.
 
 ## Delivery Constraints
 

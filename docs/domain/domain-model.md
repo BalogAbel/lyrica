@@ -4,7 +4,6 @@
 
 - `organizations`
 - `groups`
-- `users`
 - `memberships`
 - `songs`
 - `plans`
@@ -12,6 +11,8 @@
 - `sessions`
 - `session_items`
 - `attachments`
+
+`auth.users` is the identity source, but it is Supabase-managed infrastructure rather than a repository-owned business aggregate.
 
 ## Entity Overview
 
@@ -56,6 +57,12 @@ Key fields:
 - `created_at`
 - `updated_at`
 
+Invariants:
+
+- `scope_type = 'organization'` requires `group_id` to be `null`.
+- `scope_type = 'group'` requires `group_id` to reference a group in the same organization.
+- Organization-scoped roles cannot be assigned to group-scoped memberships and vice versa.
+
 ### songs
 
 Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export.
@@ -95,6 +102,8 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
+If `group_id` is present, it must belong to the same organization as the plan.
+
 ### events
 
 Calendar-facing occurrence or service context. Events may own one or more sessions.
@@ -115,6 +124,8 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
+If `plan_id` or `group_id` is present, both references must remain inside the same organization as the event.
+
 ### sessions
 
 Editable operational lists used during preparation or execution. Sessions belong to events.
@@ -132,6 +143,8 @@ Key fields:
 - `sync_status`
 - `updated_at`
 - `last_modified_by`
+
+Session organization scope is inherited from the owning event and must never diverge from it.
 
 ### session_items
 
@@ -154,16 +167,22 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
+Invariants:
+
+- `item_type = 'song'` requires `song_id` and forbids `attachment_id`.
+- `item_type = 'attachment'` requires `attachment_id` and forbids `song_id`.
+- `item_type = 'note'` forbids both `song_id` and `attachment_id`.
+- Referenced songs and attachments must remain in the same organization as the owning session.
+
 ### attachments
 
-Non-canonical supporting assets such as PDFs. Attachments supplement songs or session items but do not replace canonical text storage.
+Non-canonical supporting assets such as PDFs. Attachments supplement songs and may be referenced from session items, but do not replace canonical text storage.
 
 Key fields:
 
 - `id`
 - `organization_id`
 - `song_id`
-- `session_item_id`
 - `storage_bucket`
 - `storage_path`
 - `mime_type`
@@ -174,6 +193,8 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
+Attachments are organization-scoped and currently song-owned. Session items reference attachments by `attachment_id`; attachments do not own reverse pointers into session items.
+
 ## Sync Metadata
 
 Offline-synced aggregates include:
@@ -183,6 +204,8 @@ Offline-synced aggregates include:
 - `updated_at`
 - `last_modified_by`
 - `sync_status`
+
+The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
 
 ### sync_status
 
@@ -203,6 +226,7 @@ Expected values:
 - An event may have many sessions.
 - A session has many session items.
 - A session item may reference one song or one attachment.
+- Cross-aggregate references must keep `organization_id` aligned; cross-organization foreign-key combinations are invalid.
 
 ## Capability Model
 
@@ -216,6 +240,11 @@ Authorization evaluates capabilities, not raw role strings in application code. 
 - `canManagePlans`
 
 Roles map to capabilities in backend-owned policy logic.
+
+Membership administration is also capability-based:
+
+- organization-scoped membership changes require `canManageOrganizationMembers`
+- group-scoped membership changes require `canManageGroupMembers`
 
 ## ChordPro Rules
 

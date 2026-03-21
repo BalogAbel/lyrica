@@ -1,16 +1,32 @@
-# lyrica_app
+# Lyrica App
 
-A new Flutter project.
+Flutter client shell for the Lyrica monorepo.
 
-## Getting Started
+## Purpose
 
-This project is a starting point for a Flutter application.
+This app currently provides:
 
-A few resources to get you started if this is your first Flutter project:
+- the application bootstrap entrypoint
+- Riverpod dependency wiring
+- go_router route registration
+- offline policy vocabulary shared with the domain and application layers
+- a minimal home screen that communicates the repository's architectural boundaries
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+It does not yet implement product workflows such as song editing, planning, or sync execution.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Structure
+
+- `lib/src/domain/`: core vocabulary such as tenant scope and capability codes
+- `lib/src/application/`: app-level orchestration and summary models
+- `lib/src/offline/`: local-store and sync-policy contracts
+- `lib/src/presentation/`: route-level widgets
+- `lib/src/router/`: centralized route definitions
+
+## Verification
+
+Run from the repository root:
+
+```bash
+./scripts/run-tests.sh
+./scripts/verify.sh
+```
