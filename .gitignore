@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+**/.pub/
+**/.pub-cache/
+**/coverage/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Supabase local state
+supabase/.temp/
+supabase/.branches/
+
+# Generated platform artifacts
+apps/lyrica_app/ios/Flutter/Generated.xcconfig
+apps/lyrica_app/ios/Flutter/flutter_export_environment.sh
+apps/lyrica_app/macos/Flutter/GeneratedPluginRegistrant.swift

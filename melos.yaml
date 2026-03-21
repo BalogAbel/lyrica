@@ -1,0 +1,13 @@
+name: lyrica
+
+packages:
+  - apps/**
+
+command:
+  bootstrap:
+    runPubGetInParallel: false
+
+scripts:
+  analyze: melos exec -- flutter analyze
+  test: melos exec -- flutter test
+  format: melos exec -- dart format lib test
