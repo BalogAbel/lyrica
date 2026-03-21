@@ -22,20 +22,10 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: flutter pub get
-        working-directory: apps/lyrica_app
+        run: ./scripts/bootstrap.sh
 
-      - name: Format check
-        run: dart format --output=none --set-exit-if-changed lib test
-        working-directory: apps/lyrica_app
-
-      - name: Analyze
-        run: flutter analyze
-        working-directory: apps/lyrica_app
-
-      - name: Test
-        run: flutter test
-        working-directory: apps/lyrica_app
+      - name: Verify Flutter foundation
+        run: ./scripts/verify.sh --skip-migrations
 
   migrations:
     runs-on: ubuntu-latest

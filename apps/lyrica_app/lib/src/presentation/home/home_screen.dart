@@ -21,13 +21,16 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'Architecture foundation',
+            AppStrings.foundationHeading,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
-          const Text('Capabilities are enforced in Supabase/Postgres.'),
+          const Text(AppStrings.authorizationSummary),
           const SizedBox(height: 12),
           Text('Local store: ${syncOverview.storeContract.engine}'),
+          Text(
+            'Sync queue: ${syncOverview.storeContract.usesSyncQueue ? 'enabled' : 'disabled'}',
+          ),
           Text('Read strategy: ${syncOverview.storeContract.readStrategy}'),
           Text(
             'Conflict resolution: ${syncOverview.policy.conflictResolution.name}',
