@@ -31,6 +31,8 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 │   └── lyrica_app/         # Flutter application
 ├── docs/                   # Product, domain, architecture, workflow, specs, plans
 ├── scripts/                # Developer entrypoints
+├── tooling/
+│   └── supabase/           # Repository-local Supabase CLI package
 └── supabase/               # SQL migrations, seeds, local Supabase config
 ```
 
@@ -73,13 +75,40 @@ See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.m
 
 - Flutter SDK
 - Dart SDK
-- Supabase CLI
+- Node.js and npm
 - Docker Desktop
+
+Supabase CLI is managed as a repository-local dev dependency under `tooling/supabase/`. Do not install or wire it through a root-level Node workspace for this repository.
+
+### Local Development
+
+Install dependencies with:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+This installs Flutter dependencies for `apps/lyrica_app` and the repository-local Supabase CLI dependencies under `tooling/supabase/`.
+
+If you only need the Supabase tooling workspace, run `npm ci --prefix tooling/supabase`.
+
+The canonical way to run Supabase CLI commands is through the wrapper script:
+
+```bash
+./scripts/supabase.sh start
+./scripts/supabase.sh db reset
+./scripts/supabase.sh migration list
+```
+
+The wrapper resolves the repository-local CLI via `tooling/supabase` and should be preferred over direct `npx` or global `supabase` invocations.
 
 ### Common Commands
 
 ```bash
 ./scripts/bootstrap.sh
+./scripts/supabase.sh start
+./scripts/supabase.sh db reset
+./scripts/supabase.sh migration list
 ./scripts/supabase-start.sh
 ./scripts/db-reset.sh
 ./scripts/db-seed.sh
@@ -88,7 +117,7 @@ See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.m
 ./scripts/verify.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and, when the Supabase CLI is available, migration linting as well.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper.
 
 ## Local Development Notes
 

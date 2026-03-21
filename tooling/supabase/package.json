@@ -1,0 +1,8 @@
+{
+  "name": "@lyrica/supabase-tooling",
+  "private": true,
+  "description": "Repository-local Supabase CLI tooling",
+  "devDependencies": {
+    "supabase": "^2.67.1"
+  }
+}

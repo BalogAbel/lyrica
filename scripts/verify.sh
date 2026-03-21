@@ -13,8 +13,4 @@ if [[ "$skip_migrations" == "--skip-migrations" ]]; then
   exit 0
 fi
 
-if command -v supabase >/dev/null 2>&1; then
-  ./scripts/check-migrations.sh
-else
-  echo "Skipping migration lint because Supabase CLI is not installed."
-fi
+./scripts/check-migrations.sh

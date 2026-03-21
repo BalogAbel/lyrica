@@ -46,7 +46,7 @@ Cover:
 Cover:
 
 - Migration validity
-- Migration application in a local Supabase stack when the CLI is available
+- Migration application in a local Supabase stack through `./scripts/supabase.sh`
 - SQL function behavior
 - RLS policy expectations
 - Seed script idempotency where applicable
@@ -58,7 +58,7 @@ Cover:
 - `flutter test`
 - `./scripts/check-migrations.sh`
 
-`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting when the Supabase CLI is installed.
+`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper.
 
 ## AI-Assisted Development Rules
 

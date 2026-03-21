@@ -8,4 +8,10 @@ if ! command -v flutter >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js and npm are required for repository tooling."
+  exit 1
+fi
+
+npm ci --prefix tooling/supabase
 (cd apps/lyrica_app && flutter pub get)

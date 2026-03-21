@@ -10,6 +10,18 @@
 6. Update documentation and ADRs if the change affects durable knowledge.
 7. Merge only with green CI.
 
+## Local Tooling
+
+- Install repository dependencies with `./scripts/bootstrap.sh`.
+- If only Supabase tooling is needed, install it with `npm ci --prefix tooling/supabase`.
+- Supabase CLI is managed under `tooling/supabase/`, not at the repository root.
+- Use `./scripts/supabase.sh ...` as the canonical interface for local Supabase commands.
+- Typical commands:
+  - `./scripts/supabase.sh start`
+  - `./scripts/supabase.sh db reset`
+  - `./scripts/supabase.sh migration list`
+- Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
+
 ## Commit Guidance
 
 - Keep commits meaningful and reviewable.

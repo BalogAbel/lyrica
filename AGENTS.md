@@ -14,6 +14,10 @@ This repository uses AI-assisted development, but the repository itself remains 
 6. TDD is the default implementation discipline for behavior changes.
 7. Every mergeable change must leave the repository in a clearer state than before.
 8. Specs and implementation plans must live in vendor-neutral repository paths such as `docs/specs/` and `docs/plans/`, not only in tool-named directories.
+9. Supabase CLI must live under `tooling/supabase` when versioned in this repository.
+10. Do not reintroduce a root-level Node setup solely for Supabase CLI management.
+11. Prefer repository wrapper scripts such as `./scripts/supabase.sh` over direct CLI invocation in scripts, docs, and CI.
+12. Do not keep critical workflow knowledge only inside tooling folders; mirror durable rules in repository docs.
 
 ## Documentation Duties
 

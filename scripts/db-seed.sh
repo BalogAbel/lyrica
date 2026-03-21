@@ -3,4 +3,4 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-supabase db query < supabase/seed/seed.sql
+./scripts/supabase.sh db query < supabase/seed/seed.sql

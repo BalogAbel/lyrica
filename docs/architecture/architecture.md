@@ -34,7 +34,7 @@ Supabase provides:
 - Postgres data store
 - Row Level Security
 - SQL functions for capability resolution and policy helpers
-- Migrations via Supabase CLI
+- Migrations via the repository-managed Supabase CLI wrapper
 
 Authorization is backend-enforced. The Flutter client consumes capability results only for UX affordances.
 

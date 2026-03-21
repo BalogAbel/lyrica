@@ -8,9 +8,4 @@ if ! compgen -G "supabase/migrations/*.sql" >/dev/null; then
   exit 1
 fi
 
-if ! command -v supabase >/dev/null 2>&1; then
-  echo "Supabase CLI is required for migration checks."
-  exit 1
-fi
-
-supabase db lint
+./scripts/supabase.sh db lint

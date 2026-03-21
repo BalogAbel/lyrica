@@ -34,10 +34,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          version: 2.67.1
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tooling/supabase/package-lock.json
+
+      - name: Install Supabase tooling dependencies
+        run: npm ci --prefix tooling/supabase
 
       - name: Migration lint
         run: ./scripts/check-migrations.sh

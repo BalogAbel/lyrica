@@ -10,7 +10,7 @@ Architecture, schema, workflow, and product decisions must evolve together and s
 
 ## Decision
 
-Use a monorepo with top-level `apps/`, `supabase/`, `docs/`, `scripts/`, and `.github/` folders.
+Use a monorepo with top-level `apps/`, `supabase/`, `docs/`, `scripts/`, `tooling/`, and `.github/` folders.
 
 ## Consequences
 

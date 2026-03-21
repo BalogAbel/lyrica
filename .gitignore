@@ -19,6 +19,7 @@
 # Supabase local state
 supabase/.temp/
 supabase/.branches/
+tooling/supabase/node_modules/
 
 # Generated platform artifacts
 apps/lyrica_app/ios/Flutter/Generated.xcconfig
