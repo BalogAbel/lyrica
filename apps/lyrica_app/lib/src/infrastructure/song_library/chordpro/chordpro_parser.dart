@@ -27,7 +27,7 @@ class ChordproParser {
           sections: sections,
           currentSection: currentSection,
           kind: SongSectionKind.other,
-          label: 'Intro',
+          label: 'Unlabeled',
         );
         currentSection.lines.add(SongLine(segments: _parseLyricLine(line.raw)));
       } else {
@@ -41,15 +41,16 @@ class ChordproParser {
         } else if (directiveName == 'comment') {
           final parsedSection = _parseCommentSection(line.directiveValue);
           if (parsedSection == null) {
+            final commentValue = line.directiveValue ?? '';
             diagnostics.add(
               ParseDiagnostic(
                 severity: ParseDiagnosticSeverity.warning,
-                message: 'Unsupported directive: comment',
+                message: 'Unsupported comment content: $commentValue',
                 line: ParseDiagnosticLineMetadata(
                   lineNumber: line.lineNumber,
                   columnNumber: 1,
                 ),
-                context: 'comment',
+                context: 'comment:$commentValue',
               ),
             );
           } else if (!_isSameSection(currentSection, parsedSection)) {

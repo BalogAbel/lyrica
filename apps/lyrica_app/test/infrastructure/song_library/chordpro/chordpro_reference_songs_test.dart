@@ -43,7 +43,12 @@ void main() {
         song.sections[2].lines.first.segments.first.text,
         startsWith('A forrás'),
       );
-      expect(song.diagnostics, isNotEmpty);
+      expect(song.diagnostics, hasLength(1));
+      expect(song.diagnostics.single.context, 'comment:// (Pintér Béla)');
+      expect(
+        song.diagnostics.single.message,
+        'Unsupported comment content: // (Pintér Béla)',
+      );
     },
   );
 
@@ -58,7 +63,7 @@ void main() {
     expect(song.subtitle, 'Kegyelmed elég több mint elég');
     expect(song.sourceKey, 'E');
     expect(song.sections.map((section) => section.label).toList(), [
-      'Intro',
+      'Unlabeled',
       'Verse',
       'Chorus',
       'Verse',
@@ -92,7 +97,15 @@ void main() {
     );
     expect(song.sections[3].number, 2);
     expect(song.sections[5].kind, SongSectionKind.bridge);
-    expect(song.diagnostics, isNotEmpty);
+    expect(song.diagnostics, hasLength(1));
+    expect(
+      song.diagnostics.single.context,
+      'comment:// This Is Our God | Hillsong',
+    );
+    expect(
+      song.diagnostics.single.message,
+      'Unsupported comment content: // This Is Our God | Hillsong',
+    );
   });
 
   test('parses Egy út with all supported section types', () {
@@ -137,6 +150,14 @@ void main() {
     );
     expect(song.sections[3].kind, SongSectionKind.bridge);
     expect(song.sections[3].lines.first.segments.first.leadingChord, 'B');
-    expect(song.diagnostics, isNotEmpty);
+    expect(song.diagnostics, hasLength(3));
+    expect(
+      song.diagnostics.map((diagnostic) => diagnostic.context).toList(),
+      containsAll(<Object>[
+        'comment:#Jonathan Douglass, Joel Houston (Hillsong)',
+        'comment:#Hegedűs Róbert (Dics-Suli 2006)',
+        'comment://',
+      ]),
+    );
   });
 }

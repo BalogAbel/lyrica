@@ -20,6 +20,7 @@ Plain text line
 {start_of_chorus}
 [(B)] Sing [E/G#]to [F#m]you
 {end_of_chorus}
+After chorus
 {comment:<Bridge>}
 Bridge line
 ''');
@@ -30,6 +31,7 @@ Bridge line
       expect(song.sections.map((section) => section.label).toList(), [
         'Verse',
         'Chorus',
+        'Unlabeled',
         'Bridge',
       ]);
       expect(song.sections[0].kind, SongSectionKind.verse);
@@ -54,8 +56,14 @@ Bridge line
       expect(song.sections[1].lines.single.segments[2].leadingChord, 'F#m');
       expect(song.sections[1].lines.single.segments[2].text, 'you');
 
-      expect(song.sections[2].kind, SongSectionKind.bridge);
-      expect(song.sections[2].lines.single.segments.single.text, 'Bridge line');
+      expect(song.sections[2].kind, SongSectionKind.other);
+      expect(song.sections[2].label, 'Unlabeled');
+      expect(
+        song.sections[2].lines.single.segments.single.text,
+        'After chorus',
+      );
+      expect(song.sections[3].kind, SongSectionKind.bridge);
+      expect(song.sections[3].lines.single.segments.single.text, 'Bridge line');
       expect(song.diagnostics, isEmpty);
     },
   );
@@ -75,9 +83,12 @@ Line two
     expect(song.sections.single.lines, hasLength(2));
     expect(song.diagnostics, hasLength(1));
     expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
-    expect(song.diagnostics.single.context, 'comment');
+    expect(song.diagnostics.single.context, 'comment:// Unsupported note');
     expect(song.diagnostics.single.line.lineNumber, 4);
     expect(song.diagnostics.single.line.columnNumber, 1);
-    expect(song.diagnostics.single.message, contains('Unsupported'));
+    expect(
+      song.diagnostics.single.message,
+      'Unsupported comment content: // Unsupported note',
+    );
   });
 }
