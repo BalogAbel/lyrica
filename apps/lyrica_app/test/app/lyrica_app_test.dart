@@ -12,7 +12,7 @@ void main() {
     expect(find.text('Lyrica'), findsOneWidget);
     expect(find.text('Tablet-first song library'), findsOneWidget);
     expect(find.text('Mock song catalog in progress'), findsOneWidget);
-    expect(find.text('Song library and reader screens are next'), findsOneWidget);
+    expect(find.text('This shell anchors the tablet-first song reader slice'), findsOneWidget);
     expect(find.text('Repository foundation status'), findsNothing);
     expect(find.text('Authorization: capability-based RLS in Supabase/Postgres'), findsNothing);
     expect(find.textContaining('Local store:'), findsNothing);
