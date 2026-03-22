@@ -15,6 +15,7 @@
 .idea/
 *.iml
 .vscode/
+.worktrees/
 
 # Supabase local state
 supabase/.temp/
