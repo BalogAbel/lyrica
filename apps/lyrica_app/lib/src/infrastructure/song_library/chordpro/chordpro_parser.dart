@@ -1,4 +1,3 @@
-import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
 
@@ -8,7 +7,7 @@ class ChordproParser {
 
   final ChordproLineScanner _lineScanner;
 
-  SongReaderResult parse(String source) {
+  ParsedSong parse(String source) {
     var title = '';
     String? subtitle;
     String? sourceKey;
@@ -87,16 +86,14 @@ class ChordproParser {
       }
     }
 
-    return SongReaderResult(
-      song: ParsedSong(
-        title: title,
-        subtitle: subtitle,
-        sourceKey: sourceKey,
-        sections: sections
-            .map((section) => section.build())
-            .toList(growable: false),
-        diagnostics: diagnostics,
-      ),
+    return ParsedSong(
+      title: title,
+      subtitle: subtitle,
+      sourceKey: sourceKey,
+      sections: sections
+          .map((section) => section.build())
+          .toList(growable: false),
+      diagnostics: diagnostics,
     );
   }
 

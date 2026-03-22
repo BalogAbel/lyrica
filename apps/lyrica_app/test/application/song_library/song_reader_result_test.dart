@@ -13,7 +13,7 @@ void main() {
     );
 
     expect(result.song.title, 'Example Song');
-    expect(result.diagnostics, isEmpty);
+    expect(result.song.diagnostics, isEmpty);
     expect(result.hasRecoverableWarnings, isFalse);
   });
 
@@ -33,7 +33,7 @@ void main() {
       ),
     );
 
-    expect(result.diagnostics.single.severity.name, 'warning');
+    expect(result.song.diagnostics.single.severity.name, 'warning');
     expect(result.hasRecoverableWarnings, isTrue);
   });
 }
