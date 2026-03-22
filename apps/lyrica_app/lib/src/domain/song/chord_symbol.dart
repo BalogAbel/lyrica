@@ -59,7 +59,16 @@ class ChordSymbol {
       text = text.substring(1, text.length - 1);
     }
 
+    if (text.contains('(') || text.contains(')')) {
+      throw FormatException('Chord symbol has unbalanced parentheses: $input');
+    }
+
     final bassSeparatorIndex = text.indexOf('/');
+    final lastBassSeparatorIndex = text.lastIndexOf('/');
+    if (bassSeparatorIndex != lastBassSeparatorIndex) {
+      throw FormatException('Chord symbol has an invalid slash chord: $input');
+    }
+
     final rootText = bassSeparatorIndex == -1
         ? text
         : text.substring(0, bassSeparatorIndex);

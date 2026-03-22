@@ -51,6 +51,9 @@ void main() {
     expect(() => ChordSymbol.parse(''), throwsFormatException);
     expect(() => ChordSymbol.parse('()'), throwsFormatException);
     expect(() => ChordSymbol.parse('/G'), throwsFormatException);
+    expect(() => ChordSymbol.parse('C)'), throwsFormatException);
+    expect(() => ChordSymbol.parse('C/'), throwsFormatException);
+    expect(() => ChordSymbol.parse('E//G'), throwsFormatException);
   });
 
   test('transposes repeated semitone movement through the model', () {
