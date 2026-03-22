@@ -11,7 +11,14 @@ void main() {
 
     expect(find.text('Lyrica'), findsOneWidget);
     expect(find.text('Tablet-first song library'), findsOneWidget);
-    expect(find.text('Song library and reader flow'), findsOneWidget);
-    expect(find.text('Open a song to read and transpose it'), findsOneWidget);
+    expect(find.text('Mock song catalog in progress'), findsOneWidget);
+    expect(find.text('Song library and reader screens are next'), findsOneWidget);
+    expect(find.text('Repository foundation status'), findsNothing);
+    expect(find.text('Authorization: capability-based RLS in Supabase/Postgres'), findsNothing);
+    expect(find.textContaining('Local store:'), findsNothing);
+    expect(find.textContaining('Sync queue:'), findsNothing);
+    expect(find.textContaining('Read strategy:'), findsNothing);
+    expect(find.textContaining('Conflict resolution:'), findsNothing);
+    expect(find.textContaining('Offline window:'), findsNothing);
   });
 }

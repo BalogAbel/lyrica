@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final syncOverview = ref.watch(syncOverviewProvider);
-
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.appName)),
       body: ListView(
@@ -26,18 +22,6 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           const Text(AppStrings.songLibraryFlowSummary),
-          const SizedBox(height: 12),
-          Text('Local store: ${syncOverview.storeContract.engine}'),
-          Text(
-            'Sync queue: ${syncOverview.storeContract.usesSyncQueue ? 'enabled' : 'disabled'}',
-          ),
-          Text('Read strategy: ${syncOverview.storeContract.readStrategy}'),
-          Text(
-            'Conflict resolution: ${syncOverview.policy.conflictResolution.name}',
-          ),
-          Text(
-            'Offline window: ${syncOverview.policy.maxOfflineWindow.inDays} days',
-          ),
         ],
       ),
     );
