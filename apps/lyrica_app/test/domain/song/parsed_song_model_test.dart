@@ -89,5 +89,132 @@ void main() {
     expect(song.sections.first.lines, hasLength(1));
     expect(song.sections.first.lines.first.segments, hasLength(2));
     expect(song.diagnostics, hasLength(1));
+    expect(
+      () => song.diagnostics.add(
+        ParseDiagnostic(
+          severity: ParseDiagnosticSeverity.info,
+          message: 'later',
+          line: const ParseDiagnosticLineMetadata(lineNumber: 13),
+        ),
+      ),
+      throwsUnsupportedError,
+    );
+  });
+
+  test('parsed song value types implement equality and hashCode', () {
+    final lyricSegment = LyricSegment(leadingChord: 'A', text: 'Grace');
+    final matchingLyricSegment = LyricSegment(leadingChord: 'A', text: 'Grace');
+    final differentLyricSegment = LyricSegment(
+      leadingChord: 'B',
+      text: 'Grace',
+    );
+
+    expect(lyricSegment, matchingLyricSegment);
+    expect(lyricSegment.hashCode, matchingLyricSegment.hashCode);
+    expect(lyricSegment, isNot(differentLyricSegment));
+
+    final songLine = SongLine(
+      segments: [
+        lyricSegment,
+        LyricSegment(text: ' alone'),
+      ],
+    );
+    final matchingSongLine = SongLine(
+      segments: [
+        matchingLyricSegment,
+        LyricSegment(text: ' alone'),
+      ],
+    );
+    final differentSongLine = SongLine(segments: [LyricSegment(text: 'alone')]);
+
+    expect(songLine, matchingSongLine);
+    expect(songLine.hashCode, matchingSongLine.hashCode);
+    expect(songLine, isNot(differentSongLine));
+
+    final songSection = SongSection(
+      kind: SongSectionKind.chorus,
+      label: 'Chorus',
+      number: 2,
+      lines: [songLine],
+    );
+    final matchingSongSection = SongSection(
+      kind: SongSectionKind.chorus,
+      label: 'Chorus',
+      number: 2,
+      lines: [matchingSongLine],
+    );
+    final differentSongSection = SongSection(
+      kind: SongSectionKind.chorus,
+      label: 'Chorus',
+      number: 3,
+      lines: [matchingSongLine],
+    );
+
+    expect(songSection, matchingSongSection);
+    expect(songSection.hashCode, matchingSongSection.hashCode);
+    expect(songSection, isNot(differentSongSection));
+
+    const lineMetadata = ParseDiagnosticLineMetadata(
+      lineNumber: 7,
+      columnNumber: 3,
+    );
+    const matchingLineMetadata = ParseDiagnosticLineMetadata(
+      lineNumber: 7,
+      columnNumber: 3,
+    );
+    const differentLineMetadata = ParseDiagnosticLineMetadata(lineNumber: 8);
+
+    expect(lineMetadata, matchingLineMetadata);
+    expect(lineMetadata.hashCode, matchingLineMetadata.hashCode);
+    expect(lineMetadata, isNot(differentLineMetadata));
+
+    final parseDiagnostic = ParseDiagnostic(
+      severity: ParseDiagnosticSeverity.warning,
+      message: 'Unsupported directive',
+      line: lineMetadata,
+      context: 'soc',
+    );
+    final matchingParseDiagnostic = ParseDiagnostic(
+      severity: ParseDiagnosticSeverity.warning,
+      message: 'Unsupported directive',
+      line: matchingLineMetadata,
+      context: 'soc',
+    );
+    final differentParseDiagnostic = ParseDiagnostic(
+      severity: ParseDiagnosticSeverity.error,
+      message: 'Unsupported directive',
+      line: matchingLineMetadata,
+      context: 'soc',
+    );
+
+    expect(parseDiagnostic, matchingParseDiagnostic);
+    expect(parseDiagnostic.hashCode, matchingParseDiagnostic.hashCode);
+    expect(parseDiagnostic, isNot(differentParseDiagnostic));
+
+    final parsedSong = ParsedSong(
+      title: 'Amazing Grace',
+      subtitle: 'Verse 1',
+      sourceKey: 'G',
+      sections: [songSection],
+      diagnostics: [parseDiagnostic],
+    );
+    final matchingParsedSong = ParsedSong(
+      title: 'Amazing Grace',
+      subtitle: 'Verse 1',
+      sourceKey: 'G',
+      sections: [matchingSongSection],
+      diagnostics: [matchingParseDiagnostic],
+    );
+    final differentParsedSong = ParsedSong(
+      title: 'Amazing Grace',
+      subtitle: 'Verse 1',
+      sourceKey: 'A',
+      sections: [matchingSongSection],
+      diagnostics: [matchingParseDiagnostic],
+    );
+
+    expect(parsedSong, matchingParsedSong);
+    expect(parsedSong.hashCode, matchingParsedSong.hashCode);
+    expect(parsedSong, isNot(differentParsedSong));
   });
 }
