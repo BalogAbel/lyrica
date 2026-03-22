@@ -50,6 +50,10 @@ class ChordSymbol {
     var text = input.trim();
     var isParenthesized = false;
 
+    if (text.isEmpty) {
+      throw FormatException('Chord symbol cannot be empty.');
+    }
+
     if (text.startsWith('(') && text.endsWith(')') && text.length > 2) {
       isParenthesized = true;
       text = text.substring(1, text.length - 1);
@@ -62,6 +66,14 @@ class ChordSymbol {
     final bassText = bassSeparatorIndex == -1
         ? null
         : text.substring(bassSeparatorIndex + 1);
+
+    if (rootText.isEmpty) {
+      throw FormatException('Chord symbol is missing a root note: $input');
+    }
+
+    if (bassText != null && bassText.isEmpty) {
+      throw FormatException('Chord symbol is missing a bass note: $input');
+    }
 
     final rootSplit = _splitPitchClass(rootText);
     final bass = bassText == null ? null : _parsePitchClass(bassText);

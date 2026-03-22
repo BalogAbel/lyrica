@@ -7,6 +7,7 @@ void main() {
     final minor = ChordSymbol.parse('F#m');
     final slash = ChordSymbol.parse('E/G#');
     final parenthesized = ChordSymbol.parse('(B)');
+    final parenthesizedSlash = ChordSymbol.parse('(E/G#)');
 
     expect(major.rootNoteName, 'E');
     expect(major.qualitySuffix, isEmpty);
@@ -31,6 +32,25 @@ void main() {
     expect(parenthesized.bassNoteName, isNull);
     expect(parenthesized.isParenthesized, isTrue);
     expect(parenthesized.displayName, '(B)');
+
+    expect(parenthesizedSlash.rootNoteName, 'E');
+    expect(parenthesizedSlash.qualitySuffix, isEmpty);
+    expect(parenthesizedSlash.bassNoteName, 'G#');
+    expect(parenthesizedSlash.isParenthesized, isTrue);
+    expect(parenthesizedSlash.displayName, '(E/G#)');
+  });
+
+  test('normalizes flat input to the current sharp rendering policy', () {
+    final chord = ChordSymbol.parse('Bb');
+
+    expect(chord.rootNoteName, 'A#');
+    expect(chord.displayName, 'A#');
+  });
+
+  test('rejects malformed chord input with FormatException', () {
+    expect(() => ChordSymbol.parse(''), throwsFormatException);
+    expect(() => ChordSymbol.parse('()'), throwsFormatException);
+    expect(() => ChordSymbol.parse('/G'), throwsFormatException);
   });
 
   test('transposes repeated semitone movement through the model', () {
