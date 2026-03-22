@@ -6,6 +6,12 @@ import 'package:lyrica_app/src/domain/song/song_summary.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const expectedTitleHeaders = {
+    'a_forrasnal': '{title:A forrásnál}',
+    'a_mi_istenunk': '{title:A mi Istenünk (Leborulok előtted)}',
+    'egy_ut': '{title:Egy út}',
+  };
+
   test('lists the mock song catalog from assets', () async {
     final repository = AssetSongRepository();
 
@@ -30,9 +36,12 @@ void main() {
 
     for (final song in songs) {
       final source = await repository.getSongSource(song.id);
+      final expectedTitleHeader = expectedTitleHeaders[song.id];
 
       expect(source.id, song.id);
-      expect(source.source, isNotEmpty);
+      expect(expectedTitleHeader, isNotNull);
+      expect(source.source, contains(expectedTitleHeader));
+      expect(source.source, contains('{title:${song.title}}'));
     }
   });
 
