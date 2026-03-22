@@ -25,20 +25,23 @@ class ParseDiagnostic {
     required this.severity,
     required this.message,
     required this.line,
+    this.context,
   });
 
   final ParseDiagnosticSeverity severity;
   final String message;
   final ParseDiagnosticLineMetadata line;
+  final String? context;
 
   @override
   bool operator ==(Object other) {
     return other is ParseDiagnostic &&
         other.severity == severity &&
         other.message == message &&
-        other.line == line;
+        other.line == line &&
+        other.context == context;
   }
 
   @override
-  int get hashCode => Object.hash(severity, message, line);
+  int get hashCode => Object.hash(severity, message, line, context);
 }

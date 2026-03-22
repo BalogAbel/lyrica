@@ -10,12 +10,14 @@ class ParsedSong {
   const ParsedSong({
     required this.title,
     this.subtitle,
+    this.sourceKey,
     required this.sections,
     required this.diagnostics,
   });
 
   final String title;
   final String? subtitle;
+  final String? sourceKey;
   final List<SongSection> sections;
   final List<ParseDiagnostic> diagnostics;
 
@@ -24,6 +26,7 @@ class ParsedSong {
     return other is ParsedSong &&
         other.title == title &&
         other.subtitle == subtitle &&
+        other.sourceKey == sourceKey &&
         _listEquals(other.sections, sections) &&
         _listEquals(other.diagnostics, diagnostics);
   }
@@ -32,6 +35,7 @@ class ParsedSong {
   int get hashCode => Object.hash(
     title,
     subtitle,
+    sourceKey,
     Object.hashAll(sections),
     Object.hashAll(diagnostics),
   );
