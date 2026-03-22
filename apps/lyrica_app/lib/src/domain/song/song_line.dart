@@ -1,7 +1,8 @@
 import 'package:lyrica_app/src/domain/song/lyric_segment.dart';
 
 class SongLine {
-  const SongLine({required this.segments});
+  SongLine({required List<LyricSegment> segments})
+    : segments = List.unmodifiable(segments);
 
   final List<LyricSegment> segments;
 

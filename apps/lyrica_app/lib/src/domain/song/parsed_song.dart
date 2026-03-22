@@ -7,13 +7,14 @@ export 'song_line.dart';
 export 'song_section.dart';
 
 class ParsedSong {
-  const ParsedSong({
+  ParsedSong({
     required this.title,
     this.subtitle,
     this.sourceKey,
-    required this.sections,
-    required this.diagnostics,
-  });
+    required List<SongSection> sections,
+    required List<ParseDiagnostic> diagnostics,
+  }) : sections = List.unmodifiable(sections),
+       diagnostics = List.unmodifiable(diagnostics);
 
   final String title;
   final String? subtitle;

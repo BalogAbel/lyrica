@@ -3,12 +3,12 @@ import 'package:lyrica_app/src/domain/song/song_line.dart';
 enum SongSectionKind { verse, chorus, bridge, other }
 
 class SongSection {
-  const SongSection({
+  SongSection({
     required this.kind,
     required this.label,
     this.number,
-    this.lines = const [],
-  });
+    required List<SongLine> lines,
+  }) : lines = List.unmodifiable(lines);
 
   final SongSectionKind kind;
   final String label;
