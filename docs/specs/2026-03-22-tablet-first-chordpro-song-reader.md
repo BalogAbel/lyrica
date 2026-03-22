@@ -172,9 +172,12 @@ The exact enharmonic spelling policy may remain simple in this slice as long as 
 
 - Introduce a song repository boundary in the app.
 - The repository must provide song list data and song detail/source access.
-- The first implementation must read mock songs from packaged assets.
+- The first mock catalog is the three bundled `.pro` assets under `apps/lyrica_app/assets/songs/`.
+- The repository boundary intentionally returns minimal song summaries plus raw ChordPro source text.
 - UI code must not read asset files directly.
 - The first song list intentionally remains minimal and shows only titles.
+- `SongLibraryService` stays intentionally thin in this slice and only orchestrates repository access.
+- Unknown song IDs must fail through a domain-level not-found exception rather than leaking infrastructure errors.
 
 ## Proposed Architecture
 
@@ -227,6 +230,8 @@ TDD is mandatory for this slice.
 - Verify chord parsing for major, minor, slash, and parenthesized chords.
 - Verify semitone transposition behavior.
 - Verify repository behavior for asset-backed song loading.
+- Verify full catalog mapping from the three bundled assets.
+- Verify each listed song loads the expected asset content for its ID.
 
 ### Widget Tests
 

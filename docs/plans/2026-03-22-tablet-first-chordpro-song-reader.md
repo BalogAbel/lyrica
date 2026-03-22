@@ -55,6 +55,8 @@ git commit -m "feat(app): register song assets and reader shell copy"
 
 ### Task 2: Add Mock Song Assets And Repository Contract
 
+Implementation note: this slice now uses the three bundled `.pro` assets in `apps/lyrica_app/assets/songs/` as the first mock catalog, keeps `SongLibraryService` thin, exposes minimal summaries plus raw ChordPro source at the repository boundary, and routes missing song IDs through a domain-level `SongNotFoundException`.
+
 **Files:**
 - Create: `apps/lyrica_app/assets/songs/a_forrasnal.pro`
 - Create: `apps/lyrica_app/assets/songs/a_mi_istenunk.pro`
@@ -80,6 +82,8 @@ expect(await repository.listSongs(), hasLength(3));
 expect((await repository.listSongs()).map((song) => song.title), contains('Egy út'));
 expect((await repository.getSongSource('egy_ut')).source, contains('{title:Egy út}'));
 ```
+
+The implemented coverage now also verifies the full catalog-to-asset mapping and the per-song asset-content invariants for each listed ID.
 
 - [ ] **Step 3: Run the focused tests to verify they fail**
 
