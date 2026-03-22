@@ -22,11 +22,14 @@ void main() {
 
     final source = await service.getSongSource('egy_ut');
 
+    expect(repository.requestedSongId, 'egy_ut');
     expect(source.source, contains('{title:Egy út}'));
   });
 }
 
 class _FakeSongRepository implements SongRepository {
+  String? requestedSongId;
+
   @override
   Future<List<SongSummary>> listSongs() async {
     return const [
@@ -36,6 +39,7 @@ class _FakeSongRepository implements SongRepository {
 
   @override
   Future<SongSource> getSongSource(String id) async {
+    requestedSongId = id;
     return const SongSource(
       id: 'egy_ut',
       source: '{title:Egy út}\n',

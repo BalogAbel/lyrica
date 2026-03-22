@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:lyrica_app/src/domain/song/song_repository.dart';
+import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 
@@ -40,13 +41,23 @@ class AssetSongRepository implements SongRepository {
 
   @override
   Future<SongSource> getSongSource(String id) async {
-    final song = _songs.firstWhere((song) => song.id == id);
+    final song = _songById(id);
     final source = await _bundle.loadString(song.assetPath);
 
     return SongSource(
       id: song.id,
       source: source,
     );
+  }
+
+  _AssetSong _songById(String id) {
+    for (final song in _songs) {
+      if (song.id == id) {
+        return song;
+      }
+    }
+
+    throw SongNotFoundException(id);
   }
 }
 
