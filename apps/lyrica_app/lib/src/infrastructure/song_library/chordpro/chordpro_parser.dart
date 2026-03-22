@@ -39,9 +39,9 @@ class ChordproParser {
         } else if (directiveName == 'key') {
           sourceKey = line.directiveValue;
         } else if (directiveName == 'comment') {
-          final parsedSection = _parseCommentSection(line.directiveValue);
+          final commentValue = line.directiveValue ?? '';
+          final parsedSection = _parseCommentSection(commentValue);
           if (parsedSection == null) {
-            final commentValue = line.directiveValue ?? '';
             diagnostics.add(
               ParseDiagnostic(
                 severity: ParseDiagnosticSeverity.warning,
@@ -123,11 +123,7 @@ class ChordproParser {
         left.number == right.number;
   }
 
-  _SectionBuilder? _parseCommentSection(String? directiveValue) {
-    if (directiveValue == null) {
-      return null;
-    }
-
+  _SectionBuilder? _parseCommentSection(String directiveValue) {
     final match = RegExp(
       r'^<\s*([A-Za-z]+)(?:\s+(\d+))?\s*>$',
     ).firstMatch(directiveValue);
@@ -151,8 +147,14 @@ class ChordproParser {
           number: number,
         );
       case 'bridge':
+        if (number != null) {
+          return null;
+        }
         return _SectionBuilder(kind: SongSectionKind.bridge, label: 'Bridge');
       case 'intro':
+        if (number != null) {
+          return null;
+        }
         return _SectionBuilder(kind: SongSectionKind.other, label: 'Intro');
       default:
         return null;

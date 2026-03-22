@@ -91,4 +91,28 @@ Line two
       'Unsupported comment content: // Unsupported note',
     );
   });
+
+  test('rejects numbered bridge and intro comment labels with warnings', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{comment:<Verse>}
+Line one
+{comment:<Bridge 2>}
+{comment:<Intro 2>}
+''');
+
+    expect(song.sections, hasLength(1));
+    expect(song.sections.single.label, 'Verse');
+    expect(song.diagnostics, hasLength(2));
+    expect(song.diagnostics.map((diagnostic) => diagnostic.context).toList(), [
+      'comment:<Bridge 2>',
+      'comment:<Intro 2>',
+    ]);
+    expect(song.diagnostics.map((diagnostic) => diagnostic.message).toList(), [
+      'Unsupported comment content: <Bridge 2>',
+      'Unsupported comment content: <Intro 2>',
+    ]);
+  });
 }
