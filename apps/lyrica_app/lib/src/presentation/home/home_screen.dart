@@ -16,16 +16,16 @@ class HomeScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(24),
         children: [
           Text(
-            AppStrings.appTagline,
+            AppStrings.songLibraryHeading,
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 24),
           Text(
-            AppStrings.foundationHeading,
+            AppStrings.songLibraryFlowHeading,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
-          const Text(AppStrings.authorizationSummary),
+          const Text(AppStrings.songLibraryFlowSummary),
           const SizedBox(height: 12),
           Text('Local store: ${syncOverview.storeContract.engine}'),
           Text(
