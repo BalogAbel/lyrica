@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
+import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -45,6 +46,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
               song: result.song,
               state: _controller.state,
             );
+            final recoverableWarningCount = result.song.diagnostics
+                .where(
+                  (diagnostic) =>
+                      diagnostic.severity == ParseDiagnosticSeverity.warning,
+                )
+                .length;
 
             return Center(
               child: ConstrainedBox(
@@ -55,7 +62,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     SongReaderHeader(
                       projection: projection,
                       hasRecoverableWarnings: result.hasRecoverableWarnings,
-                      warningCount: result.song.diagnostics.length,
+                      warningCount: recoverableWarningCount,
                       onToggleViewMode: () {
                         _updateState(
                           (controller) => controller.toggleViewMode(),

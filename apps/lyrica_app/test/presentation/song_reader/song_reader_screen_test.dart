@@ -141,4 +141,43 @@ void main() {
       expect(find.textContaining('warning'), findsWidgets);
     },
   );
+
+  testWidgets('counts only warning diagnostics in the warning surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        result: buildResult(
+          diagnostics: [
+            ParseDiagnostic(
+              severity: ParseDiagnosticSeverity.info,
+              message: 'Normalized spacing',
+              line: const ParseDiagnosticLineMetadata(lineNumber: 1),
+            ),
+            ParseDiagnostic(
+              severity: ParseDiagnosticSeverity.warning,
+              message: 'Unknown directive',
+              line: const ParseDiagnosticLineMetadata(lineNumber: 3),
+              context: 'unknown:token',
+            ),
+            ParseDiagnostic(
+              severity: ParseDiagnosticSeverity.error,
+              message: 'Invalid token',
+              line: const ParseDiagnosticLineMetadata(lineNumber: 5),
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('1 recoverable warning while reading this song.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('3 recoverable warnings while reading this song.'),
+      findsNothing,
+    );
+  });
 }
