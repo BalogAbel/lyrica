@@ -85,13 +85,21 @@ Supabase CLI is managed as a repository-local dev dependency under `tooling/supa
 
 ### Local Development
 
-Install dependencies with:
+Install all repository dependencies with:
 
 ```bash
 ./scripts/bootstrap.sh
 ```
 
 This installs Flutter dependencies for `apps/lyrica_app` and the repository-local Supabase CLI dependencies under `tooling/supabase/`.
+
+If you only want to run the Flutter app locally, use:
+
+```bash
+./scripts/bootstrap-app.sh
+```
+
+This avoids the Supabase tooling install and only resolves Flutter packages for `apps/lyrica_app`.
 
 If you only need the Supabase tooling workspace, run `npm ci --prefix tooling/supabase`.
 
@@ -109,6 +117,7 @@ The wrapper resolves the repository-local CLI via `tooling/supabase` and should 
 
 ```bash
 ./scripts/bootstrap.sh
+./scripts/bootstrap-app.sh
 ./scripts/supabase.sh start
 ./scripts/supabase.sh db reset
 ./scripts/supabase.sh migration list

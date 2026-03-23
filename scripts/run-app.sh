@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+app_dir="$repo_root/apps/lyrica_app"
 
-flutter run -d chrome --target apps/lyrica_app/lib/main.dart
+cd "$app_dir"
+flutter pub get
+flutter run -d chrome --target lib/main.dart

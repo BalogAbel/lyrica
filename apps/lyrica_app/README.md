@@ -31,6 +31,8 @@ It does not yet implement auth, backend song storage, sync execution, song editi
 Run from the repository root:
 
 ```bash
+./scripts/bootstrap-app.sh
+./scripts/run-app.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ```
