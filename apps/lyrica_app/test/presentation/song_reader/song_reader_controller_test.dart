@@ -41,6 +41,14 @@ void main() {
     expect(controller.state.sharedFontScale, 1.25);
   });
 
+  test('normalizes invalid shared font scale through the controller', () {
+    final controller = SongReaderController();
+
+    controller.setSharedFontScale(double.nan);
+
+    expect(controller.state.sharedFontScale, 1.0);
+  });
+
   test('normalizes invalid shared font scales', () {
     expect(SongReaderState(sharedFontScale: 0).sharedFontScale, 1.0);
     expect(SongReaderState(sharedFontScale: -2).sharedFontScale, 1.0);

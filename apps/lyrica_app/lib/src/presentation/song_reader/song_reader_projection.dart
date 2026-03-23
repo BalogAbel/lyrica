@@ -69,7 +69,11 @@ class SongReaderProjection {
       return null;
     }
 
-    return transposeChord(leadingChord, state.transposeOffset);
+    try {
+      return transposeChord(leadingChord, state.transposeOffset);
+    } on FormatException {
+      return leadingChord;
+    }
   }
 }
 

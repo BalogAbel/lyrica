@@ -3,7 +3,7 @@ import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_state.dart';
 
-ParsedSong _buildParsedSong() {
+ParsedSong _buildParsedSong({String leadingChord = 'A'}) {
   return ParsedSong(
     title: 'Reader test song',
     sections: [
@@ -13,7 +13,7 @@ ParsedSong _buildParsedSong() {
         lines: [
           SongLine(
             segments: [
-              LyricSegment(leadingChord: 'A', text: 'Hello'),
+              LyricSegment(leadingChord: leadingChord, text: 'Hello'),
               LyricSegment(text: ' world'),
             ],
           ),
@@ -76,5 +76,27 @@ void main() {
       throwsUnsupportedError,
     );
     expect(song.sections.first.lines.first.segments.first.leadingChord, 'A');
+  });
+
+  test('preserves unsupported chord text without crashing projection', () {
+    final song = _buildParsedSong(leadingChord: 'not-a-real-chord');
+
+    late SongReaderProjection projection;
+
+    expect(() {
+      projection = SongReaderProjection(
+        song: song,
+        state: SongReaderState(transposeOffset: 3),
+      );
+    }, returnsNormally);
+
+    expect(
+      projection.sections.first.lines.first.segments.first.displayChord,
+      'not-a-real-chord',
+    );
+    expect(
+      song.sections.first.lines.first.segments.first.leadingChord,
+      'not-a-real-chord',
+    );
   });
 }
