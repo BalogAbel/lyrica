@@ -95,10 +95,12 @@ Line two
     );
   });
 
-  test('unsupported comment content ends the active section before later lyrics', () {
-    final parser = ChordproParser();
+  test(
+    'unsupported comment content ends the active section before later lyrics',
+    () {
+      final parser = ChordproParser();
 
-    final song = parser.parse('''
+      final song = parser.parse('''
 {title:Example Song}
 {comment:<Bridge>}
 Bridge line
@@ -106,13 +108,17 @@ Bridge line
 Trailing line
 ''');
 
-    expect(song.sections, hasLength(2));
-    expect(song.sections[0].label, 'Bridge');
-    expect(song.sections[0].lines.single.segments.single.text, 'Bridge line');
-    expect(song.sections[1].label, 'Unlabeled');
-    expect(song.sections[1].lines.single.segments.single.text, 'Trailing line');
-    expect(song.diagnostics.single.context, 'comment:// footer note');
-  });
+      expect(song.sections, hasLength(2));
+      expect(song.sections[0].label, 'Bridge');
+      expect(song.sections[0].lines.single.segments.single.text, 'Bridge line');
+      expect(song.sections[1].label, 'Unlabeled');
+      expect(
+        song.sections[1].lines.single.segments.single.text,
+        'Trailing line',
+      );
+      expect(song.diagnostics.single.context, 'comment:// footer note');
+    },
+  );
 
   test('rejects numbered bridge and intro comment labels with warnings', () {
     final parser = ChordproParser();

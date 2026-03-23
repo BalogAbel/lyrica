@@ -24,10 +24,10 @@ For the authenticated song-reading slice, local Supabase development must provid
 Use the repository workflow from the repository root:
 
 ```bash
-./scripts/supabase.sh start
-./scripts/db-reset.sh
-./scripts/provision-local-demo-user.sh
+./scripts/run-authenticated-app.sh
 ```
+
+This is the simplest local path for the authenticated reader slice. It starts or reuses local Supabase, resets the database, provisions the demo auth user, and launches the Flutter app with the required local Supabase `dart-define` values.
 
 Documented demo credentials:
 
@@ -52,6 +52,7 @@ Run from the repository root:
 ```bash
 ./scripts/bootstrap-app.sh
 ./scripts/run-app.sh
+./scripts/run-authenticated-app.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ```

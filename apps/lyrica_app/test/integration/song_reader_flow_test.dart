@@ -28,10 +28,10 @@ void main() {
           'id': id,
           'chordpro_source':
               '{title:Egy út}\n'
-                  '{subtitle:One Way}\n'
-                  '{key:B}\n'
-                  '{comment:<Verse 1>}\n'
-                  '[B] Leteszem az eletem\n',
+              '{subtitle:One Way}\n'
+              '{key:B}\n'
+              '{comment:<Verse 1>}\n'
+              '[B] Leteszem az eletem\n',
         },
       );
 

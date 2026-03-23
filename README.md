@@ -130,6 +130,18 @@ Documented demo credentials:
 - email: `demo@lyrica.local`
 - password: `LyricaDemo123!`
 
+For the simplest end-to-end local app run, use:
+
+```bash
+./scripts/run-authenticated-app.sh
+```
+
+This starts or reuses local Supabase, resets the local database, provisions the documented demo user, discovers the local Supabase URL and anon key, and launches the Flutter app with the required `--dart-define` values. Extra `flutter run` arguments are forwarded, for example:
+
+```bash
+./scripts/run-authenticated-app.sh --web-port 3000
+```
+
 On macOS with Colima, the repository keeps local Supabase analytics disabled in `supabase/config.toml`. The current Supabase local analytics service expects the default Docker socket mount and blocks `./scripts/supabase.sh start` under the Colima socket path even though this slice does not need analytics.
 
 ### Common Commands
@@ -144,6 +156,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/db-reset.sh
 ./scripts/db-seed.sh
 ./scripts/run-app.sh
+./scripts/run-authenticated-app.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ```

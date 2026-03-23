@@ -21,6 +21,7 @@
   - `./scripts/supabase.sh db reset`
   - `./scripts/supabase.sh migration list`
   - `./scripts/provision-local-demo-user.sh`
+  - `./scripts/run-authenticated-app.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
 
 ## Commit Guidance
