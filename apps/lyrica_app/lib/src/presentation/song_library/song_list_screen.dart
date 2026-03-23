@@ -21,12 +21,17 @@ class SongListScreen extends ConsumerWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: _contentWidth),
             child: songsAsync.when(
-              loading: () => const Center(child: Text('Loading songs...')),
-              error: (error, stackTrace) =>
-                  const Center(child: Text('Unable to load songs.')),
+              loading: () =>
+                  const Center(child: Text(AppStrings.songListLoadingMessage)),
+              error: (error, stackTrace) => _RetryableErrorState(
+                message: AppStrings.songListLoadFailureMessage,
+                onRetry: () => ref.invalidate(songLibraryListProvider),
+              ),
               data: (songs) {
                 if (songs.isEmpty) {
-                  return const Center(child: Text('No songs available.'));
+                  return const Center(
+                    child: Text(AppStrings.songListEmptyMessage),
+                  );
                 }
 
                 return ListView.separated(
@@ -47,6 +52,30 @@ class SongListScreen extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RetryableErrorState extends StatelessWidget {
+  const _RetryableErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: onRetry,
+            child: const Text(AppStrings.retryAction),
+          ),
+        ],
       ),
     );
   }

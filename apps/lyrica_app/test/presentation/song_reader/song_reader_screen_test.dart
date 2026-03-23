@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
+import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
 
@@ -55,6 +56,19 @@ void main() {
       overrides: [
         songLibraryReaderProvider.overrideWithProvider(
           (value) => FutureProvider((ref) async => result),
+        ),
+      ],
+      child: const MaterialApp(home: SongReaderScreen(songId: songId)),
+    );
+  }
+
+  Widget buildErrorApp({
+    required Future<SongReaderResult> Function() loadSong,
+  }) {
+    return ProviderScope(
+      overrides: [
+        songLibraryReaderProvider.overrideWithProvider(
+          (value) => FutureProvider((ref) => loadSong()),
         ),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
@@ -175,5 +189,48 @@ void main() {
       find.text('3 recoverable warnings while reading this song.'),
       findsNothing,
     );
+  });
+
+  testWidgets('shows an unavailable state when the song cannot be found', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildErrorApp(
+        loadSong: () async => throw const SongNotFoundException(songId),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('This song is unavailable.'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+  });
+
+  testWidgets('shows a retryable backend failure state when loading fails', (
+    tester,
+  ) async {
+    var attempts = 0;
+
+    await tester.pumpWidget(
+      buildErrorApp(
+        loadSong: () async {
+          attempts += 1;
+          if (attempts == 1) {
+            throw Exception('backend unavailable');
+          }
+
+          return buildResult();
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to load song. Please try again.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Reader Song'), findsOneWidget);
+    expect(attempts, 2);
   });
 }

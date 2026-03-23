@@ -14,6 +14,7 @@ void main() {
   Widget buildApp({
     List<SongSummary> songs = const [],
     Completer<List<SongSummary>>? loadingCompleter,
+    Future<List<SongSummary>> Function()? listSongs,
   }) {
     final router = GoRouter(
       initialLocation: '/',
@@ -32,6 +33,10 @@ void main() {
     return ProviderScope(
       overrides: [
         songLibraryListProvider.overrideWith((ref) {
+          if (listSongs != null) {
+            return listSongs();
+          }
+
           if (loadingCompleter != null) {
             return loadingCompleter.future;
           }
@@ -100,5 +105,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No songs available.'), findsOneWidget);
+  });
+
+  testWidgets('shows a retryable backend failure state while list loading fails', (
+    tester,
+  ) async {
+    var attempts = 0;
+
+    await tester.pumpWidget(
+      buildApp(
+        listSongs: () async {
+          attempts += 1;
+          if (attempts == 1) {
+            throw Exception('backend unavailable');
+          }
+
+          return const [SongSummary(id: 'egy_ut', title: 'Egy út')];
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to load songs. Please try again.'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Egy út'), findsOneWidget);
+    expect(attempts, 2);
   });
 }

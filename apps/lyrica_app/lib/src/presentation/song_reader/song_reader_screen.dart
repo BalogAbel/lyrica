@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
+import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyrica_app/src/presentation/song_reader/widgets/song_reader_header.dart';
 import 'package:lyrica_app/src/presentation/song_reader/widgets/song_section_view.dart';
+import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({super.key, required this.songId});
@@ -37,9 +39,33 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       appBar: AppBar(title: const Text('Song reader')),
       body: SafeArea(
         child: readerAsync.when(
-          loading: () => const Center(child: Text('Loading song...')),
+          loading: () =>
+              const Center(child: Text(AppStrings.songReaderLoadingMessage)),
           error: (error, stackTrace) {
-            return const Center(child: Text('Unable to load song.'));
+            if (error is SongNotFoundException) {
+              return const Center(
+                child: Text(AppStrings.songReaderUnavailableMessage),
+              );
+            }
+
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    AppStrings.songReaderLoadFailureMessage,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      ref.invalidate(songLibraryReaderProvider(widget.songId));
+                    },
+                    child: const Text(AppStrings.retryAction),
+                  ),
+                ],
+              ),
+            );
           },
           data: (SongReaderResult result) {
             final projection = SongReaderProjection(
