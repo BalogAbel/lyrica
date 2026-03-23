@@ -5,6 +5,7 @@ import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/router/app_router.dart';
 import 'package:lyrica_app/src/router/app_routes.dart';
 
@@ -54,6 +55,9 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          songLibraryListProvider.overrideWith(
+            (ref) async => const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+          ),
         ],
         child: Consumer(
           builder: (context, ref, child) => MaterialApp.router(

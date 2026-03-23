@@ -44,6 +44,7 @@ Cover:
 - Local-first flows
 - Sync queue lifecycle
 - Auth session bootstrap against test doubles or integration backends
+- Authenticated backend song reads against the local Supabase stack, including organization-scope isolation
 
 ### Backend Verification
 
@@ -54,6 +55,7 @@ Cover:
 - SQL function behavior
 - RLS policy expectations
 - Seed script idempotency where applicable
+- Local demo auth provisioning through `./scripts/provision-local-demo-user.sh`
 
 ## Pre-Merge Quality Gates
 
@@ -61,8 +63,10 @@ Cover:
 - `flutter analyze`
 - `flutter test`
 - `./scripts/check-migrations.sh`
+- local Supabase reset and demo auth provisioning when backend-backed slices change
+- authenticated backend integration coverage for real Supabase song reads
 
-`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper. For the tablet-first song-reader slice, use `./scripts/verify.sh --skip-migrations` when the change is confined to app and documentation work.
+`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the local database, provisions the documented demo user, and runs the authenticated backend song-reading integration test with repository-discovered local Supabase credentials. Use `./scripts/verify.sh --skip-migrations` only when the change is confined to app and documentation work and does not affect backend-backed song reading or local Supabase workflow behavior.
 
 ## AI-Assisted Development Rules
 

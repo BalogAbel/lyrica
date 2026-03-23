@@ -11,9 +11,9 @@ This app currently provides:
 - go_router route registration
 - offline policy vocabulary shared with the domain and application layers
 - a tablet-first song library and reader slice backed by a song repository boundary
-- an asset-backed mock catalog for the current ChordPro product slice
+- an authenticated Supabase-backed song catalog that still projects raw ChordPro in-app
 
-It does not yet implement auth, backend song storage, sync execution, song editing, or reader preference persistence.
+It does not yet implement sync execution, song editing, or reader preference persistence.
 
 For the authenticated song-reading slice, local Supabase development must provide:
 
@@ -57,3 +57,4 @@ Run from the repository root:
 ```
 
 For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end quality gate for app changes.
+For the authenticated backend song-reading slice, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs the real backend repository integration test.

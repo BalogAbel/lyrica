@@ -9,8 +9,8 @@ import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyrica_app/src/presentation/auth/sign_in_screen.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
-import 'package:lyrica_app/src/router/auth_router_refresh_notifier.dart';
 import 'package:lyrica_app/src/router/app_routes.dart';
+import 'package:lyrica_app/src/router/auth_router_refresh_notifier.dart';
 
 GoRouter createAppRouter({
   required AppAuthController authController,

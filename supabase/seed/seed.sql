@@ -3,6 +3,11 @@ values ('11111111-1111-1111-1111-111111111111', 'Demo Organization', 'demo-organ
 on conflict (slug) do update
 set name = excluded.name;
 
+insert into public.organizations (id, name, slug)
+values ('11111111-1111-1111-1111-111111111112', 'Hidden Organization', 'hidden-organization')
+on conflict (slug) do update
+set name = excluded.name;
+
 insert into public.groups (id, organization_id, name, description)
 values (
   '22222222-2222-2222-2222-222222222222',
@@ -134,6 +139,20 @@ Csak [F#m]érted élek én![E]
 $song$,
   '{"source":"seed","catalog":"reader-slice"}'::jsonb,
   'B'
+), (
+  '33333333-3333-3333-3333-333333333336',
+  '11111111-1111-1111-1111-111111111112',
+  'Hidden Seed Song',
+  null,
+  $song$
+{title:Hidden Seed Song}
+{subtitle:Authorization isolation fixture}
+{key:C}
+{comment:<Verse 1>}
+[C] This song should stay outside the demo membership scope.
+$song$,
+  '{"source":"seed","catalog":"authorization-isolation"}'::jsonb,
+  'C'
 )
 on conflict (id) do update
 set

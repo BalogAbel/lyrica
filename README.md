@@ -2,7 +2,7 @@
 
 Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and an offline-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
-The current first product slice is a tablet-first ChordPro song reader backed by a repository boundary and an asset-based mock catalog.
+The current executable product slice is a tablet-first ChordPro song reader with authenticated backend song reads. Flutter still parses raw ChordPro and renders the reader locally; the backend returns only minimal song summaries and raw ChordPro source.
 
 This repository is the canonical source of truth for:
 
@@ -18,7 +18,7 @@ This repository is the canonical source of truth for:
 - Supabase schema, RLS policies, and seed data under `supabase/`
 - MVP platforms: Android, iOS, and Web
 - Drift selected as the local store and sync-queue foundation
-- First product slice: tablet-first song list and reader backed by bundled ChordPro assets
+- First executable product slice: authenticated tablet-first song list and reader backed by Supabase song summaries and raw ChordPro source
 - ChordPro defined as the canonical editable song format, with a documented supported subset for the first slice
 - Capability-based authorization enforced in Postgres, not in Flutter
 - Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
@@ -148,14 +148,15 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/verify.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, and runs the authenticated backend song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
 
 ## Local Development Notes
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
-- The first product slice adds a song repository boundary, asset-backed mock catalog, and ChordPro reader controls without introducing auth, backend song storage, or reader preference persistence.
+- The current slice proves authenticated backend song reads through a Supabase-backed repository while keeping ChordPro parsing and reader projection inside Flutter.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
 - Seed data is organization-scoped demo content. `./scripts/provision-local-demo-user.sh` creates the demo auth user through Supabase Auth and upserts the matching active membership row.
+- Local verification now also proves RLS scope isolation: the seeded hidden-organization song is not visible to the demo user.
 
 ## Status
 

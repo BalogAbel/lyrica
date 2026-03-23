@@ -14,3 +14,21 @@ if [[ "$skip_migrations" == "--skip-migrations" ]]; then
 fi
 
 ./scripts/check-migrations.sh
+./scripts/supabase.sh start
+./scripts/db-reset.sh
+./scripts/provision-local-demo-user.sh
+
+status_env="$(./scripts/supabase.sh status -o env)"
+eval "$status_env"
+
+if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" ]]; then
+  echo "Local Supabase did not return API_URL and ANON_KEY." >&2
+  exit 1
+fi
+
+(
+  cd apps/lyrica_app &&
+    flutter test test/integration/authenticated_song_reader_flow_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)

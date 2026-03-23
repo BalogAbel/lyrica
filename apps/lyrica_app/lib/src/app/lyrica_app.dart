@@ -6,7 +6,7 @@ import 'package:lyrica_app/src/router/app_router.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class LyricaApp extends ConsumerWidget {
-  LyricaApp({super.key, GoRouter? router}) : _router = router;
+  const LyricaApp({super.key, GoRouter? router}) : _router = router;
 
   final GoRouter? _router;
 
