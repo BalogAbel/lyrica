@@ -30,7 +30,7 @@ class SongLineView extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Wrap(
-        spacing: 16,
+        spacing: 0,
         runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.end,
         children: [
