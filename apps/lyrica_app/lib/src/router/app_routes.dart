@@ -1,5 +1,6 @@
 enum AppRoutes {
   home('/'),
+  signIn('/sign-in'),
   songReader('/songs/:songId');
 
   const AppRoutes(this.path);

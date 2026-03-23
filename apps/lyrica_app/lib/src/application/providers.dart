@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/sync/sync_overview.dart';
+import 'package:lyrica_app/src/infrastructure/auth/supabase_auth_repository.dart';
 import 'package:lyrica_app/src/offline/local_store_contract.dart';
 import 'package:lyrica_app/src/offline/sync_policy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,7 +22,7 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  throw UnimplementedError('authRepositoryProvider must be overridden.');
+  return SupabaseAuthRepository(ref.read(supabaseClientProvider));
 });
 
 final appAuthControllerProvider = Provider<AppAuthController>((ref) {
