@@ -12,7 +12,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Widget buildApp({
-    required List<SongSummary> songs,
+    List<SongSummary> songs = const [],
     Completer<List<SongSummary>>? loadingCompleter,
   }) {
     final router = GoRouter(
