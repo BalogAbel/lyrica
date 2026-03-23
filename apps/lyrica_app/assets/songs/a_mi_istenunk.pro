@@ -26,5 +26,3 @@ Helyreállta[G#m]m, szabaddá lette[C#m]m, Szelleme[A]d segít enge[B]m
 Mily' nagy szerete[F#m]t, mit adott nekü[C#m]nk a mi [A]Istenü[E]nk!
 A halálból fö[E]lemeltettél, életed le[B]tt nekünk a fény
 Szolga- Kirá[F#m]ly, szabadító[C#m], a mi [A]Istenü[E]nk!
-
-{comment:// This Is Our God | Hillsong}

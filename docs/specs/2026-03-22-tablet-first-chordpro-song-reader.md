@@ -200,8 +200,8 @@ Owns orchestration and UI-facing use cases:
 
 - load song list
 - load song detail
-- map parsed song documents into reader state
-- expose reader controls and derived view state
+- adapt parser output into reader results and warning semantics
+- keep repository and parser orchestration independent from widget concerns
 
 ### Infrastructure Layer
 
@@ -213,10 +213,11 @@ Owns implementations that can change later:
 
 ### Presentation Layer
 
-Owns screens and view state only:
+Owns screens and reader-local UI state:
 
 - song list screen
 - song reader screen
+- reader state, projection, and local controls
 - reader controls
 - widget composition for metadata, sections, and lines
 

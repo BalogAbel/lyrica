@@ -79,8 +79,11 @@ Line one
 Line two
 ''');
 
-    expect(song.sections, hasLength(1));
-    expect(song.sections.single.lines, hasLength(2));
+    expect(song.sections, hasLength(2));
+    expect(song.sections.first.label, 'Verse');
+    expect(song.sections.first.lines.single.segments.single.text, 'Line one');
+    expect(song.sections.last.label, 'Unlabeled');
+    expect(song.sections.last.lines.single.segments.single.text, 'Line two');
     expect(song.diagnostics, hasLength(1));
     expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
     expect(song.diagnostics.single.context, 'comment:// Unsupported note');
@@ -90,6 +93,25 @@ Line two
       song.diagnostics.single.message,
       'Unsupported comment content: // Unsupported note',
     );
+  });
+
+  test('unsupported comment content ends the active section before later lyrics', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{comment:<Bridge>}
+Bridge line
+{comment:// footer note}
+Trailing line
+''');
+
+    expect(song.sections, hasLength(2));
+    expect(song.sections[0].label, 'Bridge');
+    expect(song.sections[0].lines.single.segments.single.text, 'Bridge line');
+    expect(song.sections[1].label, 'Unlabeled');
+    expect(song.sections[1].lines.single.segments.single.text, 'Trailing line');
+    expect(song.diagnostics.single.context, 'comment:// footer note');
   });
 
   test('rejects numbered bridge and intro comment labels with warnings', () {

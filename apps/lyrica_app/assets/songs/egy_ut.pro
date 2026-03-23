@@ -29,8 +29,4 @@
 [B]Te vagy az út és [F#]Te vagy a cél
 Az [G#m]igazság az [E]élet, hit, remény[G#m]
 Csak [F#m]érted élek én![E]
-
-{comment:#Jonathan Douglass, Joel Houston (Hillsong)}
-{comment:#Hegedűs Róbert (Dics-Suli 2006)}
 [B]
-{comment://}

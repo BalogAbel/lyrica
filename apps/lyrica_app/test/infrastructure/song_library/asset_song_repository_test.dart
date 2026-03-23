@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/asset_song_repository.dart';
+import 'package:lyrica_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +40,23 @@ void main() {
       expect(expectedTitleHeader, isNotNull);
       expect(source.source, contains(expectedTitleHeader));
       expect(source.source, contains('{title:${song.title}}'));
+    }
+  });
+
+  test('bundled mock songs parse without recoverable warnings', () async {
+    final repository = AssetSongRepository();
+    final parser = ChordproParser();
+    final songs = await repository.listSongs();
+
+    for (final song in songs) {
+      final source = await repository.getSongSource(song.id);
+      final parsedSong = parser.parse(source.source);
+
+      expect(
+        parsedSong.diagnostics,
+        isEmpty,
+        reason: 'Bundled song ${song.id} should not ship with parser warnings.',
+      );
     }
   });
 

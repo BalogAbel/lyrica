@@ -42,6 +42,7 @@ class ChordproParser {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);
           if (parsedSection == null) {
+            currentSection = null;
             diagnostics.add(
               ParseDiagnostic(
                 severity: ParseDiagnosticSeverity.warning,

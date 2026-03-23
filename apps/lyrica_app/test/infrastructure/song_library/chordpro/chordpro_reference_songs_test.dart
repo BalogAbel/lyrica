@@ -119,6 +119,7 @@ void main() {
       'Verse',
       'Chorus',
       'Bridge',
+      'Unlabeled',
     ]);
     expect(song.sections[0].number, 1);
     expect(song.sections[1].number, 2);
@@ -150,6 +151,8 @@ void main() {
     );
     expect(song.sections[3].kind, SongSectionKind.bridge);
     expect(song.sections[3].lines.first.segments.first.leadingChord, 'B');
+    expect(song.sections[4].kind, SongSectionKind.other);
+    expect(song.sections[4].lines.single.segments.single.leadingChord, 'B');
     expect(song.diagnostics, hasLength(3));
     expect(
       song.diagnostics.map((diagnostic) => diagnostic.context).toList(),

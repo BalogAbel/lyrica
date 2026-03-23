@@ -21,4 +21,3 @@ A forrás[A]nál lelkünk [E]összeér, újra [Bm]az vagyok,[D] akinek álmod[E]
 [A]Minden élet, [F#m]minden áldás [D]belőle[E]d faka[A]d
 
 [A]
-{comment:// (Pintér Béla)}
