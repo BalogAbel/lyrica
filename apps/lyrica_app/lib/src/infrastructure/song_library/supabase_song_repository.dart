@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
@@ -54,7 +55,7 @@ class SupabaseSongRepository implements SongRepository {
 
   @override
   Future<SongSource> getSongSource(String id) async {
-    final row = await _getSongRow(id);
+    final row = await _getSongRowOrThrow(id);
     if (row == null) {
       throw SongNotFoundException(id);
     }
@@ -63,5 +64,27 @@ class SupabaseSongRepository implements SongRepository {
       id: row['id'] as String,
       source: row['chordpro_source'] as String,
     );
+  }
+
+  Future<Map<String, dynamic>?> _getSongRowOrThrow(String id) async {
+    try {
+      return await _getSongRow(id);
+    } on PostgrestException catch (error) {
+      if (_isAccessDeniedPostgrest(error)) {
+        throw SongAccessDeniedException(id);
+      }
+      rethrow;
+    } catch (error) {
+      if (error.runtimeType.toString().contains('AccessDenied')) {
+        throw SongAccessDeniedException(id);
+      }
+      rethrow;
+    }
+  }
+
+  bool _isAccessDeniedPostgrest(PostgrestException error) {
+    return error.code == '42501' ||
+        error.code == '403' ||
+        error.message.toLowerCase().contains('permission denied');
   }
 }

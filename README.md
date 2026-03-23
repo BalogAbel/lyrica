@@ -59,6 +59,8 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 - [FreeShow integration boundary](docs/integrations/freeshow.md)
 - [Tablet-first song reader spec](docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md)
 - [Tablet-first song reader plan](docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md)
+- [Authenticated song reading spec](docs/specs/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
+- [Authenticated song reading plan](docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
 
 ## Development Workflow
 
@@ -161,14 +163,16 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/verify.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, and runs the authenticated backend song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, and runs the authenticated backend song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
 
 ## Local Development Notes
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
-- The current slice proves authenticated backend song reads through a Supabase-backed repository while keeping ChordPro parsing and reader projection inside Flutter.
+- The current authenticated slice uses a Supabase-backed song repository only. It does not fall back to bundled assets for authenticated song reads.
+- ChordPro parsing and reader projection stay inside Flutter even when the source comes from Supabase.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
-- Seed data is organization-scoped demo content. `./scripts/provision-local-demo-user.sh` creates the demo auth user through Supabase Auth and upserts the matching active membership row.
+- Seed data is organization-scoped demo content. `./scripts/provision-local-demo-user.sh` creates the demo auth user through Supabase Auth and idempotently upserts the matching active membership row.
+- The organization-membership uniqueness migration deduplicates pre-existing local duplicates by keeping the earliest row by `created_at, id` before recreating the partial unique index.
 - Local verification now also proves RLS scope isolation: the seeded hidden-organization song is not visible to the demo user.
 
 ## Status

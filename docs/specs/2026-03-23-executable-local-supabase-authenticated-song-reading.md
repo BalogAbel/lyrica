@@ -84,6 +84,8 @@ The fixture must include:
 
 The auth fixture is part of the slice, not an informal manual setup step.
 
+For local repair safety, the repository may also need to correct previously duplicated organization-scoped demo memberships before enforcing uniqueness again. When such repair is required, the repository keeps the earliest duplicate row by `created_at, id` and removes the later duplicates.
+
 Recommended default:
 
 - email/password sign-in with a documented local demo account
@@ -165,6 +167,7 @@ The app-level auth/bootstrap controller must expose these explicit states:
 ### Routing Policy
 
 - Signed-out users must not reach the song list or reader routes.
+- During `initializing`, the app should remain on a dedicated bootstrap/loading surface instead of jumping directly to sign-in.
 - Signed-in users must not remain on the sign-in route after session restoration or successful sign-in.
 - Redirect behavior must be centralized rather than duplicated in screens.
 
@@ -182,6 +185,7 @@ If a previously valid session becomes unusable:
 This slice must preserve the existing architecture.
 
 - The backend replaces the asset-backed repository implementation.
+- The authenticated slice must not fall back to the bundled asset repository during normal auth/bootstrap flow.
 - The backend does not redefine the song domain model.
 - The repository contract remains centered on minimal `SongSummary` and raw `SongSource`.
 - The backend does not return parsed sections, rendered lines, or reader-specific projections.
@@ -212,11 +216,12 @@ The app must distinguish at least these cases:
 
 - `songNotFound`
   - requested song ID is not present in the visible backend scope
+  - this also includes rows hidden by backend RLS where the repository only receives an unavailable/not-found result
   - result: show unavailable or not-found state
 
 - `accessDenied`
-  - backend refuses access to a song outside the user's allowed scope
-  - result: show unavailable or access-denied state, not a parser or reader error
+  - backend returns an explicit permission-denied response for a song read
+  - result: show an access-denied state, not a parser or reader error
 
 - `transientBackendFailure`
   - network, transport, or temporary backend problem
@@ -264,6 +269,8 @@ Must cover:
 - local Supabase environment starts successfully
 - migrations apply successfully
 - seed path produces a usable local demo user, membership, and song catalog
+- repeated local demo provisioning stays idempotent
+- uniqueness-repair migrations succeed even if older local environments already contain duplicated organization-scoped demo memberships
 - authenticated user can read in-scope songs
 - authenticated user cannot read out-of-scope songs
 - app happy path works from sign-in to reader against the local backend

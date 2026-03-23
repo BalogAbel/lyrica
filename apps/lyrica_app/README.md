@@ -11,7 +11,7 @@ This app currently provides:
 - go_router route registration
 - offline policy vocabulary shared with the domain and application layers
 - a tablet-first song library and reader slice backed by a song repository boundary
-- an authenticated Supabase-backed song catalog that still projects raw ChordPro in-app
+- an authenticated Supabase-backed song catalog that still projects raw ChordPro in-app without falling back to bundled assets for this slice
 
 It does not yet implement sync execution, song editing, or reader preference persistence.
 
@@ -27,7 +27,7 @@ Use the repository workflow from the repository root:
 ./scripts/run-authenticated-app.sh
 ```
 
-This is the simplest local path for the authenticated reader slice. It starts or reuses local Supabase, resets the database, provisions the demo auth user, and launches the Flutter app with the required local Supabase `dart-define` values.
+This is the simplest local path for the authenticated reader slice. It starts or reuses local Supabase, resets the database, provisions the demo auth user idempotently, and launches the Flutter app with the required local Supabase `dart-define` values.
 
 Documented demo credentials:
 

@@ -6,6 +6,12 @@
 
 **Architecture:** Keep the slice vertical but thin. First, make the existing local Supabase baseline executable with a real demo auth fixture and three-song catalog parity. Then add a small auth/bootstrap boundary in Flutter, wire a centralized router redirect policy, and swap the asset-backed repository for a Supabase-backed read implementation that still returns only `SongSummary` and raw `SongSource`. Do not add write paths, offline persistence, or backend-specific parsed song payloads.
 
+Post-merge corrections for this slice also require:
+- idempotent local demo membership provisioning
+- no runtime asset fallback in the authenticated repository path
+- an executable bootstrap loading surface while auth restoration is in progress
+- documentation that distinguishes explicit backend permission-denied failures from RLS-hidden unavailable rows
+
 **Tech Stack:** Flutter, Riverpod, go_router, Supabase Flutter client, local Supabase CLI via repository scripts, Flutter widget tests, Dart unit tests, Flutter integration tests, SQL migrations and seed data
 
 ---

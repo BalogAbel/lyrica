@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
+import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_controller.dart';
@@ -42,6 +43,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           loading: () =>
               const Center(child: Text(AppStrings.songReaderLoadingMessage)),
           error: (error, stackTrace) {
+            if (error is SongAccessDeniedException) {
+              return const Center(
+                child: Text(AppStrings.songReaderAccessDeniedMessage),
+              );
+            }
+
             if (error is SongNotFoundException) {
               return const Center(
                 child: Text(AppStrings.songReaderUnavailableMessage),

@@ -1,4 +1,5 @@
 enum AppRoutes {
+  bootstrap('/bootstrap'),
   home('/'),
   signIn('/sign-in'),
   songReader('/songs/:songId');

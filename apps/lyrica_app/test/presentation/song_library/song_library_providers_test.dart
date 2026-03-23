@@ -98,6 +98,28 @@ void main() {
     expect(loggedDiagnostics.single.message, 'Unsupported directive');
     expect(loggedDiagnostics.single.context, '{unknown:test}');
   });
+
+  test(
+    'keeps the authenticated slice on the Supabase repository boundary',
+    () async {
+      final authController = AppAuthController(_SignedOutAuthRepository());
+      final repository = SupabaseSongRepository.testing(
+        listSongsRows: () async => const [],
+        getSongRow: (id) async => null,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthListenableProvider.overrideWithValue(authController),
+          supabaseSongRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(authController.dispose);
+
+      expect(container.read(songLibraryRepositoryProvider), same(repository));
+    },
+  );
 }
 
 class _StubSongRepository implements SongRepository {
@@ -127,6 +149,23 @@ class _SignedInAuthRepository implements AuthRepository {
   Future<AppAuthSession?> restoreSession() async {
     return const AppAuthSession(userId: 'user-1', email: 'demo@lyrica.local');
   }
+
+  @override
+  Stream<AppAuthSession?> watchSession() => const Stream.empty();
+
+  @override
+  Future<AppAuthSession> signIn({
+    required String email,
+    required String password,
+  }) async => AppAuthSession(userId: 'user-1', email: email);
+
+  @override
+  Future<void> signOut() async {}
+}
+
+class _SignedOutAuthRepository implements AuthRepository {
+  @override
+  Future<AppAuthSession?> restoreSession() async => null;
 
   @override
   Stream<AppAuthSession?> watchSession() => const Stream.empty();

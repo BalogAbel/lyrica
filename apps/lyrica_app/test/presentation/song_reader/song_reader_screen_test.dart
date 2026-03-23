@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
+import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
@@ -204,6 +205,21 @@ void main() {
     expect(find.text('This song is unavailable.'), findsOneWidget);
     expect(find.text('Try again'), findsNothing);
   });
+
+  testWidgets(
+    'shows an access denied state when backend scope blocks the song',
+    (tester) async {
+      await tester.pumpWidget(
+        buildErrorApp(
+          loadSong: () async => throw const SongAccessDeniedException(songId),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('You do not have access to this song.'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+    },
+  );
 
   testWidgets('shows a retryable backend failure state when loading fails', (
     tester,

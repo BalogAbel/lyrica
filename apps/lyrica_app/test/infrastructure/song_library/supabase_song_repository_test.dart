@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
@@ -49,4 +50,18 @@ void main() {
       throwsA(isA<SongNotFoundException>()),
     );
   });
+
+  test('maps backend access denial to SongAccessDeniedException', () async {
+    final repository = SupabaseSongRepository.testing(
+      listSongsRows: () async => const [],
+      getSongRow: (id) async => throw _FakeAccessDeniedException(),
+    );
+
+    expect(
+      () => repository.getSongSource('hidden-song'),
+      throwsA(isA<SongAccessDeniedException>()),
+    );
+  });
 }
+
+class _FakeAccessDeniedException implements Exception {}

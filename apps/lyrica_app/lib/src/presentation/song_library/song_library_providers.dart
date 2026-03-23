@@ -3,11 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/song_library_service.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyrica_app/src/domain/song/song_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
-import 'package:lyrica_app/src/infrastructure/song_library/asset_song_repository.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/chord_transposer.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
@@ -15,12 +13,7 @@ import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_reposit
 typedef SongLibraryDiagnosticLogger = void Function(ParseDiagnostic diagnostic);
 
 final songLibraryRepositoryProvider = Provider<SongRepository>((ref) {
-  final authStatus = ref.watch(appAuthControllerProvider).state.status;
-  if (authStatus == AppAuthStatus.signedIn) {
-    return ref.watch(supabaseSongRepositoryProvider);
-  }
-
-  return AssetSongRepository();
+  return ref.watch(supabaseSongRepositoryProvider);
 });
 
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {

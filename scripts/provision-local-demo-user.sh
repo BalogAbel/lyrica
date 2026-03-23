@@ -88,7 +88,8 @@ membership_sql=$(
   cat <<EOF
 insert into public.memberships (organization_id, user_id, scope_type, role_code, status)
 values ('$DEMO_ORGANIZATION_ID', '$user_id', 'organization', 'organization_member', 'active')
-on conflict (organization_id, group_id, user_id, role_code) do update
+on conflict (organization_id, user_id, role_code)
+where group_id is null and scope_type = 'organization' do update
 set status = excluded.status;
 EOF
 )

@@ -5,6 +5,7 @@ class AppStrings {
   static const signInTitle = 'Sign in';
   static const signInSummary =
       'Use the local demo account to load backend songs.';
+  static const restoringSessionMessage = 'Restoring session...';
   static const signInAction = 'Continue';
   static const emailLabel = 'Email';
   static const passwordLabel = 'Password';
@@ -19,6 +20,8 @@ class AppStrings {
   static const songReaderLoadFailureMessage =
       'Unable to load song. Please try again.';
   static const songReaderUnavailableMessage = 'This song is unavailable.';
+  static const songReaderAccessDeniedMessage =
+      'You do not have access to this song.';
   static const songLibraryHeading = 'Tablet-first song library';
   static const songLibraryFlowHeading = 'Mock song catalog in progress';
   static const songLibraryFlowSummary =

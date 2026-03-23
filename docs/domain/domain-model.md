@@ -62,6 +62,11 @@ Invariants:
 - `scope_type = 'organization'` requires `group_id` to be `null`.
 - `scope_type = 'group'` requires `group_id` to reference a group in the same organization.
 - Organization-scoped roles cannot be assigned to group-scoped memberships and vice versa.
+- Organization-scoped memberships must be unique by `(organization_id, user_id, role_code)` when `group_id` is `null`.
+
+Operational note:
+
+- The local repair migration for previously duplicated organization-scoped memberships keeps the earliest row by `created_at, id` before enforcing uniqueness.
 
 ### songs
 
@@ -266,6 +271,8 @@ The first product slice adds app-local song-reading concepts that sit at the rep
 
 Current catalog and parsing rules for this slice:
 
-- The catalog is the three bundled `.pro` assets under `apps/lyrica_app/assets/songs/`.
+- The authenticated executable slice reads the current three-song catalog from backend seed data through `SongSummary` and raw `SongSource`.
+- The bundled `.pro` assets remain parser/reference fixtures, not the authenticated runtime catalog for this slice.
 - Unknown song IDs fail through a not-found exception rather than an infrastructure leak.
+- Explicit backend permission-denied failures can surface as access-denied at the app boundary, while RLS-hidden rows remain unavailable.
 - Unsupported directives and recoverable parser issues stay visible in diagnostics for developer logging and UI warning surfaces.

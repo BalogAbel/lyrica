@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ import 'package:lyrica_app/src/router/app_routes.dart';
 
 void main() {
   test('list, sign-in, and reader route constants remain stable', () {
+    expect(AppRoutes.bootstrap.path, '/bootstrap');
     expect(AppRoutes.home.path, '/');
     expect(AppRoutes.signIn.path, '/sign-in');
     expect(AppRoutes.songReader.path, '/songs/:songId');
@@ -35,6 +38,33 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Egy út'), findsNothing);
   });
+
+  testWidgets(
+    'initializing users stay on bootstrap loading until auth restore completes',
+    (WidgetTester tester) async {
+      final completer = Completer<AppAuthSession?>();
+      final repository = _DelayedAuthRepository(completer.future);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [authRepositoryProvider.overrideWithValue(repository)],
+          child: Consumer(
+            builder: (context, ref, child) =>
+                MaterialApp.router(routerConfig: ref.watch(appRouterProvider)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Restoring session...'), findsOneWidget);
+      expect(find.text('Sign in'), findsNothing);
+
+      completer.complete(null);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign in'), findsOneWidget);
+    },
+  );
 
   testWidgets('signed-in users are redirected away from the sign-in route', (
     WidgetTester tester,
@@ -116,6 +146,27 @@ class _TestAuthRepository implements AuthRepository {
 
   @override
   Future<AppAuthSession?> restoreSession() async => restoredSession;
+
+  @override
+  Stream<AppAuthSession?> watchSession() => const Stream.empty();
+
+  @override
+  Future<AppAuthSession> signIn({
+    required String email,
+    required String password,
+  }) async => AppAuthSession(userId: 'user-1', email: email);
+
+  @override
+  Future<void> signOut() async {}
+}
+
+class _DelayedAuthRepository implements AuthRepository {
+  _DelayedAuthRepository(this._restoreFuture);
+
+  final Future<AppAuthSession?> _restoreFuture;
+
+  @override
+  Future<AppAuthSession?> restoreSession() => _restoreFuture;
 
   @override
   Stream<AppAuthSession?> watchSession() => const Stream.empty();

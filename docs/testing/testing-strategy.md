@@ -18,7 +18,7 @@ Cover:
 - Capability mapping behavior in pure application logic
 - Sync orchestration decisions
 - ChordPro parsing and metadata mapping rules
-- Song repository boundary behavior and asset-backed catalog mapping
+- Song repository boundary behavior and backend summary/source mapping
 - Parser diagnostics and warning policy for the supported ChordPro subset
 
 Current foundation baseline:
@@ -56,6 +56,8 @@ Cover:
 - RLS policy expectations
 - Seed script idempotency where applicable
 - Local demo auth provisioning through `./scripts/provision-local-demo-user.sh`
+- Regression coverage for repeated local demo auth provisioning where workflow scripts depend on idempotency
+- Migration regression coverage for repair paths that must succeed on previously duplicated local membership data
 
 ## Pre-Merge Quality Gates
 
