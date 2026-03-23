@@ -1,12 +1,14 @@
+import 'package:lyrica_app/src/domain/song/chord_symbol.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
-import 'package:lyrica_app/src/infrastructure/song_library/chord_transposer.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_state.dart';
+
+typedef SongChordTransposer = String Function(String chord, int semitoneOffset);
 
 class SongReaderProjection {
   SongReaderProjection({
     required ParsedSong song,
     required SongReaderState state,
-    ChordTransposer transposer = const ChordTransposer(),
+    SongChordTransposer transposeChord = _transposeChord,
   }) : title = song.title,
        subtitle = song.subtitle,
        sourceKey = song.sourceKey,
@@ -32,7 +34,7 @@ class SongReaderProjection {
                                      displayChord: _displayChord(
                                        segment.leadingChord,
                                        state,
-                                       transposer,
+                                       transposeChord,
                                      ),
                                      text: segment.text,
                                    ),
@@ -60,15 +62,19 @@ class SongReaderProjection {
   static String? _displayChord(
     String? leadingChord,
     SongReaderState state,
-    ChordTransposer transposer,
+    SongChordTransposer transposeChord,
   ) {
     if (state.viewMode == SongReaderViewMode.lyricsOnly ||
         leadingChord == null) {
       return null;
     }
 
-    return transposer.transpose(leadingChord, state.transposeOffset);
+    return transposeChord(leadingChord, state.transposeOffset);
   }
+}
+
+String _transposeChord(String chord, int semitoneOffset) {
+  return ChordSymbol.parse(chord).transpose(semitoneOffset).displayName;
 }
 
 class SongReaderSectionProjection {

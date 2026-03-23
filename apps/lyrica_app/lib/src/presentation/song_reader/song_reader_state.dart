@@ -1,11 +1,11 @@
 enum SongReaderViewMode { chordsAndLyrics, lyricsOnly }
 
 class SongReaderState {
-  const SongReaderState({
+  SongReaderState({
     this.viewMode = SongReaderViewMode.chordsAndLyrics,
     this.transposeOffset = 0,
-    this.sharedFontScale = 1.0,
-  });
+    double sharedFontScale = 1.0,
+  }) : sharedFontScale = _normalizeSharedFontScale(sharedFontScale);
 
   final SongReaderViewMode viewMode;
   final int transposeOffset;
@@ -33,4 +33,24 @@ class SongReaderState {
 
   @override
   int get hashCode => Object.hash(viewMode, transposeOffset, sharedFontScale);
+
+  static double _normalizeSharedFontScale(double value) {
+    const minScale = 0.5;
+    const maxScale = 2.0;
+    const defaultScale = 1.0;
+
+    if (!value.isFinite || value <= 0) {
+      return defaultScale;
+    }
+
+    if (value < minScale) {
+      return minScale;
+    }
+
+    if (value > maxScale) {
+      return maxScale;
+    }
+
+    return value;
+  }
 }

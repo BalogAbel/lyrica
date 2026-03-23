@@ -28,7 +28,7 @@ void main() {
   test('keeps chords visible in chords plus lyrics mode', () {
     final projection = SongReaderProjection(
       song: _buildParsedSong(),
-      state: const SongReaderState(),
+      state: SongReaderState(),
     );
 
     expect(projection.viewMode, SongReaderViewMode.chordsAndLyrics);
@@ -42,7 +42,7 @@ void main() {
   test('hides chords in lyrics only mode', () {
     final projection = SongReaderProjection(
       song: _buildParsedSong(),
-      state: const SongReaderState(viewMode: SongReaderViewMode.lyricsOnly),
+      state: SongReaderState(viewMode: SongReaderViewMode.lyricsOnly),
     );
 
     expect(projection.viewMode, SongReaderViewMode.lyricsOnly);
@@ -57,12 +57,23 @@ void main() {
 
     final projection = SongReaderProjection(
       song: song,
-      state: const SongReaderState(transposeOffset: 2),
+      state: SongReaderState(transposeOffset: 2),
     );
 
     expect(
       projection.sections.first.lines.first.segments.first.displayChord,
       'B',
+    );
+    expect(
+      () => projection.sections.add(
+        SongReaderSectionProjection(
+          kind: SongSectionKind.bridge,
+          label: 'Bridge',
+          number: null,
+          lines: const [],
+        ),
+      ),
+      throwsUnsupportedError,
     );
     expect(song.sections.first.lines.first.segments.first.leadingChord, 'A');
   });

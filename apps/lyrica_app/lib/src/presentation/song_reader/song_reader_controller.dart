@@ -2,7 +2,7 @@ import 'package:lyrica_app/src/presentation/song_reader/song_reader_state.dart';
 
 class SongReaderController {
   SongReaderController({SongReaderState? initialState})
-    : _state = initialState ?? const SongReaderState();
+    : _state = initialState ?? SongReaderState();
 
   SongReaderState _state;
 
