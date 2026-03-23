@@ -8,5 +8,9 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.home.path,
       builder: (context, state) => const HomeScreen(),
     ),
+    GoRoute(
+      path: AppRoutes.songReader.path,
+      builder: (context, state) => const HomeScreen(),
+    ),
   ],
 );
