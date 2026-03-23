@@ -15,6 +15,25 @@ This app currently provides:
 
 It does not yet implement auth, backend song storage, sync execution, song editing, or reader preference persistence.
 
+For the authenticated song-reading slice, local Supabase development must provide:
+
+- one documented demo user
+- one active membership linked to that user
+- three backend-seeded songs matching the current reader slice catalog
+
+Use the repository workflow from the repository root:
+
+```bash
+./scripts/supabase.sh start
+./scripts/db-reset.sh
+./scripts/provision-local-demo-user.sh
+```
+
+Documented demo credentials:
+
+- email: `demo@lyrica.local`
+- password: `LyricaDemo123!`
+
 ## Structure
 
 - `lib/src/domain/`: core vocabulary such as tenant scope and capability codes

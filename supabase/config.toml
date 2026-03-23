@@ -12,6 +12,10 @@ port = 54322
 shadow_port = 54320
 major_version = 17
 
+[db.seed]
+enabled = true
+sql_paths = ["./seed/seed.sql"]
+
 [studio]
 enabled = true
 port = 54323
@@ -25,6 +29,9 @@ enabled = true
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000", "http://localhost:8080"]
 jwt_expiry = 3600
+
+[analytics]
+enabled = false
 
 [storage]
 enabled = true

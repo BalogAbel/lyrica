@@ -79,7 +79,7 @@ See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.m
 - Flutter SDK
 - Dart SDK
 - Node.js and npm
-- Docker Desktop
+- Docker-compatible local engine
 
 Supabase CLI is managed as a repository-local dev dependency under `tooling/supabase/`. Do not install or wire it through a root-level Node workspace for this repository.
 
@@ -113,6 +113,25 @@ The canonical way to run Supabase CLI commands is through the wrapper script:
 
 The wrapper resolves the repository-local CLI via `tooling/supabase` and should be preferred over direct `npx` or global `supabase` invocations.
 
+Local Supabase development for the authenticated song-reading slice must provide:
+
+- one documented demo user
+- one active membership linked to that user
+- three backend-seeded songs matching the current reader slice catalog
+
+After `./scripts/supabase.sh start` and `./scripts/db-reset.sh`, provision the local auth fixture with:
+
+```bash
+./scripts/provision-local-demo-user.sh
+```
+
+Documented demo credentials:
+
+- email: `demo@lyrica.local`
+- password: `LyricaDemo123!`
+
+On macOS with Colima, the repository keeps local Supabase analytics disabled in `supabase/config.toml`. The current Supabase local analytics service expects the default Docker socket mount and blocks `./scripts/supabase.sh start` under the Colima socket path even though this slice does not need analytics.
+
 ### Common Commands
 
 ```bash
@@ -136,7 +155,7 @@ The wrapper resolves the repository-local CLI via `tooling/supabase` and should 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
 - The first product slice adds a song repository boundary, asset-backed mock catalog, and ChordPro reader controls without introducing auth, backend song storage, or reader preference persistence.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
-- Seed data is organization-scoped demo content. Membership rows still depend on authenticated users created in the local Supabase instance.
+- Seed data is organization-scoped demo content. `./scripts/provision-local-demo-user.sh` creates the demo auth user through Supabase Auth and upserts the matching active membership row.
 
 ## Status
 
