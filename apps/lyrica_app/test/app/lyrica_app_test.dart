@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/app/lyrica_app.dart';
 
 void main() {
-  testWidgets('renders the song list through the shared app router', (
+  testWidgets('boots into the song list through the shared app router', (
     tester,
   ) async {
     await tester.pumpWidget(ProviderScope(child: LyricaApp()));
