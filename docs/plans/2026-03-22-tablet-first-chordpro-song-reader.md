@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first real Lyrica product slice as a mock-backed, tablet-first ChordPro song list and reader flow with parser diagnostics, view mode switching, semitone transposition, and shared font scaling.
+**Goal:** Build the first real Lyrica product slice as an asset-backed, tablet-first ChordPro song list and reader flow with parser diagnostics, view mode switching, semitone transposition, and shared font scaling.
 
 **Architecture:** Keep the slice vertical but bounded. Introduce a small song domain and repository contract, parse an explicit ChordPro subset into durable song structures with diagnostics, and project that model into a tablet-first reader UI through Riverpod and go_router. Do not add persistence, auth, backend adapters, or speculative import/editing abstractions.
 

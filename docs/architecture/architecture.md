@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization.
+Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The first real product slice is a tablet-first ChordPro song reader backed by a repository boundary and bundled mock assets, not by backend song storage.
 
 ## Architectural Layers
 
@@ -24,7 +24,7 @@ Client layers:
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
 
-The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; concrete infrastructure adapters arrive with the first data-backed feature slice.
+The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, asset-backed catalog access, a ChordPro parser, and reader projection without introducing persistence or backend adapters.
 
 ### Backend
 
@@ -56,6 +56,7 @@ Backend policy helpers are responsible for:
 7. MVP conflict handling is manual and explicit.
 
 The repository currently documents this flow and keeps the client-side policy surface executable, but it does not yet ship end-user sync execution screens.
+For the first song-reader slice, UI reads song summaries and raw ChordPro source through the repository boundary and projects them into reader state locally.
 
 ## Multi-Tenancy
 
@@ -78,9 +79,11 @@ Until full Drift tables are introduced, repository docs and client contracts mus
 ## Simplicity Rules
 
 - Do not expose the raw domain graph directly in basic UX flows.
+- Do not expose the raw ChordPro source directly in the reader UI.
 - Do not over-engineer sync into CRDTs for the MVP.
 - Do not place authorization policy in Flutter.
 - Do not treat PDF as editable song source.
+- Do not persist reader preferences in the first song-reader slice.
 - Do not keep durable workflow knowledge only in tool-specific directories.
 
 ## Delivery Constraints

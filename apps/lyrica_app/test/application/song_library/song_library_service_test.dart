@@ -32,17 +32,12 @@ class _FakeSongRepository implements SongRepository {
 
   @override
   Future<List<SongSummary>> listSongs() async {
-    return const [
-      SongSummary(id: 'egy_ut', title: 'Egy út'),
-    ];
+    return const [SongSummary(id: 'egy_ut', title: 'Egy út')];
   }
 
   @override
   Future<SongSource> getSongSource(String id) async {
     requestedSongId = id;
-    return const SongSource(
-      id: 'egy_ut',
-      source: '{title:Egy út}\n',
-    );
+    return const SongSource(id: 'egy_ut', source: '{title:Egy út}\n');
   }
 }

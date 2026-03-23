@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lyrica_app/src/infrastructure/song_library/asset_song_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/infrastructure/song_library/asset_song_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -17,17 +17,14 @@ void main() {
 
     final songs = await repository.listSongs();
 
-    expect(
-      songs,
-      const [
-        SongSummary(id: 'a_forrasnal', title: 'A forrásnál'),
-        SongSummary(
-          id: 'a_mi_istenunk',
-          title: 'A mi Istenünk (Leborulok előtted)',
-        ),
-        SongSummary(id: 'egy_ut', title: 'Egy út'),
-      ],
-    );
+    expect(songs, const [
+      SongSummary(id: 'a_forrasnal', title: 'A forrásnál'),
+      SongSummary(
+        id: 'a_mi_istenunk',
+        title: 'A mi Istenünk (Leborulok előtted)',
+      ),
+      SongSummary(id: 'egy_ut', title: 'Egy út'),
+    ]);
   });
 
   test('loads raw source for each listed song by id', () async {

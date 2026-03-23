@@ -97,9 +97,8 @@ class ChordSymbol {
 
   String get rootNoteName => _noteNames[rootPitchClass];
 
-  String? get bassNoteName => bassPitchClass == null
-      ? null
-      : _noteNames[bassPitchClass!];
+  String? get bassNoteName =>
+      bassPitchClass == null ? null : _noteNames[bassPitchClass!];
 
   String get displayName {
     final buffer = StringBuffer();
@@ -177,10 +176,7 @@ class ChordSymbol {
       throw FormatException('Unsupported chord pitch class: $text');
     }
 
-    return _PitchClassSplit(
-      pitchClass: pitchClass,
-      suffix: text.substring(1),
-    );
+    return _PitchClassSplit(pitchClass: pitchClass, suffix: text.substring(1));
   }
 
   static int _wrapPitchClass(int pitchClass) {
@@ -194,10 +190,7 @@ class ChordSymbol {
 }
 
 class _PitchClassSplit {
-  const _PitchClassSplit({
-    required this.pitchClass,
-    required this.suffix,
-  });
+  const _PitchClassSplit({required this.pitchClass, required this.suffix});
 
   final int pitchClass;
   final String suffix;

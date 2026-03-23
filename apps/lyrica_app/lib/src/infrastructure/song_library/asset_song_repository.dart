@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
-import 'package:lyrica_app/src/domain/song/song_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
+import 'package:lyrica_app/src/domain/song/song_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 
@@ -30,12 +30,7 @@ class AssetSongRepository implements SongRepository {
   @override
   Future<List<SongSummary>> listSongs() async {
     return _songs
-        .map(
-          (song) => SongSummary(
-            id: song.id,
-            title: song.title,
-          ),
-        )
+        .map((song) => SongSummary(id: song.id, title: song.title))
         .toList(growable: false);
   }
 
@@ -44,10 +39,7 @@ class AssetSongRepository implements SongRepository {
     final song = _songById(id);
     final source = await _bundle.loadString(song.assetPath);
 
-    return SongSource(
-      id: song.id,
-      source: source,
-    );
+    return SongSource(id: song.id, source: source);
   }
 
   _AssetSong _songById(String id) {

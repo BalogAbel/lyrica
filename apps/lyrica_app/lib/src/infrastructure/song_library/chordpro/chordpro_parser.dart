@@ -102,7 +102,6 @@ class ChordproParser {
     required _SectionBuilder? currentSection,
     required SongSectionKind kind,
     required String label,
-    int? number,
   }) {
     if (currentSection != null) {
       return currentSection;

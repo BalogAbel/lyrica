@@ -18,17 +18,12 @@ void main() {
     final router = GoRouter(
       initialLocation: '/',
       routes: [
-        GoRoute(
-          path: '/',
-          builder: (context, state) => const SongListScreen(),
-        ),
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
         GoRoute(
           path: '/songs/:songId',
           builder: (context, state) {
             final songId = state.pathParameters['songId']!;
-            return Material(
-              child: Text('reader:$songId'),
-            );
+            return Material(child: Text('reader:$songId'));
           },
         ),
       ],
@@ -74,9 +69,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', title: 'Egy út'),
-        ],
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
       ),
     );
     await tester.pumpAndSettle();
@@ -93,10 +86,7 @@ void main() {
     final completer = Completer<List<SongSummary>>();
 
     await tester.pumpWidget(
-      buildApp(
-        songs: const [],
-        loadingCompleter: completer,
-      ),
+      buildApp(songs: const [], loadingCompleter: completer),
     );
     await tester.pump();
 
@@ -106,11 +96,7 @@ void main() {
   testWidgets('shows an explicit empty state when no songs are available', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [],
-      ),
-    );
+    await tester.pumpWidget(buildApp(songs: const []));
     await tester.pumpAndSettle();
 
     expect(find.text('No songs available.'), findsOneWidget);

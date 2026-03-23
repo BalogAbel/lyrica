@@ -65,7 +65,7 @@ Invariants:
 
 ### songs
 
-Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export.
+Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. In the first product slice, songs are read through a repository boundary backed by bundled assets; backend song storage remains deferred.
 
 Key fields:
 
@@ -252,3 +252,20 @@ Membership administration is also capability-based:
 - Metadata remains separately queryable.
 - Import/export maps metadata into and out of ChordPro directives.
 - PDF is always a fallback attachment, never the canonical editable source.
+- The first song-reader slice supports a documented ChordPro subset only; unsupported directives produce recoverable warnings and preserve renderable content when possible.
+
+## Song Reading Slice
+
+The first product slice adds app-local song-reading concepts that sit at the repository boundary:
+
+- `SongSummary` is the minimal list projection with `id` and `title`.
+- `SongSource` returns the raw ChordPro source for a song ID.
+- `ParsedSong`, `SongSection`, `SongLine`, and `LyricSegment` model the parsed reader document.
+- `ParseDiagnostic` records warning or error context for parser output.
+- `SongReaderResult` pairs a parsed song with derived warning state for the reader UI.
+
+Current catalog and parsing rules for this slice:
+
+- The catalog is the three bundled `.pro` assets under `apps/lyrica_app/assets/songs/`.
+- Unknown song IDs fail through a not-found exception rather than an infrastructure leak.
+- Unsupported directives and recoverable parser issues stay visible in diagnostics for developer logging and UI warning surfaces.

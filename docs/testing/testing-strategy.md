@@ -6,6 +6,7 @@
 2. The repository must describe the intended test pyramid and quality gates.
 3. All tests must be green before merge.
 4. Critical offline, authorization, and sync behavior must be covered explicitly.
+5. Song-reader slices must cover the supported ChordPro subset and recoverable parser warnings explicitly.
 
 ## Test Layers
 
@@ -17,6 +18,8 @@ Cover:
 - Capability mapping behavior in pure application logic
 - Sync orchestration decisions
 - ChordPro parsing and metadata mapping rules
+- Song repository boundary behavior and asset-backed catalog mapping
+- Parser diagnostics and warning policy for the supported ChordPro subset
 
 Current foundation baseline:
 
@@ -31,6 +34,7 @@ Cover:
 - Empty, loading, and failure states
 - Capability-driven UX affordances
 - Offline indicators and conflict surfaces
+- Song list and reader controls, including view mode, transposition, font scaling, and warning surfaces
 
 ### Integration Tests
 
@@ -58,7 +62,7 @@ Cover:
 - `flutter test`
 - `./scripts/check-migrations.sh`
 
-`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper.
+`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper. For the tablet-first song-reader slice, use `./scripts/verify.sh --skip-migrations` when the change is confined to app and documentation work.
 
 ## AI-Assisted Development Rules
 

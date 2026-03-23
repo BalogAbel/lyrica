@@ -6,7 +6,7 @@
 2. Update or create a design/spec document in `docs/specs/` when the change is material.
 3. Write an implementation plan in `docs/plans/`.
 4. Implement with tests first where behavior is introduced.
-5. Run local verification.
+5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app and documentation slices.
 6. Update documentation and ADRs if the change affects durable knowledge.
 7. Merge only with green CI.
 
@@ -28,6 +28,7 @@
 - Pair schema changes with policy and documentation updates.
 - Pair architecture changes with ADRs.
 - Avoid tool-specific document locations for repository-critical knowledge.
+- If a product slice changes reader behavior, song catalog shape, or parser policy, update the corresponding spec, plan, and repo docs in the same change.
 
 ## Definition Of Done
 

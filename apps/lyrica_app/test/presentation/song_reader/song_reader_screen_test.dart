@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
-import 'package:lyrica_app/src/domain/song/song_line.dart';
-import 'package:lyrica_app/src/domain/song/song_section.dart';
-import 'package:lyrica_app/src/domain/song/lyric_segment.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
 

@@ -14,7 +14,10 @@ void main() {
 
     expect(container.read(songLibraryRepositoryProvider), isNotNull);
     expect(container.read(songLibraryParserProvider), isNotNull);
-    expect(container.read(songLibraryTransposerProvider), isA<ChordTransposer>());
+    expect(
+      container.read(songLibraryTransposerProvider),
+      isA<ChordTransposer>(),
+    );
     expect(container.read(songLibraryServiceProvider), isNotNull);
 
     final songs = await container.read(songLibraryListProvider.future);

@@ -29,11 +29,11 @@ final songLibraryListProvider = FutureProvider<List<SongSummary>>((ref) {
 
 final songLibraryReaderProvider =
     FutureProvider.family<SongReaderResult, String>((ref, songId) async {
-  final service = ref.watch(songLibraryServiceProvider);
-  final parser = ref.watch(songLibraryParserProvider);
+      final service = ref.watch(songLibraryServiceProvider);
+      final parser = ref.watch(songLibraryParserProvider);
 
-  final source = await service.getSongSource(songId);
-  final song = parser.parse(source.source);
+      final source = await service.getSongSource(songId);
+      final song = parser.parse(source.source);
 
-  return SongReaderResult(song: song);
-});
+      return SongReaderResult(song: song);
+    });

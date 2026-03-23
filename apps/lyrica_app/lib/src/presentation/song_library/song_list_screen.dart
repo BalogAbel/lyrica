@@ -21,17 +21,12 @@ class SongListScreen extends ConsumerWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: _contentWidth),
             child: songsAsync.when(
-              loading: () => const Center(
-                child: Text('Loading songs...'),
-              ),
-              error: (error, stackTrace) => const Center(
-                child: Text('Unable to load songs.'),
-              ),
+              loading: () => const Center(child: Text('Loading songs...')),
+              error: (error, stackTrace) =>
+                  const Center(child: Text('Unable to load songs.')),
               data: (songs) {
                 if (songs.isEmpty) {
-                  return const Center(
-                    child: Text('No songs available.'),
-                  );
+                  return const Center(child: Text('No songs available.'));
                 }
 
                 return ListView.separated(

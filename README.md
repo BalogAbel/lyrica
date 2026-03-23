@@ -2,6 +2,8 @@
 
 Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and an offline-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
+The current first product slice is a tablet-first ChordPro song reader backed by a repository boundary and an asset-based mock catalog.
+
 This repository is the canonical source of truth for:
 
 - Product direction and scope
@@ -16,7 +18,8 @@ This repository is the canonical source of truth for:
 - Supabase schema, RLS policies, and seed data under `supabase/`
 - MVP platforms: Android, iOS, and Web
 - Drift selected as the local store and sync-queue foundation
-- ChordPro defined as the canonical editable song format
+- First product slice: tablet-first song list and reader backed by bundled ChordPro assets
+- ChordPro defined as the canonical editable song format, with a documented supported subset for the first slice
 - Capability-based authorization enforced in Postgres, not in Flutter
 - Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
 
@@ -52,10 +55,10 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 - [Domain model](docs/domain/domain-model.md)
 - [Architecture](docs/architecture/architecture.md)
 - [Testing strategy](docs/testing/testing-strategy.md)
-- [AI development workflow](docs/workflows/ai-development.md)
+- [Development workflow](docs/workflows/development-workflow.md)
 - [FreeShow integration boundary](docs/integrations/freeshow.md)
-- [Current audit spec](docs/specs/2026-03-21-repository-audit-refinement.md)
-- [Current audit plan](docs/plans/2026-03-21-repository-audit-refinement.md)
+- [Tablet-first song reader spec](docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md)
+- [Tablet-first song reader plan](docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md)
 
 ## Development Workflow
 
@@ -122,6 +125,7 @@ The wrapper resolves the repository-local CLI via `tooling/supabase` and should 
 ## Local Development Notes
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
+- The first product slice adds a song repository boundary, asset-backed mock catalog, and ChordPro reader controls without introducing auth, backend song storage, or reader preference persistence.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
 - Seed data is organization-scoped demo content. Membership rows still depend on authenticated users created in the local Supabase instance.
 
