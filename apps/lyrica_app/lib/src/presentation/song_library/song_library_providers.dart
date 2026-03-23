@@ -31,7 +31,6 @@ final songLibraryReaderProvider =
     FutureProvider.family<SongReaderResult, String>((ref, songId) async {
   final service = ref.watch(songLibraryServiceProvider);
   final parser = ref.watch(songLibraryParserProvider);
-  ref.watch(songLibraryTransposerProvider);
 
   final source = await service.getSongSource(songId);
   final song = parser.parse(source.source);

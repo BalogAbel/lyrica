@@ -4,7 +4,6 @@ import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/chord_transposer.dart';
-import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
