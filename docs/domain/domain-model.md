@@ -65,7 +65,7 @@ Invariants:
 
 ### songs
 
-Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. In the first product slice, songs are read through a repository boundary backed by bundled assets; backend song storage remains deferred.
+Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app.
 
 Key fields:
 

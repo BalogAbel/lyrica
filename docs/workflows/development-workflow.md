@@ -6,7 +6,7 @@
 2. Update or create a design/spec document in `docs/specs/` when the change is material.
 3. Write an implementation plan in `docs/plans/`.
 4. Implement with tests first where behavior is introduced.
-5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app and documentation slices.
+5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading or local Supabase workflow behavior changes.
 6. Update documentation and ADRs if the change affects durable knowledge.
 7. Merge only with green CI.
 
@@ -20,6 +20,7 @@
   - `./scripts/supabase.sh start`
   - `./scripts/supabase.sh db reset`
   - `./scripts/supabase.sh migration list`
+  - `./scripts/provision-local-demo-user.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
 
 ## Commit Guidance

@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The first real product slice is a tablet-first ChordPro song reader backed by a repository boundary and bundled mock assets, not by backend song storage.
+Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slice is a tablet-first ChordPro song reader with authenticated backend song reads through a repository boundary.
 
 ## Architectural Layers
 
@@ -24,7 +24,7 @@ Client layers:
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
 
-The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, asset-backed catalog access, a ChordPro parser, and reader projection without introducing persistence or backend adapters.
+The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, Supabase-backed summary/source reads, a ChordPro parser, and reader projection without introducing local persistence for songs or moving parsing into the backend.
 
 ### Backend
 
@@ -56,7 +56,7 @@ Backend policy helpers are responsible for:
 7. MVP conflict handling is manual and explicit.
 
 The repository currently documents this flow and keeps the client-side policy surface executable, but it does not yet ship end-user sync execution screens.
-For the first song-reader slice, UI reads song summaries and raw ChordPro source through the repository boundary and projects them into reader state locally.
+For the current song-reader slice, UI reads song summaries and raw ChordPro source through the repository boundary and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS.
 
 ## Multi-Tenancy
 
