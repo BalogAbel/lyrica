@@ -10,21 +10,25 @@ void main() {
     expect(AppRoutes.songReader.path, '/songs/:songId');
   });
 
-  testWidgets('appRouter renders the song list and navigates to the reader route', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp.router(routerConfig: appRouter),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'appRouter renders the song list and navigates to the reader route',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(child: MaterialApp.router(routerConfig: appRouter)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Egy út'), findsOneWidget);
+      expect(find.text('Egy út'), findsOneWidget);
 
-    await tester.tap(find.text('Egy út'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Egy út'));
+      await tester.pumpAndSettle();
 
-    expect(appRouter.routerDelegate.currentConfiguration.uri.path, '/songs/egy_ut');
-  });
+      expect(
+        appRouter.routerDelegate.currentConfiguration.uri.path,
+        '/songs/egy_ut',
+      );
+      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Egy út'), findsWidgets);
+    },
+  );
 }
