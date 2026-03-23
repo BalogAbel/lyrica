@@ -14,10 +14,10 @@ Lyrica helps worship and music teams prepare, organize, and run services with re
 
 ## MVP Outcomes
 
-- Teams can view, create, and edit songs offline.
-- Teams can create and manage plans, events, sessions, and session items offline.
-- Data can remain usable for at least one week without internet access.
-- Sync conflicts are surfaced explicitly and resolved manually in the MVP.
+- Teams can browse a simple song list and read ChordPro-backed songs on tablet-first layouts.
+- Song content remains readable without exposing raw ChordPro source, PDF rendering, or staff notation.
+- The first slice validates reader controls such as chord visibility, semitone transposition, shared font scaling, and visible song structure.
+- The architecture preserves the repository, parser, and offline boundaries needed for later offline editing, sync, and planning workflows.
 - Android, iOS, and Web share a coherent product model and workflow vocabulary.
 - Authorization decisions remain backend-owned even when the UI exposes role-aware affordances.
 
@@ -28,6 +28,7 @@ Lyrica helps worship and music teams prepare, organize, and run services with re
 - Song sharing between organizations
 - FreeShow runtime integration
 - Rich visual chord editing
+- Song editing, import, auth, backend song storage, or persisted reader preferences in the first slice
 - Automatic conflict merging beyond explicit manual resolution
 
 ## UX Direction

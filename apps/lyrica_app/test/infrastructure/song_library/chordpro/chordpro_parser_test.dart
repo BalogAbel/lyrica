@@ -115,4 +115,25 @@ Line one
       'Unsupported comment content: <Intro 2>',
     ]);
   });
+
+  test('accepts common comment section variants without angle brackets', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{comment: Verse 1}
+Line one
+{comment:[Chorus]}
+Line two
+''');
+
+    expect(song.sections, hasLength(2));
+    expect(song.sections[0].kind, SongSectionKind.verse);
+    expect(song.sections[0].number, 1);
+    expect(song.sections[0].lines.single.segments.single.text, 'Line one');
+    expect(song.sections[1].kind, SongSectionKind.chorus);
+    expect(song.sections[1].number, isNull);
+    expect(song.sections[1].lines.single.segments.single.text, 'Line two');
+    expect(song.diagnostics, isEmpty);
+  });
 }

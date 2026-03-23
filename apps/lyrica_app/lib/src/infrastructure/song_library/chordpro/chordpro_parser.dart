@@ -123,9 +123,10 @@ class ChordproParser {
   }
 
   _SectionBuilder? _parseCommentSection(String directiveValue) {
+    final normalizedValue = _normalizeCommentSectionValue(directiveValue);
     final match = RegExp(
-      r'^<\s*([A-Za-z]+)(?:\s+(\d+))?\s*>$',
-    ).firstMatch(directiveValue);
+      r'^([A-Za-z]+)(?:\s+(\d+))?$',
+    ).firstMatch(normalizedValue);
     if (match == null) {
       return null;
     }
@@ -158,6 +159,17 @@ class ChordproParser {
       default:
         return null;
     }
+  }
+
+  String _normalizeCommentSectionValue(String directiveValue) {
+    var normalized = directiveValue.trim();
+
+    while ((normalized.startsWith('<') && normalized.endsWith('>')) ||
+        (normalized.startsWith('[') && normalized.endsWith(']'))) {
+      normalized = normalized.substring(1, normalized.length - 1).trim();
+    }
+
+    return normalized;
   }
 
   List<LyricSegment> _parseLyricLine(String rawLine) {
