@@ -29,6 +29,7 @@ Use the repository workflow from the repository root:
 ```
 
 This is the simplest local path for the authenticated reader slice. It starts or reuses local Supabase, resets the database, provisions the demo auth user idempotently, and launches the Flutter app with the required local Supabase `dart-define` values.
+For Android emulators, the launcher rewrites host loopback URLs to `10.0.2.2` so the app can reach the Mac-hosted local Supabase stack.
 
 Documented demo credentials:
 

@@ -56,6 +56,14 @@ PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
 FLUTTER_BIN="$tmp_dir/mock-flutter" \
 "$repo_root/scripts/run-authenticated-app.sh" --dart-define=EXTRA_FLAG=1
 
+LOG_FILE="$log_file" \
+SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
+DB_RESET_SCRIPT="$tmp_dir/mock-db-reset.sh" \
+PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
+FLUTTER_BIN="$tmp_dir/mock-flutter" \
+FLUTTER_DEVICE=emulator-5554 \
+"$repo_root/scripts/run-authenticated-app.sh"
+
 python3 - <<'PY' "$log_file"
 from pathlib import Path
 import sys
@@ -67,6 +75,11 @@ expected = [
     "provision",
     "supabase:status -o env",
     "flutter:run -d chrome --target lib/main.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=EXTRA_FLAG=1",
+    "supabase:start",
+    "db-reset",
+    "provision",
+    "supabase:status -o env",
+    "flutter:run -d emulator-5554 --target lib/main.dart --dart-define=SUPABASE_URL=http://10.0.2.2:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
 ]
 
 if lines != expected:

@@ -106,6 +106,14 @@ LOG_FILE="$log_file" \
 SUPABASE_STATE_FILE="$supabase_state_file" \
 SUPABASE_ENV_FILE="$supabase_env_file" \
 SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
+FLUTTER_BIN="$tmp_dir/mock-flutter" \
+FLUTTER_DEVICE=emulator-5554 \
+"$repo_root/scripts/manual-validation/run-local-first-app.sh"
+
+LOG_FILE="$log_file" \
+SUPABASE_STATE_FILE="$supabase_state_file" \
+SUPABASE_ENV_FILE="$supabase_env_file" \
+SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
 "$repo_root/scripts/manual-validation/go-online.sh"
 
 "$repo_root/scripts/manual-validation/print-checklist.sh" >"$checklist_file"
@@ -127,6 +135,8 @@ expected = [
     "supabase:stop",
     "supabase:status -o env",
     "flutter:run -d chrome --target lib/main.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --web-port 4011",
+    "supabase:status -o env",
+    "flutter:run -d emulator-5554 --target lib/main.dart --dart-define=SUPABASE_URL=http://10.0.2.2:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
     "supabase:start",
     "supabase:status -o env",
 ]

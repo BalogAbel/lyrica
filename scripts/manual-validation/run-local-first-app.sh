@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 app_dir="$repo_root/apps/lyrica_app"
 source "$repo_root/scripts/manual-validation/_supabase_env.sh"
+source "$repo_root/scripts/_flutter_device_network.sh"
 
 supabase_script="${SUPABASE_SCRIPT:-$repo_root/scripts/supabase.sh}"
 flutter_bin="${FLUTTER_BIN:-flutter}"
@@ -36,10 +37,12 @@ if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" ]]; then
   exit 1
 fi
 
+resolved_api_url="$(resolve_flutter_host_url "$flutter_device" "$API_URL")"
+
 cd "$app_dir"
 "$flutter_bin" run \
   -d "$flutter_device" \
   --target lib/main.dart \
-  --dart-define=SUPABASE_URL="$API_URL" \
+  --dart-define=SUPABASE_URL="$resolved_api_url" \
   --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
   "$@"

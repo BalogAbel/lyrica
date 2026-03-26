@@ -146,6 +146,8 @@ This starts or reuses local Supabase, resets the local database, provisions the 
 ./scripts/run-authenticated-app.sh --web-port 3000
 ```
 
+When `FLUTTER_DEVICE` targets an Android emulator such as `emulator-5554`, the launcher rewrites local host URLs from `127.0.0.1` or `localhost` to `10.0.2.2` before passing `SUPABASE_URL` into Flutter. This keeps the app pointed at the host machine's local Supabase instance instead of the emulator's own loopback interface.
+
 On macOS with Colima, the repository keeps local Supabase analytics disabled in `supabase/config.toml`. The current Supabase local analytics service expects the default Docker socket mount and blocks `./scripts/supabase.sh start` under the Colima socket path even though this slice does not need analytics.
 
 ### Common Commands
