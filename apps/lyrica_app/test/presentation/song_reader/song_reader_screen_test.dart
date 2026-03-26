@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyrica_app/src/application/providers.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
-import 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
+import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -52,11 +57,21 @@ void main() {
     );
   }
 
-  Widget buildApp({required SongReaderResult result}) {
+  Widget buildApp({
+    required SongReaderResult result,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+  }) {
     return ProviderScope(
       overrides: [
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
         songLibraryReaderProvider.overrideWithProvider(
-          (value) => FutureProvider((ref) async => result),
+          (value) => FutureProvider.autoDispose((ref) async => result),
         ),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
@@ -65,11 +80,19 @@ void main() {
 
   Widget buildErrorApp({
     required Future<SongReaderResult> Function() loadSong,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
   }) {
     return ProviderScope(
       overrides: [
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
         songLibraryReaderProvider.overrideWithProvider(
-          (value) => FutureProvider((ref) => loadSong()),
+          (value) => FutureProvider.autoDispose((ref) => loadSong()),
         ),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
@@ -82,6 +105,7 @@ void main() {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
 
+    expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
     expect(find.text('Reader Song'), findsOneWidget);
     expect(find.text('Live version'), findsOneWidget);
     expect(find.text('Key: G'), findsOneWidget);
@@ -205,6 +229,53 @@ void main() {
     expect(find.text('This song is unavailable.'), findsOneWidget);
     expect(find.text('Try again'), findsNothing);
   });
+
+  testWidgets(
+    'shows offline and refresh-failed catalog status while reading from cache',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          result: buildResult(),
+          catalogState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.offlineCached,
+            refreshStatus: CatalogRefreshStatus.failed,
+            sessionStatus: CatalogSessionStatus.unverifiableDueToConnectivity,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.songCatalogOfflineStatus), findsOneWidget);
+      expect(
+        find.text(AppStrings.songCatalogRefreshFailedStatus),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'keeps showing a loading state while the authenticated catalog context is still resolving',
+    (tester) async {
+      await tester.pumpWidget(
+        buildErrorApp(
+          loadSong: () async => throw SongNotFoundException(songId),
+          catalogState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.unavailable,
+            refreshStatus: CatalogRefreshStatus.refreshing,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(AppStrings.songReaderLoadingMessage), findsOneWidget);
+      expect(find.text(AppStrings.songReaderUnavailableMessage), findsNothing);
+    },
+  );
 
   testWidgets(
     'shows an access denied state when backend scope blocks the song',

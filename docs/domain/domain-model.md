@@ -89,6 +89,13 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
+Local-first read-model note:
+
+- The authenticated reader cache persists one active full visible catalog snapshot per authenticated user for the currently active organization context.
+- That snapshot stores only `SongSummary` values and raw `SongSource` payloads for the active visible catalog.
+- ChordPro parsing, diagnostics, and reader projection remain Flutter-owned concerns and are not persisted as backend-owned rendered projections.
+- Explicit sign-out removes access to that cached authenticated song catalog.
+
 ### plans
 
 High-level planning containers, often corresponding to a service set or rehearsal plan.
@@ -211,6 +218,8 @@ Offline-synced aggregates include:
 - `sync_status`
 
 The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
+
+The currently executable Drift-backed slice is narrower than full sync: it stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership) but does not yet introduce write-side sync records for songs, plans, or sessions.
 
 ### sync_status
 

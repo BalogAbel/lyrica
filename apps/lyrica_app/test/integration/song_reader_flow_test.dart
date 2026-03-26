@@ -5,8 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/app/lyrica_app.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
+import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyrica_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyrica_app/src/domain/song/song_source.dart';
+import 'package:lyrica_app/src/domain/song/song_summary.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,18 +27,18 @@ void main() {
           email: 'demo@lyrica.local',
         ),
       );
-      final songRepository = SupabaseSongRepository.testing(
-        listSongsRows: () async => [
-          {'id': 'egy_ut', 'title': 'Egy út'},
-        ],
-        getSongRow: (id) async => {
-          'id': id,
-          'chordpro_source':
-              '{title:Egy út}\n'
-              '{subtitle:One Way}\n'
-              '{key:B}\n'
-              '{comment:<Verse 1>}\n'
-              '[B] Leteszem az eletem\n',
+      final songRepository = _StaticSongRepository(
+        summaries: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        sources: const {
+          'egy_ut': SongSource(
+            id: 'egy_ut',
+            source:
+                '{title:Egy út}\n'
+                '{subtitle:One Way}\n'
+                '{key:B}\n'
+                '{comment:<Verse 1>}\n'
+                '[B] Leteszem az eletem\n',
+          ),
         },
       );
 
@@ -39,7 +46,25 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(authRepository),
-            supabaseSongRepositoryProvider.overrideWithValue(songRepository),
+            songLibraryRepositoryProvider.overrideWithValue(songRepository),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
           ],
           child: LyricaApp(),
         ),
@@ -101,4 +126,24 @@ class _StreamingAuthRepository implements AuthRepository {
   Future<void> signOut() async {
     _controller.add(null);
   }
+}
+
+class _StaticSongRepository implements SongCatalogReadRepository {
+  const _StaticSongRepository({required this.summaries, required this.sources});
+
+  final List<SongSummary> summaries;
+  final Map<String, SongSource> sources;
+
+  @override
+  Future<List<SongSummary>> listSongs({
+    required String userId,
+    required String organizationId,
+  }) async => summaries;
+
+  @override
+  Future<SongSource> getSongSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => sources[songId]!;
 }

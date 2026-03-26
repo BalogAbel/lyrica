@@ -1,14 +1,38 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
+import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyrica_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyrica_app/src/application/sync/sync_overview.dart';
 import 'package:lyrica_app/src/infrastructure/auth/supabase_auth_repository.dart';
+import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyrica_app/src/offline/local_store_contract.dart';
+import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
+import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyrica_app/src/offline/sync_policy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
+
+String? selectActiveOrganizationId(Object? response) {
+  if (response is! List) {
+    return null;
+  }
+
+  final organizationIds = response.whereType<String>().toList(growable: false);
+  if (organizationIds.isEmpty) {
+    return null;
+  }
+
+  final sortedOrganizationIds = organizationIds.toList()..sort();
+  return sortedOrganizationIds.first;
+}
 
 final syncOverviewProvider = Provider<SyncOverview>((ref) {
   return const SyncOverview(
@@ -33,4 +57,72 @@ final appAuthControllerProvider = Provider<AppAuthController>((ref) {
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
   return ref.read(appAuthControllerProvider);
+});
+
+final songCatalogDatabaseProvider = Provider<SongCatalogDatabase>((ref) {
+  final database = SongCatalogDatabase.local();
+  ref.onDispose(database.close);
+  return database;
+});
+
+final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
+  return DriftSongCatalogStore(ref.watch(songCatalogDatabaseProvider));
+});
+
+final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
+  return SupabaseSongRepository(ref.watch(supabaseClientProvider));
+});
+
+final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
+  ref,
+) {
+  final client = ref.watch(supabaseClientProvider);
+
+  return () async {
+    final response = await client.rpc('current_organization_ids');
+    return selectActiveOrganizationId(response);
+  };
+});
+
+final catalogSessionVerifierProvider = Provider<CatalogSessionVerifier>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+
+  return () async {
+    if (client.auth.currentSession == null) {
+      return CatalogSessionStatus.expired;
+    }
+
+    try {
+      await client.auth.getUser();
+      return CatalogSessionStatus.verified;
+    } on AuthException {
+      return CatalogSessionStatus.expired;
+    } on SocketException {
+      return CatalogSessionStatus.unverifiableDueToConnectivity;
+    } on TimeoutException {
+      return CatalogSessionStatus.unverifiableDueToConnectivity;
+    }
+  };
+});
+
+final songCatalogControllerProvider =
+    ChangeNotifierProvider<SongCatalogController>((ref) {
+      final authController = ref.watch(appAuthControllerProvider);
+      final controller = SongCatalogController(
+        store: ref.watch(songCatalogStoreProvider),
+        remoteRepository: ref.watch(supabaseSongRepositoryProvider),
+        authSessionReader: () => authController.state.session,
+        organizationReader: ref.watch(activeOrganizationReaderProvider),
+        sessionVerifier: ref.watch(catalogSessionVerifierProvider),
+      );
+      unawaited(controller.refreshCatalog());
+      return controller;
+    });
+
+final activeCatalogContextProvider = Provider<ActiveCatalogContext?>((ref) {
+  return ref.watch(songCatalogControllerProvider).state.context;
+});
+
+final catalogSnapshotStateProvider = Provider<CatalogSnapshotState>((ref) {
+  return ref.watch(songCatalogControllerProvider).state;
 });

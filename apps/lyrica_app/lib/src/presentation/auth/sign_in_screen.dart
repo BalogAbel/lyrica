@@ -80,6 +80,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                 email: _emailController.text.trim(),
                                 password: _passwordController.text,
                               );
+                              ref.invalidate(songCatalogControllerProvider);
                             },
                       child: const Text(AppStrings.signInAction),
                     ),

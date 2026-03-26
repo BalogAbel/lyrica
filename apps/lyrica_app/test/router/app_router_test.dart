@@ -6,6 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
+import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/router/app_router.dart';
@@ -85,6 +90,24 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
           songLibraryListProvider.overrideWith(
             (ref) async => const [SongSummary(id: 'egy_ut', title: 'Egy út')],
           ),

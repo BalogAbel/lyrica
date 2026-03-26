@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slice is a tablet-first ChordPro song reader with authenticated backend song reads through a repository boundary.
+Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slice is a tablet-first ChordPro song reader with authenticated local-first song reads through a repository boundary.
 
 ## Architectural Layers
 
@@ -24,7 +24,7 @@ Client layers:
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
 
-The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, Supabase-backed summary/source reads, a ChordPro parser, and reader projection without introducing local persistence for songs or moving parsing into the backend.
+The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, a Drift-backed authenticated song-catalog cache, Supabase-backed refresh reads, a ChordPro parser, and reader projection without moving parsing into the backend.
 
 ### Backend
 
@@ -48,15 +48,15 @@ Backend policy helpers are responsible for:
 ## Data Flow
 
 1. UI reads from local Drift-backed projections.
-2. Application services mutate local state first.
-3. Changes are recorded in the sync queue with version metadata.
-4. Sync workers push mutations to Supabase when connectivity exists.
-5. Supabase applies RLS and function-based authorization.
-6. Conflicts are detected via `version` and `base_version`.
-7. MVP conflict handling is manual and explicit.
+2. For the current authenticated reader slice, UI reads from one active cached full song-catalog snapshot owned by the current authenticated user for the currently active organization.
+3. A catalog controller verifies session state when possible and refreshes the full visible catalog from Supabase.
+4. Only a completed full summary-plus-source refresh replaces the active local snapshot.
+5. Supabase applies RLS and function-based authorization on every online refresh.
+6. Future write slices will record local mutations in the sync queue with version metadata.
+7. MVP conflict handling for writes remains manual and explicit.
 
-The repository currently documents this flow and keeps the client-side policy surface executable, but it does not yet ship end-user sync execution screens.
-For the current song-reader slice, UI reads song summaries and raw ChordPro source through the repository boundary and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS.
+The repository currently documents the broader local-first flow and already ships the first executable read-side subset.
+For the current song-reader slice, UI reads song summaries and raw ChordPro source from the active local snapshot and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS because Supabase remains the session-verification and refresh boundary.
 
 ## Multi-Tenancy
 
@@ -69,12 +69,13 @@ For the current song-reader slice, UI reads song summaries and raw ChordPro sour
 ## Offline Strategy
 
 - Local-first reads by default
-- Durable sync queue in Drift
+- Active authenticated song-catalog snapshot cache in Drift for the current reader slice
+- Durable sync queue in Drift for later write slices
 - Manual conflict resolution in MVP
 - Explicit sync status on offline-managed records
-- Web support uses the same domain/application contracts even if storage implementation evolves
+- Web support uses the same domain/application contracts, with the current reader cache backed by Drift wasm and a versioned `sqlite3.wasm` runtime asset, but authenticated offline relaunch remains a native-first guarantee rather than a browser-hard requirement in this slice
 
-Until full Drift tables are introduced, repository docs and client contracts must keep the offline metadata vocabulary stable.
+The current reader cache keeps only one active authenticated catalog snapshot per user for the currently active organization. It does not retain a historical local snapshot archive or parallel retained organization catalogs, and it removes cached authenticated access on explicit sign-out.
 
 ## Simplicity Rules
 

@@ -12,10 +12,18 @@ class AppStrings {
   static const sessionExpiredMessage =
       'Your session expired. Please sign in again.';
   static const retryAction = 'Try again';
+  static const signOutAction = 'Sign out';
   static const songListLoadingMessage = 'Loading songs...';
   static const songListLoadFailureMessage =
       'Unable to load songs. Please try again.';
   static const songListEmptyMessage = 'No songs available.';
+  static const songCatalogOnlineStatus = 'Online. Songs are up to date.';
+  static const songCatalogOfflineStatus = 'Offline. Showing cached songs.';
+  static const songCatalogRefreshingStatus = 'Refreshing song catalog...';
+  static const songCatalogRefreshFailedStatus =
+      'Unable to refresh songs. Showing the last cached catalog.';
+  static const songCatalogUnavailableMessage =
+      'No cached song catalog is available yet.';
   static const songReaderLoadingMessage = 'Loading song...';
   static const songReaderLoadFailureMessage =
       'Unable to load song. Please try again.';

@@ -1,17 +1,28 @@
-import 'package:lyrica_app/src/domain/song/song_repository.dart';
+import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 
 class SongLibraryService {
   const SongLibraryService(this._repository);
 
-  final SongRepository _repository;
+  final SongCatalogReadRepository _repository;
 
-  Future<List<SongSummary>> listSongs() {
-    return _repository.listSongs();
+  Future<List<SongSummary>> listSongs({required ActiveCatalogContext context}) {
+    return _repository.listSongs(
+      userId: context.userId,
+      organizationId: context.organizationId,
+    );
   }
 
-  Future<SongSource> getSongSource(String id) {
-    return _repository.getSongSource(id);
+  Future<SongSource> getSongSource({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) {
+    return _repository.getSongSource(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      songId: songId,
+    );
   }
 }

@@ -13,4 +13,13 @@ void main() {
 
     expect(container.read(supabaseClientProvider), same(client));
   });
+
+  test('selects a stable active organization id from RPC results', () {
+    expect(
+      selectActiveOrganizationId(const ['org-b', 'org-a', 'org-c']),
+      'org-a',
+    );
+    expect(selectActiveOrganizationId(const []), isNull);
+    expect(selectActiveOrganizationId('unexpected'), isNull);
+  });
 }
