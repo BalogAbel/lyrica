@@ -11,7 +11,8 @@ This app currently provides:
 - go_router route registration
 - offline policy vocabulary shared with the domain and application layers
 - a tablet-first song library and reader slice backed by a song repository boundary
-- an authenticated Supabase-backed song catalog that still projects raw ChordPro in-app without falling back to bundled assets for this slice
+- an authenticated local-first song catalog that reads from a Drift-backed active cache and refreshes that cache from Supabase without falling back to bundled assets for this slice
+- a web runtime cache path that uses Drift wasm with the versioned `web/sqlite3.wasm` asset
 
 It does not yet implement sync execution, song editing, or reader preference persistence.
 
@@ -38,10 +39,10 @@ Documented demo credentials:
 
 - `lib/src/domain/`: core vocabulary such as tenant scope and capability codes
 - `lib/src/application/`: app-level orchestration and summary models
-- `lib/src/application/song_library/`: song list and reader result orchestration
-- `lib/src/offline/`: local-store and sync-policy contracts
+- `lib/src/application/song_library/`: local-first catalog controller, active context, and reader result orchestration
+- `lib/src/offline/`: local-store and sync-policy contracts plus authenticated catalog cache storage
 - `lib/src/presentation/`: route-level widgets
-- `lib/src/presentation/song_library/`: song list providers and screen wiring
+- `lib/src/presentation/song_library/`: song list providers, persistent catalog status, and sign-out wiring
 - `lib/src/presentation/song_reader/`: reader projection, controls, and widgets
 - `lib/src/router/`: centralized route definitions
 
@@ -53,9 +54,20 @@ Run from the repository root:
 ./scripts/bootstrap-app.sh
 ./scripts/run-app.sh
 ./scripts/run-authenticated-app.sh
+./scripts/manual-validation/setup-local-first.sh
+./scripts/manual-validation/reset-validation-state.sh
+./scripts/manual-validation/run-local-first-app.sh
+./scripts/manual-validation/go-offline.sh
+./scripts/manual-validation/go-online.sh
+./scripts/manual-validation/print-checklist.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ```
 
-For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end quality gate for app changes.
-For the authenticated backend song-reading slice, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs the real backend repository integration test.
+For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end quality gate for app and documentation changes when the local Supabase path is unaffected.
+For the authenticated local-first song-reading slice, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs both the real backend repository integration test and the cached offline reader integration test.
+For repeatable manual validation, prefer `./scripts/manual-validation/run-local-first-app.sh` over `./scripts/run-authenticated-app.sh` because the manual-validation launcher preserves previously fetched app state between relaunches.
+The web path of that local-first cache depends on `apps/lyrica_app/web/sqlite3.wasm`; keep that asset versioned with Drift web cache changes instead of relying on ad-hoc local setup.
+The manual-validation launcher also reuses a cached local Supabase env snapshot containing only `SUPABASE_URL` and `SUPABASE_ANON_KEY`, so offline relaunch remains scriptable after the backend is intentionally stopped.
+For this slice, authenticated offline relaunch is treated as a native-first requirement. The browser cache path remains useful and supported, but browser relaunch behavior is best-effort rather than a product guarantee.
+Set `FLUTTER_DEVICE` when validating on a native target; use the default Chrome launcher only for browser diagnostics and general UI checks.

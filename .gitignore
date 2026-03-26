@@ -21,6 +21,7 @@
 supabase/.temp/
 supabase/.branches/
 tooling/supabase/node_modules/
+scripts/manual-validation/.supabase-env
 
 # Generated platform artifacts
 apps/lyrica_app/ios/Flutter/Generated.xcconfig

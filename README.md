@@ -1,8 +1,8 @@
 # Lyrica
 
-Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and an offline-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
+Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and a local-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
-The current executable product slice is a tablet-first ChordPro song reader with authenticated backend song reads. Flutter still parses raw ChordPro and renders the reader locally; the backend returns only minimal song summaries and raw ChordPro source.
+The current executable product slice is a tablet-first ChordPro song reader with authenticated local-first song reads. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization and refresh boundary and returns only minimal song summaries and raw ChordPro source.
 
 This repository is the canonical source of truth for:
 
@@ -18,7 +18,7 @@ This repository is the canonical source of truth for:
 - Supabase schema, RLS policies, and seed data under `supabase/`
 - MVP platforms: Android, iOS, and Web
 - Drift selected as the local store and sync-queue foundation
-- First executable product slice: authenticated tablet-first song list and reader backed by Supabase song summaries and raw ChordPro source
+- First executable product slice: authenticated tablet-first song list and reader backed by a local cache for the current authenticated user and active organization, refreshed from Supabase song summaries and raw ChordPro source
 - ChordPro defined as the canonical editable song format, with a documented supported subset for the first slice
 - Capability-based authorization enforced in Postgres, not in Flutter
 - Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
@@ -61,6 +61,8 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 - [Tablet-first song reader plan](docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md)
 - [Authenticated song reading spec](docs/specs/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
 - [Authenticated song reading plan](docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
+- [Local-first cached authenticated song reading spec](docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md)
+- [Local-first cached authenticated song reading plan](docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md)
 
 ## Development Workflow
 
@@ -161,19 +163,43 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/run-authenticated-app.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
+./scripts/manual-validation/setup-local-first.sh
+./scripts/manual-validation/reset-validation-state.sh
+./scripts/manual-validation/run-local-first-app.sh
+./scripts/manual-validation/go-offline.sh
+./scripts/manual-validation/go-online.sh
+./scripts/manual-validation/print-checklist.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, and runs the authenticated backend song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
+
+For manual validation of the local-first reader flow:
+
+```bash
+./scripts/manual-validation/setup-local-first.sh
+./scripts/manual-validation/reset-validation-state.sh
+./scripts/manual-validation/run-local-first-app.sh
+./scripts/manual-validation/print-checklist.sh
+./scripts/manual-validation/go-offline.sh
+./scripts/manual-validation/go-online.sh
+```
+
+The manual-validation launcher caches only the last known local Supabase `SUPABASE_URL` and `SUPABASE_ANON_KEY` values so the app can be relaunched after `./scripts/manual-validation/go-offline.sh` without requiring a live backend status check.
+Use native Flutter targets as the acceptance path for authenticated offline relaunch. Treat browser relaunch as best-effort diagnostics for the current slice.
 
 ## Local Development Notes
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
-- The current authenticated slice uses a Supabase-backed song repository only. It does not fall back to bundled assets for authenticated song reads.
+- The current authenticated slice reads the active song catalog from a local Drift-backed cache for the current authenticated user and active organization. Supabase is used to verify session state and refresh the full visible catalog.
+- On web, that cache runs through Drift wasm and the repository-versioned `apps/lyrica_app/web/sqlite3.wasm` runtime asset.
+- Hard offline authenticated relaunch is a native-first guarantee for this slice. The browser path keeps a best-effort local cache, but web session persistence is not treated as equivalent to native offline relaunch.
 - ChordPro parsing and reader projection stay inside Flutter even when the source comes from Supabase.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.
 - Seed data is organization-scoped demo content. `./scripts/provision-local-demo-user.sh` creates the demo auth user through Supabase Auth and idempotently upserts the matching active membership row.
 - The organization-membership uniqueness migration deduplicates pre-existing local duplicates by keeping the earliest row by `created_at, id` before recreating the partial unique index.
 - Local verification now also proves RLS scope isolation: the seeded hidden-organization song is not visible to the demo user.
+- The current slice retains only one active authenticated catalog snapshot per user for the currently active organization. It does not keep a local archive of multiple organization catalogs.
+- Explicit sign-out removes that cached authenticated song catalog instead of leaving a device-global offline archive behind.
 
 ## Status
 

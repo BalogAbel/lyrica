@@ -22,7 +22,26 @@
   - `./scripts/supabase.sh migration list`
   - `./scripts/provision-local-demo-user.sh`
   - `./scripts/run-authenticated-app.sh`
+  - `./scripts/manual-validation/setup-local-first.sh`
+  - `./scripts/manual-validation/reset-validation-state.sh`
+  - `./scripts/manual-validation/run-local-first-app.sh`
+  - `./scripts/manual-validation/go-offline.sh`
+  - `./scripts/manual-validation/go-online.sh`
+  - `./scripts/manual-validation/print-checklist.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
+
+## Manual Validation
+
+For the local-first authenticated song-reader slice:
+
+1. Run `./scripts/manual-validation/setup-local-first.sh`.
+2. Launch the app with `./scripts/manual-validation/run-local-first-app.sh`.
+3. Use `./scripts/manual-validation/print-checklist.sh` while validating online, offline, refresh-failed, and explicit sign-out behavior.
+4. Use `./scripts/manual-validation/go-offline.sh` and `./scripts/manual-validation/go-online.sh` to switch backend connectivity during the walkthrough.
+5. Use `./scripts/manual-validation/reset-validation-state.sh` when you need to restart from a clean local fixture.
+
+The manual-validation launcher caches only the last known local Supabase app env (`SUPABASE_URL` and `SUPABASE_ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
+Use browser-based offline relaunch checks as best-effort diagnostics. Treat native Flutter targets as the required acceptance path for authenticated offline relaunch in this slice.
 
 ## Commit Guidance
 

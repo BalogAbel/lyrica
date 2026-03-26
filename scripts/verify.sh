@@ -11,6 +11,7 @@ supabase_script="${SUPABASE_SCRIPT:-./scripts/supabase.sh}"
 db_reset_script="${DB_RESET_SCRIPT:-./scripts/db-reset.sh}"
 provision_demo_user_script="${PROVISION_DEMO_USER_SCRIPT:-./scripts/provision-local-demo-user.sh}"
 provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scripts/tests/provision-local-demo-user-test.sh}"
+manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
 
 (cd apps/lyrica_app && "$dart_bin" format --output=none --set-exit-if-changed lib test)
 (cd apps/lyrica_app && "$flutter_bin" analyze)
@@ -40,3 +41,12 @@ fi
       --dart-define=SUPABASE_URL="$API_URL" \
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
 )
+
+(
+  cd apps/lyrica_app &&
+    "$flutter_bin" test test/integration/local_first_authenticated_song_reader_flow_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)
+
+"$manual_validation_scripts_test_script"

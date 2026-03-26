@@ -49,6 +49,12 @@ set -euo pipefail
 echo "provision-test" >>"$LOG_FILE"
 EOF
 
+cat >"$tmp_dir/mock-manual-validation-test.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "manual-validation-test" >>"$LOG_FILE"
+EOF
+
 cat >"$tmp_dir/mock-dart" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -67,6 +73,7 @@ chmod +x \
   "$tmp_dir/mock-db-reset.sh" \
   "$tmp_dir/mock-provision.sh" \
   "$tmp_dir/mock-provision-test.sh" \
+  "$tmp_dir/mock-manual-validation-test.sh" \
   "$tmp_dir/mock-dart" \
   "$tmp_dir/mock-flutter"
 
@@ -76,6 +83,7 @@ SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
 DB_RESET_SCRIPT="$tmp_dir/mock-db-reset.sh" \
 PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
 PROVISION_DEMO_USER_TEST_SCRIPT="$tmp_dir/mock-provision-test.sh" \
+MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT="$tmp_dir/mock-manual-validation-test.sh" \
 DART_BIN="$tmp_dir/mock-dart" \
 FLUTTER_BIN="$tmp_dir/mock-flutter" \
 "$repo_root/scripts/verify.sh"
@@ -96,6 +104,8 @@ expected = [
     "provision-test",
     "supabase:status -o env",
     "flutter:test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "flutter:test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "manual-validation-test",
 ]
 
 if lines != expected:
