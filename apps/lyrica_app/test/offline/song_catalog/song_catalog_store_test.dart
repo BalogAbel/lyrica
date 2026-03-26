@@ -1,8 +1,13 @@
+import 'dart:io';
+
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   group('SongCatalogStore', () {
@@ -189,6 +194,72 @@ void main() {
           ),
           isEmpty,
         );
+      },
+    );
+
+    test(
+      'can reopen a persisted catalog from a new database instance',
+      () async {
+        final previousDontWarn =
+            driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+        addTearDown(() {
+          driftRuntimeOptions.dontWarnAboutMultipleDatabases = previousDontWarn;
+        });
+
+        final tempDir = await Directory.systemTemp.createTemp(
+          'song-catalog-store-test',
+        );
+        addTearDown(() async {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+        final firstDatabase = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        var firstDatabaseClosed = false;
+        addTearDown(() async {
+          if (firstDatabaseClosed) {
+            return;
+          }
+          firstDatabaseClosed = true;
+          await firstDatabase.close();
+        });
+
+        final firstStore = DriftSongCatalogStore(firstDatabase);
+        await firstStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 26, 10),
+        );
+        await firstDatabase.close();
+        firstDatabaseClosed = true;
+
+        final secondDatabase = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(secondDatabase.close);
+        final secondStore = DriftSongCatalogStore(secondDatabase);
+
+        expect(
+          await secondStore.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [SongSummary(id: 'song-1', title: 'Alpha')],
+        );
+        final reopenedSource = await secondStore.readActiveSource(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(reopenedSource?.id, 'song-1');
+        expect(reopenedSource?.source, '{title: Alpha}');
       },
     );
   });

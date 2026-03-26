@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the workflow thin and wrapper-driven. New scripts should compose existing repository entrypoints for Supabase start/reset/provisioning and add one app launcher that preserves state between runs. A dedicated shell test should verify the command contract without depending on a live local stack.
 The launcher must also support offline relaunch by falling back to the last cached local Supabase `dart-define` snapshot when `./scripts/supabase.sh status -o env` is unavailable because the stack is intentionally stopped.
-The workflow documentation should treat browser relaunch as diagnostic-only and native Flutter targets as the required acceptance path for authenticated offline relaunch.
+The workflow documentation should treat browser relaunch as diagnostic-only and native Flutter targets as the required acceptance path for authenticated offline relaunch, while keeping automated persistent-cache reopen proof in the `./scripts/verify.sh` path distinct from that manual acceptance walkthrough.
 
 **Tech Stack:** Bash, Flutter CLI, repository Supabase wrapper scripts, shell tests, Markdown docs
 
@@ -34,6 +34,7 @@ The workflow documentation should treat browser relaunch as diagnostic-only and 
 - Modify: `README.md`
 - Modify: `apps/lyrica_app/README.md`
 - Modify: `docs/workflows/development-workflow.md`
+- Modify: `docs/specs/2026-03-25-local-first-manual-validation-scripts.md`
 
 - [ ] **Step 1: Add the script entrypoints and intended use to repository docs**
 - [ ] **Step 2: Re-read the updated docs for consistency**

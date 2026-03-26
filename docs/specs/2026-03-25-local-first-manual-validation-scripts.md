@@ -36,6 +36,7 @@ Add repository-owned scripts for repeatable manual validation of the local-first
   - refresh failure while cached data remains visible
   - explicit sign-out removing cached authenticated access
 - The manual validation workflow must state that browser-based offline relaunch is diagnostic only for this slice, while native Flutter targets are the required acceptance path.
+- The manual validation workflow must also distinguish native manual offline-relaunch acceptance from the automated persistent-cache reopen proof in `./scripts/verify.sh`.
 
 ## Success Criteria
 

@@ -47,7 +47,7 @@ Cover:
 - Sync queue lifecycle
 - Auth session bootstrap against test doubles or integration backends
 - Authenticated backend song reads against the local Supabase stack, including organization-scope isolation
-- Offline relaunch from the latest authenticated cached catalog on native-capable targets or equivalent test seams, plus cache removal on explicit sign-out
+- Persistent cache reopen from the latest authenticated cached catalog in automation, plus cache removal on explicit sign-out
 
 ### Backend Verification
 
@@ -70,9 +70,9 @@ Cover:
 - `./scripts/check-migrations.sh`
 - local Supabase reset and demo auth provisioning when backend-backed slices change
 - authenticated backend integration coverage for real Supabase song reads
-- local-first authenticated reader integration coverage for cached offline relaunch on native-capable targets or equivalent seams, hard replace, and explicit sign-out
+- local-first authenticated reader integration coverage for persistent cache reopen, hard replace, and explicit sign-out
 
-`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the local database, provisions the documented demo user, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first authenticated reader integration test with repository-discovered local Supabase credentials. Use `./scripts/verify.sh --skip-migrations` only when the change is confined to app and documentation work and does not affect backend-backed song reading or local Supabase workflow behavior.
+`./scripts/verify.sh` is the preferred local entrypoint because it runs the Flutter checks first and includes migration linting through the repository-managed Supabase wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the local database, provisions the documented demo user, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first authenticated reader integration test with repository-discovered local Supabase credentials. The local-first automated gate proves persistent cache reopen behavior after database close/reopen; native manual validation still covers true offline relaunch acceptance. Use `./scripts/verify.sh --skip-migrations` only when the change is confined to app and documentation work and does not affect backend-backed song reading or local Supabase workflow behavior.
 
 ## AI-Assisted Development Rules
 

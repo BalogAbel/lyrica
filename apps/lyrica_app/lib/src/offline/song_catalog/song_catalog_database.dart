@@ -15,6 +15,10 @@ part 'song_catalog_database.g.dart';
 class SongCatalogDatabase extends _$SongCatalogDatabase {
   SongCatalogDatabase._(super.connection);
 
+  factory SongCatalogDatabase.connect(QueryExecutor executor) {
+    return SongCatalogDatabase._(executor);
+  }
+
   factory SongCatalogDatabase.local() {
     return SongCatalogDatabase._(openSongCatalogConnection());
   }

@@ -41,7 +41,7 @@ For the local-first authenticated song-reader slice:
 5. Use `./scripts/manual-validation/reset-validation-state.sh` when you need to restart from a clean local fixture.
 
 The manual-validation launcher caches only the last known local Supabase app env (`SUPABASE_URL` and `SUPABASE_ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
-Use browser-based offline relaunch checks as best-effort diagnostics. Treat native Flutter targets as the required acceptance path for authenticated offline relaunch in this slice.
+Use `./scripts/verify.sh` to prove persistent cache reopen behavior in automation, then use the manual-validation scripts on native Flutter targets for true offline-relaunch acceptance. Use browser-based offline relaunch checks as best-effort diagnostics only.
 For Android emulators, the launch scripts rewrite local host loopback Supabase URLs (`127.0.0.1` or `localhost`) to `10.0.2.2` before invoking Flutter so the app reaches the host machine's backend.
 
 ## Commit Guidance

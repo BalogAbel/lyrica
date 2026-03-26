@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
@@ -14,6 +16,7 @@ import 'package:lyrica_app/src/infrastructure/song_library/local_first_song_repo
 import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -32,18 +35,34 @@ void main() {
   });
 
   test(
-    'keeps the cached catalog readable after connectivity drops following one successful backend sync',
+    'keeps the cached catalog readable after the persistent cache is reopened offline',
     () async {
+      final previousDontWarn =
+          driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      addTearDown(() {
+        driftRuntimeOptions.dontWarnAboutMultipleDatabases = previousDontWarn;
+      });
+
       final config = SupabaseConfig.fromEnvironment();
       final client = SupabaseClient(config.url, config.anonKey);
-      final database = SongCatalogDatabase.inMemory();
-      final store = DriftSongCatalogStore(database);
-      final localRepository = LocalFirstSongRepository(store);
+      final tempDir = await Directory.systemTemp.createTemp(
+        'local-first-song-reader-flow',
+      );
+      final dbFile = File(p.join(tempDir.path, 'song_catalog.sqlite'));
+      var database = SongCatalogDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      var store = DriftSongCatalogStore(database);
+      var localRepository = LocalFirstSongRepository(store);
 
       addTearDown(() async {
         await client.auth.signOut();
         await client.dispose();
         await database.close();
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
       });
 
       await client.auth.signOut();
@@ -62,6 +81,13 @@ void main() {
       );
 
       await onlineController.refreshCatalog();
+
+      await database.close();
+      database = SongCatalogDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      store = DriftSongCatalogStore(database);
+      localRepository = LocalFirstSongRepository(store);
 
       final cachedSongs = await localRepository.listSongs(
         userId: userId,

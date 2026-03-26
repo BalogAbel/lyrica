@@ -236,7 +236,7 @@ Cover:
 Cover:
 
 - authenticated backend fetch creating a full local catalog snapshot
-- offline relaunch using the cached catalog on native-capable targets or equivalent non-browser persistence test seams
+- persistent cache reopen using the cached catalog in automation, plus native-target manual validation for true offline relaunch acceptance
 - song reading from cached local source without backend connectivity
 - explicit sign-out disabling authenticated cached access
 - cached catalog becoming unavailable immediately after explicit sign-out

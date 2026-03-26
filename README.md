@@ -173,7 +173,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/manual-validation/print-checklist.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values. The local-first integration slot proves persistent cache reopen behavior after the local catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
 
 For manual validation of the local-first reader flow:
 
@@ -187,7 +187,7 @@ For manual validation of the local-first reader flow:
 ```
 
 The manual-validation launcher caches only the last known local Supabase `SUPABASE_URL` and `SUPABASE_ANON_KEY` values so the app can be relaunched after `./scripts/manual-validation/go-offline.sh` without requiring a live backend status check.
-Use native Flutter targets as the acceptance path for authenticated offline relaunch. Treat browser relaunch as best-effort diagnostics for the current slice.
+Use native Flutter targets as the acceptance path for authenticated offline relaunch. The automated test gate proves persistent cache reopen behavior, while browser relaunch remains best-effort diagnostics for the current slice.
 
 ## Local Development Notes
 

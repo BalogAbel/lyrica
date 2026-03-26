@@ -24,8 +24,9 @@ The cache rules are:
 
 ## Consequences
 
-- Native Flutter targets can relaunch into the latest successfully fetched visible catalog snapshot while offline.
+- Native Flutter targets remain the acceptance path for relaunching into the latest successfully fetched visible catalog snapshot while offline.
 - Browser-based offline authenticated relaunch is best-effort for this slice; the repository keeps the web cache path, but does not require browser session persistence to match native behavior.
+- The automated verification path proves persistent cache reopen behavior, not full device-level offline relaunch.
 - Connectivity failures are no longer treated as equivalent to confirmed session expiry.
 - UI must surface persistent catalog status for online, offline, refreshing, and refresh-failed modes.
 - The app now depends on Drift for an executable read-side cache, but it still avoids introducing write sync, edit flows, or backend-owned reader projections.

@@ -190,7 +190,7 @@ test('keeps the previous active snapshot when refresh fails', () async {
 Also cover:
 - first successful refresh creating an active snapshot
 - a fresh authenticated online state after a successful backend refresh
-- offline relaunch reading cached summaries on native-capable targets or equivalent test seams
+- persistent cache reopen reading cached summaries in automation, plus native-target manual validation for offline-relaunch acceptance
 - `sessionStateUnverifiableDueToConnectivity` keeping cached reading available during unstable connectivity
 - confirmed session expiry blocking cached authenticated reading
 - explicit sign-out deleting the cached catalog
