@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
@@ -12,6 +13,7 @@ import 'package:lyrica_app/src/presentation/song_reader/song_reader_controller.d
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyrica_app/src/presentation/song_reader/widgets/song_reader_header.dart';
 import 'package:lyrica_app/src/presentation/song_reader/widgets/song_section_view.dart';
+import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class SongReaderScreen extends ConsumerStatefulWidget {
@@ -35,6 +37,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     });
   }
 
+  void _handleBack(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+
+    context.replace(AppRoutes.home.path);
+  }
+
   @override
   Widget build(BuildContext context) {
     final readerAsync = ref.watch(songLibraryReaderProvider(widget.songId));
@@ -44,122 +55,140 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Song reader')),
-      body: SafeArea(
-        child: isResolvingCatalogContext
-            ? const Center(child: Text(AppStrings.songReaderLoadingMessage))
-            : readerAsync.when(
-                loading: () => const Center(
-                  child: Text(AppStrings.songReaderLoadingMessage),
-                ),
-                error: (error, stackTrace) {
-                  if (error is SongAccessDeniedException) {
-                    return const Center(
-                      child: Text(AppStrings.songReaderAccessDeniedMessage),
-                    );
-                  }
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: AppStrings.songReaderBackAction,
+          onPressed: () => _handleBack(context),
+          icon: const BackButtonIcon(),
+        ),
+        title: const Text('Song reader'),
+      ),
+      body: PopScope<void>(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) {
+            return;
+          }
 
-                  if (error is SongNotFoundException) {
-                    return const Center(
-                      child: Text(AppStrings.songReaderUnavailableMessage),
-                    );
-                  }
+          _handleBack(context);
+        },
+        child: SafeArea(
+          child: isResolvingCatalogContext
+              ? const Center(child: Text(AppStrings.songReaderLoadingMessage))
+              : readerAsync.when(
+                  loading: () => const Center(
+                    child: Text(AppStrings.songReaderLoadingMessage),
+                  ),
+                  error: (error, stackTrace) {
+                    if (error is SongAccessDeniedException) {
+                      return const Center(
+                        child: Text(AppStrings.songReaderAccessDeniedMessage),
+                      );
+                    }
 
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          AppStrings.songReaderLoadFailureMessage,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: () {
-                            ref.invalidate(
-                              songLibraryReaderProvider(widget.songId),
-                            );
-                          },
-                          child: const Text(AppStrings.retryAction),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                data: (SongReaderResult result) {
-                  final projection = SongReaderProjection(
-                    song: result.song,
-                    state: _controller.state,
-                  );
-                  final recoverableWarningCount = result.song.diagnostics
-                      .where(
-                        (diagnostic) =>
-                            diagnostic.severity ==
-                            ParseDiagnosticSeverity.warning,
-                      )
-                      .length;
+                    if (error is SongNotFoundException) {
+                      return const Center(
+                        child: Text(AppStrings.songReaderUnavailableMessage),
+                      );
+                    }
 
-                  return Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: _contentWidth,
-                      ),
-                      child: ListView(
-                        padding: _contentPadding,
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _CatalogStatusSurface(state: catalogState),
-                          if (_hasVisibleStatus(catalogState))
-                            const SizedBox(height: 24),
-                          SongReaderHeader(
-                            projection: projection,
-                            hasRecoverableWarnings:
-                                result.hasRecoverableWarnings,
-                            warningCount: recoverableWarningCount,
-                            onToggleViewMode: () {
-                              _updateState(
-                                (controller) => controller.toggleViewMode(),
-                              );
-                            },
-                            onTransposeDown: () {
-                              _updateState(
-                                (controller) => controller.transposeDown(),
-                              );
-                            },
-                            onTransposeUp: () {
-                              _updateState(
-                                (controller) => controller.transposeUp(),
-                              );
-                            },
-                            onDecreaseFontScale: () {
-                              _updateState((controller) {
-                                controller.setSharedFontScale(
-                                  controller.state.sharedFontScale - 0.1,
-                                );
-                              });
-                            },
-                            onIncreaseFontScale: () {
-                              _updateState((controller) {
-                                controller.setSharedFontScale(
-                                  controller.state.sharedFontScale + 0.1,
-                                );
-                              });
-                            },
+                          const Text(
+                            AppStrings.songReaderLoadFailureMessage,
+                            textAlign: TextAlign.center,
                           ),
-                          const SizedBox(height: 24),
-                          for (final section in projection.sections) ...[
-                            SongSectionView(
-                              section: section,
-                              viewMode: projection.viewMode,
-                              sharedFontScale: projection.sharedFontScale,
-                            ),
-                            const SizedBox(height: 20),
-                          ],
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () {
+                              ref.invalidate(
+                                songLibraryReaderProvider(widget.songId),
+                              );
+                            },
+                            child: const Text(AppStrings.retryAction),
+                          ),
                         ],
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                  data: (SongReaderResult result) {
+                    final projection = SongReaderProjection(
+                      song: result.song,
+                      state: _controller.state,
+                    );
+                    final recoverableWarningCount = result.song.diagnostics
+                        .where(
+                          (diagnostic) =>
+                              diagnostic.severity ==
+                              ParseDiagnosticSeverity.warning,
+                        )
+                        .length;
+
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: _contentWidth,
+                        ),
+                        child: ListView(
+                          padding: _contentPadding,
+                          children: [
+                            _CatalogStatusSurface(state: catalogState),
+                            if (_hasVisibleStatus(catalogState))
+                              const SizedBox(height: 24),
+                            SongReaderHeader(
+                              projection: projection,
+                              hasRecoverableWarnings:
+                                  result.hasRecoverableWarnings,
+                              warningCount: recoverableWarningCount,
+                              onToggleViewMode: () {
+                                _updateState(
+                                  (controller) => controller.toggleViewMode(),
+                                );
+                              },
+                              onTransposeDown: () {
+                                _updateState(
+                                  (controller) => controller.transposeDown(),
+                                );
+                              },
+                              onTransposeUp: () {
+                                _updateState(
+                                  (controller) => controller.transposeUp(),
+                                );
+                              },
+                              onDecreaseFontScale: () {
+                                _updateState((controller) {
+                                  controller.setSharedFontScale(
+                                    controller.state.sharedFontScale - 0.1,
+                                  );
+                                });
+                              },
+                              onIncreaseFontScale: () {
+                                _updateState((controller) {
+                                  controller.setSharedFontScale(
+                                    controller.state.sharedFontScale + 0.1,
+                                  );
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 24),
+                            for (final section in projection.sections) ...[
+                              SongSectionView(
+                                section: section,
+                                viewMode: projection.viewMode,
+                                sharedFontScale: projection.sharedFontScale,
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
@@ -10,6 +11,8 @@ import 'package:lyrica_app/src/application/song_library/song_reader_result.dart'
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
+import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
@@ -78,6 +81,43 @@ void main() {
     );
   }
 
+  Widget buildRoutedApp({
+    required SongReaderResult result,
+    String initialLocation = '/songs/$songId',
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+  }) {
+    final router = GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: '/songs/:songId',
+          builder: (context, state) =>
+              SongReaderScreen(songId: state.pathParameters['songId']!),
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        songLibraryListProvider.overrideWith(
+          (ref) async => const [SongSummary(id: songId, title: 'Reader Song')],
+        ),
+        songLibraryReaderProvider.overrideWithProvider(
+          (value) => FutureProvider.autoDispose((ref) async => result),
+        ),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+  }
+
   Widget buildErrorApp({
     required Future<SongReaderResult> Function() loadSong,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
@@ -113,6 +153,17 @@ void main() {
     expect(find.text('Chorus 2'), findsOneWidget);
     expect(find.text('F#m'), findsOneWidget);
   });
+
+  testWidgets(
+    'shows a visible back affordance while keeping catalog status visible',
+    (tester) async {
+      await tester.pumpWidget(buildApp(result: buildResult()));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+      expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
+    },
+  );
 
   testWidgets('hides chords in lyrics only mode', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
@@ -320,4 +371,21 @@ void main() {
     expect(find.text('Reader Song'), findsOneWidget);
     expect(attempts, 2);
   });
+
+  testWidgets(
+    'handles system back by returning to the song list when opened directly',
+    (tester) async {
+      await tester.pumpWidget(buildRoutedApp(result: buildResult()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song reader'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.appName), findsOneWidget);
+      expect(find.text('Reader Song'), findsOneWidget);
+      expect(find.text('Song reader'), findsNothing);
+    },
+  );
 }

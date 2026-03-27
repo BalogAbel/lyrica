@@ -11,10 +11,13 @@ import 'package:lyrica_app/src/application/song_library/catalog_connection_statu
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/router/app_router.dart';
 import 'package:lyrica_app/src/router/app_routes.dart';
+import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
   test('list, sign-in, and reader route constants remain stable', () {
@@ -160,6 +163,95 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Song reader'), findsNothing);
   });
+
+  testWidgets(
+    'direct reader entry falls back to the song list without a back loop',
+    (WidgetTester tester) async {
+      final repository = _TestAuthRepository(
+        restoredSession: const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyrica.local',
+        ),
+      );
+      final controller = AppAuthController(repository);
+      await controller.restoreSession();
+      addTearDown(controller.dispose);
+
+      final router = createAppRouter(
+        authController: controller,
+        refreshListenable: controller,
+        initialLocation: '/songs/blocked',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            songLibraryListProvider.overrideWith(
+              (ref) async => const [
+                SongSummary(id: 'blocked', title: 'Blocked Song'),
+              ],
+            ),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => SongReaderResult(
+                  song: ParsedSong(
+                    title: 'Blocked Song',
+                    sourceKey: 'C',
+                    sections: const [],
+                    diagnostics: const [],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song reader'), findsOneWidget);
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/songs/blocked',
+      );
+
+      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.appName), findsOneWidget);
+      expect(find.text('Blocked Song'), findsOneWidget);
+      expect(find.text('Song reader'), findsNothing);
+      expect(router.routeInformationProvider.value.uri.toString(), '/');
+
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(handled, isFalse);
+      expect(find.text('Song reader'), findsNothing);
+      expect(router.routeInformationProvider.value.uri.toString(), '/');
+    },
+  );
 }
 
 class _TestAuthRepository implements AuthRepository {

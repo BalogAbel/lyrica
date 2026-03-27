@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/app/lyrica_app.dart';
+import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
@@ -14,6 +15,8 @@ import 'package:lyrica_app/src/application/song_library/song_catalog_read_reposi
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/router/app_router.dart';
+import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -84,6 +87,16 @@ void main() {
       expect(find.text('Verse 1'), findsOneWidget);
       expect(find.textContaining('Leteszem'), findsWidgets);
 
+      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.appName), findsOneWidget);
+      expect(find.text('Song reader'), findsNothing);
+      expect(find.text('Egy út'), findsOneWidget);
+
+      await tester.tap(find.text('Egy út'));
+      await tester.pumpAndSettle();
+
       authRepository.expireSession();
       await tester.pumpAndSettle();
 
@@ -92,6 +105,89 @@ void main() {
         find.text('Your session expired. Please sign in again.'),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'boots directly into the reader and falls back to the song list on back',
+    (tester) async {
+      final authRepository = _StreamingAuthRepository(
+        restoredSession: const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyrica.local',
+        ),
+      );
+      final authController = AppAuthController(authRepository);
+      await authController.restoreSession();
+      addTearDown(authController.dispose);
+
+      final songRepository = _StaticSongRepository(
+        summaries: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        sources: const {
+          'egy_ut': SongSource(
+            id: 'egy_ut',
+            source:
+                '{title:Egy út}\n'
+                '{subtitle:One Way}\n'
+                '{key:B}\n'
+                '{comment:<Verse 1>}\n'
+                '[B] Leteszem az eletem\n',
+          ),
+        },
+      );
+      final router = createAppRouter(
+        authController: authController,
+        refreshListenable: authController,
+        initialLocation: '/songs/egy_ut',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(authRepository),
+            appAuthControllerProvider.overrideWithValue(authController),
+            appAuthListenableProvider.overrideWithValue(authController),
+            songLibraryRepositoryProvider.overrideWithValue(songRepository),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+          ],
+          child: LyricaApp(router: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('One Way'), findsOneWidget);
+
+      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.appName), findsOneWidget);
+      expect(find.text('Song reader'), findsNothing);
+      expect(find.text('Egy út'), findsOneWidget);
+
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(handled, isFalse);
+      expect(find.text('Song reader'), findsNothing);
+      expect(find.text('Egy út'), findsOneWidget);
     },
   );
 }

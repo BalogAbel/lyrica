@@ -30,6 +30,7 @@ class AppStrings {
   static const songReaderUnavailableMessage = 'This song is unavailable.';
   static const songReaderAccessDeniedMessage =
       'You do not have access to this song.';
+  static const songReaderBackAction = 'Back to song list';
   static const songLibraryHeading = 'Tablet-first song library';
   static const songLibraryFlowHeading = 'Mock song catalog in progress';
   static const songLibraryFlowSummary =

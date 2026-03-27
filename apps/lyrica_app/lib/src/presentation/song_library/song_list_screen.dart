@@ -7,6 +7,7 @@ import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class SongListScreen extends ConsumerWidget {
@@ -83,7 +84,12 @@ class SongListScreen extends ConsumerWidget {
 
                                 return ListTile(
                                   title: Text(song.title),
-                                  onTap: () => context.go('/songs/${song.id}'),
+                                  onTap: () => context.push(
+                                    AppRoutes.songReader.path.replaceFirst(
+                                      ':songId',
+                                      song.id,
+                                    ),
+                                  ),
                                 );
                               },
                             );

@@ -112,6 +112,29 @@ void main() {
     expect(find.text('reader:egy_ut'), findsOneWidget);
   });
 
+  testWidgets('returns to the song list after opening a song from the list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Egy út'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('reader:egy_ut'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('reader:egy_ut'), findsNothing);
+    expect(find.text('Egy út'), findsOneWidget);
+    expect(find.byType(SongListScreen), findsOneWidget);
+  });
+
   testWidgets('shows an explicit loading state while songs load', (
     tester,
   ) async {
