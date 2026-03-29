@@ -16,10 +16,12 @@
 - If only Supabase tooling is needed, install it with `npm ci --prefix tooling/supabase`.
 - Supabase CLI is managed under `tooling/supabase/`, not at the repository root.
 - Use `./scripts/supabase.sh ...` as the canonical interface for local Supabase commands.
+- Use `./scripts/check-migrations.sh` as the canonical migration lint entrypoint; it starts or reuses local Supabase before calling `db lint`.
 - Typical commands:
   - `./scripts/supabase.sh start`
   - `./scripts/supabase.sh db reset`
   - `./scripts/supabase.sh migration list`
+  - `./scripts/check-migrations.sh`
   - `./scripts/provision-local-demo-user.sh`
   - `./scripts/run-authenticated-app.sh`
   - `./scripts/manual-validation/setup-local-first.sh`

@@ -22,7 +22,6 @@ if [[ "$skip_migrations" == "--skip-migrations" ]]; then
 fi
 
 "$check_migrations_script"
-"$supabase_script" start
 "$db_reset_script"
 "$provision_demo_user_script"
 eval "$provision_demo_user_test_script"

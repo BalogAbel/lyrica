@@ -167,6 +167,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/run-authenticated-app.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
+./scripts/check-migrations.sh
 ./scripts/manual-validation/setup-local-first.sh
 ./scripts/manual-validation/reset-validation-state.sh
 ./scripts/manual-validation/run-local-first-app.sh
@@ -175,7 +176,9 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/manual-validation/print-checklist.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env`. Those integration gates now prove manual refresh, periodic refresh, and refresh-failure cache preservation in addition to persistent cache reopen behavior. The local-first integration slot does not replace native manual offline-relaunch validation.
+`./scripts/verify.sh` runs the Flutter quality gates first, then delegates migration lint bootstrap to `./scripts/check-migrations.sh`. Without `--skip-migrations`, it continues from that started or reused local Supabase stack, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env`. Those integration gates now prove manual refresh, periodic refresh, and refresh-failure cache preservation in addition to persistent cache reopen behavior. The local-first integration slot does not replace native manual offline-relaunch validation.
+
+`./scripts/check-migrations.sh` is the canonical migration lint entrypoint for both local development and CI. It starts or reuses the local Supabase stack through the repository wrapper before running `db lint`, so the workflow does not depend on hidden pre-start steps in GitHub Actions.
 
 For manual validation of the local-first reader flow:
 

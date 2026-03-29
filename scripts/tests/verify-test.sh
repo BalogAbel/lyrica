@@ -99,7 +99,6 @@ expected = [
     "flutter:analyze",
     "flutter:test",
     "check-migrations",
-    "supabase:start",
     "db-reset",
     "provision",
     "provision-test",
