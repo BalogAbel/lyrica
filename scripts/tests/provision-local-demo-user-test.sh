@@ -10,7 +10,7 @@ cd "$repo_root"
 ./scripts/provision-local-demo-user.sh >/dev/null
 
 query_result="$(
-  ./scripts/supabase.sh db query "
+  ./scripts/supabase.sh db query -o json "
     select count(*) as membership_count
     from public.memberships
     where organization_id = '11111111-1111-1111-1111-111111111111'

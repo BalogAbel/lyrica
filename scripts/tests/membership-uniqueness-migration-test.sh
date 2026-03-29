@@ -18,7 +18,7 @@ if [[ -z "$db_container_name" ]]; then
 fi
 
 user_query_result="$(
-  ./scripts/supabase.sh db query "
+  ./scripts/supabase.sh db query -o json "
     select id
     from auth.users
     where email = 'demo@lyrica.local';

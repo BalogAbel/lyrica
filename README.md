@@ -156,6 +156,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 
 ```bash
 ./scripts/bootstrap.sh
+./scripts/bootstrap-supabase.sh
 ./scripts/bootstrap-app.sh
 ./scripts/supabase.sh start
 ./scripts/supabase.sh db reset
@@ -165,6 +166,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/db-seed.sh
 ./scripts/run-app.sh
 ./scripts/run-authenticated-app.sh
+./scripts/run-ci-locally.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ./scripts/check-migrations.sh
@@ -179,6 +181,8 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 `./scripts/verify.sh` runs the Flutter quality gates first, then delegates migration lint bootstrap to `./scripts/check-migrations.sh`. Without `--skip-migrations`, it continues from that started or reused local Supabase stack, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env`. Those integration gates now prove manual refresh, periodic refresh, and refresh-failure cache preservation in addition to persistent cache reopen behavior. The local-first integration slot does not replace native manual offline-relaunch validation.
 
 `./scripts/check-migrations.sh` is the canonical migration lint entrypoint for both local development and CI. It starts or reuses the local Supabase stack through the repository wrapper before running `db lint`, so the workflow does not depend on hidden pre-start steps in GitHub Actions.
+
+`./scripts/run-ci-locally.sh` mirrors the current GitHub Actions job wiring through repository scripts. Use `./scripts/run-ci-locally.sh verify` for the CI verify job, `./scripts/run-ci-locally.sh migrations` for the migration job, or `./scripts/run-ci-locally.sh` / `./scripts/run-ci-locally.sh all` to run both in order.
 
 For manual validation of the local-first reader flow:
 

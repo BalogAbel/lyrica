@@ -14,14 +14,20 @@
 
 - Install repository dependencies with `./scripts/bootstrap.sh`.
 - If only Supabase tooling is needed, install it with `npm ci --prefix tooling/supabase`.
+- `./scripts/bootstrap-supabase.sh` is the repository-owned shortcut for that Supabase-tooling-only install path.
 - Supabase CLI is managed under `tooling/supabase/`, not at the repository root.
 - Use `./scripts/supabase.sh ...` as the canonical interface for local Supabase commands.
 - Use `./scripts/check-migrations.sh` as the canonical migration lint entrypoint; it starts or reuses local Supabase before calling `db lint`.
+- Use `./scripts/run-ci-locally.sh` when you want the closest local equivalent of the current GitHub Actions job sequencing.
 - Typical commands:
   - `./scripts/supabase.sh start`
   - `./scripts/supabase.sh db reset`
   - `./scripts/supabase.sh migration list`
+  - `./scripts/bootstrap-supabase.sh`
   - `./scripts/check-migrations.sh`
+  - `./scripts/run-ci-locally.sh`
+  - `./scripts/run-ci-locally.sh verify`
+  - `./scripts/run-ci-locally.sh migrations`
   - `./scripts/provision-local-demo-user.sh`
   - `./scripts/run-authenticated-app.sh`
   - `./scripts/manual-validation/setup-local-first.sh`
