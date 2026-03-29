@@ -84,6 +84,7 @@ See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.m
 - Dart SDK
 - Node.js and npm
 - Docker-compatible local engine
+- Android platform-tools (`adb`) when launching on Android devices
 
 Supabase CLI is managed as a repository-local dev dependency under `tooling/supabase/`. Do not install or wire it through a root-level Node workspace for this repository.
 
@@ -147,6 +148,7 @@ This starts or reuses local Supabase, resets the local database, provisions the 
 ```
 
 When `FLUTTER_DEVICE` targets an Android emulator such as `emulator-5554`, the launcher rewrites local host URLs from `127.0.0.1` or `localhost` to `10.0.2.2` before passing `SUPABASE_URL` into Flutter. This keeps the app pointed at the host machine's local Supabase instance instead of the emulator's own loopback interface.
+When `FLUTTER_DEVICE` targets an ADB-managed Android device, the launcher preserves the loopback URL and first runs `adb reverse` for the Supabase port so the device can reach the Mac-hosted local backend through its own `127.0.0.1`. This covers Flutter targets reported as wireless `adb-..._adb-tls-connect._tcp` ids as well as plain Android serials, and it requires `adb` from Android platform-tools to be installed or pointed to with `ADB_BIN`.
 
 On macOS with Colima, the repository keeps local Supabase analytics disabled in `supabase/config.toml`. The current Supabase local analytics service expects the default Docker socket mount and blocks `./scripts/supabase.sh start` under the Colima socket path even though this slice does not need analytics.
 
@@ -180,13 +182,13 @@ For manual validation of the local-first reader flow:
 ```bash
 ./scripts/manual-validation/setup-local-first.sh
 ./scripts/manual-validation/reset-validation-state.sh
-./scripts/manual-validation/run-local-first-app.sh
+FLUTTER_DEVICE=<native-device-id> ./scripts/manual-validation/run-local-first-app.sh
 ./scripts/manual-validation/print-checklist.sh
 ./scripts/manual-validation/go-offline.sh
 ./scripts/manual-validation/go-online.sh
 ```
 
-The manual-validation launcher caches only the last known local Supabase `SUPABASE_URL` and `SUPABASE_ANON_KEY` values so the app can be relaunched after `./scripts/manual-validation/go-offline.sh` without requiring a live backend status check.
+The manual-validation launcher caches only the last known local Supabase `API_URL` and `ANON_KEY` values from `supabase status -o env` so the app can be relaunched after `./scripts/manual-validation/go-offline.sh` without requiring a live backend status check.
 Use native Flutter targets as the acceptance path for authenticated offline relaunch. The automated test gate proves persistent cache reopen behavior, while browser relaunch remains best-effort diagnostics for the current slice.
 
 ## Local Development Notes

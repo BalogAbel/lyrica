@@ -24,6 +24,7 @@ if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" ]]; then
 fi
 
 resolved_api_url="$(resolve_flutter_host_url "$flutter_device" "$API_URL")"
+prepare_flutter_device_network "$flutter_device" "$resolved_api_url"
 
 cd "$app_dir"
 "$flutter_bin" run \

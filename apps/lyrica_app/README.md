@@ -30,6 +30,7 @@ Use the repository workflow from the repository root:
 
 This is the simplest local path for the authenticated reader slice. It starts or reuses local Supabase, resets the database, provisions the demo auth user idempotently, and launches the Flutter app with the required local Supabase `dart-define` values.
 For Android emulators, the launcher rewrites host loopback URLs to `10.0.2.2` so the app can reach the Mac-hosted local Supabase stack.
+For ADB-managed Android devices, including wireless targets whose Flutter id looks like `adb-..._adb-tls-connect._tcp` and plain Android serials, the launcher automatically runs `adb reverse` for the local Supabase port and keeps `127.0.0.1` as the app-facing URL. This requires Android platform-tools `adb`, or an explicit `ADB_BIN` override.
 
 Documented demo credentials:
 
@@ -69,6 +70,6 @@ For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end
 For the authenticated local-first song-reading slice, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs both the real backend repository integration test and the cached offline reader integration test. That local-first integration test proves persistent cache reopen behavior after the catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
 For repeatable manual validation, prefer `./scripts/manual-validation/run-local-first-app.sh` over `./scripts/run-authenticated-app.sh` because the manual-validation launcher preserves previously fetched app state between relaunches.
 The web path of that local-first cache depends on `apps/lyrica_app/web/sqlite3.wasm`; keep that asset versioned with Drift web cache changes instead of relying on ad-hoc local setup.
-The manual-validation launcher also reuses a cached local Supabase env snapshot containing only `SUPABASE_URL` and `SUPABASE_ANON_KEY`, so offline relaunch remains scriptable after the backend is intentionally stopped.
+The manual-validation launcher also reuses a cached local Supabase env snapshot containing only `API_URL` and `ANON_KEY` from `supabase status -o env`, so offline relaunch remains scriptable after the backend is intentionally stopped.
 For this slice, authenticated offline relaunch is treated as a native-first requirement. The automated gate proves persistent cache reopen behavior, while the browser cache path remains useful and supported but browser relaunch behavior is best-effort rather than a product guarantee.
-Set `FLUTTER_DEVICE` when validating on a native target; use the default Chrome launcher only for browser diagnostics and general UI checks.
+Set `FLUTTER_DEVICE` when validating on a native target; use the default Chrome launcher only for browser diagnostics and general UI checks. Wireless Android devices can use the `adb-..._adb-tls-connect._tcp` id reported by `flutter devices`, while USB or other ADB-managed devices can use their Android serial.

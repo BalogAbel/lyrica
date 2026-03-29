@@ -6,6 +6,7 @@
 
 **Architecture:** Keep the workflow thin and wrapper-driven. New scripts should compose existing repository entrypoints for Supabase start/reset/provisioning and add one app launcher that preserves state between runs. A dedicated shell test should verify the command contract without depending on a live local stack.
 The launcher must also support offline relaunch by falling back to the last cached local Supabase `dart-define` snapshot when `./scripts/supabase.sh status -o env` is unavailable because the stack is intentionally stopped.
+For ADB-managed Android devices, including wireless Flutter targets exposed through `adb-..._adb-tls-connect._tcp` ids and plain Android serials, the launcher should keep the loopback URL stable and establish `adb reverse` for the local Supabase port before invoking Flutter.
 The workflow documentation should treat browser relaunch as diagnostic-only and native Flutter targets as the required acceptance path for authenticated offline relaunch, while keeping automated persistent-cache reopen proof in the `./scripts/verify.sh` path distinct from that manual acceptance walkthrough.
 
 **Tech Stack:** Bash, Flutter CLI, repository Supabase wrapper scripts, shell tests, Markdown docs
@@ -45,4 +46,4 @@ The workflow documentation should treat browser relaunch as diagnostic-only and 
 - Test: `scripts/tests/local-first-manual-validation-scripts-test.sh`
 
 - [ ] **Step 1: Run the manual-validation shell test**
-- [ ] **Step 2: Run `./scripts/verify.sh --skip-migrations` to keep app/docs quality gates green**
+- [ ] **Step 2: Run `./scripts/verify.sh` because this slice changes the local Supabase workflow behavior**

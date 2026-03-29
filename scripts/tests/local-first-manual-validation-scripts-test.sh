@@ -56,11 +56,28 @@ set -euo pipefail
 printf 'flutter:%s\n' "$*" >>"$LOG_FILE"
 EOF
 
+cat >"$tmp_dir/mock-adb" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'adb:%s\n' "$*" >>"$LOG_FILE"
+
+if [[ "${1:-}" == "-s" && "${3:-}" == "get-state" ]]; then
+  case "${2:-}" in
+    adb-R52T104VT8A-s0a8pF._adb-tls-connect._tcp|R52T104VT8A)
+      printf 'device\n'
+      exit 0
+      ;;
+  esac
+  exit 1
+fi
+EOF
+
 chmod +x \
   "$tmp_dir/mock-supabase.sh" \
   "$tmp_dir/mock-db-reset.sh" \
   "$tmp_dir/mock-provision.sh" \
-  "$tmp_dir/mock-flutter"
+  "$tmp_dir/mock-flutter" \
+  "$tmp_dir/mock-adb"
 
 LOG_FILE="$log_file" \
 SUPABASE_STATE_FILE="$supabase_state_file" \
@@ -114,6 +131,24 @@ LOG_FILE="$log_file" \
 SUPABASE_STATE_FILE="$supabase_state_file" \
 SUPABASE_ENV_FILE="$supabase_env_file" \
 SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
+FLUTTER_BIN="$tmp_dir/mock-flutter" \
+ADB_BIN="$tmp_dir/mock-adb" \
+FLUTTER_DEVICE=adb-R52T104VT8A-s0a8pF._adb-tls-connect._tcp \
+"$repo_root/scripts/manual-validation/run-local-first-app.sh"
+
+LOG_FILE="$log_file" \
+SUPABASE_STATE_FILE="$supabase_state_file" \
+SUPABASE_ENV_FILE="$supabase_env_file" \
+SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
+FLUTTER_BIN="$tmp_dir/mock-flutter" \
+ADB_BIN="$tmp_dir/mock-adb" \
+FLUTTER_DEVICE=R52T104VT8A \
+"$repo_root/scripts/manual-validation/run-local-first-app.sh"
+
+LOG_FILE="$log_file" \
+SUPABASE_STATE_FILE="$supabase_state_file" \
+SUPABASE_ENV_FILE="$supabase_env_file" \
+SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
 "$repo_root/scripts/manual-validation/go-online.sh"
 
 "$repo_root/scripts/manual-validation/print-checklist.sh" >"$checklist_file"
@@ -137,6 +172,14 @@ expected = [
     "flutter:run -d chrome --target lib/main.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --web-port 4011",
     "supabase:status -o env",
     "flutter:run -d emulator-5554 --target lib/main.dart --dart-define=SUPABASE_URL=http://10.0.2.2:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "supabase:status -o env",
+    "adb:-s adb-R52T104VT8A-s0a8pF._adb-tls-connect._tcp get-state",
+    "adb:-s adb-R52T104VT8A-s0a8pF._adb-tls-connect._tcp reverse tcp:54321 tcp:54321",
+    "flutter:run -d adb-R52T104VT8A-s0a8pF._adb-tls-connect._tcp --target lib/main.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "supabase:status -o env",
+    "adb:-s R52T104VT8A get-state",
+    "adb:-s R52T104VT8A reverse tcp:54321 tcp:54321",
+    "flutter:run -d R52T104VT8A --target lib/main.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
     "supabase:start",
     "supabase:status -o env",
 ]

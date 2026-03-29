@@ -35,14 +35,15 @@
 For the local-first authenticated song-reader slice:
 
 1. Run `./scripts/manual-validation/setup-local-first.sh`.
-2. Launch the app with `./scripts/manual-validation/run-local-first-app.sh`.
+2. Launch the app on a native target with `FLUTTER_DEVICE=<native-device-id> ./scripts/manual-validation/run-local-first-app.sh`. Use the default Chrome target only for browser diagnostics, not native offline-relaunch acceptance.
 3. Use `./scripts/manual-validation/print-checklist.sh` while validating online, offline, refresh-failed, and explicit sign-out behavior.
 4. Use `./scripts/manual-validation/go-offline.sh` and `./scripts/manual-validation/go-online.sh` to switch backend connectivity during the walkthrough.
 5. Use `./scripts/manual-validation/reset-validation-state.sh` when you need to restart from a clean local fixture.
 
-The manual-validation launcher caches only the last known local Supabase app env (`SUPABASE_URL` and `SUPABASE_ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
+The manual-validation launcher caches only the last known local Supabase status env (`API_URL` and `ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
 Use `./scripts/verify.sh` to prove persistent cache reopen behavior in automation, then use the manual-validation scripts on native Flutter targets for true offline-relaunch acceptance. Use browser-based offline relaunch checks as best-effort diagnostics only.
 For Android emulators, the launch scripts rewrite local host loopback Supabase URLs (`127.0.0.1` or `localhost`) to `10.0.2.2` before invoking Flutter so the app reaches the host machine's backend.
+For ADB-managed Android devices, including wireless Flutter targets exposed as `adb-..._adb-tls-connect._tcp` and plain Android serials, the launch scripts run `adb reverse` for the Supabase port and keep the loopback URL unchanged so the app can reach the host machine through the reversed tunnel. This requires Android platform-tools `adb`, or an explicit `ADB_BIN` override.
 
 ## Commit Guidance
 

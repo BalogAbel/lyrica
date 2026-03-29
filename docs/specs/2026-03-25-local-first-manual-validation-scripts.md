@@ -29,6 +29,7 @@ Add repository-owned scripts for repeatable manual validation of the local-first
 - Setup and reset scripts must provision the documented demo user after database reset.
 - The app-run script for manual validation must not reset the database automatically, because offline relaunch validation depends on preserving the previously fetched cache.
 - The app-run script must support offline relaunch after the backend is stopped by reusing the last known local Supabase `dart-define` values captured while the backend was online.
+- The app-run script must support ADB-managed Android devices, including Flutter targets reported as `adb-..._adb-tls-connect._tcp` ids and plain Android serials, by establishing `adb reverse` for the local Supabase port before launch when the backend URL uses host loopback.
 - Offline and online transition scripts must use repository-owned Supabase wrapper commands.
 - The checklist script must describe the expected manual observations for:
   - online launch
