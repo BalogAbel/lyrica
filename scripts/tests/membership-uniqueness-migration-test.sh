@@ -26,11 +26,18 @@ user_query_result="$(
 )"
 
 user_id="$(
-  QUERY_RESULT="$user_query_result" python3 - <<'PY'
+  QUERY_RESULT="$user_query_result" REPO_ROOT="$repo_root" python3 - <<'PY'
 import json
 import os
+import subprocess
 
-payload = json.loads(os.environ["QUERY_RESULT"])
+payload = json.loads(
+    subprocess.check_output(
+        ["python3", f"{os.environ['REPO_ROOT']}/scripts/extract_supabase_json.py"],
+        input=os.environ["QUERY_RESULT"],
+        text=True,
+    )
+)
 rows = payload.get("rows", [])
 if len(rows) != 1:
     raise SystemExit(f"unexpected rows: {rows!r}")
