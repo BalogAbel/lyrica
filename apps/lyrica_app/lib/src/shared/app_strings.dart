@@ -13,6 +13,7 @@ class AppStrings {
       'Your session expired. Please sign in again.';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
+  static const songCatalogRefreshAction = 'Refresh catalog';
   static const songListLoadingMessage = 'Loading songs...';
   static const songListLoadFailureMessage =
       'Unable to load songs. Please try again.';

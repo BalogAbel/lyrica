@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
@@ -241,7 +243,75 @@ void main() {
     },
     skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
   );
+
+  test(
+    'failed periodic refresh preserves the cached catalog for local-first reading',
+    () async {
+      final config = SupabaseConfig.fromEnvironment();
+      final client = SupabaseClient(config.url, config.anonKey);
+      final database = SongCatalogDatabase.inMemory();
+      final store = DriftSongCatalogStore(database);
+      final localRepository = LocalFirstSongRepository(store);
+
+      addTearDown(() async {
+        await client.auth.signOut();
+        await client.dispose();
+        await database.close();
+      });
+
+      await client.auth.signOut();
+      await client.auth.signInWithPassword(
+        email: 'demo@lyrica.local',
+        password: 'LyricaDemo123!',
+      );
+      final userId = client.auth.currentSession!.user.id;
+      final remoteRepository = _MutableSongRepository(
+        SupabaseSongRepository(client),
+      );
+      final controller = SongCatalogController(
+        store: store,
+        remoteRepository: remoteRepository,
+        authSessionReader: _currentSessionReader(client),
+        organizationReader: _organizationReader(client),
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        foregroundState: const _StaticForegroundState(isForeground: true),
+        refreshInterval: const Duration(milliseconds: 25),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.refreshCatalog();
+      remoteRepository.error = const SocketException('offline');
+
+      await _eventually(
+        () async =>
+            controller.state.refreshStatus == CatalogRefreshStatus.failed,
+      );
+
+      expect(
+        controller.state.connectionStatus,
+        CatalogConnectionStatus.offlineCached,
+      );
+      expect(controller.state.hasCachedCatalog, isTrue);
+      expect(
+        await localRepository.listSongs(
+          userId: userId,
+          organizationId: _demoOrganizationId,
+        ),
+        isNotEmpty,
+      );
+
+      final cachedSource = await localRepository.getSongSource(
+        userId: userId,
+        organizationId: _demoOrganizationId,
+        songId: '33333333-3333-3333-3333-333333333335',
+      );
+      expect(cachedSource.source, contains('{title:Egy út}'));
+    },
+    skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
+  );
 }
+
+const _demoOrganizationId = '11111111-1111-1111-1111-111111111111';
 
 AppAuthSessionReader _currentSessionReader(SupabaseClient client) {
   return () {
@@ -292,3 +362,57 @@ class _StaticSongRepository implements SongRepository {
 }
 
 class _PassthroughHttpOverrides extends HttpOverrides {}
+
+class _MutableSongRepository implements SongRepository {
+  _MutableSongRepository(this._delegate);
+
+  final SongRepository _delegate;
+  Object? error;
+
+  @override
+  Future<SongSource> getSongSource(String id) async {
+    final currentError = error;
+    if (currentError != null) {
+      throw currentError;
+    }
+
+    return _delegate.getSongSource(id);
+  }
+
+  @override
+  Future<List<SongSummary>> listSongs() async {
+    final currentError = error;
+    if (currentError != null) {
+      throw currentError;
+    }
+
+    return _delegate.listSongs();
+  }
+}
+
+Future<void> _eventually(
+  Future<bool> Function() condition, {
+  Duration timeout = const Duration(seconds: 2),
+  Duration step = const Duration(milliseconds: 25),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (await condition()) {
+      return;
+    }
+
+    await Future<void>.delayed(step);
+  }
+
+  fail('Condition was not met within $timeout.');
+}
+
+class _StaticForegroundState implements AppForegroundState {
+  const _StaticForegroundState({required this.isForeground});
+
+  @override
+  final bool isForeground;
+
+  @override
+  Stream<bool> watchForeground() => const Stream<bool>.empty();
+}

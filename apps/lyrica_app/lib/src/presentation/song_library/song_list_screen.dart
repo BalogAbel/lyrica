@@ -20,6 +20,8 @@ class SongListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final songsAsync = ref.watch(songLibraryListProvider);
     final catalogState = ref.watch(catalogSnapshotStateProvider);
+    final isRefreshing =
+        catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
     final isResolvingCatalogContext =
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
@@ -28,6 +30,17 @@ class SongListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text(AppStrings.appName),
         actions: [
+          IconButton(
+            onPressed: isRefreshing
+                ? null
+                : () {
+                    unawaited(
+                      ref.read(songCatalogControllerProvider).refreshCatalog(),
+                    );
+                  },
+            icon: const Icon(Icons.sync),
+            tooltip: AppStrings.songCatalogRefreshAction,
+          ),
           TextButton(
             onPressed: () {
               unawaited(_signOut(ref));

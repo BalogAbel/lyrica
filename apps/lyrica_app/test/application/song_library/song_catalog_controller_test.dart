@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
@@ -280,9 +282,51 @@ void main() {
     });
 
     test(
+      'explicit sign-out clears cached access even when the active context was not yet loaded',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          ),
+          organizationReader: () async => throw const PostgrestException(
+            message: 'permission denied',
+            code: '42501',
+          ),
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.handleExplicitSignOut();
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
       'explicit sign-out prevents an in-flight refresh from restoring cached authenticated access',
       () async {
         final delayedRepository = _DelayedSongRepository();
+        final foregroundState = _TestAppForegroundState();
         final controller = SongCatalogController(
           store: store,
           remoteRepository: delayedRepository,
@@ -292,6 +336,7 @@ void main() {
           ),
           organizationReader: () async => 'org-1',
           sessionVerifier: () async => CatalogSessionStatus.verified,
+          foregroundState: foregroundState,
         );
 
         final refreshFuture = controller.refreshCatalog();
@@ -315,6 +360,195 @@ void main() {
         );
       },
     );
+
+    test(
+      'ignores a periodic trigger while a manual refresh is already in flight',
+      () {
+        fakeAsync((async) {
+          final delayedRepository = _DelayedSongRepository();
+          final foregroundState = _TestAppForegroundState();
+          final controller = SongCatalogController(
+            store: store,
+            remoteRepository: delayedRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyrica.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            foregroundState: foregroundState,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          expect(delayedRepository.listSongsCalls, 1);
+
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+
+          expect(delayedRepository.listSongsCalls, 1);
+          delayedRepository.completeWith(
+            const [SongSummary(id: 'song-1', title: 'Alpha')],
+            const {
+              'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
+            },
+          );
+          async.flushMicrotasks();
+
+          expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+          expect(controller.state.hasCachedCatalog, isTrue);
+        });
+      },
+    );
+
+    test('runs periodic refresh only after the configured cadence', () {
+      fakeAsync((async) {
+        final foregroundState = _TestAppForegroundState();
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          ),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          foregroundState: foregroundState,
+          refreshInterval: const Duration(minutes: 5),
+        );
+
+        async.elapse(const Duration(minutes: 4, seconds: 59));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, 0);
+
+        async.elapse(const Duration(seconds: 1));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, 1);
+
+        controller.dispose();
+        async.elapse(const Duration(minutes: 5));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, 1);
+      });
+    });
+
+    test(
+      'runs periodic refresh only while the app stays in the foreground',
+      () {
+        fakeAsync((async) {
+          final foregroundState = _TestAppForegroundState(isForeground: false);
+          final controller = SongCatalogController(
+            store: store,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyrica.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            foregroundState: foregroundState,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, 0);
+
+          foregroundState.setForeground(true);
+          async.flushMicrotasks();
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, 1);
+
+          foregroundState.setForeground(false);
+          async.flushMicrotasks();
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, 1);
+        });
+      },
+    );
+
+    test('stops periodic refresh after explicit sign-out', () {
+      fakeAsync((async) {
+        final foregroundState = _TestAppForegroundState();
+        AppAuthSession? session = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyrica.local',
+        );
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => session,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          foregroundState: foregroundState,
+          refreshInterval: const Duration(minutes: 5),
+        );
+        addTearDown(controller.dispose);
+
+        async.elapse(const Duration(minutes: 5));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, 1);
+
+        session = null;
+        unawaited(controller.handleExplicitSignOut());
+        async.flushMicrotasks();
+
+        async.elapse(const Duration(minutes: 10));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, 1);
+      });
+    });
+
+    test(
+      'a new refresh can start immediately after explicit sign-out invalidates an in-flight refresh',
+      () {
+        fakeAsync((async) {
+          final delayedRepository = _MultiPhaseSongRepository();
+          final foregroundState = _TestAppForegroundState();
+          AppAuthSession? session = const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          );
+          final controller = SongCatalogController(
+            store: store,
+            remoteRepository: delayedRepository,
+            authSessionReader: () => session,
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            foregroundState: foregroundState,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          expect(delayedRepository.listSongsCalls, 1);
+
+          session = null;
+          unawaited(controller.handleExplicitSignOut());
+          async.flushMicrotasks();
+
+          session = const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          );
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          expect(delayedRepository.listSongsCalls, 2);
+
+          delayedRepository.completeRequest(0);
+          delayedRepository.completeRequest(1);
+          async.flushMicrotasks();
+        });
+      },
+    );
   });
 }
 
@@ -332,11 +566,13 @@ class _FakeSongRepository implements SongRepository {
   final List<SongSummary> _songs;
   final Map<String, SongSource> _sources;
 
+  int listSongsCalls = 0;
   Object? listSongsError;
   final Map<String, Object> sourceErrors = <String, Object>{};
 
   @override
   Future<List<SongSummary>> listSongs() async {
+    listSongsCalls += 1;
     final error = listSongsError;
     if (error != null) {
       throw error;
@@ -361,9 +597,11 @@ class _DelayedSongRepository implements SongRepository {
   final Completer<List<SongSummary>> _songsCompleter =
       Completer<List<SongSummary>>();
   Map<String, SongSource> _sources = const {};
+  int listSongsCalls = 0;
 
   @override
   Future<List<SongSummary>> listSongs() async {
+    listSongsCalls += 1;
     if (!listSongsStarted.isCompleted) {
       listSongsStarted.complete();
     }
@@ -383,5 +621,60 @@ class _DelayedSongRepository implements SongRepository {
     if (!_songsCompleter.isCompleted) {
       _songsCompleter.complete(songs);
     }
+  }
+}
+
+class _MultiPhaseSongRepository implements SongRepository {
+  int listSongsCalls = 0;
+  final List<Completer<List<SongSummary>>> _songRequests =
+      <Completer<List<SongSummary>>>[];
+  Map<String, SongSource> _sources = const {
+    'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
+  };
+
+  @override
+  Future<List<SongSummary>> listSongs() {
+    listSongsCalls += 1;
+    final completer = Completer<List<SongSummary>>();
+    _songRequests.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<SongSource> getSongSource(String id) async {
+    return _sources[id]!;
+  }
+
+  void completeRequest(
+    int requestIndex, {
+    List<SongSummary> songs = const [SongSummary(id: 'song-1', title: 'Alpha')],
+    Map<String, SongSource> sources = const {
+      'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
+    },
+  }) {
+    _sources = sources;
+    final completer = _songRequests[requestIndex];
+    if (!completer.isCompleted) {
+      completer.complete(songs);
+    }
+  }
+}
+
+class _TestAppForegroundState implements AppForegroundState {
+  _TestAppForegroundState({bool isForeground = true})
+    : _isForeground = isForeground;
+
+  final StreamController<bool> _controller = StreamController<bool>.broadcast();
+  bool _isForeground;
+
+  @override
+  bool get isForeground => _isForeground;
+
+  @override
+  Stream<bool> watchForeground() => _controller.stream;
+
+  void setForeground(bool value) {
+    _isForeground = value;
+    _controller.add(value);
   }
 }

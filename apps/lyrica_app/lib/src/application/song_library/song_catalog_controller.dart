@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
@@ -16,6 +17,8 @@ typedef AppAuthSessionReader = AppAuthSession? Function();
 typedef ActiveOrganizationReader = Future<String?> Function();
 typedef CatalogSessionVerifier = Future<CatalogSessionStatus> Function();
 
+const _defaultRefreshInterval = Duration(minutes: 5);
+
 class SongCatalogController extends ChangeNotifier {
   SongCatalogController({
     required SongCatalogStore store,
@@ -23,26 +26,57 @@ class SongCatalogController extends ChangeNotifier {
     required AppAuthSessionReader authSessionReader,
     required ActiveOrganizationReader organizationReader,
     required CatalogSessionVerifier sessionVerifier,
+    AppForegroundState? foregroundState,
+    Duration refreshInterval = _defaultRefreshInterval,
   }) : _store = store,
        _remoteRepository = remoteRepository,
        _authSessionReader = authSessionReader,
        _organizationReader = organizationReader,
        _sessionVerifier = sessionVerifier,
-       _state = const CatalogSnapshotState.initial();
+       _foregroundState = foregroundState ?? _AlwaysForegroundState(),
+       _refreshInterval = refreshInterval,
+       _state = const CatalogSnapshotState.initial() {
+    _foregroundSubscription = _foregroundState.watchForeground().listen(
+      _handleForegroundChange,
+    );
+    _updateRefreshScheduler();
+  }
 
   final SongCatalogStore _store;
   final SongRepository _remoteRepository;
   final AppAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;
   final CatalogSessionVerifier _sessionVerifier;
+  final AppForegroundState _foregroundState;
+  final Duration _refreshInterval;
 
   CatalogSnapshotState _state;
   int _refreshGeneration = 0;
   bool _disposed = false;
+  Timer? _refreshTimer;
+  StreamSubscription<bool>? _foregroundSubscription;
+  Future<void>? _refreshFuture;
 
   CatalogSnapshotState get state => _state;
 
   Future<void> refreshCatalog() async {
+    final inFlightRefresh = _refreshFuture;
+    if (inFlightRefresh != null) {
+      return inFlightRefresh;
+    }
+
+    final refreshFuture = _refreshCatalog();
+    _refreshFuture = refreshFuture;
+    try {
+      await refreshFuture;
+    } finally {
+      if (identical(_refreshFuture, refreshFuture)) {
+        _refreshFuture = null;
+      }
+    }
+  }
+
+  Future<void> _refreshCatalog() async {
     final generation = _refreshGeneration;
     final session = _authSessionReader();
     if (session == null) {
@@ -193,25 +227,46 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   Future<void> handleExplicitSignOut() async {
-    _refreshGeneration += 1;
-    final context = _state.context ?? await _readCurrentContext();
+    _invalidateRefreshWork();
+    _stopRefreshScheduler();
+    final context = await _readCachedContextForSignOut();
+    _setState(const CatalogSnapshotState.initial());
     if (context != null) {
       await _store.deleteCatalog(
         userId: context.userId,
         organizationId: context.organizationId,
       );
     }
-
-    _setState(const CatalogSnapshotState.initial());
   }
 
-  Future<ActiveCatalogContext?> _readCurrentContext() async {
+  void handleSessionExpired() {
+    _invalidateRefreshWork();
+    _stopRefreshScheduler();
+    _setState(
+      const CatalogSnapshotState.initial().copyWith(
+        sessionStatus: CatalogSessionStatus.expired,
+      ),
+    );
+  }
+
+  void handleSessionAvailable() {
+    _updateRefreshScheduler();
+  }
+
+  Future<ActiveCatalogContext?> _readCachedContextForSignOut() async {
+    final context = _state.context;
+    if (context != null) {
+      return context;
+    }
+
     final session = _authSessionReader();
     if (session == null) {
       return null;
     }
 
-    final organizationId = await _resolveOrganizationId(session.userId);
+    final organizationId = await _store.readLatestCachedOrganizationId(
+      userId: session.userId,
+    );
     if (organizationId == null) {
       return null;
     }
@@ -277,10 +332,61 @@ class SongCatalogController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _invalidateRefreshWork() {
+    _refreshGeneration += 1;
+    _refreshFuture = null;
+  }
+
+  void _handleForegroundChange(bool isForeground) {
+    if (!isForeground) {
+      _stopRefreshScheduler();
+      return;
+    }
+
+    _updateRefreshScheduler();
+  }
+
+  void _updateRefreshScheduler() {
+    if (_disposed) {
+      return;
+    }
+
+    final session = _authSessionReader();
+    final shouldRun = session != null && _foregroundState.isForeground;
+    if (!shouldRun) {
+      _stopRefreshScheduler();
+      return;
+    }
+
+    _refreshTimer ??= Timer.periodic(_refreshInterval, (_) {
+      if (_authSessionReader() == null || !_foregroundState.isForeground) {
+        _stopRefreshScheduler();
+        return;
+      }
+
+      unawaited(refreshCatalog());
+    });
+  }
+
+  void _stopRefreshScheduler() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _refreshGeneration += 1;
+    _stopRefreshScheduler();
+    unawaited(_foregroundSubscription?.cancel());
     super.dispose();
   }
+}
+
+class _AlwaysForegroundState implements AppForegroundState {
+  @override
+  bool get isForeground => true;
+
+  @override
+  Stream<bool> watchForeground() => const Stream<bool>.empty();
 }

@@ -7,12 +7,18 @@ import 'package:go_router/go_router.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyrica_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyrica_app/src/domain/song/song_repository.dart';
+import 'package:lyrica_app/src/domain/song/song_source.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
+import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
@@ -23,6 +29,7 @@ void main() {
     List<SongSummary> songs = const [],
     Completer<List<SongSummary>>? loadingCompleter,
     Future<List<SongSummary>> Function()? listSongs,
+    SongCatalogController? catalogController,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
       connectionStatus: CatalogConnectionStatus.online,
@@ -50,6 +57,10 @@ void main() {
       overrides: [
         appAuthControllerProvider.overrideWithValue(authController),
         appAuthListenableProvider.overrideWithValue(authController),
+        if (catalogController != null)
+          songCatalogControllerProvider.overrideWith(
+            (ref) => catalogController,
+          ),
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         songLibraryListProvider.overrideWith((ref) {
           if (listSongs != null) {
@@ -192,6 +203,92 @@ void main() {
     );
   });
 
+  testWidgets('shows a visible refresh action alongside sign out', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip(AppStrings.songCatalogRefreshAction), findsOneWidget);
+    expect(find.text(AppStrings.signOutAction), findsOneWidget);
+  });
+
+  testWidgets('tapping the refresh action triggers one catalog refresh', (
+    tester,
+  ) async {
+    final database = SongCatalogDatabase.inMemory();
+    final store = DriftSongCatalogStore(database);
+    final remoteRepository = _CountingSongRepository();
+    final controller = SongCatalogController(
+      store: store,
+      remoteRepository: remoteRepository,
+      authSessionReader: () =>
+          const AppAuthSession(userId: 'user-1', email: 'demo@lyrica.local'),
+      organizationReader: () async => 'org-1',
+      sessionVerifier: () async => CatalogSessionStatus.verified,
+      foregroundState: _StaticForegroundState(isForeground: false),
+    );
+    addTearDown(database.close);
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        catalogController: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip(AppStrings.songCatalogRefreshAction));
+    await tester.pumpAndSettle();
+
+    expect(remoteRepository.listSongsCalls, 1);
+  });
+
+  testWidgets('disables the refresh action while a refresh is in progress', (
+    tester,
+  ) async {
+    final database = SongCatalogDatabase.inMemory();
+    final store = DriftSongCatalogStore(database);
+    final remoteRepository = _CountingSongRepository();
+    final controller = SongCatalogController(
+      store: store,
+      remoteRepository: remoteRepository,
+      authSessionReader: () =>
+          const AppAuthSession(userId: 'user-1', email: 'demo@lyrica.local'),
+      organizationReader: () async => 'org-1',
+      sessionVerifier: () async => CatalogSessionStatus.verified,
+      foregroundState: _StaticForegroundState(isForeground: false),
+    );
+    addTearDown(database.close);
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        catalogController: controller,
+        catalogState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.refreshing,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final refreshButton = tester.widget<IconButton>(find.byType(IconButton));
+    expect(refreshButton.onPressed, isNull);
+
+    await tester.tap(find.byTooltip(AppStrings.songCatalogRefreshAction));
+    await tester.pumpAndSettle();
+
+    expect(remoteRepository.listSongsCalls, 0);
+  });
+
   testWidgets('shows a persistent refreshing status surface', (tester) async {
     await tester.pumpWidget(
       buildApp(
@@ -304,4 +401,29 @@ class _TestAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _CountingSongRepository implements SongRepository {
+  int listSongsCalls = 0;
+
+  @override
+  Future<SongSource> getSongSource(String id) async {
+    return SongSource(id: id, source: '{title: $id}');
+  }
+
+  @override
+  Future<List<SongSummary>> listSongs() async {
+    listSongsCalls += 1;
+    return const [SongSummary(id: 'song-1', title: 'Refreshed Song')];
+  }
+}
+
+class _StaticForegroundState implements AppForegroundState {
+  const _StaticForegroundState({required this.isForeground});
+
+  @override
+  final bool isForeground;
+
+  @override
+  Stream<bool> watchForeground() => const Stream<bool>.empty();
 }

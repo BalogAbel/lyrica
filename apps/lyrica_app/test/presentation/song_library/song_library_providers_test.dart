@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
@@ -219,6 +223,124 @@ void main() {
       expect(listCalls, 2);
     },
   );
+
+  test(
+    'disposing the signed-in song catalog provider stops periodic refresh polling',
+    () {
+      fakeAsync((async) {
+        final authController = AppAuthController(_SignedInAuthRepository());
+        final database = SongCatalogDatabase.inMemory();
+        final store = DriftSongCatalogStore(database);
+        final remoteRepository = _CountingSongRepository();
+        final foregroundState = _TestAppForegroundState();
+
+        unawaited(authController.restoreSession());
+        async.flushMicrotasks();
+
+        final container = ProviderContainer(
+          overrides: [
+            appAuthControllerProvider.overrideWithValue(authController),
+            appAuthListenableProvider.overrideWithValue(authController),
+            songCatalogDatabaseProvider.overrideWithValue(database),
+            songCatalogStoreProvider.overrideWithValue(store),
+            supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+            activeOrganizationReaderProvider.overrideWithValue(
+              () async => 'org-1',
+            ),
+            catalogSessionVerifierProvider.overrideWithValue(
+              () async => CatalogSessionStatus.verified,
+            ),
+            appForegroundStateProvider.overrideWithValue(foregroundState),
+          ],
+        );
+        addTearDown(container.dispose);
+        addTearDown(authController.dispose);
+        addTearDown(database.close);
+
+        final subscription = container.listen(
+          catalogSnapshotStateProvider,
+          (previous, next) {},
+          fireImmediately: true,
+        );
+        async.flushMicrotasks();
+
+        async.elapse(const Duration(minutes: 5));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, greaterThanOrEqualTo(2));
+
+        subscription.close();
+        unawaited(container.pump());
+        async.flushMicrotasks();
+
+        final callsAfterDispose = remoteRepository.listSongsCalls;
+        async.elapse(const Duration(minutes: 5));
+        async.flushMicrotasks();
+        expect(remoteRepository.listSongsCalls, callsAfterDispose);
+      });
+    },
+  );
+
+  test(
+    'auth-driven sign-out while the provider stays mounted clears catalog access and cache',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      final database = SongCatalogDatabase.inMemory();
+      final store = DriftSongCatalogStore(database);
+      final remoteRepository = SupabaseSongRepository.testing(
+        listSongsRows: () async => [
+          {'id': 'song-1', 'title': 'Egy út'},
+        ],
+        getSongRow: (id) async => {
+          'id': id,
+          'chordpro_source': '{title:Egy út}\n',
+        },
+      );
+
+      await authController.restoreSession();
+
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthListenableProvider.overrideWithValue(authController),
+          songCatalogDatabaseProvider.overrideWithValue(database),
+          songCatalogStoreProvider.overrideWithValue(store),
+          supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+          activeOrganizationReaderProvider.overrideWithValue(
+            () async => 'org-1',
+          ),
+          catalogSessionVerifierProvider.overrideWithValue(
+            () async => CatalogSessionStatus.verified,
+          ),
+          appForegroundStateProvider.overrideWithValue(
+            _TestAppForegroundState(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(authController.dispose);
+      addTearDown(database.close);
+
+      await container.read(songCatalogControllerProvider).refreshCatalog();
+      expect(
+        container.read(catalogSnapshotStateProvider).hasCachedCatalog,
+        isTrue,
+      );
+
+      await authController.signOut();
+      await container.pump();
+
+      final state = container.read(catalogSnapshotStateProvider);
+      expect(state.context, isNull);
+      expect(state.hasCachedCatalog, isFalse);
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    },
+  );
 }
 
 class _StubSongRepository implements SongCatalogReadRepository {
@@ -262,6 +384,27 @@ class _RecordingSongLibraryService extends SongLibraryService {
   @override
   Future<List<SongSummary>> listSongs({required ActiveCatalogContext context}) {
     return listSongsImpl(context: context);
+  }
+}
+
+class _CountingSongRepository extends SupabaseSongRepository {
+  _CountingSongRepository()
+    : super.testing(
+        listSongsRows: () async => [
+          {'id': 'song-1', 'title': 'Egy út'},
+        ],
+        getSongRow: (id) async => {
+          'id': id,
+          'chordpro_source': '{title:Egy út}\n',
+        },
+      );
+
+  int listSongsCalls = 0;
+
+  @override
+  Future<List<SongSummary>> listSongs() async {
+    listSongsCalls += 1;
+    return super.listSongs();
   }
 }
 
@@ -318,4 +461,23 @@ class _SignedOutAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _TestAppForegroundState implements AppForegroundState {
+  _TestAppForegroundState({bool isForeground = true})
+    : _isForeground = isForeground;
+
+  final StreamController<bool> _controller = StreamController<bool>.broadcast();
+  bool _isForeground;
+
+  @override
+  bool get isForeground => _isForeground;
+
+  @override
+  Stream<bool> watchForeground() => _controller.stream;
+
+  void setForeground(bool value) {
+    _isForeground = value;
+    _controller.add(value);
+  }
 }

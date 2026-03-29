@@ -4,12 +4,15 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyrica_app/src/application/auth/app_auth_state.dart';
 import 'package:lyrica_app/src/application/auth/auth_repository.dart';
 import 'package:lyrica_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyrica_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyrica_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyrica_app/src/application/sync/sync_overview.dart';
+import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyrica_app/src/infrastructure/auth/supabase_auth_repository.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyrica_app/src/offline/local_store_contract.dart';
@@ -105,8 +108,14 @@ final catalogSessionVerifierProvider = Provider<CatalogSessionVerifier>((ref) {
   };
 });
 
+final appForegroundStateProvider = Provider<AppForegroundState>((ref) {
+  final foregroundState = WidgetsBindingAppForegroundState();
+  ref.onDispose(foregroundState.dispose);
+  return foregroundState;
+});
+
 final songCatalogControllerProvider =
-    ChangeNotifierProvider<SongCatalogController>((ref) {
+    ChangeNotifierProvider.autoDispose<SongCatalogController>((ref) {
       final authController = ref.watch(appAuthControllerProvider);
       final controller = SongCatalogController(
         store: ref.watch(songCatalogStoreProvider),
@@ -114,15 +123,43 @@ final songCatalogControllerProvider =
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
+        foregroundState: ref.watch(appForegroundStateProvider),
       );
+
+      void handleAuthStateChanged(AppAuthState authState) {
+        switch (authState.status) {
+          case AppAuthStatus.initializing:
+            return;
+          case AppAuthStatus.signedOut:
+            unawaited(controller.handleExplicitSignOut());
+            return;
+          case AppAuthStatus.sessionExpired:
+            controller.handleSessionExpired();
+            return;
+          case AppAuthStatus.signedIn:
+            controller.handleSessionAvailable();
+            return;
+        }
+      }
+
+      void authListener() {
+        handleAuthStateChanged(authController.state);
+      }
+
+      authController.addListener(authListener);
+      ref.onDispose(() => authController.removeListener(authListener));
+      handleAuthStateChanged(authController.state);
       unawaited(controller.refreshCatalog());
       return controller;
     });
 
-final activeCatalogContextProvider = Provider<ActiveCatalogContext?>((ref) {
-  return ref.watch(songCatalogControllerProvider).state.context;
-});
+final activeCatalogContextProvider =
+    Provider.autoDispose<ActiveCatalogContext?>((ref) {
+      return ref.watch(songCatalogControllerProvider).state.context;
+    });
 
-final catalogSnapshotStateProvider = Provider<CatalogSnapshotState>((ref) {
-  return ref.watch(songCatalogControllerProvider).state;
-});
+final catalogSnapshotStateProvider = Provider.autoDispose<CatalogSnapshotState>(
+  (ref) {
+    return ref.watch(songCatalogControllerProvider).state;
+  },
+);
