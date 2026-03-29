@@ -341,6 +341,80 @@ void main() {
       );
     },
   );
+
+  test(
+    'auth-driven sign-out clears cached access even before the controller resolves its context',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      final database = SongCatalogDatabase.inMemory();
+      final store = DriftSongCatalogStore(database);
+      final delayedOrganization = Completer<String?>();
+      final remoteRepository = SupabaseSongRepository.testing(
+        listSongsRows: () async => const [],
+        getSongRow: (id) async => null,
+      );
+
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 3, 29, 12),
+      );
+
+      await authController.restoreSession();
+
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthListenableProvider.overrideWithValue(authController),
+          songCatalogDatabaseProvider.overrideWithValue(database),
+          songCatalogStoreProvider.overrideWithValue(store),
+          supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+          activeOrganizationReaderProvider.overrideWithValue(
+            () => delayedOrganization.future,
+          ),
+          catalogSessionVerifierProvider.overrideWithValue(
+            () async => CatalogSessionStatus.verified,
+          ),
+          appForegroundStateProvider.overrideWithValue(
+            _TestAppForegroundState(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(authController.dispose);
+      addTearDown(database.close);
+
+      final subscription = container.listen(
+        catalogSnapshotStateProvider,
+        (previous, next) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      await authController.signOut();
+      await container.pump();
+
+      expect(container.read(catalogSnapshotStateProvider).context, isNull);
+      expect(
+        container.read(catalogSnapshotStateProvider).hasCachedCatalog,
+        isFalse,
+      );
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+
+      delayedOrganization.complete('org-1');
+      await container.pump();
+    },
+  );
 }
 
 class _StubSongRepository implements SongCatalogReadRepository {

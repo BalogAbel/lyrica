@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  flutter:
+  verify:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,11 +21,18 @@ jobs:
           flutter-version: 3.38.5
           cache: true
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tooling/supabase/package-lock.json
+
       - name: Install dependencies
         run: ./scripts/bootstrap.sh
 
-      - name: Verify Flutter foundation
-        run: ./scripts/verify.sh --skip-migrations
+      - name: Verify repository gate
+        run: ./scripts/verify.sh
 
   migrations:
     runs-on: ubuntu-latest

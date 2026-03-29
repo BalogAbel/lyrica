@@ -50,10 +50,12 @@ Backend policy helpers are responsible for:
 1. UI reads from local Drift-backed projections.
 2. For the current authenticated reader slice, UI reads from one active cached full song-catalog snapshot owned by the current authenticated user for the currently active organization.
 3. A catalog controller verifies session state when possible and refreshes the full visible catalog from Supabase.
-4. Only a completed full summary-plus-source refresh replaces the active local snapshot.
-5. Supabase applies RLS and function-based authorization on every online refresh.
-6. Future write slices will record local mutations in the sync queue with version metadata.
-7. MVP conflict handling for writes remains manual and explicit.
+4. The signed-in song-library subtree owns the catalog controller lifetime through Riverpod `autoDispose`; when that subtree unmounts, periodic polling stops with it.
+5. While the app is foregrounded and the signed-in song-library subtree remains mounted, the controller polls on a fixed 5-minute cadence and manual refresh uses the same guarded refresh path.
+6. Only a completed full summary-plus-source refresh replaces the active local snapshot.
+7. Supabase applies RLS and function-based authorization on every online refresh.
+8. Future write slices will record local mutations in the sync queue with version metadata.
+9. MVP conflict handling for writes remains manual and explicit.
 
 The repository currently documents the broader local-first flow and already ships the first executable read-side subset.
 For the current song-reader slice, UI reads song summaries and raw ChordPro source from the active local snapshot and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS because Supabase remains the session-verification and refresh boundary.

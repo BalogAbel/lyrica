@@ -506,7 +506,7 @@ void main() {
     });
 
     test(
-      'a new refresh can start immediately after explicit sign-out invalidates an in-flight refresh',
+      'a stale in-flight refresh still prevents overlapping refresh work after explicit sign-out',
       () {
         fakeAsync((async) {
           final delayedRepository = _MultiPhaseSongRepository();
@@ -541,9 +541,15 @@ void main() {
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
 
-          expect(delayedRepository.listSongsCalls, 2);
+          expect(delayedRepository.listSongsCalls, 1);
 
           delayedRepository.completeRequest(0);
+          async.flushMicrotasks();
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          expect(delayedRepository.listSongsCalls, 2);
+
           delayedRepository.completeRequest(1);
           async.flushMicrotasks();
         });

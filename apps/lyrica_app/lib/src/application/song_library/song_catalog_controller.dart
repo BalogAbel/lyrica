@@ -53,6 +53,7 @@ class SongCatalogController extends ChangeNotifier {
   CatalogSnapshotState _state;
   int _refreshGeneration = 0;
   bool _disposed = false;
+  String? _lastAuthenticatedUserId;
   Timer? _refreshTimer;
   StreamSubscription<bool>? _foregroundSubscription;
   Future<void>? _refreshFuture;
@@ -88,6 +89,7 @@ class SongCatalogController extends ChangeNotifier {
       );
       return;
     }
+    _rememberAuthenticatedUser(session.userId);
 
     String? organizationId;
     try {
@@ -250,6 +252,10 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   void handleSessionAvailable() {
+    final session = _authSessionReader();
+    if (session != null) {
+      _rememberAuthenticatedUser(session.userId);
+    }
     _updateRefreshScheduler();
   }
 
@@ -260,21 +266,19 @@ class SongCatalogController extends ChangeNotifier {
     }
 
     final session = _authSessionReader();
-    if (session == null) {
+    final userId = session?.userId ?? _lastAuthenticatedUserId;
+    if (userId == null) {
       return null;
     }
 
     final organizationId = await _store.readLatestCachedOrganizationId(
-      userId: session.userId,
+      userId: userId,
     );
     if (organizationId == null) {
       return null;
     }
 
-    return ActiveCatalogContext(
-      userId: session.userId,
-      organizationId: organizationId,
-    );
+    return ActiveCatalogContext(userId: userId, organizationId: organizationId);
   }
 
   Future<bool> _hasCachedCatalog(ActiveCatalogContext context) async {
@@ -334,7 +338,10 @@ class SongCatalogController extends ChangeNotifier {
 
   void _invalidateRefreshWork() {
     _refreshGeneration += 1;
-    _refreshFuture = null;
+  }
+
+  void _rememberAuthenticatedUser(String userId) {
+    _lastAuthenticatedUserId = userId;
   }
 
   void _handleForegroundChange(bool isForeground) {

@@ -175,7 +175,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/manual-validation/print-checklist.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL` and `SUPABASE_ANON_KEY` values. The local-first integration slot proves persistent cache reopen behavior after the local catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
+`./scripts/verify.sh` runs the Flutter quality gates and migration linting through the repository wrapper. Without `--skip-migrations`, it also starts or reuses local Supabase, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs both the authenticated backend song-reading integration test and the local-first cached authenticated song-reading integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env`. Those integration gates now prove manual refresh, periodic refresh, and refresh-failure cache preservation in addition to persistent cache reopen behavior. The local-first integration slot does not replace native manual offline-relaunch validation.
 
 For manual validation of the local-first reader flow:
 
@@ -195,6 +195,7 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
 - The current authenticated slice reads the active song catalog from a local Drift-backed cache for the current authenticated user and active organization. Supabase is used to verify session state and refresh the full visible catalog.
+- While the signed-in song library subtree is mounted and the app stays foregrounded, the catalog controller polls every five minutes and uses the same guarded full-refresh path as the manual song-list refresh action.
 - On web, that cache runs through Drift wasm and the repository-versioned `apps/lyrica_app/web/sqlite3.wasm` runtime asset.
 - Hard offline authenticated relaunch is a native-first guarantee for this slice. The browser path keeps a best-effort local cache, but web session persistence is not treated as equivalent to native offline relaunch.
 - ChordPro parsing and reader projection stay inside Flutter even when the source comes from Supabase.

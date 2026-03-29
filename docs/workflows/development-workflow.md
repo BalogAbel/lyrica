@@ -6,7 +6,7 @@
 2. Update or create a design/spec document in `docs/specs/` when the change is material.
 3. Write an implementation plan in `docs/plans/`.
 4. Implement with tests first where behavior is introduced.
-5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading or local Supabase workflow behavior changes.
+5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
 6. Update documentation and ADRs if the change affects durable knowledge.
 7. Merge only with green CI.
 
@@ -42,6 +42,7 @@ For the local-first authenticated song-reader slice:
 
 The manual-validation launcher caches only the last known local Supabase status env (`API_URL` and `ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
 Use `./scripts/verify.sh` to prove persistent cache reopen behavior in automation, then use the manual-validation scripts on native Flutter targets for true offline-relaunch acceptance. Use browser-based offline relaunch checks as best-effort diagnostics only.
+For the authenticated song-reader slice, pull requests are expected to pass the full `./scripts/verify.sh` gate in CI, including the local Supabase-backed refresh integrations, rather than only the app-only `--skip-migrations` variant.
 For Android emulators, the launch scripts rewrite local host loopback Supabase URLs (`127.0.0.1` or `localhost`) to `10.0.2.2` before invoking Flutter so the app reaches the host machine's backend.
 For ADB-managed Android devices, including wireless Flutter targets exposed as `adb-..._adb-tls-connect._tcp` and plain Android serials, the launch scripts run `adb reverse` for the Supabase port and keep the loopback URL unchanged so the app can reach the host machine through the reversed tunnel. This requires Android platform-tools `adb`, or an explicit `ADB_BIN` override.
 

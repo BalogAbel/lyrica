@@ -24,6 +24,7 @@ if [[ "${1:-}" == "status" && "${2:-}" == "-o" && "${3:-}" == "env" ]]; then
   cat <<ENV
 API_URL=http://127.0.0.1:54321
 ANON_KEY=test-anon-key
+SERVICE_ROLE_KEY=test-service-role-key
 ENV
   exit 0
 fi
@@ -103,8 +104,8 @@ expected = [
     "provision",
     "provision-test",
     "supabase:status -o env",
-    "flutter:test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
-    "flutter:test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "flutter:test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
+    "flutter:test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
     "manual-validation-test",
 ]
 

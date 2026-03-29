@@ -30,8 +30,8 @@ eval "$provision_demo_user_test_script"
 status_env="$("$supabase_script" status -o env)"
 eval "$status_env"
 
-if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" ]]; then
-  echo "Local Supabase did not return API_URL and ANON_KEY." >&2
+if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" || -z "${SERVICE_ROLE_KEY:-}" ]]; then
+  echo "Local Supabase did not return API_URL, ANON_KEY, and SERVICE_ROLE_KEY." >&2
   exit 1
 fi
 
@@ -39,14 +39,16 @@ fi
   cd apps/lyrica_app &&
     "$flutter_bin" test test/integration/authenticated_song_reader_flow_test.dart \
       --dart-define=SUPABASE_URL="$API_URL" \
-      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
+      --dart-define=SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
 )
 
 (
   cd apps/lyrica_app &&
     "$flutter_bin" test test/integration/local_first_authenticated_song_reader_flow_test.dart \
       --dart-define=SUPABASE_URL="$API_URL" \
-      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
+      --dart-define=SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
 )
 
 "$manual_validation_scripts_test_script"
