@@ -4,7 +4,7 @@
 
 **Goal:** Make Supabase-backed repository tests resilient to CLI status and update text around `db query` JSON output.
 
-**Architecture:** Add one small repository helper that extracts the first valid JSON object from Supabase CLI stdout, then reuse it in the affected shell regression tests. This keeps the CLI wrapper unchanged while hardening the test consumers that currently assume pristine JSON.
+**Architecture:** Add one small repository helper that extracts the first valid JSON value from Supabase CLI stdout, then reuse it in the affected shell regression tests. This keeps the CLI wrapper unchanged while hardening the test consumers that currently assume pristine JSON and a single envelope shape.
 
 **Tech Stack:** Bash, Python 3, Supabase CLI
 
@@ -34,11 +34,11 @@ Expected: FAIL before the helper exists.
 
 - [ ] **Step 1: Add the minimal helper**
 
-Implement a Python helper that reads stdin, finds the first valid JSON object, and writes normalized JSON to stdout.
+Implement a Python helper that reads stdin, finds the first valid JSON value, and writes normalized JSON to stdout.
 
 - [ ] **Step 2: Switch the affected tests to the helper**
 
-Update the Supabase-backed regression tests that parse `db query` stdout so they feed the raw CLI output through the helper before asserting on `rows`.
+Update the Supabase-backed regression tests that parse `db query` stdout so they feed the raw CLI output through the helper before asserting on rows from either an object envelope or a top-level array.
 
 - [ ] **Step 3: Run the focused regression test to verify it passes**
 

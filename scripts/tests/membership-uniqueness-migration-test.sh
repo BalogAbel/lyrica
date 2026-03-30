@@ -38,7 +38,7 @@ payload = json.loads(
         text=True,
     )
 )
-rows = payload.get("rows", [])
+rows = payload if isinstance(payload, list) else payload.get("rows", [])
 if len(rows) != 1:
     raise SystemExit(f"unexpected rows: {rows!r}")
 raw_id = rows[0]["id"]
