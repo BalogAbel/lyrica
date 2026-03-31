@@ -48,6 +48,8 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 5. UX should keep a complex domain operationally simple.
 6. TDD is required for behavior changes and new implementation work.
 7. Documentation updates are part of the definition of done.
+8. Work must start on a branch; `main` is integration-only and changes return through pull requests.
+9. Branch names follow the Conventional Branch pattern `<type>/<description>` with lowercase, concise, hyphenated descriptions.
 
 ## Key Documents
 
@@ -70,9 +72,10 @@ The expected engineering loop is:
 
 1. Capture or update the spec in `docs/specs/`.
 2. Write or update the implementation plan in `docs/plans/`.
-3. Implement via TDD.
-4. Run verification locally and in CI.
-5. Update documentation before merge.
+3. Create or switch to a non-`main` branch for the slice, named with the Conventional Branch pattern such as `feat/local-cache-refresh` or `chore/update-workflows`.
+4. Implement via TDD.
+5. Run verification locally and in CI.
+6. Update documentation before merge and land the change through a pull request.
 
 See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.md](AGENTS.md) for operational detail.
 
