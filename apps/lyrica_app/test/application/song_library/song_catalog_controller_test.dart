@@ -107,6 +107,42 @@ void main() {
     });
 
     test(
+      'treats a backend unavailable refresh failure as offline while keeping the cached catalog readable',
+      () async {
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          ),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        remoteRepository.listSongsError = const PostgrestException(
+          message: 'Service unavailable',
+          code: '503',
+          details: 'upstream connect error',
+        );
+
+        await controller.refreshCatalog();
+
+        expect(controller.state.refreshStatus, CatalogRefreshStatus.failed);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(
+          controller.state.sessionStatus,
+          CatalogSessionStatus.unverifiableDueToConnectivity,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
       'cached summaries remain available when connectivity is lost',
       () async {
         await store.replaceActiveSnapshot(
@@ -175,6 +211,49 @@ void main() {
           ),
           organizationReader: () async =>
               throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
+      'falls back to the cached organization context when organization resolution returns backend unavailable',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyrica.local',
+          ),
+          organizationReader: () async => throw const PostgrestException(
+            message: 'Service unavailable',
+            code: '503',
+            details: 'upstream connect error',
+          ),
           sessionVerifier: () async =>
               CatalogSessionStatus.unverifiableDueToConnectivity,
         );

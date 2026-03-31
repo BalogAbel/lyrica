@@ -19,6 +19,7 @@ import 'package:lyrica_app/src/offline/local_store_contract.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyrica_app/src/offline/sync_policy.dart';
+import 'package:lyrica_app/src/shared/connectivity_failure.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:lyrica_app/src/presentation/song_library/song_library_providers.dart';
@@ -98,12 +99,23 @@ final catalogSessionVerifierProvider = Provider<CatalogSessionVerifier>((ref) {
     try {
       await client.auth.getUser();
       return CatalogSessionStatus.verified;
-    } on AuthException {
-      return CatalogSessionStatus.expired;
-    } on SocketException {
-      return CatalogSessionStatus.unverifiableDueToConnectivity;
-    } on TimeoutException {
-      return CatalogSessionStatus.unverifiableDueToConnectivity;
+    } on AuthException catch (error) {
+      return isConnectivityFailure(error)
+          ? CatalogSessionStatus.unverifiableDueToConnectivity
+          : CatalogSessionStatus.expired;
+    } on SocketException catch (error) {
+      return isConnectivityFailure(error)
+          ? CatalogSessionStatus.unverifiableDueToConnectivity
+          : CatalogSessionStatus.expired;
+    } on TimeoutException catch (error) {
+      return isConnectivityFailure(error)
+          ? CatalogSessionStatus.unverifiableDueToConnectivity
+          : CatalogSessionStatus.expired;
+    } on Object catch (error) {
+      if (isConnectivityFailure(error)) {
+        return CatalogSessionStatus.unverifiableDueToConnectivity;
+      }
+      rethrow;
     }
   };
 });

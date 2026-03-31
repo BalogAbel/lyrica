@@ -11,6 +11,7 @@ import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.d
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyrica_app/src/domain/song/song_repository.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyrica_app/src/shared/connectivity_failure.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef AppAuthSessionReader = AppAuthSession? Function();
@@ -301,7 +302,7 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   bool _isConnectivityFailure(Object error) {
-    return error is SocketException || error is TimeoutException;
+    return isConnectivityFailure(error);
   }
 
   bool _isAuthorizationFailure(Object error) {
