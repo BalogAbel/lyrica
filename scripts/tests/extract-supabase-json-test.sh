@@ -18,3 +18,20 @@ rows = payload.get("rows", [])
 if len(rows) != 1 or rows[0]["membership_count"] != "1":
     raise SystemExit(f"unexpected payload: {payload!r}")
 PY
+
+raw_array_output=$'Connecting to local database...\n[\n  {\n    "membership_count": 1\n  }\n]\nA new version of Supabase CLI is available: v2.84.2 (currently installed v2.83.0)\n'
+
+parsed_array_json="$(
+  printf '%s' "$raw_array_output" | python3 "$repo_root/scripts/extract_supabase_json.py"
+)"
+
+PARSED_ARRAY_JSON="$parsed_array_json" python3 - <<'PY'
+import json
+import os
+
+payload = json.loads(os.environ["PARSED_ARRAY_JSON"])
+if not isinstance(payload, list):
+    raise SystemExit(f"expected list payload, got: {payload!r}")
+if len(payload) != 1 or payload[0]["membership_count"] != 1:
+    raise SystemExit(f"unexpected array payload: {payload!r}")
+PY
