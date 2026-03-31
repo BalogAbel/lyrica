@@ -18,6 +18,8 @@ This repository uses AI-assisted development, but the repository itself remains 
 10. Do not reintroduce a root-level Node setup solely for Supabase CLI management.
 11. Prefer repository wrapper scripts such as `./scripts/supabase.sh` over direct CLI invocation in scripts, docs, and CI.
 12. Do not keep critical workflow knowledge only inside tooling folders; mirror durable rules in repository docs.
+13. Do not develop directly on `main`; start every change from a branch and integrate back through a pull request.
+14. Name branches using the Conventional Branch pattern `<type>/<description>` such as `feat/song-library-refresh`, `fix/offline-relaunch`, or `chore/update-docs`.
 
 ## Documentation Duties
 
@@ -47,4 +49,5 @@ Update these files whenever their subject changes:
 3. Implement with tests first where behavior is introduced or changed.
 4. Verify locally.
 5. Update documentation.
-6. Merge only with green CI.
+6. Open or update a pull request from your branch; do not push implementation work directly to `main`.
+7. Merge only with green CI.

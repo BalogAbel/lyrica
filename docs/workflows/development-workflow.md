@@ -5,10 +5,12 @@
 1. Capture the requirement or decision in repository docs.
 2. Update or create a design/spec document in `docs/specs/` when the change is material.
 3. Write an implementation plan in `docs/plans/`.
-4. Implement with tests first where behavior is introduced.
-5. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
-6. Update documentation and ADRs if the change affects durable knowledge.
-7. Merge only with green CI.
+4. Create or switch to a branch before making implementation changes; do not develop directly on `main`.
+   Branch names must follow the Conventional Branch pattern `<type>/<description>`, for example `feat/song-reader-search`, `fix/catalog-refresh-timeout`, or `chore/update-docs`.
+5. Implement with tests first where behavior is introduced.
+6. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
+7. Update documentation and ADRs if the change affects durable knowledge.
+8. Open or update a pull request from that branch; changes reach `main` only through PR merge with green CI.
 
 ## Spec And Plan Status Labels
 
@@ -73,6 +75,8 @@ For ADB-managed Android devices, including wireless Flutter targets exposed as `
 ## Commit Guidance
 
 - Keep commits meaningful and reviewable.
+- Keep active implementation work off `main`; branch first, then open a PR back to `main`.
+- Name working branches with the Conventional Branch pattern `<type>/<description>` and use lowercase, concise, hyphenated descriptions.
 - Pair schema changes with policy and documentation updates.
 - Pair architecture changes with ADRs.
 - Avoid tool-specific document locations for repository-critical knowledge.
