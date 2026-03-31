@@ -1,5 +1,7 @@
 # Mobile And Tablet Reader Navigation Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make song reader navigation behave naturally on Android and iOS by preserving a real list-to-reader back stack, adding a visible reader back affordance, and providing a safe fallback to the song list when the reader is opened directly with no poppable history.

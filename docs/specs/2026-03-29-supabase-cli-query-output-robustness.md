@@ -1,5 +1,7 @@
 # Supabase CLI Query Output Robustness
 
+> Status: Implemented
+
 ## Summary
 
 Harden the repository's Supabase-backed regression tests so they keep working when `supabase db query` writes human-oriented status or update notices around the JSON payload.

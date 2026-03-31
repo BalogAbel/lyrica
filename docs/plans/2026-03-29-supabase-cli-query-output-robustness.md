@@ -1,5 +1,7 @@
 # Supabase CLI Query Output Robustness Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Supabase-backed repository tests resilient to CLI status and update text around `db query` JSON output.

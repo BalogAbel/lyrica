@@ -1,5 +1,7 @@
 # Tablet-First ChordPro Song Reader Spec
 
+> Status: Implemented; partially superseded by `docs/specs/2026-03-23-executable-local-supabase-authenticated-song-reading.md`, `docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md`
+
 ## Goal
 
 Deliver the first real Lyrica product slice as a tablet-first song reading flow built on ChordPro, using an asset-backed mock catalog and a repository boundary instead of auth or a real backend.

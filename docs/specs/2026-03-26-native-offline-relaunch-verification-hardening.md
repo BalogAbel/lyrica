@@ -1,5 +1,7 @@
 # Native Offline Relaunch Verification Hardening Spec
 
+> Status: Implemented
+
 ## Goal
 
 Close the verification gap in the local-first authenticated song-reading slice by proving persistent local cache reopen behavior through a storage seam that survives controller and database re-creation, while keeping native-target manual validation as the acceptance path for true offline relaunch and avoiding device-boot automation in repository quality gates.

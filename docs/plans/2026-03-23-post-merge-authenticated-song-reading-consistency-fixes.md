@@ -1,5 +1,7 @@
 # Post-Merge Authenticated Song Reading Consistency Fixes Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the post-merge consistency issues in the authenticated local Supabase song-reading slice without widening scope or changing the intended architecture.

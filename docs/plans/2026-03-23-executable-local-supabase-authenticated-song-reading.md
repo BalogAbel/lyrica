@@ -1,5 +1,7 @@
 # Executable Local Supabase Authenticated Song Reading Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the repository-owned local Supabase path executable for authenticated song reading, then connect the Flutter app to it through auth bootstrap, centralized routing, and a Supabase-backed song repository while preserving the existing local parser and reader.

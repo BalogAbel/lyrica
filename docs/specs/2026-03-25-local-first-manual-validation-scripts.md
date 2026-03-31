@@ -1,5 +1,7 @@
 # Local-First Manual Validation Scripts Spec
 
+> Status: Implemented; partially superseded by `docs/specs/2026-03-26-native-offline-relaunch-verification-hardening.md`
+
 ## Goal
 
 Add repository-owned scripts for repeatable manual validation of the local-first authenticated song-reading slice so developers can reliably walk through online, offline, refresh-failed, and explicit sign-out scenarios without reconstructing the workflow from chat or memory.

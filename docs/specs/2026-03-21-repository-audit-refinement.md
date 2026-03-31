@@ -1,5 +1,7 @@
 # Repository Audit And Refinement Spec
 
+> Status: Implemented
+
 ## Goal
 
 Refine the bootstrapped repository into a trustworthy foundation by auditing structure, documentation, schema, Flutter boundaries, scripts, and CI without rebuilding the project.

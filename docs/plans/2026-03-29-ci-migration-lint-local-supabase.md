@@ -1,5 +1,7 @@
 # CI Migration Lint Local Supabase Bootstrap Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make migration lint reliable in CI and local usage by having the repository entrypoint start or reuse local Supabase before `db lint`.

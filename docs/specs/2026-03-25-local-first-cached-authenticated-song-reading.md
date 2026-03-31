@@ -1,5 +1,7 @@
 # Local-First Cached Authenticated Song Reading Spec
 
+> Status: Implemented; partially superseded by `docs/specs/2026-03-26-native-offline-relaunch-verification-hardening.md`, `docs/specs/2026-03-29-periodic-and-manual-song-catalog-refresh.md`
+
 ## Goal
 
 Deliver the first local-first authenticated song-reading slice for Lyrica by making the latest successfully fetched full visible song catalog available for offline reading while preserving the current authenticated backend boundary, app-local ChordPro parsing, and read-only scope.

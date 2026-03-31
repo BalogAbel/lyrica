@@ -1,5 +1,7 @@
 # Supabase Tooling Refactor
 
+> Status: Implemented
+
 ## Summary
 
 Refactor the repository so the Supabase CLI is managed from a dedicated tooling area under `tooling/supabase/` instead of relying on globally installed binaries or root-level Node setup.

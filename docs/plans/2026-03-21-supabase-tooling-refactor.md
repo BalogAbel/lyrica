@@ -1,5 +1,7 @@
 # Supabase Tooling Refactor Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move Supabase CLI management into `tooling/supabase`, route all repository usage through a wrapper script, and align CI and documentation with the new workflow.

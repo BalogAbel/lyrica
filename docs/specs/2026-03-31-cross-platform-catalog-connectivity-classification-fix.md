@@ -1,5 +1,7 @@
 # Cross-Platform Catalog Connectivity Classification Fix
 
+> Status: Implemented
+
 ## Goal
 
 Keep the authenticated local-first song catalog in a consistent offline-cached mode across all supported Flutter targets when the Supabase stack becomes unreachable or partially unavailable after a successful cache fill.

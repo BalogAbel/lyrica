@@ -1,5 +1,7 @@
 # Cross-Platform Catalog Connectivity Classification Fix Plan
 
+> Status: Implemented
+
 > **Goal:** Ensure local-first authenticated catalog behavior stays consistent across supported platforms when Supabase connectivity failures surface through different retryable exception shapes.
 
 ## Architecture

@@ -1,5 +1,7 @@
 # Repository Audit And Refinement Implementation Plan
 
+> Status: Implemented
+
 > Execute this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Audit the bootstrapped repository, remove noise, align code/docs/schema/CI, and leave a reliable foundation without rebuilding the project.

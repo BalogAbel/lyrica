@@ -1,5 +1,7 @@
 # Periodic And Manual Song Catalog Refresh Spec
 
+> Status: Implemented
+
 ## Goal
 
 Deliver a small but visible product improvement in the current authenticated local-first song-reading slice by allowing signed-in users to refresh the song catalog manually from the song list and by refreshing the catalog automatically at a fixed interval while the app is active.

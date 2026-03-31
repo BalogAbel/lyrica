@@ -1,5 +1,7 @@
 # Local-First Cached Authenticated Song Reading Implementation Plan
 
+> Status: Implemented; partially superseded by `docs/plans/2026-03-26-native-offline-relaunch-verification-hardening.md`, `docs/plans/2026-03-29-periodic-and-manual-song-catalog-refresh.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a local-first authenticated song-reading path that caches the latest full visible song catalog for the current authenticated user and active organization, keeps the current reader architecture intact, and guarantees offline authenticated relaunch from the active cached snapshot on native Flutter targets.

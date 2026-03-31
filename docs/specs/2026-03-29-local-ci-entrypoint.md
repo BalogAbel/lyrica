@@ -1,5 +1,7 @@
 # Local CI Entrypoint
 
+> Status: Implemented
+
 ## Summary
 
 Add a repository-owned local entrypoint that mirrors the GitHub Actions CI jobs so engineers can reproduce the same script ordering locally before pushing.

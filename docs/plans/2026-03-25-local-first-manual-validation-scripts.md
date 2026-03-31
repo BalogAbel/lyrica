@@ -1,5 +1,7 @@
 # Local-First Manual Validation Scripts Implementation Plan
 
+> Status: Implemented; partially superseded by `docs/plans/2026-03-26-native-offline-relaunch-verification-hardening.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add repository-owned scripts and docs for repeatable manual validation of the local-first authenticated song-reading slice.

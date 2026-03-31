@@ -20,6 +20,7 @@ Each step must leave an artifact in the repository when it changes durable proje
 - Do not rely on tool-local prompts as the only place a decision exists.
 - Do not rely on tool-named repository folders as the only durable record of product or architecture decisions.
 - If architecture, product scope, testing rules, or workflow changes, update the repository documents in the same change.
+- Keep a status note directly under every `docs/specs/` and `docs/plans/` title, and update it whenever a later repository document partially or fully supersedes that artifact.
 - Prefer small commits that preserve traceability between decisions and implementation.
 
 ## AI Session Expectations

@@ -10,6 +10,22 @@
 6. Update documentation and ADRs if the change affects durable knowledge.
 7. Merge only with green CI.
 
+## Spec And Plan Status Labels
+
+- Every file under `docs/specs/` and `docs/plans/` should keep a short status note directly under the title.
+- Use a small canonical vocabulary:
+  - `Status: Draft`
+  - `Status: In progress`
+  - `Status: Implemented`
+  - `Status: Abandoned`
+- If a later repository document changes an earlier document's effective meaning, append exactly one of:
+  - `; superseded by <repository path>`
+  - `; partially superseded by <repository path>[, <repository path> ...]`
+- Do not invent alternate relationship verbs such as `extended by`, `clarified by`, or `follow-up to` in the status line.
+- When a status line references a later document, always name the concrete repository path rather than a vague category like "later plans".
+- Update the status note in the same change whenever a slice is implemented, narrowed, abandoned, or superseded.
+- Treat specs and plans as historical decision records once implementation moves on; the status note is what separates historical slice docs from the current canonical truth in `README.md`, `docs/product/vision.md`, `docs/architecture/`, `docs/architecture/decisions/`, `docs/domain/`, `docs/testing/`, and `docs/workflows/`.
+
 ## Local Tooling
 
 - Install repository dependencies with `./scripts/bootstrap.sh`.

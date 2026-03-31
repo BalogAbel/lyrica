@@ -1,5 +1,7 @@
 # Tablet-First ChordPro Song Reader Implementation Plan
 
+> Status: Implemented; partially superseded by `docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md`, `docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first real Lyrica product slice as an asset-backed, tablet-first ChordPro song list and reader flow with parser diagnostics, view mode switching, semitone transposition, and shared font scaling.

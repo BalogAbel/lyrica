@@ -1,5 +1,7 @@
 # CI Migration Lint Local Supabase Bootstrap
 
+> Status: Implemented
+
 ## Summary
 
 Make the repository migration lint entrypoint self-sufficient by ensuring it starts or reuses the local Supabase stack before running lint. This keeps GitHub Actions and local developer usage aligned behind the same repository script.
