@@ -70,7 +70,7 @@ void main() {
       await client.auth.signOut();
       await client.auth.signInWithPassword(
         email: 'demo@lyron.local',
-        password: 'LyricaDemo123!',
+        password: 'LyronDemo123!',
       );
       final userId = client.auth.currentSession!.user.id;
 
@@ -155,7 +155,7 @@ void main() {
       await client.auth.signOut();
       await client.auth.signInWithPassword(
         email: 'demo@lyron.local',
-        password: 'LyricaDemo123!',
+        password: 'LyronDemo123!',
       );
       final userId = client.auth.currentSession!.user.id;
 
@@ -262,7 +262,7 @@ void main() {
       await client.auth.signOut();
       await client.auth.signInWithPassword(
         email: 'demo@lyron.local',
-        password: 'LyricaDemo123!',
+        password: 'LyronDemo123!',
       );
       final userId = client.auth.currentSession!.user.id;
       final remoteRepository = _MutableSongRepository(
