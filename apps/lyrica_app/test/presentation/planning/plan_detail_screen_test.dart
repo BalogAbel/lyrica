@@ -74,14 +74,14 @@ void main() {
                 SessionItemSummary(
                   id: 'item-1',
                   position: 10,
-                  song: SongSummary(id: 'song-1', title: 'A forrásnál'),
+                  song: SongSummary(id: 'song-1', title: 'Zulu Song'),
                 ),
                 SessionItemSummary(
                   id: 'item-2',
                   position: 20,
                   song: SongSummary(
                     id: 'song-2',
-                    title: 'A mi Istenünk (Leborulok előtted)',
+                    title: 'Alpha Song',
                   ),
                 ),
               ],
@@ -107,12 +107,17 @@ void main() {
     expect(find.text('Team Rehearsal'), findsOneWidget);
     expect(find.text('Warm-Up'), findsOneWidget);
     expect(find.text('Run-Through'), findsOneWidget);
-    expect(find.textContaining('A forrásnál'), findsOneWidget);
-    expect(
-      find.textContaining('A mi Istenünk (Leborulok előtted)'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Zulu Song'), findsOneWidget);
+    expect(find.textContaining('Alpha Song'), findsOneWidget);
     expect(find.textContaining('Egy út'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Run-Through')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.textContaining('Zulu Song')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Alpha Song')).dy),
+    );
   });
 
   testWidgets('shows an explicit loading state while the plan loads', (
