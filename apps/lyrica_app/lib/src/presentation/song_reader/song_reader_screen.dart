@@ -52,6 +52,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       widget.sessionId != null &&
       widget.sessionItemId != null;
 
+  String get _sessionKey => '${widget.planId}:${widget.sessionId}';
+
   @override
   void initState() {
     super.initState();
@@ -93,13 +95,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
-    Future<void>.microtask(() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
 
       ref
-          .read(sessionScopedReaderRuntimeControllerProvider)
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .startSession(
             planId: widget.planId!,
             sessionId: widget.sessionId!,
@@ -129,11 +131,36 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           )
         : null;
     final scopedRuntimeController = _isScopedMode
-        ? ref.watch(sessionScopedReaderRuntimeControllerProvider)
+        ? ref.watch(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
         : null;
     final readerState = _isScopedMode
         ? scopedRuntimeController!.state.readerState
         : _controller.state;
+
+    if (_isScopedMode && scopedContextAsync != null) {
+      final scopedValue = scopedContextAsync.valueOrNull;
+      if (scopedValue is SessionScopedReaderContextFailureResult) {
+        return Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            leading: IconButton(
+              tooltip: AppStrings.songReaderBackAction,
+              onPressed: () => _handleBack(context),
+              icon: const BackButtonIcon(),
+            ),
+            title: const Text('Song reader'),
+          ),
+          body: SafeArea(
+            child: Center(
+              child: Text(
+                AppStrings.scopedReaderContextUnavailableMessage,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        );
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -205,20 +232,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     );
                   },
                   data: (SongReaderResult result) {
-                    if (_isScopedMode && scopedContextAsync != null) {
-                      final scopedContextResult =
-                          scopedContextAsync.valueOrNull;
-                      if (scopedContextResult
-                          is SessionScopedReaderContextFailureResult) {
-                        return const Center(
-                          child: Text(
-                            AppStrings.scopedReaderContextUnavailableMessage,
-                            textAlign: TextAlign.center,
-                          ),
-                        );
-                      }
-                    }
-
                     final projection = SongReaderProjection(
                       song: result.song,
                       state: readerState,
@@ -257,7 +270,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 if (_isScopedMode) {
                                   ref
                                       .read(
-                                        sessionScopedReaderRuntimeControllerProvider,
+                                        sessionScopedReaderRuntimeControllerProvider(
+                                          _sessionKey,
+                                        ),
                                       )
                                       .toggleViewMode();
                                   return;
@@ -270,7 +285,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 if (_isScopedMode) {
                                   ref
                                       .read(
-                                        sessionScopedReaderRuntimeControllerProvider,
+                                        sessionScopedReaderRuntimeControllerProvider(
+                                          _sessionKey,
+                                        ),
                                       )
                                       .transposeDown();
                                   return;
@@ -283,7 +300,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 if (_isScopedMode) {
                                   ref
                                       .read(
-                                        sessionScopedReaderRuntimeControllerProvider,
+                                        sessionScopedReaderRuntimeControllerProvider(
+                                          _sessionKey,
+                                        ),
                                       )
                                       .transposeUp();
                                   return;
@@ -295,7 +314,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                               onDecreaseFontScale: () {
                                 if (_isScopedMode) {
                                   final runtimeController = ref.read(
-                                    sessionScopedReaderRuntimeControllerProvider,
+                                    sessionScopedReaderRuntimeControllerProvider(
+                                      _sessionKey,
+                                    ),
                                   );
                                   runtimeController.setSharedFontScale(
                                     runtimeController
@@ -315,7 +336,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                               onIncreaseFontScale: () {
                                 if (_isScopedMode) {
                                   final runtimeController = ref.read(
-                                    sessionScopedReaderRuntimeControllerProvider,
+                                    sessionScopedReaderRuntimeControllerProvider(
+                                      _sessionKey,
+                                    ),
                                   );
                                   runtimeController.setSharedFontScale(
                                     runtimeController

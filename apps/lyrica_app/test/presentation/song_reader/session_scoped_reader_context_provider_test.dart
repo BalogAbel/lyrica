@@ -65,7 +65,7 @@ void main() {
   test('unavailable planning data returns explicit failure result', () async {
     final repository = _FakePlanningRepository(
       planDetail: _planDetail(),
-      getPlanDetailError: StateError('unavailable'),
+      getPlanDetailError: Exception('unavailable'),
     );
     final container = ProviderContainer(
       overrides: [planningRepositoryProvider.overrideWithValue(repository)],
