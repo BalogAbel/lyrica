@@ -43,6 +43,12 @@ class SongListScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () {
+              context.push(AppRoutes.planList.path);
+            },
+            child: const Text(AppStrings.planningEntryAction),
+          ),
+          TextButton(
+            onPressed: () {
               unawaited(_signOut(ref));
             },
             child: const Text(AppStrings.signOutAction),

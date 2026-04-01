@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slice is a tablet-first ChordPro song reader with authenticated local-first song reads through a repository boundary.
+Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads through a repository boundary and a minimal online-only planning read flow for plans, sessions, and song-backed session items.
 
 ## Architectural Layers
 
@@ -24,7 +24,7 @@ Client layers:
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
 
-The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, a Drift-backed authenticated song-catalog cache, Supabase-backed refresh reads, a ChordPro parser, and reader projection without moving parsing into the backend.
+The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, a Drift-backed authenticated song-catalog cache, Supabase-backed refresh reads, a ChordPro parser, and reader projection without moving parsing into the backend. The first planning slice adds read-only planning domain models, a Supabase-backed planning repository, and signed-in plan list/detail routes without introducing planning writes or a Drift planning cache.
 
 ### Backend
 
@@ -57,6 +57,9 @@ Backend policy helpers are responsible for:
 8. Future write slices will record local mutations in the sync queue with version metadata.
 9. MVP conflict handling for writes remains manual and explicit.
 
+For the current planning slice, UI reads visible plan summaries and plan detail directly from Supabase through repository boundaries. Ordering rules and song-backed session expansion are repository-owned, while authorization remains fully backend-enforced through Supabase Auth identity and Postgres RLS.
+Planning reads are organization-scoped for the signed-in member's visible organizations, while planning writes remain capability-based backend RBAC decisions. This keeps the current read slice simple without collapsing the longer-term authorization model into the Flutter client.
+
 The repository currently documents the broader local-first flow and already ships the first executable read-side subset.
 For the current song-reader slice, UI reads song summaries and raw ChordPro source from the active local snapshot and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS because Supabase remains the session-verification and refresh boundary.
 
@@ -72,12 +75,14 @@ For the current song-reader slice, UI reads song summaries and raw ChordPro sour
 
 - Local-first reads by default
 - Active authenticated song-catalog snapshot cache in Drift for the current reader slice
+- Online-only planning reads through repository boundaries for the current planning slice
 - Durable sync queue in Drift for later write slices
 - Manual conflict resolution in MVP
 - Explicit sync status on offline-managed records
 - Web support uses the same domain/application contracts, with the current reader cache backed by Drift wasm and a versioned `sqlite3.wasm` runtime asset, but authenticated offline relaunch remains a native-first manual-validation acceptance path rather than a browser-hard requirement in this slice
 
 The current reader cache keeps only one active authenticated catalog snapshot per user for the currently active organization. It does not retain a historical local snapshot archive or parallel retained organization catalogs, and it removes cached authenticated access on explicit sign-out. The automated verification path proves persistent cache reopen behavior; true offline relaunch acceptance remains a native manual-validation concern.
+The current planning slice does not introduce a local planning cache or offline planning projection yet; plan list and detail reads remain online-only behind the planning repository boundary.
 
 ## Simplicity Rules
 

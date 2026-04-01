@@ -105,6 +105,7 @@ expected = [
     "supabase:status -o env",
     "flutter:test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
     "flutter:test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
+    "flutter:test test/integration/plan_and_session_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
     "manual-validation-test",
 ]
 

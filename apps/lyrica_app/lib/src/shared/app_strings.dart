@@ -32,6 +32,18 @@ class AppStrings {
   static const songReaderAccessDeniedMessage =
       'You do not have access to this song.';
   static const songReaderBackAction = 'Back to song list';
+  static const planningEntryAction = 'Plans';
+  static const planListTitle = 'Plans';
+  static const planListLoadingMessage = 'Loading plans...';
+  static const planListLoadFailureMessage =
+      'Unable to load plans. Please try again.';
+  static const planListEmptyMessage = 'No plans available.';
+  static const planListUnscheduledLabel = 'Unscheduled';
+  static const planDetailTitle = 'Plan detail';
+  static const planDetailLoadingMessage = 'Loading plan...';
+  static const planDetailLoadFailureMessage =
+      'Unable to load plan. Please try again.';
+  static const sessionLabel = 'Session';
   static const songLibraryHeading = 'Tablet-first song library';
   static const songLibraryFlowHeading = 'Mock song catalog in progress';
   static const songLibraryFlowSummary =
