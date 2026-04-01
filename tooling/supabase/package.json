@@ -1,5 +1,5 @@
 {
-  "name": "@lyrica/supabase-tooling",
+  "name": "@lyron/supabase-tooling",
   "private": true,
   "description": "Repository-local Supabase CLI tooling",
   "devDependencies": {

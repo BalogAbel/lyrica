@@ -25,11 +25,11 @@ Post-merge corrections for this slice also require:
 - Modify: `supabase/seed/seed.sql`
 - Create: `scripts/provision-local-demo-user.sh`
 - Modify: `README.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 
 - [ ] **Step 1: Expand the seed fixture expectations in prose before editing SQL**
 
-Add a short note to `README.md` and `apps/lyrica_app/README.md` describing the target local fixture:
+Add a short note to `README.md` and `apps/lyron_app/README.md` describing the target local fixture:
 
 ```text
 local Supabase development must provide:
@@ -82,24 +82,24 @@ Expected: PASS with a real authenticated session. If this fails, fix the provisi
 - [ ] **Step 7: Commit**
 
 ```bash
-git add supabase/config.toml supabase/seed/seed.sql scripts/provision-local-demo-user.sh README.md apps/lyrica_app/README.md docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md
+git add supabase/config.toml supabase/seed/seed.sql scripts/provision-local-demo-user.sh README.md apps/lyron_app/README.md docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md
 git commit -m "feat(supabase): add local demo auth fixture and song catalog parity"
 ```
 
 ### Task 2: Add Supabase Client Configuration And Bootstrap Initialization
 
 **Files:**
-- Modify: `apps/lyrica_app/pubspec.yaml`
-- Modify: `apps/lyrica_app/lib/main.dart`
-- Modify: `apps/lyrica_app/lib/src/bootstrap/bootstrap.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Create: `apps/lyrica_app/lib/src/infrastructure/config/supabase_config.dart`
-- Create: `apps/lyrica_app/test/infrastructure/config/supabase_config_test.dart`
-- Create: `apps/lyrica_app/test/application/providers_test.dart`
+- Modify: `apps/lyron_app/pubspec.yaml`
+- Modify: `apps/lyron_app/lib/main.dart`
+- Modify: `apps/lyron_app/lib/src/bootstrap/bootstrap.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/config/supabase_config.dart`
+- Create: `apps/lyron_app/test/infrastructure/config/supabase_config_test.dart`
+- Create: `apps/lyron_app/test/application/providers_test.dart`
 
 - [ ] **Step 1: Write the failing configuration tests**
 
-Add `apps/lyrica_app/test/infrastructure/config/supabase_config_test.dart` to define the environment contract:
+Add `apps/lyron_app/test/infrastructure/config/supabase_config_test.dart` to define the environment contract:
 
 ```dart
 expect(
@@ -115,15 +115,15 @@ Also cover a failure when required values are missing.
 
 - [ ] **Step 2: Run the focused configuration test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/config/supabase_config_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/config/supabase_config_test.dart`
 
 Expected: FAIL because `SupabaseConfig` does not exist yet.
 
 - [ ] **Step 3: Add the Supabase dependency and config model**
 
-Modify `apps/lyrica_app/pubspec.yaml` to add `supabase_flutter`.
+Modify `apps/lyron_app/pubspec.yaml` to add `supabase_flutter`.
 
-Create `apps/lyrica_app/lib/src/infrastructure/config/supabase_config.dart`:
+Create `apps/lyron_app/lib/src/infrastructure/config/supabase_config.dart`:
 
 ```dart
 class SupabaseConfig {
@@ -139,13 +139,13 @@ class SupabaseConfig {
 }
 ```
 
-Also add a shared `supabaseClientProvider` in `apps/lyrica_app/lib/src/application/providers.dart` so runtime code and tests have one override seam for the configured `SupabaseClient`.
+Also add a shared `supabaseClientProvider` in `apps/lyron_app/lib/src/application/providers.dart` so runtime code and tests have one override seam for the configured `SupabaseClient`.
 
 - [ ] **Step 4: Initialize Supabase during app bootstrap**
 
-Update `apps/lyrica_app/lib/src/bootstrap/bootstrap.dart` to make `bootstrap()` async and call `Supabase.initialize(...)` before `runApp`.
+Update `apps/lyron_app/lib/src/bootstrap/bootstrap.dart` to make `bootstrap()` async and call `Supabase.initialize(...)` before `runApp`.
 
-Update `apps/lyrica_app/lib/main.dart`:
+Update `apps/lyron_app/lib/main.dart`:
 
 ```dart
 Future<void> main() async {
@@ -155,31 +155,31 @@ Future<void> main() async {
 
 - [ ] **Step 5: Re-run the focused configuration test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/config/supabase_config_test.dart test/application/providers_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/config/supabase_config_test.dart test/application/providers_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/pubspec.yaml apps/lyrica_app/lib/main.dart apps/lyrica_app/lib/src/bootstrap/bootstrap.dart apps/lyrica_app/lib/src/application/providers.dart apps/lyrica_app/lib/src/infrastructure/config/supabase_config.dart apps/lyrica_app/test/infrastructure/config/supabase_config_test.dart apps/lyrica_app/test/application/providers_test.dart
+git add apps/lyron_app/pubspec.yaml apps/lyron_app/lib/main.dart apps/lyron_app/lib/src/bootstrap/bootstrap.dart apps/lyron_app/lib/src/application/providers.dart apps/lyron_app/lib/src/infrastructure/config/supabase_config.dart apps/lyron_app/test/infrastructure/config/supabase_config_test.dart apps/lyron_app/test/application/providers_test.dart
 git commit -m "feat(app): add Supabase config and bootstrap initialization"
 ```
 
 ### Task 3: Introduce A Single Auth Bootstrap Boundary
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/domain/auth/app_auth_status.dart`
-- Create: `apps/lyrica_app/lib/src/domain/auth/app_auth_session.dart`
-- Create: `apps/lyrica_app/lib/src/application/auth/auth_repository.dart`
-- Create: `apps/lyrica_app/lib/src/application/auth/app_auth_state.dart`
-- Create: `apps/lyrica_app/lib/src/application/auth/app_auth_controller.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Test: `apps/lyrica_app/test/application/auth/app_auth_controller_test.dart`
+- Create: `apps/lyron_app/lib/src/domain/auth/app_auth_status.dart`
+- Create: `apps/lyron_app/lib/src/domain/auth/app_auth_session.dart`
+- Create: `apps/lyron_app/lib/src/application/auth/auth_repository.dart`
+- Create: `apps/lyron_app/lib/src/application/auth/app_auth_state.dart`
+- Create: `apps/lyron_app/lib/src/application/auth/app_auth_controller.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Test: `apps/lyron_app/test/application/auth/app_auth_controller_test.dart`
 
 - [ ] **Step 1: Write the failing auth controller tests**
 
-Add `apps/lyrica_app/test/application/auth/app_auth_controller_test.dart` to define the controller contract:
+Add `apps/lyron_app/test/application/auth/app_auth_controller_test.dart` to define the controller contract:
 
 ```dart
 expect(controller.state.status, AppAuthStatus.initializing);
@@ -194,7 +194,7 @@ Also cover:
 
 - [ ] **Step 2: Run the focused auth controller test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/application/auth/app_auth_controller_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/auth/app_auth_controller_test.dart`
 
 Expected: FAIL because the auth types and controller do not exist.
 
@@ -224,35 +224,35 @@ Add an `AppAuthController` that owns:
 - sign-out
 - session-expired transition
 
-Wire it through `apps/lyrica_app/lib/src/application/providers.dart` so there is one provider tree owner for auth/bootstrap state.
+Wire it through `apps/lyron_app/lib/src/application/providers.dart` so there is one provider tree owner for auth/bootstrap state.
 
 - [ ] **Step 5: Re-run the focused auth controller test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/application/auth/app_auth_controller_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/auth/app_auth_controller_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/domain/auth apps/lyrica_app/lib/src/application/auth apps/lyrica_app/lib/src/application/providers.dart apps/lyrica_app/test/application/auth/app_auth_controller_test.dart
+git add apps/lyron_app/lib/src/domain/auth apps/lyron_app/lib/src/application/auth apps/lyron_app/lib/src/application/providers.dart apps/lyron_app/test/application/auth/app_auth_controller_test.dart
 git commit -m "feat(auth): add app auth bootstrap controller"
 ```
 
 ### Task 4: Add The Supabase Auth Adapter, Sign-In Screen, And Router Redirect Policy
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/infrastructure/auth/supabase_auth_repository.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/auth/sign_in_screen.dart`
-- Create: `apps/lyrica_app/lib/src/router/auth_router_refresh_notifier.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_routes.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_router.dart`
-- Modify: `apps/lyrica_app/lib/src/app/lyrica_app.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Test: `apps/lyrica_app/test/infrastructure/auth/supabase_auth_repository_test.dart`
-- Test: `apps/lyrica_app/test/presentation/auth/sign_in_screen_test.dart`
-- Test: `apps/lyrica_app/test/router/app_router_test.dart`
-- Test: `apps/lyrica_app/test/app/lyrica_app_test.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/auth/supabase_auth_repository.dart`
+- Create: `apps/lyron_app/lib/src/presentation/auth/sign_in_screen.dart`
+- Create: `apps/lyron_app/lib/src/router/auth_router_refresh_notifier.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_routes.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_router.dart`
+- Modify: `apps/lyron_app/lib/src/app/lyron_app.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Test: `apps/lyron_app/test/infrastructure/auth/supabase_auth_repository_test.dart`
+- Test: `apps/lyron_app/test/presentation/auth/sign_in_screen_test.dart`
+- Test: `apps/lyron_app/test/router/app_router_test.dart`
+- Test: `apps/lyron_app/test/app/lyron_app_test.dart`
 
 - [ ] **Step 1: Write the failing router and sign-in widget tests**
 
@@ -271,13 +271,13 @@ Add a route test that verifies:
 
 - [ ] **Step 2: Run the focused routing and sign-in tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/router/app_router_test.dart test/presentation/auth/sign_in_screen_test.dart test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/router/app_router_test.dart test/presentation/auth/sign_in_screen_test.dart test/app/lyron_app_test.dart`
 
 Expected: FAIL because sign-in route and redirect logic do not exist.
 
 - [ ] **Step 3: Implement the Supabase auth adapter**
 
-Create `apps/lyrica_app/lib/src/infrastructure/auth/supabase_auth_repository.dart` to map the Supabase session model into `AppAuthSession`.
+Create `apps/lyron_app/lib/src/infrastructure/auth/supabase_auth_repository.dart` to map the Supabase session model into `AppAuthSession`.
 
 Keep the adapter thin:
 
@@ -301,27 +301,27 @@ Pass the router through `LyricaApp` the same way the current tests do.
 
 - [ ] **Step 5: Re-run the focused routing and sign-in tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/router/app_router_test.dart test/presentation/auth/sign_in_screen_test.dart test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/router/app_router_test.dart test/presentation/auth/sign_in_screen_test.dart test/app/lyron_app_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/infrastructure/auth/supabase_auth_repository.dart apps/lyrica_app/lib/src/presentation/auth/sign_in_screen.dart apps/lyrica_app/lib/src/router/auth_router_refresh_notifier.dart apps/lyrica_app/lib/src/router/app_routes.dart apps/lyrica_app/lib/src/router/app_router.dart apps/lyrica_app/lib/src/app/lyrica_app.dart apps/lyrica_app/lib/src/shared/app_strings.dart apps/lyrica_app/test/infrastructure/auth/supabase_auth_repository_test.dart apps/lyrica_app/test/presentation/auth/sign_in_screen_test.dart apps/lyrica_app/test/router/app_router_test.dart apps/lyrica_app/test/app/lyrica_app_test.dart
+git add apps/lyron_app/lib/src/infrastructure/auth/supabase_auth_repository.dart apps/lyron_app/lib/src/presentation/auth/sign_in_screen.dart apps/lyron_app/lib/src/router/auth_router_refresh_notifier.dart apps/lyron_app/lib/src/router/app_routes.dart apps/lyron_app/lib/src/router/app_router.dart apps/lyron_app/lib/src/app/lyron_app.dart apps/lyron_app/lib/src/shared/app_strings.dart apps/lyron_app/test/infrastructure/auth/supabase_auth_repository_test.dart apps/lyron_app/test/presentation/auth/sign_in_screen_test.dart apps/lyron_app/test/router/app_router_test.dart apps/lyron_app/test/app/lyron_app_test.dart
 git commit -m "feat(auth): add sign-in screen and router redirects"
 ```
 
 ### Task 5: Swap The Song Repository To Supabase While Preserving Local Parsing
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
-- Modify: `apps/lyrica_app/lib/src/application/song_library/song_library_service.dart`
-- Modify: `apps/lyrica_app/lib/src/domain/song/song_not_found_exception.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/supabase_song_repository_test.dart`
-- Test: `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart`
-- Test: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/song_library_service.dart`
+- Modify: `apps/lyron_app/lib/src/domain/song/song_not_found_exception.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/supabase_song_repository_test.dart`
+- Test: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
+- Test: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 
 - [ ] **Step 1: Write the failing Supabase repository and provider tests**
 
@@ -340,13 +340,13 @@ Also cover:
 
 - [ ] **Step 2: Run the focused repository and provider tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
 
 Expected: FAIL because the Supabase repository implementation and auth-aware provider wiring do not exist.
 
 - [ ] **Step 3: Implement the Supabase-backed song repository**
 
-Create `apps/lyrica_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`:
+Create `apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`:
 
 ```dart
 class SupabaseSongRepository implements SongRepository {
@@ -375,25 +375,25 @@ Modify `song_library_providers.dart` so signed-in app flows resolve the Supabase
 
 - [ ] **Step 5: Re-run the focused repository and provider tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/infrastructure/song_library/supabase_song_repository.dart apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyrica_app/lib/src/application/song_library/song_library_service.dart apps/lyrica_app/lib/src/domain/song/song_not_found_exception.dart apps/lyrica_app/test/infrastructure/song_library/supabase_song_repository_test.dart apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart
+git add apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyron_app/lib/src/application/song_library/song_library_service.dart apps/lyron_app/lib/src/domain/song/song_not_found_exception.dart apps/lyron_app/test/infrastructure/song_library/supabase_song_repository_test.dart apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart
 git commit -m "feat(song-library): add Supabase song repository"
 ```
 
 ### Task 6: Handle Reader Failure States And Session-Expired Recovery
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Test: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Test: `apps/lyrica_app/test/integration/song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Test: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Test: `apps/lyron_app/test/integration/song_reader_flow_test.dart`
 
 - [ ] **Step 1: Write the failing screen tests for unavailable and expired-session states**
 
@@ -411,7 +411,7 @@ expect(find.text('Your session expired. Please sign in again.'), findsOneWidget)
 
 - [ ] **Step 2: Run the focused screen and flow tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart test/integration/song_reader_flow_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart test/integration/song_reader_flow_test.dart`
 
 Expected: FAIL because the current UI only covers the asset-backed happy path.
 
@@ -426,31 +426,31 @@ Keep the screens thin; application/auth state should still own the actual state 
 
 - [ ] **Step 4: Re-run the focused screen and flow tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart test/integration/song_reader_flow_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart test/integration/song_reader_flow_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyrica_app/lib/src/shared/app_strings.dart apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart apps/lyrica_app/test/integration/song_reader_flow_test.dart
+git add apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyron_app/lib/src/shared/app_strings.dart apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart apps/lyron_app/test/integration/song_reader_flow_test.dart
 git commit -m "feat(reader): add backend-aware failure states"
 ```
 
 ### Task 7: Add Real Local Supabase Verification And End-To-End Coverage
 
 **Files:**
-- Create: `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart`
+- Create: `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart`
 - Modify: `scripts/verify.sh`
 - Modify: `README.md`
 - Modify: `docs/testing/testing-strategy.md`
 
 - [ ] **Step 1: Write the failing real-backend integration test**
 
-Add `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart` to exercise the true local path:
+Add `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart` to exercise the true local path:
 
 ```dart
-await tester.enterText(find.byKey(const Key('emailField')), 'demo@lyrica.local');
+await tester.enterText(find.byKey(const Key('emailField')), 'demo@lyron.local');
 await tester.enterText(find.byKey(const Key('passwordField')), 'demo-pass-123');
 await tester.tap(find.byKey(const Key('signInButton')));
 await tester.pumpAndSettle();
@@ -468,7 +468,7 @@ Then run: `./scripts/db-reset.sh`
 
 Then run: `./scripts/provision-local-demo-user.sh`
 
-Then run: `cd apps/lyrica_app && flutter test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=<local-anon-key>`
+Then run: `cd apps/lyron_app && flutter test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=<local-anon-key>`
 
 Expected: FAIL because the end-to-end authenticated flow is not wired yet.
 
@@ -491,7 +491,7 @@ Expected: PASS with Flutter checks, migration linting, local reset, and authenti
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart scripts/verify.sh README.md docs/testing/testing-strategy.md
+git add apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart scripts/verify.sh README.md docs/testing/testing-strategy.md
 git commit -m "test(app): verify authenticated backend song reading locally"
 ```
 
@@ -504,7 +504,7 @@ git commit -m "test(app): verify authenticated backend song reading locally"
 - Modify: `docs/architecture/architecture.md`
 - Modify: `docs/testing/testing-strategy.md`
 - Modify: `docs/workflows/development-workflow.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 
 - [ ] **Step 1: Update product and architecture wording**
 
@@ -530,6 +530,6 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md docs/product/vision.md docs/domain/domain-model.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/workflows/development-workflow.md apps/lyrica_app/README.md
+git add README.md docs/product/vision.md docs/domain/domain-model.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/workflows/development-workflow.md apps/lyron_app/README.md
 git commit -m "docs(auth-song-reader): align repository docs with backend slice"
 ```

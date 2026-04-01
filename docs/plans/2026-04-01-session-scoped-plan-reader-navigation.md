@@ -15,15 +15,15 @@
 ### Task 1: Lock The Route Contract Before Changing UI Behavior
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/router/app_routes.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_router.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/planning/planning_routes.dart`
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_routes.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_router.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/planning/planning_routes.dart`
+- Modify: `apps/lyron_app/test/router/app_router_test.dart`
 - Reference: `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 
 - [ ] **Step 1: Add a failing route-constant test for the canonical plan-origin reader route**
 
-Add assertions in `apps/lyrica_app/test/router/app_router_test.dart` for a new dedicated reader route that encodes:
+Add assertions in `apps/lyron_app/test/router/app_router_test.dart` for a new dedicated reader route that encodes:
 
 ```dart
 expect(
@@ -42,8 +42,8 @@ Expected: FAIL because the new route constant does not exist yet.
 
 Update:
 
-- `apps/lyrica_app/lib/src/router/app_routes.dart`
-- `apps/lyrica_app/lib/src/presentation/planning/planning_routes.dart`
+- `apps/lyron_app/lib/src/router/app_routes.dart`
+- `apps/lyron_app/lib/src/presentation/planning/planning_routes.dart`
 
 Add a helper similar to:
 
@@ -62,7 +62,7 @@ static String planSessionSongReaderLocation({
 
 - [ ] **Step 4: Register the new route in the app router without changing auth policy**
 
-Update `apps/lyrica_app/lib/src/router/app_router.dart` so the new route:
+Update `apps/lyron_app/lib/src/router/app_router.dart` so the new route:
 
 - is gated by the existing signed-in redirect rules
 - builds the existing `SongReaderScreen`
@@ -79,17 +79,17 @@ Expected: PASS
 ### Task 2: Resolve Route-Backed Scoped Reader Context Before UI Work
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_context.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_context_resolver.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_context_provider.dart`
-- Create: `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_context_resolver_test.dart`
-- Create: `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/planning/planning_providers.dart`
-- Reference: `apps/lyrica_app/lib/src/domain/planning/plan_detail.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context_resolver.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context_provider.dart`
+- Create: `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_resolver_test.dart`
+- Create: `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/planning/planning_providers.dart`
+- Reference: `apps/lyron_app/lib/src/domain/planning/plan_detail.dart`
 
 - [ ] **Step 1: Write failing pure resolver tests for same-session neighbors and boundary rules**
 
-Create `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_context_resolver_test.dart` covering:
+Create `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_resolver_test.dart` covering:
 
 - selected session item resolves from `planId + sessionId + sessionItemId + songId`
 - previous and next are computed from session item order
@@ -124,7 +124,7 @@ Add a test that a mismatched `sessionItemId` or `songId` returns an explicit inv
 
 - [ ] **Step 4: Write failing provider tests for warm-path and cold-path scoped resolution**
 
-Create `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart` to cover:
+Create `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart` to cover:
 
 - warm same-stack entry can resolve scoped context from already-loaded `PlanDetail` data without requiring a second planning fetch
 - cold direct entry resolves scoped context by re-fetching planning data through the existing planning provider path
@@ -176,14 +176,14 @@ Expected: PASS
 ### Task 3: Add Session-Scoped Reader Runtime State That Survives Song Switches
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_state.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart`
-- Create: `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_runtime_controller_test.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_state.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_state.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart`
+- Create: `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_runtime_controller_test.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_state.dart`
 
 - [ ] **Step 1: Write failing runtime-state tests for preserved reader controls**
 
-Create `apps/lyrica_app/test/presentation/song_reader/session_scoped_reader_runtime_controller_test.dart` to prove that a session-scoped runtime controller:
+Create `apps/lyron_app/test/presentation/song_reader/session_scoped_reader_runtime_controller_test.dart` to prove that a session-scoped runtime controller:
 
 - starts with the current default reader settings
 - updates view mode, transpose, and font scale
@@ -215,14 +215,14 @@ Expected: PASS
 ### Task 4: Make Plan Detail Song Items Open The Scoped Reader
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/planning/plan_detail_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Modify: `apps/lyrica_app/test/presentation/planning/plan_detail_screen_test.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/planning/planning_routes.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/planning/planning_routes.dart`
 
 - [ ] **Step 1: Write a failing widget test for tappable session items**
 
-Update `apps/lyrica_app/test/presentation/planning/plan_detail_screen_test.dart` so it fails until session items render as interactive controls.
+Update `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart` so it fails until session items render as interactive controls.
 
 Assert that tapping a session item:
 
@@ -232,7 +232,7 @@ Assert that tapping a session item:
 
 - [ ] **Step 2: Implement the minimal interactive plan-detail item UI**
 
-Update `apps/lyrica_app/lib/src/presentation/planning/plan_detail_screen.dart` so each song-backed item:
+Update `apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart` so each song-backed item:
 
 - renders as an explicit interactive control
 - uses the new `PlanningRoutes.planSessionSongReaderLocation(...)` helper
@@ -243,7 +243,7 @@ Do not redesign the screen beyond the minimum clear tap target.
 
 - [ ] **Step 3: Add any missing user-facing copy**
 
-Update `apps/lyrica_app/lib/src/shared/app_strings.dart` only if the new interactive UI needs explicit text.
+Update `apps/lyron_app/lib/src/shared/app_strings.dart` only if the new interactive UI needs explicit text.
 
 - [ ] **Step 4: Run the focused plan-detail widget tests to verify they pass**
 
@@ -254,18 +254,18 @@ Expected: PASS
 ### Task 5: Extend The Reader Screen For Optional Session-Scoped Mode
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_controller.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_state.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_controller_test.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_context.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_controller.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_state.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_controller_test.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart`
 
 - [ ] **Step 1: Write failing reader widget tests for scoped controls visibility**
 
-Update `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart` to cover:
+Update `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart` to cover:
 
 - scoped reader entry shows previous and next controls
 - standard reader entry hides them
@@ -283,7 +283,7 @@ Change view mode, transpose, and font scale on a scoped reader, navigate to next
 
 - [ ] **Step 4: Implement the optional scoped-reader UI path**
 
-Update `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart` so it can accept optional planning identifiers and:
+Update `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart` so it can accept optional planning identifiers and:
 
 - resolve scoped context through the dedicated scoped-context layer from Task 2
 - read and write scoped runtime state through the session-scoped runtime controller from Task 3
@@ -307,9 +307,9 @@ Expected: PASS
 ### Task 6: Implement Explicit Error Handling For Invalid Or Unavailable Scoped Context
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 
 - [ ] **Step 1: Write a failing widget test for invalid scoped context**
 
@@ -335,7 +335,7 @@ Add a scoped-route test where song loading fails and assert:
 
 - [ ] **Step 4: Implement the explicit scoped-context error surface**
 
-Update `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart` and `apps/lyrica_app/lib/src/shared/app_strings.dart` so scoped-context failures produce a dedicated error surface rather than degrading to song-only reader behavior.
+Update `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart` and `apps/lyron_app/lib/src/shared/app_strings.dart` so scoped-context failures produce a dedicated error surface rather than degrading to song-only reader behavior.
 
 - [ ] **Step 5: Run the focused reader error tests**
 
@@ -346,14 +346,14 @@ Expected: PASS
 ### Task 7: Finish Router Behavior For Direct Entry, Auth Redirect, And Back Fallback
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/router/app_router.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Reference: `apps/lyrica_app/test/router/app_router_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_router.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Reference: `apps/lyron_app/test/router/app_router_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 
 - [ ] **Step 1: Write failing router tests for direct scoped entry, auth redirect, and auth restore**
 
-Update `apps/lyrica_app/test/router/app_router_test.dart` to cover:
+Update `apps/lyron_app/test/router/app_router_test.dart` to cover:
 
 - signed-out users cannot open the scoped reader route directly
 - signed-in users can land on the scoped reader route from its canonical URL
@@ -386,14 +386,14 @@ Expected: PASS
 ### Task 8: Add Flow-Level Coverage For Planning-To-Reader Navigation
 
 **Files:**
-- Create: `apps/lyrica_app/test/integration/plan_session_reader_flow_test.dart`
-- Reference: `apps/lyrica_app/test/presentation/planning/plan_detail_screen_test.dart`
-- Reference: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Reference: `apps/lyrica_app/test/router/app_router_test.dart`
+- Create: `apps/lyron_app/test/integration/plan_session_reader_flow_test.dart`
+- Reference: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
+- Reference: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Reference: `apps/lyron_app/test/router/app_router_test.dart`
 
 - [ ] **Step 1: Write a failing flow test for plan detail to scoped reader navigation**
 
-Create `apps/lyrica_app/test/integration/plan_session_reader_flow_test.dart` with app-level routing and provider overrides that prove:
+Create `apps/lyron_app/test/integration/plan_session_reader_flow_test.dart` with app-level routing and provider overrides that prove:
 
 - plan list -> plan detail -> scoped reader works while signed in
 - scoped reader previous and next stay within the current session
@@ -426,13 +426,13 @@ Expected: PASS
 ### Task 9: Verify Browser Reload Behavior With The Best Available Repository-Owned Mechanism
 
 **Files:**
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart`
+- Modify: `apps/lyron_app/test/router/app_router_test.dart`
 - Optional Modify: `docs/workflows/development-workflow.md` only if a new durable validation rule is learned
 - Reference: `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 
 - [ ] **Step 1: Add a deterministic direct-entry test that approximates reload restoration**
 
-In `apps/lyrica_app/test/router/app_router_test.dart`, start the app directly at the scoped reader URL with signed-in auth and assert that:
+In `apps/lyron_app/test/router/app_router_test.dart`, start the app directly at the scoped reader URL with signed-in auth and assert that:
 
 - the selected song loads
 - scoped previous and next boundaries are present
@@ -509,7 +509,7 @@ Expected: PASS, proving signed-in home still lands on the song list and planning
 
 - [ ] **Step 3: Run repository formatting or analysis only for changed scope if needed**
 
-Run: `dart format apps/lyrica_app/lib apps/lyrica_app/test docs/specs docs/plans`
+Run: `dart format apps/lyron_app/lib apps/lyron_app/test docs/specs docs/plans`
 
 Expected: PASS with only intended file changes.
 

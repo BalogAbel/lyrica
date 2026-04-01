@@ -15,15 +15,15 @@
 ### Task 1: Lock In Refresh Scheduling And Sign-Out Safety With Controller Tests
 
 **Files:**
-- Modify: `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart`
-- Modify: `apps/lyrica_app/test/application/providers_test.dart` only if a lifecycle seam is introduced there
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart` only if mounted-flow activation is easiest to prove at router level
-- Reference: `apps/lyrica_app/lib/src/application/song_library/song_catalog_controller.dart`
-- Reference: `apps/lyrica_app/lib/src/application/providers.dart`
+- Modify: `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart`
+- Modify: `apps/lyron_app/test/application/providers_test.dart` only if a lifecycle seam is introduced there
+- Modify: `apps/lyron_app/test/router/app_router_test.dart` only if mounted-flow activation is easiest to prove at router level
+- Reference: `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart`
+- Reference: `apps/lyron_app/lib/src/application/providers.dart`
 
 - [ ] **Step 1: Add a failing test for manual and periodic refresh sharing one guarded refresh path**
 
-Extend `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart` with a test that proves:
+Extend `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart` with a test that proves:
 
 1. a controller refresh can already be running
 2. a second trigger arriving while that refresh is in flight does not start a concurrent duplicate fetch
@@ -68,7 +68,7 @@ Prefer proving this through provider disposal or route-level unmounting rather t
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/application/song_library/song_catalog_controller_test.dart
+cd apps/lyron_app && flutter test test/application/song_library/song_catalog_controller_test.dart
 ```
 
 Expected: FAIL because the current controller has no periodic scheduler contract and no explicit manual-vs-periodic overlap guard for this slice.
@@ -76,15 +76,15 @@ Expected: FAIL because the current controller has no periodic scheduler contract
 ### Task 2: Implement Shared Refresh Scheduling In The Catalog Controller
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/application/song_library/song_catalog_controller.dart`
-- Modify: `apps/lyrica_app/lib/src/application/song_library/catalog_snapshot_state.dart`
-- Modify: `apps/lyrica_app/lib/src/application/song_library/catalog_refresh_status.dart` only if required
-- Modify: `apps/lyrica_app/lib/src/application/song_library/catalog_connection_status.dart` only if required
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart` if lifecycle wiring belongs at the composition root
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart` only if activation needs an explicit keep-alive point
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart` only if activation needs an explicit keep-alive point
-- Create or Modify: a narrow lifecycle seam near `apps/lyrica_app/lib/src/application/` only if needed for deterministic tests
-- Reference: `apps/lyrica_app/lib/src/application/providers.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/catalog_snapshot_state.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/catalog_refresh_status.dart` only if required
+- Modify: `apps/lyron_app/lib/src/application/song_library/catalog_connection_status.dart` only if required
+- Modify: `apps/lyron_app/lib/src/application/providers.dart` if lifecycle wiring belongs at the composition root
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart` only if activation needs an explicit keep-alive point
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart` only if activation needs an explicit keep-alive point
+- Create or Modify: a narrow lifecycle seam near `apps/lyron_app/lib/src/application/` only if needed for deterministic tests
+- Reference: `apps/lyron_app/lib/src/application/providers.dart`
 
 - [ ] **Step 1: Introduce one explicit refresh entrypoint API**
 
@@ -149,7 +149,7 @@ Reuse the current generation-based stale-result protection if it already fits; s
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/application/song_library/song_catalog_controller_test.dart
+cd apps/lyron_app && flutter test test/application/song_library/song_catalog_controller_test.dart
 ```
 
 Expected: PASS.
@@ -157,13 +157,13 @@ Expected: PASS.
 ### Task 3: Add A Visible Manual Sync Affordance To The Song List
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 
 - [ ] **Step 1: Add a failing widget test for the visible sync affordance**
 
-Extend `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart` with a test that renders the signed-in song list and asserts that the app bar exposes a visible sync action alongside sign-out.
+Extend `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` with a test that renders the signed-in song list and asserts that the app bar exposes a visible sync action alongside sign-out.
 
 - [ ] **Step 2: Add a failing widget test for manual refresh invocation**
 
@@ -177,7 +177,7 @@ Add a test that renders the song list while the catalog is in `refreshing` state
 
 - [ ] **Step 4: Implement the sync affordance and wiring**
 
-Update `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart` to add one visible sync action in the app bar.
+Update `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart` to add one visible sync action in the app bar.
 
 The action should:
 
@@ -186,14 +186,14 @@ The action should:
 3. not remove the existing sign-out action
 4. avoid duplicate triggers while refresh is already in progress
 
-Add any required user-facing string constants to `apps/lyrica_app/lib/src/shared/app_strings.dart`.
+Add any required user-facing string constants to `apps/lyron_app/lib/src/shared/app_strings.dart`.
 
 - [ ] **Step 5: Run the focused song-list widget tests to verify they pass**
 
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/presentation/song_library/song_list_screen_test.dart
+cd apps/lyron_app && flutter test test/presentation/song_library/song_list_screen_test.dart
 ```
 
 Expected: PASS.
@@ -201,17 +201,17 @@ Expected: PASS.
 ### Task 4: Prove Automatic Refresh State Visibility In Widget And Provider Tests
 
 **Files:**
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
 
 - [ ] **Step 1: Add a failing provider-level test for periodic refresh updating visible list data**
 
-Extend `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart` or the nearest existing provider test file with a scenario where the active snapshot changes after a refresh and the visible song list reflects the updated cached catalog.
+Extend `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart` or the nearest existing provider test file with a scenario where the active snapshot changes after a refresh and the visible song list reflects the updated cached catalog.
 
 - [ ] **Step 2: Add a failing widget test for automatic refresh failure visibility**
 
-Extend `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart` with a scenario where:
+Extend `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` with a scenario where:
 
 1. cached catalog data exists
 2. an automatic refresh fails
@@ -229,7 +229,7 @@ Do not redesign the signed-in list screen for this slice.
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/presentation/song_library/song_library_providers_test.dart \
   test/presentation/song_library/song_list_screen_test.dart
 ```
@@ -239,15 +239,15 @@ Expected: PASS.
 ### Task 5: Extend Backend-Backed Integration Coverage For Manual And Periodic Refresh
 
 **Files:**
-- Modify: `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart`
-- Modify: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 - Modify: `scripts/verify.sh` if new integration env vars are required
 - Reference: `scripts/provision-local-demo-user.sh`
 - Reference: `supabase/seed/seed.sql`
 
 - [ ] **Step 1: Add a failing backend-backed integration test for manual refresh**
 
-Extend `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart` with a scenario that:
+Extend `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart` with a scenario that:
 
 1. signs in to local Supabase
 2. loads the current catalog
@@ -274,7 +274,7 @@ Extend the integration coverage with a second backend-backed scenario that:
 
 - [ ] **Step 3: Add a failing local-first integration test for periodic refresh preserving cached behavior on failure**
 
-Extend `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` with a scenario that:
+Extend `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` with a scenario that:
 
 1. creates a valid cached snapshot
 2. simulates a periodic refresh attempt
@@ -293,7 +293,7 @@ The seam must not become a production-only alternate refresh model.
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/integration/authenticated_song_reader_flow_test.dart \
   test/integration/local_first_authenticated_song_reader_flow_test.dart
 ```
@@ -361,11 +361,11 @@ Expected: PASS.
 ### Task 7: Run End-To-End Verification For The Slice
 
 **Files:**
-- Verify: `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart`
-- Verify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Verify: `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart`
-- Verify: `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart`
-- Verify: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Verify: `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart`
+- Verify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Verify: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
+- Verify: `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart`
+- Verify: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 - Verify: `./scripts/verify.sh`
 
 - [ ] **Step 1: Run the focused app tests together**
@@ -373,7 +373,7 @@ Expected: PASS.
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/application/song_library/song_catalog_controller_test.dart \
   test/presentation/song_library/song_list_screen_test.dart \
   test/presentation/song_library/song_library_providers_test.dart

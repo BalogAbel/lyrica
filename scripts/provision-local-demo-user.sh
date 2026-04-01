@@ -3,8 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-readonly DEMO_EMAIL="demo@lyrica.local"
-readonly DEMO_PASSWORD="LyricaDemo123!"
+readonly DEMO_EMAIL="demo@lyron.local"
+readonly DEMO_PASSWORD="LyronDemo123!"
 readonly DEMO_ORGANIZATION_ID="11111111-1111-1111-1111-111111111111"
 
 status_env="$(./scripts/supabase.sh status -o env)"

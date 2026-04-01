@@ -14,4 +14,4 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
 fi
 
 npm ci --prefix tooling/supabase
-(cd apps/lyrica_app && flutter pub get)
+(cd apps/lyron_app && flutter pub get)

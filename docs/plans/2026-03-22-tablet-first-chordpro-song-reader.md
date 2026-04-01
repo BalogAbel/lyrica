@@ -15,22 +15,22 @@
 ### Task 1: Register Mock Song Assets And Stable App Copy
 
 **Files:**
-- Modify: `apps/lyrica_app/pubspec.yaml`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Test: `apps/lyrica_app/test/app/lyrica_app_test.dart`
+- Modify: `apps/lyron_app/pubspec.yaml`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Test: `apps/lyron_app/test/app/lyron_app_test.dart`
 
 - [ ] **Step 1: Write the failing app-shell test updates**
 
-Update `apps/lyrica_app/test/app/lyrica_app_test.dart` to expect the song-library shell instead of the current repository-foundation placeholder copy.
+Update `apps/lyron_app/test/app/lyron_app_test.dart` to expect the song-library shell instead of the current repository-foundation placeholder copy.
 
 - [ ] **Step 2: Run the app-shell widget test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart`
 Expected: FAIL because the old home screen copy still renders.
 
 - [ ] **Step 3: Add mock song asset declarations**
 
-Modify `apps/lyrica_app/pubspec.yaml` to include:
+Modify `apps/lyron_app/pubspec.yaml` to include:
 
 ```yaml
 flutter:
@@ -41,39 +41,39 @@ flutter:
 
 - [ ] **Step 4: Replace placeholder app strings with slice-specific copy**
 
-Modify `apps/lyrica_app/lib/src/shared/app_strings.dart` so the app shell names the song library and reader flow instead of the bootstrap foundation status text.
+Modify `apps/lyron_app/lib/src/shared/app_strings.dart` so the app shell names the song library and reader flow instead of the bootstrap foundation status text.
 
 - [ ] **Step 5: Re-run the app-shell widget test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/pubspec.yaml apps/lyrica_app/lib/src/shared/app_strings.dart apps/lyrica_app/test/app/lyrica_app_test.dart
+git add apps/lyron_app/pubspec.yaml apps/lyron_app/lib/src/shared/app_strings.dart apps/lyron_app/test/app/lyron_app_test.dart
 git commit -m "feat(app): register song assets and reader shell copy"
 ```
 
 ### Task 2: Add Mock Song Assets And Repository Contract
 
-Implementation note: this slice now uses the three bundled `.pro` assets in `apps/lyrica_app/assets/songs/` as the first mock catalog, keeps `SongLibraryService` thin, exposes minimal summaries plus raw ChordPro source at the repository boundary, and routes missing song IDs through a domain-level `SongNotFoundException`.
+Implementation note: this slice now uses the three bundled `.pro` assets in `apps/lyron_app/assets/songs/` as the first mock catalog, keeps `SongLibraryService` thin, exposes minimal summaries plus raw ChordPro source at the repository boundary, and routes missing song IDs through a domain-level `SongNotFoundException`.
 
 **Files:**
-- Create: `apps/lyrica_app/assets/songs/a_forrasnal.pro`
-- Create: `apps/lyrica_app/assets/songs/a_mi_istenunk.pro`
-- Create: `apps/lyrica_app/assets/songs/egy_ut.pro`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_summary.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_source.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_repository.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/song_library_service.dart`
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/asset_song_repository.dart`
-- Test: `apps/lyrica_app/test/application/song_library/song_library_service_test.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/asset_song_repository_test.dart`
+- Create: `apps/lyron_app/assets/songs/a_forrasnal.pro`
+- Create: `apps/lyron_app/assets/songs/a_mi_istenunk.pro`
+- Create: `apps/lyron_app/assets/songs/egy_ut.pro`
+- Create: `apps/lyron_app/lib/src/domain/song/song_summary.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/song_source.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/song_repository.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/song_library_service.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/asset_song_repository.dart`
+- Test: `apps/lyron_app/test/application/song_library/song_library_service_test.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/asset_song_repository_test.dart`
 
 - [ ] **Step 1: Copy the three reference songs into app assets**
 
-Create the three files under `apps/lyrica_app/assets/songs/` using the current `docs/examples/chordpro/*.pro` sources as the initial mock catalog.
+Create the three files under `apps/lyron_app/assets/songs/` using the current `docs/examples/chordpro/*.pro` sources as the initial mock catalog.
 
 - [ ] **Step 2: Write the failing repository and service tests**
 
@@ -89,7 +89,7 @@ The implemented coverage now also verifies the full catalog-to-asset mapping and
 
 - [ ] **Step 3: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/application/song_library/song_library_service_test.dart test/infrastructure/song_library/asset_song_repository_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/song_library/song_library_service_test.dart test/infrastructure/song_library/asset_song_repository_test.dart`
 Expected: FAIL because the domain types and repository implementation do not exist yet.
 
 - [ ] **Step 4: Add the minimal song repository contract and DTOs**
@@ -111,25 +111,25 @@ Use `rootBundle` in `asset_song_repository.dart` and keep asset-to-song metadata
 
 - [ ] **Step 6: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/application/song_library/song_library_service_test.dart test/infrastructure/song_library/asset_song_repository_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/song_library/song_library_service_test.dart test/infrastructure/song_library/asset_song_repository_test.dart`
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/lyrica_app/assets/songs apps/lyrica_app/lib/src/domain/song apps/lyrica_app/lib/src/application/song_library apps/lyrica_app/lib/src/infrastructure/song_library apps/lyrica_app/test/application/song_library apps/lyrica_app/test/infrastructure/song_library
+git add apps/lyron_app/assets/songs apps/lyron_app/lib/src/domain/song apps/lyron_app/lib/src/application/song_library apps/lyron_app/lib/src/infrastructure/song_library apps/lyron_app/test/application/song_library apps/lyron_app/test/infrastructure/song_library
 git commit -m "feat(song-library): add mock song repository"
 ```
 
 ### Task 3: Define Parsed Song Model And Diagnostics
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/domain/song/parsed_song.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_section.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_line.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/lyric_segment.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/parse_diagnostic.dart`
-- Test: `apps/lyrica_app/test/domain/song/parsed_song_model_test.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/parsed_song.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/song_section.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/song_line.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/lyric_segment.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/parse_diagnostic.dart`
+- Test: `apps/lyron_app/test/domain/song/parsed_song_model_test.dart`
 
 - [ ] **Step 1: Write the failing parsed-song model tests**
 
@@ -145,7 +145,7 @@ expect(song.diagnostics, isEmpty);
 
 - [ ] **Step 2: Run the domain test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/domain/song/parsed_song_model_test.dart`
+Run: `cd apps/lyron_app && flutter test test/domain/song/parsed_song_model_test.dart`
 Expected: FAIL because the parsed-song domain types do not exist.
 
 - [ ] **Step 3: Add focused domain types for parsed song structure**
@@ -162,23 +162,23 @@ Do not put parser logic in these files.
 
 - [ ] **Step 4: Re-run the domain test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/domain/song/parsed_song_model_test.dart`
+Run: `cd apps/lyron_app && flutter test test/domain/song/parsed_song_model_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/domain/song apps/lyrica_app/test/domain/song/parsed_song_model_test.dart
+git add apps/lyron_app/lib/src/domain/song apps/lyron_app/test/domain/song/parsed_song_model_test.dart
 git commit -m "feat(song-domain): add parsed song model"
 ```
 
 ### Task 4: Implement Chord Symbol Parsing And Transposition
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/domain/song/chord_symbol.dart`
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/chord_transposer.dart`
-- Test: `apps/lyrica_app/test/domain/song/chord_symbol_test.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/chord_transposer_test.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/chord_symbol.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/chord_transposer.dart`
+- Test: `apps/lyron_app/test/domain/song/chord_symbol_test.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/chord_transposer_test.dart`
 
 - [ ] **Step 1: Write the failing chord-model and transposition tests**
 
@@ -199,7 +199,7 @@ expect(transposer.transpose('E/G#', -1), 'D#/G');
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/domain/song/chord_symbol_test.dart test/infrastructure/song_library/chord_transposer_test.dart`
+Run: `cd apps/lyron_app && flutter test test/domain/song/chord_symbol_test.dart test/infrastructure/song_library/chord_transposer_test.dart`
 Expected: FAIL because chord parsing and transposition are not implemented.
 
 - [ ] **Step 3: Add the minimal musical chord model**
@@ -218,23 +218,23 @@ Keep displayed note names in international notation and centralize pitch-class l
 
 - [ ] **Step 5: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/domain/song/chord_symbol_test.dart test/infrastructure/song_library/chord_transposer_test.dart`
+Run: `cd apps/lyron_app && flutter test test/domain/song/chord_symbol_test.dart test/infrastructure/song_library/chord_transposer_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/domain/song/chord_symbol.dart apps/lyrica_app/lib/src/infrastructure/song_library/chord_transposer.dart apps/lyrica_app/test/domain/song/chord_symbol_test.dart apps/lyrica_app/test/infrastructure/song_library/chord_transposer_test.dart
+git add apps/lyron_app/lib/src/domain/song/chord_symbol.dart apps/lyron_app/lib/src/infrastructure/song_library/chord_transposer.dart apps/lyron_app/test/domain/song/chord_symbol_test.dart apps/lyron_app/test/infrastructure/song_library/chord_transposer_test.dart
 git commit -m "feat(chords): add chord model and semitone transposition"
 ```
 
 ### Task 5: Parse Supported ChordPro Metadata, Sections, And Lines
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart`
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/chordpro/chordpro_parser_test.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_parser_test.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
 
 - [ ] **Step 1: Write the failing parser tests for the supported subset**
 
@@ -256,7 +256,7 @@ expect(song.sections.first.lines.first.segments.first.chord?.displayName, 'E');
 
 - [ ] **Step 2: Run the parser tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/chordpro/chordpro_parser_test.dart test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/chordpro/chordpro_parser_test.dart test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
 Expected: FAIL because the parser files do not exist.
 
 - [ ] **Step 3: Implement a small line-scanner and parser**
@@ -272,23 +272,23 @@ Unknown directives should generate diagnostics and continue.
 
 - [ ] **Step 4: Re-run the parser tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/chordpro/chordpro_parser_test.dart test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/chordpro/chordpro_parser_test.dart test/infrastructure/song_library/chordpro/chordpro_reference_songs_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/infrastructure/song_library/chordpro apps/lyrica_app/test/infrastructure/song_library/chordpro
+git add apps/lyron_app/lib/src/infrastructure/song_library/chordpro apps/lyron_app/test/infrastructure/song_library/chordpro
 git commit -m "feat(chordpro): parse supported song reader subset"
 ```
 
 ### Task 6: Add Recoverable Parse Diagnostics And Warning Policy
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/song_reader_result.dart`
-- Test: `apps/lyrica_app/test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart`
-- Test: `apps/lyrica_app/test/application/song_library/song_reader_result_test.dart`
+- Modify: `apps/lyron_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/song_reader_result.dart`
+- Test: `apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart`
+- Test: `apps/lyron_app/test/application/song_library/song_reader_result_test.dart`
 
 - [ ] **Step 1: Write failing tests for unknown directives and partial success**
 
@@ -302,7 +302,7 @@ expect(result.hasRecoverableWarnings, isTrue);
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart test/application/song_library/song_reader_result_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart test/application/song_library/song_reader_result_test.dart`
 Expected: FAIL because recoverable warning flow is incomplete.
 
 - [ ] **Step 3: Add the minimal result type and warning policy**
@@ -319,25 +319,25 @@ Include:
 
 - [ ] **Step 5: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart test/application/song_library/song_reader_result_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart test/application/song_library/song_reader_result_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart apps/lyrica_app/lib/src/application/song_library/song_reader_result.dart apps/lyrica_app/test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart apps/lyrica_app/test/application/song_library/song_reader_result_test.dart
+git add apps/lyron_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart apps/lyron_app/lib/src/application/song_library/song_reader_result.dart apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_diagnostics_test.dart apps/lyron_app/test/application/song_library/song_reader_result_test.dart
 git commit -m "feat(chordpro): add recoverable diagnostics"
 ```
 
 ### Task 7: Wire Providers And Routing For Song List And Reader
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_routes.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_router.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
-- Test: `apps/lyrica_app/test/router/app_router_test.dart`
-- Test: `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_routes.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_router.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Test: `apps/lyron_app/test/router/app_router_test.dart`
+- Test: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
 
 - [ ] **Step 1: Write failing route and provider tests**
 
@@ -348,7 +348,7 @@ Cover:
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/router/app_router_test.dart test/presentation/song_library/song_library_providers_test.dart`
+Run: `cd apps/lyron_app && flutter test test/router/app_router_test.dart test/presentation/song_library/song_library_providers_test.dart`
 Expected: FAIL because the new route and provider graph do not exist.
 
 - [ ] **Step 3: Add providers for repository, parser, transposer, list loading, and reader loading**
@@ -365,22 +365,22 @@ Keep path names explicit and stable.
 
 - [ ] **Step 5: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/router/app_router_test.dart test/presentation/song_library/song_library_providers_test.dart`
+Run: `cd apps/lyron_app && flutter test test/router/app_router_test.dart test/presentation/song_library/song_library_providers_test.dart`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/application/providers.dart apps/lyrica_app/lib/src/router/app_routes.dart apps/lyrica_app/lib/src/router/app_router.dart apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyrica_app/test/router/app_router_test.dart apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart
+git add apps/lyron_app/lib/src/application/providers.dart apps/lyron_app/lib/src/router/app_routes.dart apps/lyron_app/lib/src/router/app_router.dart apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyron_app/test/router/app_router_test.dart apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart
 git commit -m "feat(router): wire song list and reader providers"
 ```
 
 ### Task 8: Build And Test The Song List Screen
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/app/lyrica_app.dart`
-- Test: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/lib/src/app/lyron_app.dart`
+- Test: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 
 - [ ] **Step 1: Write the failing song-list widget tests**
 
@@ -391,7 +391,7 @@ Cover:
 
 - [ ] **Step 2: Run the widget test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_list_screen_test.dart`
 Expected: FAIL because the screen does not exist.
 
 - [ ] **Step 3: Implement the minimal list screen**
@@ -400,24 +400,24 @@ Use a tablet-friendly scaffold with a simple title list. Do not show backend, au
 
 - [ ] **Step 4: Re-run the widget test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_list_screen_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyrica_app/lib/src/app/lyrica_app.dart apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart
+git add apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyron_app/lib/src/app/lyron_app.dart apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart
 git commit -m "feat(song-library): add mock song list screen"
 ```
 
 ### Task 9: Build Reader Projection And Controls State
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_state.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_controller.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_projection.dart`
-- Test: `apps/lyrica_app/test/presentation/song_reader/song_reader_controller_test.dart`
-- Test: `apps/lyrica_app/test/presentation/song_reader/song_reader_projection_test.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_state.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_controller.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_projection.dart`
+- Test: `apps/lyron_app/test/presentation/song_reader/song_reader_controller_test.dart`
+- Test: `apps/lyron_app/test/presentation/song_reader/song_reader_projection_test.dart`
 
 - [ ] **Step 1: Write the failing controller and projection tests**
 
@@ -430,7 +430,7 @@ Cover:
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_controller_test.dart test/presentation/song_reader/song_reader_projection_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_controller_test.dart test/presentation/song_reader/song_reader_projection_test.dart`
 Expected: FAIL because the controller and projection types do not exist.
 
 - [ ] **Step 3: Implement focused reader state and projection**
@@ -442,24 +442,24 @@ Keep:
 
 - [ ] **Step 4: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_controller_test.dart test/presentation/song_reader/song_reader_projection_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_controller_test.dart test/presentation/song_reader/song_reader_projection_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/presentation/song_reader apps/lyrica_app/test/presentation/song_reader/song_reader_controller_test.dart apps/lyrica_app/test/presentation/song_reader/song_reader_projection_test.dart
+git add apps/lyron_app/lib/src/presentation/song_reader apps/lyron_app/test/presentation/song_reader/song_reader_controller_test.dart apps/lyron_app/test/presentation/song_reader/song_reader_projection_test.dart
 git commit -m "feat(song-reader): add reader state and projection"
 ```
 
 ### Task 10: Build And Test The Tablet-First Song Reader Screen
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/widgets/song_reader_header.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/widgets/song_section_view.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/song_reader/widgets/song_line_view.dart`
-- Test: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_header.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/widgets/song_section_view.dart`
+- Create: `apps/lyron_app/lib/src/presentation/song_reader/widgets/song_line_view.dart`
+- Test: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 
 - [ ] **Step 1: Write the failing reader widget tests**
 
@@ -474,7 +474,7 @@ Cover:
 
 - [ ] **Step 2: Run the widget test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart`
 Expected: FAIL because the reader screen does not exist.
 
 - [ ] **Step 3: Implement the reader screen and focused widgets**
@@ -483,21 +483,21 @@ Use a vertically scrolling layout. Keep section rendering and line rendering sep
 
 - [ ] **Step 4: Re-run the widget test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_reader/song_reader_screen_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/presentation/song_reader apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart
+git add apps/lyron_app/lib/src/presentation/song_reader apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart
 git commit -m "feat(song-reader): add tablet-first reader screen"
 ```
 
 ### Task 11: Add End-To-End Route Flow Coverage
 
 **Files:**
-- Modify: `apps/lyrica_app/test/app/lyrica_app_test.dart`
-- Create: `apps/lyrica_app/test/integration/song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/app/lyron_app_test.dart`
+- Create: `apps/lyron_app/test/integration/song_reader_flow_test.dart`
 
 - [ ] **Step 1: Write the failing route-flow test**
 
@@ -508,7 +508,7 @@ Cover the vertical slice:
 
 - [ ] **Step 2: Run the focused tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart test/integration/song_reader_flow_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart test/integration/song_reader_flow_test.dart`
 Expected: FAIL until the full flow is wired.
 
 - [ ] **Step 3: Make any minimal integration fixes required**
@@ -517,13 +517,13 @@ Fix only the missing wiring or state issues exposed by the route-flow test. Do n
 
 - [ ] **Step 4: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart test/integration/song_reader_flow_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart test/integration/song_reader_flow_test.dart`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/test/app/lyrica_app_test.dart apps/lyrica_app/test/integration/song_reader_flow_test.dart
+git add apps/lyron_app/test/app/lyron_app_test.dart apps/lyron_app/test/integration/song_reader_flow_test.dart
 git commit -m "test(app): cover song list to reader flow"
 ```
 
@@ -531,7 +531,7 @@ git commit -m "test(app): cover song list to reader flow"
 
 **Files:**
 - Modify: `README.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 - Modify: `docs/architecture/architecture.md`
 - Modify: `docs/testing/testing-strategy.md`
 - Modify: `docs/domain/domain-model.md`
@@ -563,6 +563,6 @@ If tests or implementation differ from the spec or plan in meaningful ways, upda
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md apps/lyrica_app/README.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/domain/domain-model.md docs/workflows/development-workflow.md docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md
+git add README.md apps/lyron_app/README.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/domain/domain-model.md docs/workflows/development-workflow.md docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md
 git commit -m "docs(song-reader): align repository docs with first product slice"
 ```
