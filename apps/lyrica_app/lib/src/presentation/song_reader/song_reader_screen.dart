@@ -6,9 +6,14 @@ import 'package:lyrica_app/src/application/song_library/catalog_connection_statu
 import 'package:lyrica_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
+import 'package:lyrica_app/src/domain/planning/plan_detail.dart';
 import 'package:lyrica_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
+import 'package:lyrica_app/src/presentation/planning/planning_routes.dart';
+import 'package:lyrica_app/src/presentation/song_reader/session_scoped_reader_context.dart';
+import 'package:lyrica_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
+import 'package:lyrica_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyrica_app/src/presentation/song_reader/widgets/song_reader_header.dart';
@@ -17,9 +22,20 @@ import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class SongReaderScreen extends ConsumerStatefulWidget {
-  const SongReaderScreen({super.key, required this.songId});
+  const SongReaderScreen({
+    super.key,
+    required this.songId,
+    this.planId,
+    this.sessionId,
+    this.sessionItemId,
+    this.warmPlanDetail,
+  });
 
   final String songId;
+  final String? planId;
+  final String? sessionId;
+  final String? sessionItemId;
+  final PlanDetail? warmPlanDetail;
 
   @override
   ConsumerState<SongReaderScreen> createState() => _SongReaderScreenState();
@@ -30,6 +46,27 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentPadding = EdgeInsets.all(24);
 
   late final SongReaderController _controller = SongReaderController();
+
+  bool get _isScopedMode =>
+      widget.planId != null &&
+      widget.sessionId != null &&
+      widget.sessionItemId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncScopedRuntimeState();
+  }
+
+  @override
+  void didUpdateWidget(covariant SongReaderScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.songId != widget.songId ||
+        oldWidget.planId != widget.planId ||
+        oldWidget.sessionId != widget.sessionId) {
+      _syncScopedRuntimeState();
+    }
+  }
 
   void _updateState(void Function(SongReaderController controller) update) {
     setState(() {
@@ -43,7 +80,32 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
+    if (_isScopedMode) {
+      context.replace(PlanningRoutes.planDetailLocation(widget.planId!));
+      return;
+    }
+
     context.replace(AppRoutes.home.path);
+  }
+
+  void _syncScopedRuntimeState() {
+    if (!_isScopedMode) {
+      return;
+    }
+
+    Future<void>.microtask(() {
+      if (!mounted) {
+        return;
+      }
+
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider)
+          .startSession(
+            planId: widget.planId!,
+            sessionId: widget.sessionId!,
+            songId: widget.songId,
+          );
+    });
   }
 
   @override
@@ -53,6 +115,25 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final isResolvingCatalogContext =
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
+    final scopedContextAsync = _isScopedMode
+        ? ref.watch(
+            sessionScopedReaderContextProvider(
+              SessionScopedReaderContextRequest(
+                planId: widget.planId!,
+                sessionId: widget.sessionId!,
+                sessionItemId: widget.sessionItemId!,
+                songId: widget.songId,
+                warmPlanDetail: widget.warmPlanDetail,
+              ),
+            ),
+          )
+        : null;
+    final scopedRuntimeController = _isScopedMode
+        ? ref.watch(sessionScopedReaderRuntimeControllerProvider)
+        : null;
+    final readerState = _isScopedMode
+        ? scopedRuntimeController!.state.readerState
+        : _controller.state;
 
     return Scaffold(
       appBar: AppBar(
@@ -81,6 +162,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     child: Text(AppStrings.songReaderLoadingMessage),
                   ),
                   error: (error, stackTrace) {
+                    if (_isScopedMode) {
+                      return const Center(
+                        child: Text(
+                          AppStrings.scopedReaderContextUnavailableMessage,
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    }
+
                     if (error is SongAccessDeniedException) {
                       return const Center(
                         child: Text(AppStrings.songReaderAccessDeniedMessage),
@@ -115,9 +205,23 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     );
                   },
                   data: (SongReaderResult result) {
+                    if (_isScopedMode && scopedContextAsync != null) {
+                      final scopedContextResult =
+                          scopedContextAsync.valueOrNull;
+                      if (scopedContextResult
+                          is SessionScopedReaderContextFailureResult) {
+                        return const Center(
+                          child: Text(
+                            AppStrings.scopedReaderContextUnavailableMessage,
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+                    }
+
                     final projection = SongReaderProjection(
                       song: result.song,
-                      state: _controller.state,
+                      state: readerState,
                     );
                     final recoverableWarningCount = result.song.diagnostics
                         .where(
@@ -138,27 +242,70 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                             _CatalogStatusSurface(state: catalogState),
                             if (_hasVisibleStatus(catalogState))
                               const SizedBox(height: 24),
+                            if (_isScopedMode)
+                              _ScopedNavigationSurface(
+                                scopedContextAsync: scopedContextAsync!,
+                                currentWarmPlanDetail: widget.warmPlanDetail,
+                              ),
+                            if (_isScopedMode) const SizedBox(height: 24),
                             SongReaderHeader(
                               projection: projection,
                               hasRecoverableWarnings:
                                   result.hasRecoverableWarnings,
                               warningCount: recoverableWarningCount,
                               onToggleViewMode: () {
+                                if (_isScopedMode) {
+                                  ref
+                                      .read(
+                                        sessionScopedReaderRuntimeControllerProvider,
+                                      )
+                                      .toggleViewMode();
+                                  return;
+                                }
                                 _updateState(
                                   (controller) => controller.toggleViewMode(),
                                 );
                               },
                               onTransposeDown: () {
+                                if (_isScopedMode) {
+                                  ref
+                                      .read(
+                                        sessionScopedReaderRuntimeControllerProvider,
+                                      )
+                                      .transposeDown();
+                                  return;
+                                }
                                 _updateState(
                                   (controller) => controller.transposeDown(),
                                 );
                               },
                               onTransposeUp: () {
+                                if (_isScopedMode) {
+                                  ref
+                                      .read(
+                                        sessionScopedReaderRuntimeControllerProvider,
+                                      )
+                                      .transposeUp();
+                                  return;
+                                }
                                 _updateState(
                                   (controller) => controller.transposeUp(),
                                 );
                               },
                               onDecreaseFontScale: () {
+                                if (_isScopedMode) {
+                                  final runtimeController = ref.read(
+                                    sessionScopedReaderRuntimeControllerProvider,
+                                  );
+                                  runtimeController.setSharedFontScale(
+                                    runtimeController
+                                            .state
+                                            .readerState
+                                            .sharedFontScale -
+                                        0.1,
+                                  );
+                                  return;
+                                }
                                 _updateState((controller) {
                                   controller.setSharedFontScale(
                                     controller.state.sharedFontScale - 0.1,
@@ -166,6 +313,19 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 });
                               },
                               onIncreaseFontScale: () {
+                                if (_isScopedMode) {
+                                  final runtimeController = ref.read(
+                                    sessionScopedReaderRuntimeControllerProvider,
+                                  );
+                                  runtimeController.setSharedFontScale(
+                                    runtimeController
+                                            .state
+                                            .readerState
+                                            .sharedFontScale +
+                                        0.1,
+                                  );
+                                  return;
+                                }
                                 _updateState((controller) {
                                   controller.setSharedFontScale(
                                     controller.state.sharedFontScale + 0.1,
@@ -190,6 +350,70 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 ),
         ),
       ),
+    );
+  }
+}
+
+class _ScopedNavigationSurface extends StatelessWidget {
+  const _ScopedNavigationSurface({
+    required this.scopedContextAsync,
+    required this.currentWarmPlanDetail,
+  });
+
+  final AsyncValue<SessionScopedReaderContextResult> scopedContextAsync;
+  final PlanDetail? currentWarmPlanDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    return scopedContextAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (error, stackTrace) => const SizedBox.shrink(),
+      data: (result) {
+        if (result is! ResolvedSessionScopedReaderContextResult) {
+          return const SizedBox.shrink();
+        }
+
+        final scopedContext = result.context;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            OutlinedButton(
+              onPressed: scopedContext.previousItem == null
+                  ? null
+                  : () {
+                      context.replace(
+                        PlanningRoutes.planSessionSongReaderLocation(
+                          planId: scopedContext.planId,
+                          sessionId: scopedContext.sessionId,
+                          sessionItemId:
+                              scopedContext.previousItem!.sessionItemId,
+                          songId: scopedContext.previousItem!.songId,
+                        ),
+                        extra: currentWarmPlanDetail,
+                      );
+                    },
+              child: const Text(AppStrings.scopedReaderPreviousAction),
+            ),
+            OutlinedButton(
+              onPressed: scopedContext.nextItem == null
+                  ? null
+                  : () {
+                      context.replace(
+                        PlanningRoutes.planSessionSongReaderLocation(
+                          planId: scopedContext.planId,
+                          sessionId: scopedContext.sessionId,
+                          sessionItemId: scopedContext.nextItem!.sessionItemId,
+                          songId: scopedContext.nextItem!.songId,
+                        ),
+                        extra: currentWarmPlanDetail,
+                      );
+                    },
+              child: const Text(AppStrings.scopedReaderNextAction),
+            ),
+          ],
+        );
+      },
     );
   }
 }

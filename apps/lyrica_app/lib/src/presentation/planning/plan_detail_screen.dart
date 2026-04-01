@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyrica_app/src/domain/planning/plan_detail.dart';
+import 'package:lyrica_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyrica_app/src/domain/planning/session_summary.dart';
 import 'package:lyrica_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyrica_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -44,7 +46,7 @@ class PlanDetailScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
                 for (final session in detail.sessions) ...[
-                  _SessionCard(session: session),
+                  _SessionCard(planDetail: detail, session: session),
                   const SizedBox(height: 16),
                 ],
               ],
@@ -57,8 +59,9 @@ class PlanDetailScreen extends ConsumerWidget {
 }
 
 class _SessionCard extends StatelessWidget {
-  const _SessionCard({required this.session});
+  const _SessionCard({required this.planDetail, required this.session});
 
+  final PlanDetail planDetail;
   final SessionSummary session;
 
   @override
@@ -74,9 +77,53 @@ class _SessionCard extends StatelessWidget {
             Text('${AppStrings.sessionLabel} ${session.position}'),
             const SizedBox(height: 12),
             for (final item in session.items) ...[
-              Text('${item.position}. ${item.song.title}'),
+              _SongItemButton(
+                planDetail: planDetail,
+                session: session,
+                item: item,
+              ),
               const SizedBox(height: 8),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SongItemButton extends StatelessWidget {
+  const _SongItemButton({
+    required this.planDetail,
+    required this.session,
+    required this.item,
+  });
+
+  final PlanDetail planDetail;
+  final SessionSummary session;
+  final SessionItemSummary item;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: ValueKey('plan-session-item-${item.id}'),
+      onTap: () {
+        context.push(
+          PlanningRoutes.planSessionSongReaderLocation(
+            planId: planDetail.plan.id,
+            sessionId: session.id,
+            sessionItemId: item.id,
+            songId: item.song.id,
+          ),
+          extra: planDetail,
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(child: Text('${item.position}. ${item.song.title}')),
+            const Icon(Icons.chevron_right),
           ],
         ),
       ),

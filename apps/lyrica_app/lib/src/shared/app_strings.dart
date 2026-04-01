@@ -32,6 +32,10 @@ class AppStrings {
   static const songReaderAccessDeniedMessage =
       'You do not have access to this song.';
   static const songReaderBackAction = 'Back to song list';
+  static const scopedReaderPreviousAction = 'Previous song';
+  static const scopedReaderNextAction = 'Next song';
+  static const scopedReaderContextUnavailableMessage =
+      'This session-scoped reader context is unavailable.';
   static const planningEntryAction = 'Plans';
   static const planListTitle = 'Plans';
   static const planListLoadingMessage = 'Loading plans...';

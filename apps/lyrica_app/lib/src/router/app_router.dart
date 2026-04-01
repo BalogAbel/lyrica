@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyrica_app/src/domain/planning/plan_detail.dart';
 import 'package:lyrica_app/src/presentation/auth/sign_in_screen.dart';
 import 'package:lyrica_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyrica_app/src/presentation/planning/plan_list_screen.dart';
@@ -20,6 +21,8 @@ GoRouter createAppRouter({
   required Listenable refreshListenable,
   String initialLocation = '/',
 }) {
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+
   return GoRouter(
     initialLocation: initialLocation,
     refreshListenable: refreshListenable,
@@ -27,13 +30,23 @@ GoRouter createAppRouter({
       final isOnBootstrap = state.matchedLocation == AppRoutes.bootstrap.path;
       final isOnSignIn = state.matchedLocation == AppRoutes.signIn.path;
       final status = authController.state.status;
+      final restoreTarget = state.uri.queryParameters['from'];
 
       if (status == AppAuthStatus.initializing) {
-        return isOnBootstrap ? null : AppRoutes.bootstrap.path;
+        if (isOnBootstrap) {
+          return null;
+        }
+
+        return Uri(
+          path: AppRoutes.bootstrap.path,
+          queryParameters: {'from': state.uri.toString()},
+        ).toString();
       }
 
       if (status == AppAuthStatus.signedIn) {
-        return isOnSignIn || isOnBootstrap ? AppRoutes.home.path : null;
+        return isOnSignIn || isOnBootstrap
+            ? (restoreTarget ?? AppRoutes.home.path)
+            : null;
       }
 
       if (isOnBootstrap) {
@@ -76,6 +89,18 @@ GoRouter createAppRouter({
         path: AppRoutes.planDetail.path,
         builder: (context, state) =>
             PlanDetailScreen(planId: state.pathParameters['planId']!),
+      ),
+      GoRoute(
+        path: AppRoutes.planSessionSongReader.path,
+        builder: (context, state) => SongReaderScreen(
+          songId: state.pathParameters['songId']!,
+          planId: state.pathParameters['planId']!,
+          sessionId: state.pathParameters['sessionId']!,
+          sessionItemId: state.pathParameters['sessionItemId']!,
+          warmPlanDetail: state.extra is PlanDetail
+              ? state.extra! as PlanDetail
+              : null,
+        ),
       ),
       GoRoute(
         path: AppRoutes.songReader.path,
