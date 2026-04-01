@@ -12,8 +12,15 @@ import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/domain/planning/plan_detail.dart';
+import 'package:lyrica_app/src/domain/planning/plan_summary.dart';
+import 'package:lyrica_app/src/domain/planning/session_item_summary.dart';
+import 'package:lyrica_app/src/domain/planning/session_summary.dart';
+import 'package:lyrica_app/src/presentation/planning/plan_detail_screen.dart';
+import 'package:lyrica_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
+import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
@@ -60,6 +67,30 @@ void main() {
     );
   }
 
+  SongReaderResult buildScopedResult(String title) {
+    return SongReaderResult(
+      song: ParsedSong(
+        title: title,
+        sourceKey: 'G',
+        sections: [
+          SongSection(
+            kind: SongSectionKind.verse,
+            label: 'Verse',
+            number: 1,
+            lines: [
+              SongLine(
+                segments: [
+                  const LyricSegment(leadingChord: 'F#m', text: 'Hello'),
+                ],
+              ),
+            ],
+          ),
+        ],
+        diagnostics: const [],
+      ),
+    );
+  }
+
   Widget buildApp({
     required SongReaderResult result,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
@@ -92,6 +123,8 @@ void main() {
       hasCachedCatalog: true,
     ),
   }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
     final router = GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -112,6 +145,64 @@ void main() {
         ),
         songLibraryReaderProvider.overrideWithProvider(
           (value) => FutureProvider.autoDispose((ref) async => result),
+        ),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+  }
+
+  Widget buildScopedReaderApp({
+    required PlanDetail planDetail,
+    required Map<String, SongReaderResult> resultsBySongId,
+    String initialLocation =
+        '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+    Object? planningError,
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final router = GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.planDetail.path,
+          builder: (context, state) =>
+              PlanDetailScreen(planId: state.pathParameters['planId']!),
+        ),
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: AppRoutes.planSessionSongReader.path,
+          builder: (context, state) => SongReaderScreen(
+            songId: state.pathParameters['songId']!,
+            planId: state.pathParameters['planId']!,
+            sessionId: state.pathParameters['sessionId']!,
+            sessionItemId: state.pathParameters['sessionItemId']!,
+          ),
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        catalogSnapshotStateProvider.overrideWithValue(
+          const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+        planningPlanDetailProvider(planDetail.plan.id).overrideWith((ref) {
+          if (planningError != null) {
+            return Future<PlanDetail>.error(planningError);
+          }
+
+          return Future.value(planDetail);
+        }),
+        songLibraryReaderProvider.overrideWithProvider(
+          (songId) => FutureProvider.autoDispose(
+            (ref) async => resultsBySongId[songId]!,
+          ),
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -387,5 +478,356 @@ void main() {
       expect(find.text('Reader Song'), findsOneWidget);
       expect(find.text('Song reader'), findsNothing);
     },
+  );
+
+  testWidgets('scoped reader entry shows previous and next controls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+  });
+
+  testWidgets('standard reader entry hides scoped navigation controls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
+  });
+
+  testWidgets('first and last items disable navigation at session boundaries', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/item-10/songs/song-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final previousAtStart = tester.widget<OutlinedButton>(
+      find.widgetWithText(
+        OutlinedButton,
+        AppStrings.scopedReaderPreviousAction,
+      ),
+    );
+    final nextAtStart = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
+    );
+    expect(previousAtStart.onPressed, isNull);
+    expect(nextAtStart.onPressed, isNotNull);
+
+    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+    await tester.pumpAndSettle();
+
+    final previousAtEnd = tester.widget<OutlinedButton>(
+      find.widgetWithText(
+        OutlinedButton,
+        AppStrings.scopedReaderPreviousAction,
+      ),
+    );
+    final nextAtEnd = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
+    );
+    expect(previousAtEnd.onPressed, isNotNull);
+    expect(nextAtEnd.onPressed, isNull);
+  });
+
+  testWidgets(
+    'repeated next actions keep a single reader stack entry before returning to plan detail',
+    (tester) async {
+      await tester.pumpWidget(
+        buildScopedReaderApp(
+          planDetail: _multiItemPlanDetail(),
+          resultsBySongId: {
+            'song-1': buildScopedResult('Song One'),
+            'song-2': buildScopedResult('Song Two'),
+            'song-3': buildScopedResult('Song Three'),
+          },
+          initialLocation: '/plans/plan-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('20. Song Two'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.scopedReaderPreviousAction));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+      expect(find.text('Plan Fixture'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'scoped navigation preserves view mode, transpose, and shared font scale',
+    (tester) async {
+      await tester.pumpWidget(
+        buildScopedReaderApp(
+          planDetail: _multiItemPlanDetail(),
+          resultsBySongId: {
+            'song-1': buildScopedResult('Song One'),
+            'song-2': buildScopedResult('Song Two'),
+            'song-3': buildScopedResult('Song Three'),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Lyrics only'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A+'));
+      await tester.pumpAndSettle();
+
+      final resizedBeforeNavigation = tester.widget<Text>(find.text('Hello'));
+      final fontSizeBeforeNavigation = resizedBeforeNavigation.style!.fontSize!;
+
+      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+      await tester.pumpAndSettle();
+
+      final resizedAfterNavigation = tester.widget<Text>(find.text('Hello'));
+      final fontSizeAfterNavigation = resizedAfterNavigation.style!.fontSize!;
+
+      expect(find.text('F#m'), findsNothing);
+      expect(find.text('Gm'), findsNothing);
+      expect(fontSizeAfterNavigation, fontSizeBeforeNavigation);
+    },
+  );
+
+  testWidgets('invalid scoped context shows explicit scoped error state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {'song-999': buildScopedResult('Wrong Song')},
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/item-20/songs/song-999',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.scopedReaderContextUnavailableMessage),
+      findsOneWidget,
+    );
+    expect(find.text('Wrong Song'), findsNothing);
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
+  });
+
+  testWidgets(
+    'scoped song-load failure shows the explicit scoped error instead of standard reader errors',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _multiItemPlanDetail()),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => throw const SongNotFoundException('song-2'),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation:
+                  '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+              routes: [
+                GoRoute(
+                  path: AppRoutes.planDetail.path,
+                  builder: (context, state) =>
+                      PlanDetailScreen(planId: state.pathParameters['planId']!),
+                ),
+                GoRoute(
+                  path: AppRoutes.planSessionSongReader.path,
+                  builder: (context, state) => SongReaderScreen(
+                    songId: state.pathParameters['songId']!,
+                    planId: state.pathParameters['planId']!,
+                    sessionId: state.pathParameters['sessionId']!,
+                    sessionItemId: state.pathParameters['sessionItemId']!,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(AppStrings.scopedReaderContextUnavailableMessage),
+        findsOneWidget,
+      );
+      expect(find.text(AppStrings.songReaderUnavailableMessage), findsNothing);
+      expect(find.text(AppStrings.songReaderAccessDeniedMessage), findsNothing);
+      expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
+      expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'scoped reader keeps the route and shows an explicit error when planning context is unavailable',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const SongListScreen(),
+          ),
+          GoRoute(
+            path: AppRoutes.planDetail.path,
+            builder: (context, state) =>
+                PlanDetailScreen(planId: state.pathParameters['planId']!),
+          ),
+          GoRoute(
+            path: AppRoutes.planSessionSongReader.path,
+            builder: (context, state) => SongReaderScreen(
+              songId: state.pathParameters['songId']!,
+              planId: state.pathParameters['planId']!,
+              sessionId: state.pathParameters['sessionId']!,
+              sessionItemId: state.pathParameters['sessionItemId']!,
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            planningPlanDetailProvider('plan-1').overrideWith(
+              (ref) => Future<PlanDetail>.error(StateError('unavailable')),
+            ),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => buildScopedResult('Song Two'),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(AppStrings.scopedReaderContextUnavailableMessage),
+        findsOneWidget,
+      );
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        contains('/plans/plan-1/sessions/session-1/items/item-20/songs/song-2'),
+      );
+    },
+  );
+
+  testWidgets(
+    'direct scoped entry falls back to canonical plan detail on back',
+    (tester) async {
+      await tester.pumpWidget(
+        buildScopedReaderApp(
+          planDetail: _multiItemPlanDetail(),
+          resultsBySongId: {
+            'song-1': buildScopedResult('Song One'),
+            'song-2': buildScopedResult('Song Two'),
+            'song-3': buildScopedResult('Song Three'),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+      expect(find.text('Plan Fixture'), findsOneWidget);
+    },
+  );
+}
+
+PlanDetail _multiItemPlanDetail() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      name: 'Plan Fixture',
+      description: 'Scoped reader test fixture',
+      scheduledFor: null,
+      updatedAt: DateTime(2026, 4, 1, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        name: 'Main Set',
+        position: 10,
+        items: [
+          SessionItemSummary(
+            id: 'item-10',
+            position: 10,
+            song: SongSummary(id: 'song-1', title: 'Song One'),
+          ),
+          SessionItemSummary(
+            id: 'item-20',
+            position: 20,
+            song: SongSummary(id: 'song-2', title: 'Song Two'),
+          ),
+          SessionItemSummary(
+            id: 'item-30',
+            position: 30,
+            song: SongSummary(id: 'song-3', title: 'Song Three'),
+          ),
+        ],
+      ),
+    ],
   );
 }

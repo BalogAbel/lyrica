@@ -31,6 +31,10 @@ void main() {
     expect(AppRoutes.signIn.path, '/sign-in');
     expect(AppRoutes.planList.path, '/plans');
     expect(AppRoutes.planDetail.path, '/plans/:planId');
+    expect(
+      AppRoutes.planSessionSongReader.path,
+      '/plans/:planId/sessions/:sessionId/items/:sessionItemId/songs/:songId',
+    );
     expect(AppRoutes.songReader.path, '/songs/:songId');
   });
 
@@ -160,6 +164,39 @@ void main() {
               authController: controller,
               refreshListenable: controller,
               initialLocation: '/songs/blocked',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Song reader'), findsNothing);
+  });
+
+  testWidgets('signed-out users cannot open the scoped reader route directly', (
+    WidgetTester tester,
+  ) async {
+    final repository = _TestAuthRepository();
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) => MaterialApp.router(
+            routerConfig: createAppRouter(
+              authController: controller,
+              refreshListenable: controller,
+              initialLocation:
+                  '/plans/plan-1/sessions/session-1/items/item-1/songs/song-1',
             ),
           ),
         ),
@@ -318,6 +355,137 @@ void main() {
     );
   });
 
+  testWidgets('signed-in users can land on the scoped reader route directly', (
+    WidgetTester tester,
+  ) async {
+    final repository = _TestAuthRepository(
+      restoredSession: const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyrica.local',
+      ),
+    );
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
+
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation:
+          '/plans/plan-1/sessions/session-1/items/item-1/songs/song-1',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          planningPlanDetailProvider(
+            'plan-1',
+          ).overrideWith((ref) async => _planDetailFixture()),
+          songLibraryReaderProvider.overrideWithProvider(
+            (songId) => FutureProvider.autoDispose(
+              (ref) async => SongReaderResult(
+                song: ParsedSong(
+                  title: 'Egy út',
+                  sourceKey: 'C',
+                  sections: const [],
+                  diagnostics: const [],
+                ),
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Song reader'), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+    expect(
+      router.routerDelegate.currentConfiguration.uri.toString(),
+      '/plans/plan-1/sessions/session-1/items/item-1/songs/song-1',
+    );
+  });
+
+  testWidgets(
+    'auth restore keeps the canonical scoped reader route for direct entry',
+    (WidgetTester tester) async {
+      final completer = Completer<AppAuthSession?>();
+      final repository = _DelayedAuthRepository(completer.future);
+      final controller = AppAuthController(repository);
+      addTearDown(controller.dispose);
+      unawaited(controller.restoreSession());
+      final router = createAppRouter(
+        authController: controller,
+        refreshListenable: controller,
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/item-1/songs/song-1',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _planDetailFixture()),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => SongReaderResult(
+                  song: ParsedSong(
+                    title: 'Egy út',
+                    sourceKey: 'C',
+                    sections: const [],
+                    diagnostics: const [],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Restoring session...'), findsOneWidget);
+
+      completer.complete(
+        const AppAuthSession(userId: 'user-1', email: 'demo@lyrica.local'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Song reader'), findsOneWidget);
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        '/plans/plan-1/sessions/session-1/items/item-1/songs/song-1',
+      );
+    },
+  );
+
   testWidgets(
     'direct reader entry falls back to the song list without a back loop',
     (WidgetTester tester) async {
@@ -448,4 +616,35 @@ class _DelayedAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+PlanDetail _planDetailFixture() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      name: 'Sunday Morning',
+      description: 'Single-session Sunday fixture',
+      scheduledFor: DateTime(2026, 4, 5, 8, 30),
+      updatedAt: DateTime(2026, 3, 31, 8),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        name: 'Main Set',
+        position: 10,
+        items: [
+          SessionItemSummary(
+            id: 'item-1',
+            position: 10,
+            song: SongSummary(id: 'song-1', title: 'Egy út'),
+          ),
+          SessionItemSummary(
+            id: 'item-2',
+            position: 20,
+            song: SongSummary(id: 'song-2', title: 'Masodik'),
+          ),
+        ],
+      ),
+    ],
+  );
 }
