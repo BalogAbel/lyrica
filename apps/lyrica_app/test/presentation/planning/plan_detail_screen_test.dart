@@ -79,10 +79,7 @@ void main() {
                 SessionItemSummary(
                   id: 'item-2',
                   position: 20,
-                  song: SongSummary(
-                    id: 'song-2',
-                    title: 'Alpha Song',
-                  ),
+                  song: SongSummary(id: 'song-2', title: 'Alpha Song'),
                 ),
               ],
             ),
