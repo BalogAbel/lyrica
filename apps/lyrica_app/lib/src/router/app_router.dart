@@ -7,6 +7,8 @@ import 'package:lyrica_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyrica_app/src/application/providers.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyrica_app/src/presentation/auth/sign_in_screen.dart';
+import 'package:lyrica_app/src/presentation/planning/plan_detail_screen.dart';
+import 'package:lyrica_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyrica_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyrica_app/src/router/app_routes.dart';
@@ -40,6 +42,8 @@ GoRouter createAppRouter({
 
       final requiresAuth =
           state.matchedLocation == AppRoutes.home.path ||
+          state.matchedLocation == AppRoutes.planList.path ||
+          state.matchedLocation.startsWith('/plans/') ||
           state.matchedLocation.startsWith('/songs/');
       if (requiresAuth) {
         return AppRoutes.signIn.path;
@@ -63,6 +67,15 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.home.path,
         builder: (context, state) => const SongListScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.planList.path,
+        builder: (context, state) => const PlanListScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.planDetail.path,
+        builder: (context, state) =>
+            PlanDetailScreen(planId: state.pathParameters['planId']!),
       ),
       GoRoute(
         path: AppRoutes.songReader.path,

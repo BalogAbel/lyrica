@@ -19,6 +19,7 @@ Lyrica helps worship and music teams prepare, organize, and run services with re
 - The first slice validates reader controls such as chord visibility, semitone transposition, shared font scaling, and visible song structure.
 - The first executable backend slice validates authenticated song reads against organization-scoped Supabase data without moving ChordPro parsing or reader rendering out of the app.
 - The next executable local-first read slice validates that the latest successfully fetched authenticated song catalog remains readable offline from a current user-owned active-organization cache, with automated proof centered on persistent cache reopen behavior and native offline relaunch acceptance centered on manual validation on Flutter targets.
+- The first executable planning slice validates a simplified `plan -> session -> session_items` hierarchy with real seeded Supabase data and a minimal signed-in read-only plan list/detail flow.
 - The architecture preserves the repository, parser, and offline boundaries needed for later offline editing, sync, and planning workflows.
 - Android, iOS, and Web share a coherent product model and workflow vocabulary.
 - If durable offline desktop use becomes important later, it should be addressed through Flutter desktop rather than expanding the browser slice beyond best-effort offline relaunch.
@@ -36,7 +37,7 @@ Lyrica helps worship and music teams prepare, organize, and run services with re
 
 ## UX Direction
 
-The domain model remains expressive internally, while the UI presents guided actions and simple mental models. For example, "new list" should gather the event and session names instead of exposing the entire event/session/session_item structure up front.
+The domain model remains expressive internally, while the UI presents guided actions and simple mental models. For example, future planning creation should gather the plan and session names instead of exposing the entire session/session_item structure up front.
 
 ## Operating Constraints
 

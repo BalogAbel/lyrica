@@ -7,7 +7,6 @@
 - `memberships`
 - `songs`
 - `plans`
-- `events`
 - `sessions`
 - `session_items`
 - `attachments`
@@ -116,9 +115,14 @@ Key fields:
 
 If `group_id` is present, it must belong to the same organization as the plan.
 
-### events
+Read-model note:
 
-Calendar-facing occurrence or service context. Events may own one or more sessions.
+- In the current executable planning slice, visible plans are read at organization scope for the signed-in user's active memberships.
+- Planning writes remain capability-based backend decisions; the read-side slice does not introduce a separate planning view capability.
+
+### sessions
+
+Editable operational lists used during preparation or execution. In the current executable planning slice, sessions belong directly to plans.
 
 Key fields:
 
@@ -126,28 +130,7 @@ Key fields:
 - `organization_id`
 - `group_id`
 - `plan_id`
-- `name`
-- `starts_at`
-- `ends_at`
-- `location`
-- `version`
-- `base_version`
-- `sync_status`
-- `updated_at`
-- `last_modified_by`
-
-If `plan_id` or `group_id` is present, both references must remain inside the same organization as the event.
-
-### sessions
-
-Editable operational lists used during preparation or execution. Sessions belong to events.
-
-Key fields:
-
-- `id`
-- `organization_id`
-- `group_id`
-- `event_id`
+- `position`
 - `name`
 - `notes`
 - `version`
@@ -156,11 +139,15 @@ Key fields:
 - `updated_at`
 - `last_modified_by`
 
-Session organization scope is inherited from the owning event and must never diverge from it.
+Session organization scope is inherited from the owning plan and must never diverge from it. When `group_id` is present on a session, it must stay aligned with the owning plan.
+
+Read-model note:
+
+- In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan.
 
 ### session_items
 
-Ordered items within a session. An item can point to a song, attachment, or free-form note depending on type.
+Ordered items within a session. The wider schema can support songs, attachments, or notes by item type, but the first executable planning slice uses only song-backed entries.
 
 Key fields:
 
@@ -185,6 +172,10 @@ Invariants:
 - `item_type = 'attachment'` requires `attachment_id` and forbids `song_id`.
 - `item_type = 'note'` forbids both `song_id` and `attachment_id`.
 - Referenced songs and attachments must remain in the same organization as the owning session.
+
+Read-model note:
+
+- In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session.
 
 ### attachments
 
@@ -219,7 +210,7 @@ Offline-synced aggregates include:
 
 The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
 
-The currently executable Drift-backed slice is narrower than full sync: it stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership) but does not yet introduce write-side sync records for songs, plans, or sessions.
+The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership), and it exposes an online-only planning read slice for plans, sessions, and session items. It does not yet introduce write-side sync records for songs, plans, or sessions.
 
 ### sync_status
 
@@ -234,10 +225,9 @@ Expected values:
 ## Relationships
 
 - An organization has many groups.
-- An organization has many songs, plans, events, sessions, and attachments.
+- An organization has many songs, plans, sessions, and attachments.
 - A group belongs to an organization.
-- A plan may have many events.
-- An event may have many sessions.
+- A plan has many sessions.
 - A session has many session items.
 - A session item may reference one song or one attachment.
 - Cross-aggregate references must keep `organization_id` aligned; cross-organization foreign-key combinations are invalid.

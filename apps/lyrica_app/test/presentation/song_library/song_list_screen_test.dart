@@ -20,6 +20,7 @@ import 'package:lyrica_app/src/domain/song/song_summary.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyrica_app/src/presentation/song_library/song_list_screen.dart';
+import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
@@ -43,6 +44,11 @@ void main() {
       initialLocation: '/',
       routes: [
         GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: AppRoutes.planList.path,
+          builder: (context, state) =>
+              const Material(child: Text('plans:list')),
+        ),
         GoRoute(
           path: '/songs/:songId',
           builder: (context, state) {
@@ -214,7 +220,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip(AppStrings.songCatalogRefreshAction), findsOneWidget);
+    expect(find.text(AppStrings.planningEntryAction), findsOneWidget);
     expect(find.text(AppStrings.signOutAction), findsOneWidget);
+  });
+
+  testWidgets('navigates to the planning area from the song list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.planningEntryAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text('plans:list'), findsOneWidget);
   });
 
   testWidgets('tapping the refresh action triggers one catalog refresh', (

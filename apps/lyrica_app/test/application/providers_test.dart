@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyrica_app/src/application/providers.dart';
+import 'package:lyrica_app/src/domain/planning/planning_repository.dart';
+import 'package:lyrica_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
@@ -21,5 +23,22 @@ void main() {
     );
     expect(selectActiveOrganizationId(const []), isNull);
     expect(selectActiveOrganizationId('unexpected'), isNull);
+  });
+
+  test('wires PlanningRepository through the shared provider graph', () {
+    final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
+    final container = ProviderContainer(
+      overrides: [supabaseClientProvider.overrideWithValue(client)],
+    );
+    addTearDown(container.dispose);
+
+    expect(
+      container.read(planningRepositoryProvider),
+      isA<PlanningRepository>().having(
+        (repository) => repository,
+        'runtime type',
+        isA<SupabasePlanningRepository>(),
+      ),
+    );
   });
 }

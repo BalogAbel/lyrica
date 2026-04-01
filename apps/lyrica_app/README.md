@@ -12,6 +12,7 @@ This app currently provides:
 - offline policy vocabulary shared with the domain and application layers
 - a tablet-first song library and reader slice backed by a song repository boundary
 - an authenticated local-first song catalog that reads from a Drift-backed active cache and refreshes that cache from Supabase without falling back to bundled assets for this slice
+- a signed-in read-only planning slice that lists visible plans and opens ordered plan detail directly from Supabase
 - a web runtime cache path that uses Drift wasm with the versioned `web/sqlite3.wasm` asset
 
 It does not yet implement sync execution, song editing, or reader preference persistence.
@@ -42,10 +43,13 @@ Documented demo credentials:
 - `lib/src/domain/`: core vocabulary such as tenant scope and capability codes
 - `lib/src/application/`: app-level orchestration and summary models
 - `lib/src/application/song_library/`: local-first catalog controller, active context, and reader result orchestration
+- `lib/src/domain/planning/`: read-side planning entities and repository contract
 - `lib/src/offline/`: local-store and sync-policy contracts plus authenticated catalog cache storage
 - `lib/src/presentation/`: route-level widgets
+- `lib/src/presentation/planning/`: plan list/detail routes and providers
 - `lib/src/presentation/song_library/`: song list providers, persistent catalog status, and sign-out wiring
 - `lib/src/presentation/song_reader/`: reader projection, controls, and widgets
+- `lib/src/infrastructure/planning/`: Supabase-backed planning repository
 - `lib/src/router/`: centralized route definitions
 
 ## Verification
@@ -67,7 +71,7 @@ Run from the repository root:
 ```
 
 For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end quality gate for app and documentation changes when the local Supabase path is unaffected.
-For the authenticated local-first song-reading slice, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs both the real backend repository integration test and the cached offline reader integration test. That local-first integration test proves persistent cache reopen behavior after the catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
+For the authenticated local-first song-reading and planning read slices, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs the real backend song-reading integration test, the cached offline reader integration test, and the backend-backed planning integration test. That local-first integration test proves persistent cache reopen behavior after the catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
 For repeatable manual validation, prefer `./scripts/manual-validation/run-local-first-app.sh` over `./scripts/run-authenticated-app.sh` because the manual-validation launcher preserves previously fetched app state between relaunches.
 The web path of that local-first cache depends on `apps/lyrica_app/web/sqlite3.wasm`; keep that asset versioned with Drift web cache changes instead of relying on ad-hoc local setup.
 The manual-validation launcher also reuses a cached local Supabase env snapshot containing only `API_URL` and `ANON_KEY` from `supabase status -o env`, so offline relaunch remains scriptable after the backend is intentionally stopped.

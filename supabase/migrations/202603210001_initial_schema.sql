@@ -93,38 +93,12 @@ create table public.plans (
   unique (organization_id, id)
 );
 
-create table public.events (
-  id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references public.organizations(id) on delete cascade,
-  group_id uuid,
-  plan_id uuid,
-  name text not null,
-  starts_at timestamptz,
-  ends_at timestamptz,
-  location text,
-  version bigint not null default 1,
-  base_version bigint,
-  sync_status public.sync_status not null default 'synced',
-  updated_at timestamptz not null default timezone('utc', now()),
-  last_modified_by uuid references auth.users(id),
-  constraint events_group_scope_fk
-    foreign key (organization_id, group_id)
-    references public.groups(organization_id, id),
-  constraint events_plan_scope_fk
-    foreign key (organization_id, plan_id)
-    references public.plans(organization_id, id),
-  constraint events_time_window_check
-    check (starts_at is null or ends_at is null or ends_at >= starts_at),
-  constraint events_version_check
-    check (version > 0 and (base_version is null or base_version > 0)),
-  unique (organization_id, id)
-);
-
 create table public.sessions (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
   group_id uuid,
-  event_id uuid not null,
+  plan_id uuid not null,
+  position integer not null,
   name text not null,
   notes text,
   version bigint not null default 1,
@@ -135,12 +109,13 @@ create table public.sessions (
   constraint sessions_group_scope_fk
     foreign key (organization_id, group_id)
     references public.groups(organization_id, id),
-  constraint sessions_event_scope_fk
-    foreign key (organization_id, event_id)
-    references public.events(organization_id, id)
+  constraint sessions_plan_scope_fk
+    foreign key (organization_id, plan_id)
+    references public.plans(organization_id, id)
     on delete cascade,
   constraint sessions_version_check
     check (version > 0 and (base_version is null or base_version > 0)),
+  unique (plan_id, position),
   unique (organization_id, id)
 );
 
@@ -208,8 +183,8 @@ create index memberships_organization_idx on public.memberships (organization_id
 create index memberships_group_idx on public.memberships (group_id);
 create index songs_organization_idx on public.songs (organization_id);
 create index plans_organization_idx on public.plans (organization_id);
-create index events_organization_idx on public.events (organization_id);
 create index sessions_organization_idx on public.sessions (organization_id);
+create index sessions_plan_position_idx on public.sessions (plan_id, position);
 create index session_items_session_idx on public.session_items (session_id, position);
 create index attachments_organization_idx on public.attachments (organization_id);
 
@@ -325,7 +300,6 @@ alter table public.groups enable row level security;
 alter table public.memberships enable row level security;
 alter table public.songs enable row level security;
 alter table public.plans enable row level security;
-alter table public.events enable row level security;
 alter table public.sessions enable row level security;
 alter table public.session_items enable row level security;
 alter table public.attachments enable row level security;
@@ -356,6 +330,21 @@ on public.songs
 for select
 using (public.has_capability(organization_id, 'canViewSongs'));
 
+create policy "plans are visible to organization members"
+on public.plans
+for select
+using (organization_id in (select public.current_organization_ids()));
+
+create policy "sessions are visible to organization members"
+on public.sessions
+for select
+using (organization_id in (select public.current_organization_ids()));
+
+create policy "session items are visible to organization members"
+on public.session_items
+for select
+using (organization_id in (select public.current_organization_ids()));
+
 create policy "songs are editable with song edit capability"
 on public.songs
 for all
@@ -367,12 +356,6 @@ on public.plans
 for all
 using (public.has_capability(organization_id, 'canManagePlans', group_id))
 with check (public.has_capability(organization_id, 'canManagePlans', group_id));
-
-create policy "events are editable with session capability"
-on public.events
-for all
-using (public.has_capability(organization_id, 'canEditSessions', group_id))
-with check (public.has_capability(organization_id, 'canEditSessions', group_id));
 
 create policy "sessions are editable with session capability"
 on public.sessions
@@ -427,10 +410,6 @@ for each row execute procedure public.set_updated_at();
 
 create trigger plans_set_updated_at
 before update on public.plans
-for each row execute procedure public.set_updated_at();
-
-create trigger events_set_updated_at
-before update on public.events
 for each row execute procedure public.set_updated_at();
 
 create trigger sessions_set_updated_at

@@ -50,4 +50,11 @@ fi
       --dart-define=SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
 )
 
+(
+  cd apps/lyrica_app &&
+    "$flutter_bin" test test/integration/plan_and_session_flow_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)
+
 "$manual_validation_scripts_test_script"

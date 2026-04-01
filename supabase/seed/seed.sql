@@ -161,3 +161,199 @@ set
   chordpro_source = excluded.chordpro_source,
   metadata_json = excluded.metadata_json,
   key_signature = excluded.key_signature;
+
+insert into public.plans (
+  id,
+  organization_id,
+  group_id,
+  name,
+  description,
+  scheduled_for,
+  updated_at
+)
+values (
+  '44444444-4444-4444-4444-444444444441',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  'Sunday Morning',
+  'Single-session fixture for the first planning read slice.',
+  '2026-04-05T08:30:00Z',
+  '2026-03-31T08:00:00Z'
+), (
+  '44444444-4444-4444-4444-444444444442',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  'Team Rehearsal',
+  'Multi-session fixture proving the direct plan-to-session hierarchy.',
+  null,
+  '2026-03-31T09:00:00Z'
+), (
+  '44444444-4444-4444-4444-444444444443',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  'Evening Gathering',
+  'Later scheduled fixture for deterministic ordering checks.',
+  '2026-04-12T17:00:00Z',
+  '2026-03-31T07:30:00Z'
+), (
+  '44444444-4444-4444-4444-444444444444',
+  '11111111-1111-1111-1111-111111111112',
+  null,
+  'Hidden Organization Plan',
+  'Authorization isolation fixture that must not be visible to the demo user.',
+  '2026-04-06T09:00:00Z',
+  '2026-03-31T10:00:00Z'
+)
+on conflict (id) do update
+set
+  name = excluded.name,
+  description = excluded.description,
+  scheduled_for = excluded.scheduled_for,
+  updated_at = excluded.updated_at;
+
+insert into public.sessions (
+  id,
+  organization_id,
+  group_id,
+  plan_id,
+  position,
+  name,
+  notes,
+  updated_at
+)
+values (
+  '55555555-5555-5555-5555-555555555551',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  '44444444-4444-4444-4444-444444444441',
+  10,
+  'Main Set',
+  'Single-session plan fixture.',
+  '2026-03-31T08:10:00Z'
+), (
+  '55555555-5555-5555-5555-555555555552',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  '44444444-4444-4444-4444-444444444442',
+  10,
+  'Warm-Up',
+  'First session in the multi-session fixture.',
+  '2026-03-31T09:10:00Z'
+), (
+  '55555555-5555-5555-5555-555555555553',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  '44444444-4444-4444-4444-444444444442',
+  20,
+  'Run-Through',
+  'Second session in the multi-session fixture.',
+  '2026-03-31T09:20:00Z'
+), (
+  '55555555-5555-5555-5555-555555555554',
+  '11111111-1111-1111-1111-111111111111',
+  null,
+  '44444444-4444-4444-4444-444444444443',
+  10,
+  'Evening Set',
+  'Later scheduled plan fixture.',
+  '2026-03-31T07:40:00Z'
+), (
+  '55555555-5555-5555-5555-555555555555',
+  '11111111-1111-1111-1111-111111111112',
+  null,
+  '44444444-4444-4444-4444-444444444444',
+  10,
+  'Hidden Session',
+  'Hidden organization fixture.',
+  '2026-03-31T10:10:00Z'
+)
+on conflict (id) do update
+set
+  plan_id = excluded.plan_id,
+  position = excluded.position,
+  name = excluded.name,
+  notes = excluded.notes,
+  updated_at = excluded.updated_at;
+
+insert into public.session_items (
+  id,
+  organization_id,
+  session_id,
+  song_id,
+  item_type,
+  position,
+  notes,
+  updated_at
+)
+values (
+  '66666666-6666-6666-6666-666666666661',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555551',
+  '33333333-3333-3333-3333-333333333333',
+  'song',
+  10,
+  'Opening song.',
+  '2026-03-31T08:11:00Z'
+), (
+  '66666666-6666-6666-6666-666666666662',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555551',
+  '33333333-3333-3333-3333-333333333334',
+  'song',
+  20,
+  'Second song in the single-session plan.',
+  '2026-03-31T08:12:00Z'
+), (
+  '66666666-6666-6666-6666-666666666663',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555552',
+  '33333333-3333-3333-3333-333333333335',
+  'song',
+  10,
+  'Warm-up opener.',
+  '2026-03-31T09:11:00Z'
+), (
+  '66666666-6666-6666-6666-666666666664',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555553',
+  '33333333-3333-3333-3333-333333333333',
+  'song',
+  10,
+  'First song in the run-through session.',
+  '2026-03-31T09:21:00Z'
+), (
+  '66666666-6666-6666-6666-666666666665',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555553',
+  '33333333-3333-3333-3333-333333333334',
+  'song',
+  20,
+  'Second song in the run-through session.',
+  '2026-03-31T09:22:00Z'
+), (
+  '66666666-6666-6666-6666-666666666666',
+  '11111111-1111-1111-1111-111111111111',
+  '55555555-5555-5555-5555-555555555554',
+  '33333333-3333-3333-3333-333333333335',
+  'song',
+  10,
+  'Later scheduled plan song.',
+  '2026-03-31T07:41:00Z'
+), (
+  '66666666-6666-6666-6666-666666666667',
+  '11111111-1111-1111-1111-111111111112',
+  '55555555-5555-5555-5555-555555555555',
+  '33333333-3333-3333-3333-333333333336',
+  'song',
+  10,
+  'Hidden organization song.',
+  '2026-03-31T10:11:00Z'
+)
+on conflict (id) do update
+set
+  session_id = excluded.session_id,
+  song_id = excluded.song_id,
+  item_type = excluded.item_type,
+  position = excluded.position,
+  notes = excluded.notes,
+  updated_at = excluded.updated_at;

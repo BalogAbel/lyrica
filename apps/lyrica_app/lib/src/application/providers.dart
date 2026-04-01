@@ -13,7 +13,9 @@ import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.d
 import 'package:lyrica_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyrica_app/src/application/sync/sync_overview.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyrica_app/src/domain/planning/planning_repository.dart';
 import 'package:lyrica_app/src/infrastructure/auth/supabase_auth_repository.dart';
+import 'package:lyrica_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyrica_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyrica_app/src/offline/local_store_contract.dart';
 import 'package:lyrica_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -75,6 +77,10 @@ final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
 
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
   return SupabaseSongRepository(ref.watch(supabaseClientProvider));
+});
+
+final planningRepositoryProvider = Provider<PlanningRepository>((ref) {
+  return SupabasePlanningRepository(ref.watch(supabaseClientProvider));
 });
 
 final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((

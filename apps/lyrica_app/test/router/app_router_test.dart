@@ -13,17 +13,24 @@ import 'package:lyrica_app/src/application/song_library/catalog_session_status.d
 import 'package:lyrica_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyrica_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyrica_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyrica_app/src/domain/planning/plan_detail.dart';
+import 'package:lyrica_app/src/domain/planning/plan_summary.dart';
+import 'package:lyrica_app/src/domain/planning/session_item_summary.dart';
+import 'package:lyrica_app/src/domain/planning/session_summary.dart';
 import 'package:lyrica_app/src/domain/song/parsed_song.dart';
 import 'package:lyrica_app/src/domain/song/song_summary.dart';
+import 'package:lyrica_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyrica_app/src/router/app_router.dart';
 import 'package:lyrica_app/src/router/app_routes.dart';
 import 'package:lyrica_app/src/shared/app_strings.dart';
 
 void main() {
-  test('list, sign-in, and reader route constants remain stable', () {
+  test('list, sign-in, planning, and reader route constants remain stable', () {
     expect(AppRoutes.bootstrap.path, '/bootstrap');
     expect(AppRoutes.home.path, '/');
     expect(AppRoutes.signIn.path, '/sign-in');
+    expect(AppRoutes.planList.path, '/plans');
+    expect(AppRoutes.planDetail.path, '/plans/:planId');
     expect(AppRoutes.songReader.path, '/songs/:songId');
   });
 
@@ -162,6 +169,153 @@ void main() {
 
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Song reader'), findsNothing);
+  });
+
+  testWidgets('signed-out users are redirected away from planning routes', (
+    WidgetTester tester,
+  ) async {
+    final repository = _TestAuthRepository();
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+        ],
+        child: Consumer(
+          builder: (context, ref, child) => MaterialApp.router(
+            routerConfig: createAppRouter(
+              authController: controller,
+              refreshListenable: controller,
+              initialLocation: AppRoutes.planList.path,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text(AppStrings.planListTitle), findsNothing);
+  });
+
+  testWidgets('signed-in users can reach the planning list route', (
+    WidgetTester tester,
+  ) async {
+    final repository = _TestAuthRepository(
+      restoredSession: const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyrica.local',
+      ),
+    );
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
+
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation: AppRoutes.planList.path,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+          planningPlanListProvider.overrideWith(
+            (ref) async => [
+              PlanSummary(
+                id: 'plan-1',
+                name: 'Sunday Morning',
+                description: 'Single-session Sunday fixture',
+                scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                updatedAt: DateTime(2026, 3, 31, 8),
+              ),
+            ],
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planListTitle), findsOneWidget);
+    expect(find.text('Sunday Morning'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.toString(), '/plans');
+  });
+
+  testWidgets('signed-in users can reach the plan detail route', (
+    WidgetTester tester,
+  ) async {
+    final repository = _TestAuthRepository(
+      restoredSession: const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyrica.local',
+      ),
+    );
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
+
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation: AppRoutes.planDetail.path.replaceFirst(
+        ':planId',
+        'plan-1',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+          planningPlanDetailProvider('plan-1').overrideWith(
+            (ref) async => PlanDetail(
+              plan: PlanSummary(
+                id: 'plan-1',
+                name: 'Sunday Morning',
+                description: 'Single-session Sunday fixture',
+                scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                updatedAt: DateTime(2026, 3, 31, 8),
+              ),
+              sessions: const [
+                SessionSummary(
+                  id: 'session-1',
+                  name: 'Main Set',
+                  position: 10,
+                  items: [
+                    SessionItemSummary(
+                      id: 'item-1',
+                      position: 10,
+                      song: SongSummary(id: 'song-1', title: 'Egy út'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+    expect(find.text('Sunday Morning'), findsOneWidget);
+    expect(find.text('Main Set'), findsOneWidget);
+    expect(
+      router.routeInformationProvider.value.uri.toString(),
+      '/plans/plan-1',
+    );
   });
 
   testWidgets(
