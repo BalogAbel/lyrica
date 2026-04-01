@@ -13,9 +13,9 @@ provision_demo_user_script="${PROVISION_DEMO_USER_SCRIPT:-./scripts/provision-lo
 provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scripts/tests/provision-local-demo-user-test.sh}"
 manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
 
-(cd apps/lyrica_app && "$dart_bin" format --output=none --set-exit-if-changed lib test)
-(cd apps/lyrica_app && "$flutter_bin" analyze)
-(cd apps/lyrica_app && "$flutter_bin" test)
+(cd apps/lyron_app && "$dart_bin" format --output=none --set-exit-if-changed lib test)
+(cd apps/lyron_app && "$flutter_bin" analyze)
+(cd apps/lyron_app && "$flutter_bin" test)
 
 if [[ "$skip_migrations" == "--skip-migrations" ]]; then
   exit 0
@@ -35,7 +35,7 @@ if [[ -z "${API_URL:-}" || -z "${ANON_KEY:-}" || -z "${SERVICE_ROLE_KEY:-}" ]]; 
 fi
 
 (
-  cd apps/lyrica_app &&
+  cd apps/lyron_app &&
     "$flutter_bin" test test/integration/authenticated_song_reader_flow_test.dart \
       --dart-define=SUPABASE_URL="$API_URL" \
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
@@ -43,7 +43,7 @@ fi
 )
 
 (
-  cd apps/lyrica_app &&
+  cd apps/lyron_app &&
     "$flutter_bin" test test/integration/local_first_authenticated_song_reader_flow_test.dart \
       --dart-define=SUPABASE_URL="$API_URL" \
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
@@ -51,7 +51,7 @@ fi
 )
 
 (
-  cd apps/lyrica_app &&
+  cd apps/lyron_app &&
     "$flutter_bin" test test/integration/plan_and_session_flow_test.dart \
       --dart-define=SUPABASE_URL="$API_URL" \
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"

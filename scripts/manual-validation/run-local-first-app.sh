@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
-app_dir="$repo_root/apps/lyrica_app"
+app_dir="$repo_root/apps/lyron_app"
 source "$repo_root/scripts/manual-validation/_supabase_env.sh"
 source "$repo_root/scripts/_flutter_device_network.sh"
 

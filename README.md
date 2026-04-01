@@ -1,6 +1,6 @@
-# Lyrica
+# Lyron Chords
 
-Lyrica is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and a local-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
+Lyron Chords is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and a local-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
 The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads and a minimal authenticated planning read flow for plans, sessions, and song-backed session items. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization and refresh boundary for both song and planning reads.
 
@@ -14,7 +14,7 @@ This repository is the canonical source of truth for:
 
 ## Foundation Status
 
-- Monorepo with one Flutter app under `apps/lyrica_app`
+- Monorepo with one Flutter app under `apps/lyron_app`
 - Supabase schema, RLS policies, and seed data under `supabase/`
 - MVP platforms: Android, iOS, and Web
 - Drift selected as the local store and sync-queue foundation
@@ -31,7 +31,7 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 .
 ├── .github/                # CI workflows
 ├── apps/
-│   └── lyrica_app/         # Flutter application
+│   └── lyron_app/         # Flutter application
 ├── docs/                   # Product, domain, architecture, workflow, specs, plans
 ├── scripts/                # Developer entrypoints
 ├── tooling/
@@ -101,7 +101,7 @@ Install all repository dependencies with:
 ./scripts/bootstrap.sh
 ```
 
-This installs Flutter dependencies for `apps/lyrica_app` and the repository-local Supabase CLI dependencies under `tooling/supabase/`.
+This installs Flutter dependencies for `apps/lyron_app` and the repository-local Supabase CLI dependencies under `tooling/supabase/`.
 
 If you only want to run the Flutter app locally, use:
 
@@ -109,7 +109,7 @@ If you only want to run the Flutter app locally, use:
 ./scripts/bootstrap-app.sh
 ```
 
-This avoids the Supabase tooling install and only resolves Flutter packages for `apps/lyrica_app`.
+This avoids the Supabase tooling install and only resolves Flutter packages for `apps/lyron_app`.
 
 If you only need the Supabase tooling workspace, run `npm ci --prefix tooling/supabase`.
 
@@ -138,8 +138,8 @@ After `./scripts/supabase.sh start` and `./scripts/db-reset.sh`, provision the l
 
 Documented demo credentials:
 
-- email: `demo@lyrica.local`
-- password: `LyricaDemo123!`
+- email: `demo@lyron.local`
+- password: `Lyron ChordsDemo123!`
 
 For the simplest end-to-end local app run, use:
 
@@ -211,7 +211,7 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 - The current planning slice adds a signed-in read-only plan list/detail flow backed directly by Supabase through a dedicated planning repository.
 - Planning reads are visible at organization scope for the signed-in member's visible organizations, while planning writes remain backend-owned RBAC decisions.
 - While the signed-in song library subtree is mounted and the app stays foregrounded, the catalog controller polls every five minutes and uses the same guarded full-refresh path as the manual song-list refresh action.
-- On web, that cache runs through Drift wasm and the repository-versioned `apps/lyrica_app/web/sqlite3.wasm` runtime asset.
+- On web, that cache runs through Drift wasm and the repository-versioned `apps/lyron_app/web/sqlite3.wasm` runtime asset.
 - Hard offline authenticated relaunch is a native-first guarantee for this slice. The browser path keeps a best-effort local cache, but web session persistence is not treated as equivalent to native offline relaunch.
 - ChordPro parsing and reader projection stay inside Flutter even when the source comes from Supabase.
 - Supabase remains the authorization authority. Capability names used in Flutter must stay aligned with SQL policy helpers.

@@ -176,7 +176,7 @@ The exact enharmonic spelling policy may remain simple in this slice as long as 
 
 - Introduce a song repository boundary in the app.
 - The repository must provide song list data and song detail/source access.
-- The first mock catalog is the three bundled `.pro` assets under `apps/lyrica_app/assets/songs/`.
+- The first mock catalog is the three bundled `.pro` assets under `apps/lyron_app/assets/songs/`.
 - The repository boundary intentionally returns minimal song summaries plus raw ChordPro source text.
 - UI code must not read asset files directly.
 - The first song list intentionally remains minimal and shows only titles.

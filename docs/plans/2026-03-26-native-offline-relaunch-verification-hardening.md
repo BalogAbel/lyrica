@@ -15,12 +15,12 @@
 ### Task 1: Add A Persistent Song Catalog Database Test Seam
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_database.dart`
-- Modify: `apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart`
+- Modify: `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart`
+- Modify: `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart`
 
 - [ ] **Step 1: Write the failing store test for reopening a persisted catalog**
 
-Add a focused test in `apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart` that:
+Add a focused test in `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart` that:
 
 ```dart
 test('can reopen a persisted catalog from a new database instance', () async {
@@ -57,13 +57,13 @@ test('can reopen a persisted catalog from a new database instance', () async {
 
 - [ ] **Step 2: Run the focused store test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
+Run: `cd apps/lyron_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
 
 Expected: FAIL because there is no repository-owned seam for constructing the database against a caller-provided persistent executor.
 
 - [ ] **Step 3: Add the minimal database constructor seam**
 
-Update `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_database.dart` to expose a narrow constructor seam, for example:
+Update `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart` to expose a narrow constructor seam, for example:
 
 ```dart
 factory SongCatalogDatabase.connect(QueryExecutor executor) {
@@ -75,14 +75,14 @@ Keep `local()` and `inMemory()` unchanged for production code.
 
 - [ ] **Step 4: Re-run the focused store test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
+Run: `cd apps/lyron_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
 
 Expected: PASS.
 
 ### Task 2: Replace The Weak In-Memory Relaunch Integration Proof
 
 **Files:**
-- Modify: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 
 - [ ] **Step 1: Write the failing persistent-relaunch integration test**
 
@@ -103,7 +103,7 @@ Use the existing backend-backed online sync and offline controller pattern; only
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/integration/local_first_authenticated_song_reader_flow_test.dart \
+cd apps/lyron_app && flutter test test/integration/local_first_authenticated_song_reader_flow_test.dart \
   --dart-define=SUPABASE_URL=http://127.0.0.1:54321 \
   --dart-define=SUPABASE_ANON_KEY=test-anon-key
 ```
@@ -112,7 +112,7 @@ Expected: FAIL before the persistent seam is wired correctly.
 
 - [ ] **Step 3: Implement the minimal persistent test setup**
 
-Update `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` to:
+Update `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` to:
 
 - use a temporary file-backed database for the relaunch scenario
 - close the first database before constructing the second one
@@ -130,7 +130,7 @@ Expected: PASS when local Supabase credentials are valid.
 
 **Files:**
 - Modify: `README.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 - Modify: `docs/product/vision.md`
 - Modify: `docs/architecture/architecture.md`
 - Modify: `docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md`
@@ -160,8 +160,8 @@ Check all modified docs together and ensure they use the same verification wordi
 ### Task 4: Re-Verify The Quality Gate
 
 **Files:**
-- Test: `apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart`
-- Test: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Test: `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart`
+- Test: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 - Test: `scripts/tests/verify-test.sh`
 - Verify: `./scripts/verify.sh --skip-migrations` or `./scripts/verify.sh`
 
@@ -170,7 +170,7 @@ Check all modified docs together and ensure they use the same verification wordi
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/offline/song_catalog/song_catalog_store_test.dart \
   test/integration/local_first_authenticated_song_reader_flow_test.dart
 ```

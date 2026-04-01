@@ -198,7 +198,7 @@ Run:
 
 ```bash
 ./scripts/provision-local-demo-user.sh
-status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyrica_app && flutter test test/integration/plan_and_session_flow_test.dart --plain-name "demo user cannot read hidden-organization plans" --dart-define=SUPABASE_URL="$API_URL" --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyron_app && flutter test test/integration/plan_and_session_flow_test.dart --plain-name "demo user cannot read hidden-organization plans" --dart-define=SUPABASE_URL="$API_URL" --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
 ```
 
 Expected: FAIL because the planning integration test does not yet exist.
@@ -206,18 +206,18 @@ Expected: FAIL because the planning integration test does not yet exist.
 ### Task 3: Add Planning Domain Models And Repository Contracts With Focused Unit Tests
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/domain/planning/plan_summary.dart`
-- Create: `apps/lyrica_app/lib/src/domain/planning/plan_detail.dart`
-- Create: `apps/lyrica_app/lib/src/domain/planning/planning_repository.dart`
-- Create: `apps/lyrica_app/lib/src/domain/planning/session_summary.dart`
-- Create: `apps/lyrica_app/lib/src/domain/planning/session_item_summary.dart`
-- Create: `apps/lyrica_app/test/domain/planning/plan_detail_test.dart` if pure model behavior warrants it
-- Create: `apps/lyrica_app/test/infrastructure/planning/supabase_planning_repository_test.dart`
-- Reference: `apps/lyrica_app/lib/src/domain/song/song_summary.dart`
+- Create: `apps/lyron_app/lib/src/domain/planning/plan_summary.dart`
+- Create: `apps/lyron_app/lib/src/domain/planning/plan_detail.dart`
+- Create: `apps/lyron_app/lib/src/domain/planning/planning_repository.dart`
+- Create: `apps/lyron_app/lib/src/domain/planning/session_summary.dart`
+- Create: `apps/lyron_app/lib/src/domain/planning/session_item_summary.dart`
+- Create: `apps/lyron_app/test/domain/planning/plan_detail_test.dart` if pure model behavior warrants it
+- Create: `apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart`
+- Reference: `apps/lyron_app/lib/src/domain/song/song_summary.dart`
 
 - [ ] **Step 1: Add a failing repository test for `listPlans()` ordering**
 
-Create `apps/lyrica_app/test/infrastructure/planning/supabase_planning_repository_test.dart` with a test that proves `listPlans()` returns visible plans in:
+Create `apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart` with a test that proves `listPlans()` returns visible plans in:
 
 1. `scheduled_for` ascending with null values last
 2. `updated_at` descending tie-breaker
@@ -252,7 +252,7 @@ Do not introduce write-side entities, sync queue concepts, or speculative nested
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/infrastructure/planning/supabase_planning_repository_test.dart
+cd apps/lyron_app && flutter test test/infrastructure/planning/supabase_planning_repository_test.dart
 ```
 
 Expected: FAIL because the planning repository implementation does not yet exist.
@@ -260,12 +260,12 @@ Expected: FAIL because the planning repository implementation does not yet exist
 ### Task 4: Implement The Supabase Planning Read Path
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/infrastructure/planning/supabase_planning_repository.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Modify: `apps/lyrica_app/test/application/providers_test.dart`
-- Modify: `apps/lyrica_app/test/infrastructure/planning/supabase_planning_repository_test.dart`
-- Reference: `apps/lyrica_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
-- Reference: `apps/lyrica_app/lib/src/infrastructure/auth/supabase_auth_repository.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_repository.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Modify: `apps/lyron_app/test/application/providers_test.dart`
+- Modify: `apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart`
+- Reference: `apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
+- Reference: `apps/lyron_app/lib/src/infrastructure/auth/supabase_auth_repository.dart`
 
 - [ ] **Step 1: Implement `listPlans()`**
 
@@ -295,7 +295,7 @@ Use the smallest repository-owned approach that keeps the UI simple, whether thr
 
 - [ ] **Step 4: Wire the planning repository into provider composition**
 
-Add provider wiring in `apps/lyrica_app/lib/src/application/providers.dart` for:
+Add provider wiring in `apps/lyron_app/lib/src/application/providers.dart` for:
 
 1. a `PlanningRepository`
 2. only shared composition-root dependencies
@@ -307,7 +307,7 @@ Keep this slice online-only. Do not add a Drift planning cache or a local planni
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/infrastructure/planning/supabase_planning_repository_test.dart \
   test/application/providers_test.dart
 ```
@@ -317,22 +317,22 @@ Expected: PASS.
 ### Task 5: Add Planning Presentation State And Read-Only Screens
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/presentation/planning/plan_list_screen.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/planning/plan_detail_screen.dart`
-- Create: `apps/lyrica_app/lib/src/presentation/planning/planning_providers.dart`
-- Create: `apps/lyrica_app/test/presentation/planning/plan_list_screen_test.dart`
-- Create: `apps/lyrica_app/test/presentation/planning/plan_detail_screen_test.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart` if new user-facing copy is needed
-- Reference: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Create: `apps/lyron_app/lib/src/presentation/planning/plan_list_screen.dart`
+- Create: `apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart`
+- Create: `apps/lyron_app/lib/src/presentation/planning/planning_providers.dart`
+- Create: `apps/lyron_app/test/presentation/planning/plan_list_screen_test.dart`
+- Create: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart` if new user-facing copy is needed
+- Reference: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
 
 - [ ] **Step 1: Add a failing widget test for plan list rendering**
 
-Create `apps/lyrica_app/test/presentation/planning/plan_list_screen_test.dart` with a test that proves the screen renders visible plan summaries from provider overrides in the required order.
+Create `apps/lyron_app/test/presentation/planning/plan_list_screen_test.dart` with a test that proves the screen renders visible plan summaries from provider overrides in the required order.
 
 - [ ] **Step 2: Add a failing widget test for plan detail rendering**
 
-Create `apps/lyrica_app/test/presentation/planning/plan_detail_screen_test.dart` with a test that proves:
+Create `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart` with a test that proves:
 
 1. sessions render in ascending `position`
 2. song-backed session items render in ascending `position`
@@ -354,8 +354,8 @@ Add the smallest presentation state and screens required for:
 
 Provider ownership for this slice must follow the existing app pattern:
 
-1. `apps/lyrica_app/lib/src/application/providers.dart` owns only shared infrastructure composition such as the `PlanningRepository`
-2. `apps/lyrica_app/lib/src/presentation/planning/planning_providers.dart` owns feature-facing `FutureProvider` or equivalent read providers for plan list and plan detail
+1. `apps/lyron_app/lib/src/application/providers.dart` owns only shared infrastructure composition such as the `PlanningRepository`
+2. `apps/lyron_app/lib/src/presentation/planning/planning_providers.dart` owns feature-facing `FutureProvider` or equivalent read providers for plan list and plan detail
 
 Do not add editing controls, reorder gestures, or final UX polish.
 
@@ -364,7 +364,7 @@ Do not add editing controls, reorder gestures, or final UX polish.
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/presentation/planning/plan_list_screen_test.dart \
   test/presentation/planning/plan_detail_screen_test.dart
 ```
@@ -374,16 +374,16 @@ Expected: PASS.
 ### Task 6: Add Signed-In Routing And Navigation Into The Planning Flow
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/router/app_routes.dart`
-- Modify: `apps/lyrica_app/lib/src/router/app_router.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Modify: `apps/lyrica_app/test/app/lyrica_app_test.dart` if the signed-in app shell expectations change
+- Modify: `apps/lyron_app/lib/src/router/app_routes.dart`
+- Modify: `apps/lyron_app/lib/src/router/app_router.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/test/router/app_router_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Modify: `apps/lyron_app/test/app/lyron_app_test.dart` if the signed-in app shell expectations change
 
 - [ ] **Step 1: Add a failing router test for signed-in planning routes**
 
-Extend `apps/lyrica_app/test/router/app_router_test.dart` with tests proving:
+Extend `apps/lyron_app/test/router/app_router_test.dart` with tests proving:
 
 1. signed-in users can reach the planning list route
 2. signed-in users can reach the plan detail route
@@ -391,7 +391,7 @@ Extend `apps/lyrica_app/test/router/app_router_test.dart` with tests proving:
 
 - [ ] **Step 2: Add a failing widget test for navigation from the song list into planning**
 
-Extend `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart` with a test that proves the signed-in song list exposes a visible navigation affordance into the planning area.
+Extend `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` with a test that proves the signed-in song list exposes a visible navigation affordance into the planning area.
 
 - [ ] **Step 3: Implement route definitions and navigation wiring**
 
@@ -409,7 +409,7 @@ Add the smallest visible entry point from the song list into the planning list r
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/router/app_router_test.dart \
   test/presentation/song_library/song_list_screen_test.dart
 ```
@@ -419,15 +419,15 @@ Expected: PASS.
 ### Task 7: Add Backend-Backed Repository Integration Proof For The Planning Read Slice
 
 **Files:**
-- Create: `apps/lyrica_app/test/integration/plan_and_session_flow_test.dart`
+- Create: `apps/lyron_app/test/integration/plan_and_session_flow_test.dart`
 - Modify: `scripts/verify.sh` if this slice becomes part of the standard local verification path
-- Reference: `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart`
+- Reference: `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart`
 - Reference: `scripts/provision-local-demo-user.sh`
 - Reference: `supabase/seed/seed.sql`
 
 - [ ] **Step 1: Add a failing backend-backed integration test for visible demo planning data**
 
-Create `apps/lyrica_app/test/integration/plan_and_session_flow_test.dart` with a backend-backed integration test that:
+Create `apps/lyron_app/test/integration/plan_and_session_flow_test.dart` with a backend-backed integration test that:
 
 1. signs in with the local demo user
 2. instantiates the live Supabase-backed planning repository
@@ -458,7 +458,7 @@ Run:
 
 ```bash
 ./scripts/provision-local-demo-user.sh
-status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyrica_app && flutter test test/integration/plan_and_session_flow_test.dart --dart-define=SUPABASE_URL="$API_URL" --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyron_app && flutter test test/integration/plan_and_session_flow_test.dart --dart-define=SUPABASE_URL="$API_URL" --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
 ```
 
 Expected: PASS.
@@ -500,7 +500,7 @@ Run:
 ```bash
 ./scripts/supabase.sh db query "select p.name, s.name, s.position, si.position from public.plans p join public.sessions s on s.plan_id = p.id and s.organization_id = p.organization_id join public.session_items si on si.session_id = s.id and si.organization_id = s.organization_id order by p.scheduled_for nulls last, p.updated_at desc, p.id, s.position, si.position;"
 ./scripts/provision-local-demo-user.sh
-status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyrica_app && flutter test \
+status_env="$("./scripts/supabase.sh" status -o env)" && eval "$status_env" && cd apps/lyron_app && flutter test \
   test/infrastructure/planning/supabase_planning_repository_test.dart \
   test/presentation/planning/plan_list_screen_test.dart \
   test/presentation/planning/plan_detail_screen_test.dart \
@@ -517,7 +517,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add supabase/migrations/202603210001_initial_schema.sql supabase/seed/seed.sql apps/lyrica_app/lib/src apps/lyrica_app/test docs/domain/domain-model.md docs/architecture/architecture.md docs/product/vision.md README.md docs/specs/2026-03-31-first-executable-plan-and-session-slice.md docs/plans/2026-03-31-first-executable-plan-and-session-slice.md
+git add supabase/migrations/202603210001_initial_schema.sql supabase/seed/seed.sql apps/lyron_app/lib/src apps/lyron_app/test docs/domain/domain-model.md docs/architecture/architecture.md docs/product/vision.md README.md docs/specs/2026-03-31-first-executable-plan-and-session-slice.md docs/plans/2026-03-31-first-executable-plan-and-session-slice.md
 ```
 
 Expected: staged planning slice changes only.
@@ -528,25 +528,25 @@ Expected: staged planning slice changes only.
   Repository-owned local schema baseline; rewrite the planning ownership path from `event` to `plan`.
 - `supabase/seed/seed.sql`
   Local demo and hidden planning fixtures for executable read validation.
-- `apps/lyrica_app/lib/src/domain/planning/`
+- `apps/lyron_app/lib/src/domain/planning/`
   Read-only planning models and repository contract for this slice.
-- `apps/lyrica_app/lib/src/infrastructure/planning/supabase_planning_repository.dart`
+- `apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_repository.dart`
   Online-only Supabase-backed planning reads.
-- `apps/lyrica_app/lib/src/application/providers.dart`
+- `apps/lyron_app/lib/src/application/providers.dart`
   Composition root for repository/provider wiring.
-- `apps/lyrica_app/lib/src/presentation/planning/`
+- `apps/lyron_app/lib/src/presentation/planning/`
   Minimal plan list and plan detail surfaces plus their presentation providers.
-- `apps/lyrica_app/lib/src/router/app_routes.dart`
+- `apps/lyron_app/lib/src/router/app_routes.dart`
   Route identifiers for planning list and plan detail.
-- `apps/lyrica_app/lib/src/router/app_router.dart`
+- `apps/lyron_app/lib/src/router/app_router.dart`
   Signed-in navigation and route protection wiring.
-- `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
+- `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
   Small visible entry point from the signed-in song list into the planning area.
-- `apps/lyrica_app/test/infrastructure/planning/`
+- `apps/lyron_app/test/infrastructure/planning/`
   Repository-level planning read tests.
-- `apps/lyrica_app/test/presentation/planning/`
+- `apps/lyron_app/test/presentation/planning/`
   Widget tests for plan list and plan detail.
-- `apps/lyrica_app/test/router/app_router_test.dart`
+- `apps/lyron_app/test/router/app_router_test.dart`
   Route protection and navigation tests for the new planning routes.
-- `apps/lyrica_app/test/integration/plan_and_session_flow_test.dart`
+- `apps/lyron_app/test/integration/plan_and_session_flow_test.dart`
   Backend-backed end-to-end proof for the new planning read slice.

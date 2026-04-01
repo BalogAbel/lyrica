@@ -20,10 +20,10 @@ Keep the existing `SongCatalogController` state model and Drift-backed cache int
 
 ## Files
 
-- Modify: `apps/lyrica_app/lib/src/application/song_library/song_catalog_controller.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Create: `apps/lyrica_app/lib/src/shared/connectivity_failure.dart`
-- Modify: `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart`
-- Create: `apps/lyrica_app/test/shared/connectivity_failure_test.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Create: `apps/lyron_app/lib/src/shared/connectivity_failure.dart`
+- Modify: `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart`
+- Create: `apps/lyron_app/test/shared/connectivity_failure_test.dart`
 - Create: `docs/specs/2026-03-31-cross-platform-catalog-connectivity-classification-fix.md`
 - Create: `docs/plans/2026-03-31-cross-platform-catalog-connectivity-classification-fix.md`

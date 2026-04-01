@@ -35,7 +35,7 @@ The workflow documentation should treat browser relaunch as diagnostic-only and 
 
 **Files:**
 - Modify: `README.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 - Modify: `docs/workflows/development-workflow.md`
 - Modify: `docs/specs/2026-03-25-local-first-manual-validation-scripts.md`
 

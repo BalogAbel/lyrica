@@ -15,25 +15,25 @@
 ### Task 1: Lock In Reader Back UX And System Back With Failing Widget Tests
 
 **Files:**
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
 
 - [ ] **Step 1: Add a failing reader widget test for visible back affordance**
 
-Extend `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart` with a test that renders `SongReaderScreen` inside a navigation-aware app shell and asserts the reader exposes a visible back control in the app bar.
+Extend `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart` with a test that renders `SongReaderScreen` inside a navigation-aware app shell and asserts the reader exposes a visible back control in the app bar.
 
 The test should verify the reader still shows the existing persistent catalog status surface together with the new back affordance.
 
 - [ ] **Step 2: Add a failing widget test for direct-entry system-back fallback**
 
-Extend `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart` with a direct-entry flow that renders the reader as the top route with no poppable history and simulates a system back event.
+Extend `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart` with a direct-entry flow that renders the reader as the top route with no poppable history and simulates a system back event.
 
 The test should assert that the reader handles the back event itself and returns to the song list route instead of allowing the app to exit. Use the Flutter test API that exercises route popping or `PopScope` behavior directly rather than only tapping the app bar.
 
 - [ ] **Step 3: Add a failing widget test for list-to-reader push behavior**
 
-Extend `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart` with a flow that:
+Extend `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` with a flow that:
 
 1. renders the song list inside `MaterialApp.router`
 2. taps a song title
@@ -45,14 +45,14 @@ This test should fail against the current `context.go(...)` behavior because the
 
 - [ ] **Step 4: Add any missing string expectations for the back affordance**
 
-If the implementation needs user-facing copy such as a dedicated back tooltip or label, add the exact string constant to `apps/lyrica_app/lib/src/shared/app_strings.dart` and use it in tests rather than hard-coded text.
+If the implementation needs user-facing copy such as a dedicated back tooltip or label, add the exact string constant to `apps/lyron_app/lib/src/shared/app_strings.dart` and use it in tests rather than hard-coded text.
 
 - [ ] **Step 5: Run the focused widget tests to verify they fail**
 
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/presentation/song_reader/song_reader_screen_test.dart \
   test/presentation/song_library/song_list_screen_test.dart
 ```
@@ -62,20 +62,20 @@ Expected: FAIL because the reader does not currently guarantee a visible back af
 ### Task 2: Implement Push Navigation And Reader Back Fallback
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Reference: `apps/lyrica_app/lib/src/router/app_routes.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Reference: `apps/lyron_app/lib/src/router/app_routes.dart`
 
 - [ ] **Step 1: Change list-to-reader navigation to push-style routing**
 
-Update `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart` so selecting a song uses push-style navigation instead of route replacement.
+Update `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart` so selecting a song uses push-style navigation instead of route replacement.
 
 The implementation should continue opening the same `/songs/:songId` route and should not change the song list's role as the signed-in root screen.
 
 - [ ] **Step 2: Add one explicit reader back control that is always visible**
 
-Update `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart` so the reader app bar always renders an explicit leading back affordance instead of relying on automatic implied leading behavior.
+Update `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart` so the reader app bar always renders an explicit leading back affordance instead of relying on automatic implied leading behavior.
 
 Wire that control to a single back handler with this intent:
 
@@ -109,7 +109,7 @@ Keep the existing `_CatalogStatusSurface` behavior in the reader intact. The bac
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/presentation/song_reader/song_reader_screen_test.dart \
   test/presentation/song_library/song_list_screen_test.dart
 ```
@@ -119,13 +119,13 @@ Expected: PASS.
 ### Task 3: Prove Direct Reader Entry And Fallback Navigation At Router Level
 
 **Files:**
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart`
-- Reference: `apps/lyrica_app/lib/src/router/app_routes.dart`
-- Reference: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Modify: `apps/lyron_app/test/router/app_router_test.dart`
+- Reference: `apps/lyron_app/lib/src/router/app_routes.dart`
+- Reference: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
 
 - [ ] **Step 1: Add a failing router-level test for direct reader entry fallback**
 
-Extend `apps/lyrica_app/test/router/app_router_test.dart` with a signed-in test that boots the app at `/songs/blocked` or another concrete song ID while authenticated and with a visible catalog context.
+Extend `apps/lyron_app/test/router/app_router_test.dart` with a signed-in test that boots the app at `/songs/blocked` or another concrete song ID while authenticated and with a visible catalog context.
 
 Use provider overrides so the router test is deterministic:
 
@@ -142,7 +142,7 @@ The test should:
 
 - [ ] **Step 2: Keep the router table unchanged unless a real seam is required**
 
-Do not modify `apps/lyrica_app/lib/src/router/app_router.dart` unless the failing test proves that the current router API needs a narrow seam for location assertion or fallback verification.
+Do not modify `apps/lyron_app/lib/src/router/app_router.dart` unless the failing test proves that the current router API needs a narrow seam for location assertion or fallback verification.
 
 Do not introduce nested shells or speculative route names just for this slice.
 
@@ -151,7 +151,7 @@ Do not introduce nested shells or speculative route names just for this slice.
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/router/app_router_test.dart
+cd apps/lyron_app && flutter test test/router/app_router_test.dart
 ```
 
 Expected: PASS, including the new direct-reader fallback coverage and the existing auth redirect coverage.
@@ -159,11 +159,11 @@ Expected: PASS, including the new direct-reader fallback coverage and the existi
 ### Task 4: Update Integration Coverage For End-To-End Back Navigation
 
 **Files:**
-- Modify: `apps/lyrica_app/test/integration/song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/integration/song_reader_flow_test.dart`
 
 - [ ] **Step 1: Add a failing integration expectation for returning from reader to list**
 
-Extend `apps/lyrica_app/test/integration/song_reader_flow_test.dart` so the signed-in happy path now proves:
+Extend `apps/lyron_app/test/integration/song_reader_flow_test.dart` so the signed-in happy path now proves:
 
 1. the app boots into the song list
 2. tapping a song opens the reader
@@ -172,7 +172,7 @@ Extend `apps/lyrica_app/test/integration/song_reader_flow_test.dart` so the sign
 
 - [ ] **Step 2: Add a failing direct-entry integration test**
 
-Extend `apps/lyrica_app/test/integration/song_reader_flow_test.dart` with a second integration scenario that:
+Extend `apps/lyron_app/test/integration/song_reader_flow_test.dart` with a second integration scenario that:
 
 1. boots the app directly into `/songs/:songId`
 2. uses explicit provider overrides for song data and catalog context
@@ -185,7 +185,7 @@ Extend `apps/lyrica_app/test/integration/song_reader_flow_test.dart` with a seco
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test test/integration/song_reader_flow_test.dart
+cd apps/lyron_app && flutter test test/integration/song_reader_flow_test.dart
 ```
 
 Expected: PASS after the navigation changes are in place.
@@ -202,10 +202,10 @@ Confirm the integration coverage still stays within the intended slice:
 ### Task 5: Verify The Complete Navigation Slice
 
 **Files:**
-- Verify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Verify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Verify: `apps/lyrica_app/test/router/app_router_test.dart`
-- Verify: `apps/lyrica_app/test/integration/song_reader_flow_test.dart`
+- Verify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Verify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Verify: `apps/lyron_app/test/router/app_router_test.dart`
+- Verify: `apps/lyron_app/test/integration/song_reader_flow_test.dart`
 - Verify: `./scripts/verify.sh --skip-migrations`
 
 - [ ] **Step 1: Run the focused Flutter navigation tests together**
@@ -213,7 +213,7 @@ Confirm the integration coverage still stays within the intended slice:
 Run:
 
 ```bash
-cd apps/lyrica_app && flutter test \
+cd apps/lyron_app && flutter test \
   test/presentation/song_library/song_list_screen_test.dart \
   test/presentation/song_reader/song_reader_screen_test.dart \
   test/router/app_router_test.dart \

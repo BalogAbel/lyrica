@@ -15,15 +15,15 @@
 ### Task 1: Add Drift-Backed Song Catalog Cache Storage
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_database.dart`
-- Create: `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_tables.dart`
-- Create: `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_store.dart`
-- Create: `apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
+- Create: `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart`
+- Create: `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_tables.dart`
+- Create: `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart`
+- Create: `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
 
 - [ ] **Step 1: Write the failing store tests**
 
-Create `apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart` to define the storage contract:
+Create `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart` to define the storage contract:
 
 ```dart
 test('replaces the active snapshot atomically for one user and organization', () async {
@@ -56,13 +56,13 @@ Also cover:
 
 - [ ] **Step 2: Run the focused store test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
+Run: `cd apps/lyron_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
 
 Expected: FAIL because the Drift database and store do not exist yet.
 
 - [ ] **Step 3: Add the minimal Drift tables and database**
 
-Create `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_tables.dart` with focused tables for:
+Create `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_tables.dart` with focused tables for:
 
 ```dart
 class CachedCatalogSnapshots extends Table {
@@ -78,11 +78,11 @@ class CachedCatalogSnapshots extends Table {
 
 And companion tables for cached summaries and cached sources keyed by `(userId, organizationId, songId)` plus the current `snapshotVersion` column where useful for consistency checks inside one replacement transaction.
 
-Create `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_database.dart` with a small Drift database that exposes those tables and uses a local SQLite executor.
+Create `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart` with a small Drift database that exposes those tables and uses a local SQLite executor.
 
 - [ ] **Step 4: Implement the store with atomic hard-replace behavior**
 
-Create `apps/lyrica_app/lib/src/offline/song_catalog/song_catalog_store.dart` with methods shaped like:
+Create `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart` with methods shaped like:
 
 ```dart
 abstract interface class SongCatalogStore {
@@ -138,37 +138,37 @@ This is logical catalog-level consistency, not a broader sync engine design.
 
 - [ ] **Step 5: Wire a provider seam for the local store**
 
-Update `apps/lyrica_app/lib/src/application/providers.dart` to expose one provider for the `SongCatalogStore` so tests and later tasks can override it.
+Update `apps/lyron_app/lib/src/application/providers.dart` to expose one provider for the `SongCatalogStore` so tests and later tasks can override it.
 
 - [ ] **Step 6: Re-run the focused store test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
+Run: `cd apps/lyron_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/offline/song_catalog apps/lyrica_app/test/offline/song_catalog/song_catalog_store_test.dart apps/lyrica_app/lib/src/application/providers.dart
+git add apps/lyron_app/lib/src/offline/song_catalog apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart apps/lyron_app/lib/src/application/providers.dart
 git commit -m "feat(offline): add song catalog cache store"
 ```
 
 ### Task 2: Add Local-First Catalog State And Refresh Coordination
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/application/song_library/catalog_connection_status.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/catalog_refresh_status.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/catalog_session_status.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/active_catalog_context.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/catalog_snapshot_state.dart`
-- Create: `apps/lyrica_app/lib/src/application/song_library/song_catalog_controller.dart`
-- Create: `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart`
-- Modify: `apps/lyrica_app/lib/src/application/providers.dart`
-- Modify: `apps/lyrica_app/lib/src/application/song_library/song_library_service.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/catalog_connection_status.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/catalog_refresh_status.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/catalog_session_status.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/active_catalog_context.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/catalog_snapshot_state.dart`
+- Create: `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart`
+- Create: `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart`
+- Modify: `apps/lyron_app/lib/src/application/providers.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/song_library_service.dart`
 
 - [ ] **Step 1: Write the failing controller tests**
 
-Create `apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart` to define the orchestration contract:
+Create `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart` to define the orchestration contract:
 
 ```dart
 test('keeps the previous active snapshot when refresh fails', () async {
@@ -199,7 +199,7 @@ Also cover:
 
 - [ ] **Step 2: Run the focused controller test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/application/song_library/song_catalog_controller_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/song_library/song_catalog_controller_test.dart`
 
 Expected: FAIL because the controller and state types do not exist yet.
 
@@ -247,7 +247,7 @@ Keep connectivity mode, refresh outcome, and session-verification outcome separa
 
 - [ ] **Step 4: Implement the controller**
 
-Create `apps/lyrica_app/lib/src/application/song_library/song_catalog_controller.dart` to own:
+Create `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart` to own:
 - deriving and holding the active authenticated user plus current-organization read context
 - reading the active cached snapshot for that authenticated user context
 - full-catalog backend refresh
@@ -266,7 +266,7 @@ Use that explicit session outcome to decide whether cached authenticated reading
 
 - [ ] **Step 5: Wire providers for the controller and its state**
 
-Update `apps/lyrica_app/lib/src/application/providers.dart` to expose:
+Update `apps/lyron_app/lib/src/application/providers.dart` to expose:
 - a remote Supabase song repository provider
 - the local-first catalog controller provider
 - one provider for the active authenticated catalog context derived from the controller state
@@ -274,29 +274,29 @@ Update `apps/lyrica_app/lib/src/application/providers.dart` to expose:
 
 - [ ] **Step 6: Re-run the focused controller test to verify it passes**
 
-Run: `cd apps/lyrica_app && flutter test test/application/song_library/song_catalog_controller_test.dart`
+Run: `cd apps/lyron_app && flutter test test/application/song_library/song_catalog_controller_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/application/song_library apps/lyrica_app/test/application/song_library/song_catalog_controller_test.dart apps/lyrica_app/lib/src/application/providers.dart
+git add apps/lyron_app/lib/src/application/song_library apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart apps/lyron_app/lib/src/application/providers.dart
 git commit -m "feat(song-library): add local-first catalog controller"
 ```
 
 ### Task 3: Route Song Reads Through The Active Cached Snapshot
 
 **Files:**
-- Create: `apps/lyrica_app/lib/src/infrastructure/song_library/local_first_song_repository.dart`
-- Create: `apps/lyrica_app/test/infrastructure/song_library/local_first_song_repository_test.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
-- Modify: `apps/lyrica_app/lib/src/domain/song/song_not_found_exception.dart`
-- Modify: `apps/lyrica_app/lib/src/application/song_library/song_library_service.dart`
+- Create: `apps/lyron_app/lib/src/infrastructure/song_library/local_first_song_repository.dart`
+- Create: `apps/lyron_app/test/infrastructure/song_library/local_first_song_repository_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Modify: `apps/lyron_app/lib/src/domain/song/song_not_found_exception.dart`
+- Modify: `apps/lyron_app/lib/src/application/song_library/song_library_service.dart`
 
 - [ ] **Step 1: Write the failing local-first repository tests**
 
-Create `apps/lyrica_app/test/infrastructure/song_library/local_first_song_repository_test.dart` to require:
+Create `apps/lyron_app/test/infrastructure/song_library/local_first_song_repository_test.dart` to require:
 
 ```dart
 test('lists songs from the active cached snapshot', () async {
@@ -316,13 +316,13 @@ Also cover:
 
 - [ ] **Step 2: Run the focused repository test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/local_first_song_repository_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/local_first_song_repository_test.dart`
 
 Expected: FAIL because the local-first repository does not exist yet.
 
 - [ ] **Step 3: Implement the local-first repository**
 
-Create `apps/lyrica_app/lib/src/infrastructure/song_library/local_first_song_repository.dart` as a read-only repository over the active cached snapshot:
+Create `apps/lyron_app/lib/src/infrastructure/song_library/local_first_song_repository.dart` as a read-only repository over the active cached snapshot:
 
 ```dart
 class LocalFirstSongRepository {
@@ -347,7 +347,7 @@ Keep this repository free of auth lookup logic. It must require the resolved `(u
 
 - [ ] **Step 4: Switch the presentation providers to the local-first path**
 
-Update `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart` so song list and reader reads come from the active cached snapshot owned by the catalog controller instead of directly from Supabase.
+Update `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart` so song list and reader reads come from the active cached snapshot owned by the catalog controller instead of directly from Supabase.
 
 Keep the backend repository available as the remote refresh dependency, not as the UI read path.
 
@@ -359,30 +359,30 @@ Make the provider seam explicit:
 
 - [ ] **Step 5: Re-run the focused repository and provider tests**
 
-Run: `cd apps/lyrica_app && flutter test test/infrastructure/song_library/local_first_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart`
+Run: `cd apps/lyron_app && flutter test test/infrastructure/song_library/local_first_song_repository_test.dart test/presentation/song_library/song_library_providers_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/infrastructure/song_library/local_first_song_repository.dart apps/lyrica_app/test/infrastructure/song_library/local_first_song_repository_test.dart apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyrica_app/lib/src/application/song_library/song_library_service.dart apps/lyrica_app/lib/src/domain/song/song_not_found_exception.dart
+git add apps/lyron_app/lib/src/infrastructure/song_library/local_first_song_repository.dart apps/lyron_app/test/infrastructure/song_library/local_first_song_repository_test.dart apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart apps/lyron_app/lib/src/application/song_library/song_library_service.dart apps/lyron_app/lib/src/domain/song/song_not_found_exception.dart
 git commit -m "feat(song-library): read songs from cached catalog"
 ```
 
 ### Task 4: Surface Persistent Connectivity And Refresh State In The UI
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Test: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
-- Test: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
-- Test: `apps/lyrica_app/test/app/lyrica_app_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Test: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
+- Test: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Test: `apps/lyron_app/test/app/lyron_app_test.dart`
 
 - [ ] **Step 1: Write the failing widget tests for persistent state visibility**
 
-Update `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart` to require visible status surfaces such as:
+Update `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` to require visible status surfaces such as:
 
 ```dart
 expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
@@ -400,13 +400,13 @@ Also cover:
 
 - [ ] **Step 2: Run the focused widget tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_list_screen_test.dart test/presentation/song_reader/song_reader_screen_test.dart test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_list_screen_test.dart test/presentation/song_reader/song_reader_screen_test.dart test/app/lyron_app_test.dart`
 
 Expected: FAIL because the persistent local-first status surfaces do not exist yet.
 
 - [ ] **Step 3: Add user-facing strings and minimal UI state surfaces**
 
-Update `apps/lyrica_app/lib/src/shared/app_strings.dart` with explicit status copy, for example:
+Update `apps/lyron_app/lib/src/shared/app_strings.dart` with explicit status copy, for example:
 
 ```dart
 static const songCatalogOnlineStatus = 'Online. Songs are up to date.';
@@ -427,28 +427,28 @@ It must also be possible for the core reader experience to surface the explicit 
 
 - [ ] **Step 4: Re-run the focused widget tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_list_screen_test.dart test/presentation/song_reader/song_reader_screen_test.dart test/app/lyrica_app_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_list_screen_test.dart test/presentation/song_reader/song_reader_screen_test.dart test/app/lyron_app_test.dart`
 
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart apps/lyrica_app/lib/src/shared/app_strings.dart apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart apps/lyrica_app/test/app/lyrica_app_test.dart
+git add apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart apps/lyron_app/lib/src/shared/app_strings.dart apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart apps/lyron_app/test/app/lyron_app_test.dart
 git commit -m "feat(app): show local-first catalog status"
 ```
 
 ### Task 5: Add End-To-End Local-First Verification
 
 **Files:**
-- Modify: `apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart`
-- Create: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Modify: `apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart`
+- Create: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 - Modify: `scripts/verify.sh`
-- Test: `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
+- Test: `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart`
 
 - [ ] **Step 1: Write the failing integration test for offline relaunch**
 
-Create `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` to prove:
+Create `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` to prove:
 
 ```dart
 testWidgets('relaunches offline from the cached catalog after one successful backend sync', (
@@ -467,7 +467,7 @@ Also cover:
 
 - [ ] **Step 2: Run the focused integration test to verify it fails**
 
-Run: `cd apps/lyrica_app && flutter test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-key`
+Run: `cd apps/lyron_app && flutter test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-key`
 
 Expected: FAIL because the local-first integration flow is not implemented yet.
 
@@ -491,7 +491,7 @@ Expected: PASS, including the new local-first integration flow.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/lyrica_app/test/integration/authenticated_song_reader_flow_test.dart apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart scripts/verify.sh
+git add apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart scripts/verify.sh
 git commit -m "test(app): verify local-first authenticated song reading"
 ```
 
@@ -504,7 +504,7 @@ git commit -m "test(app): verify local-first authenticated song reading"
 - Create: `docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md`
 - Modify: `docs/testing/testing-strategy.md`
 - Modify: `docs/product/vision.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 
 - [ ] **Step 1: Update repository-level docs to describe the local-first authenticated reader**
 
@@ -518,7 +518,7 @@ Reflect the new executable slice consistently:
 
 - [ ] **Step 2: Verify documentation consistency by re-reading the updated files**
 
-Run: `sed -n '1,240p' README.md docs/domain/domain-model.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/product/vision.md apps/lyrica_app/README.md docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md`
+Run: `sed -n '1,240p' README.md docs/domain/domain-model.md docs/architecture/architecture.md docs/testing/testing-strategy.md docs/product/vision.md apps/lyron_app/README.md docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md`
 
 Expected: The docs consistently describe a local-first authenticated reader slice without widening into write sync or editing.
 
@@ -531,6 +531,6 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md docs/domain/domain-model.md docs/architecture/architecture.md docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md docs/testing/testing-strategy.md docs/product/vision.md apps/lyrica_app/README.md docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md
+git add README.md docs/domain/domain-model.md docs/architecture/architecture.md docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md docs/testing/testing-strategy.md docs/product/vision.md apps/lyron_app/README.md docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md
 git commit -m "docs(repo): align local-first authenticated song reading"
 ```

@@ -59,16 +59,16 @@ Preserve coverage for:
 
 Update these repository docs so they describe:
 
-- [README.md](/Users/abelbalog/Documents/Development/private/lyrica/README.md)
-- [apps/lyrica_app/README.md](/Users/abelbalog/Documents/Development/private/lyrica/apps/lyrica_app/README.md)
-- [docs/product/vision.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/product/vision.md)
-- [docs/architecture/architecture.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/architecture.md)
-- [docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md)
-- [docs/testing/testing-strategy.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/testing/testing-strategy.md)
-- [docs/workflows/development-workflow.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/workflows/development-workflow.md)
-- [docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md)
-- [docs/specs/2026-03-25-local-first-manual-validation-scripts.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/specs/2026-03-25-local-first-manual-validation-scripts.md)
-- [docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md](/Users/abelbalog/Documents/Development/private/lyrica/docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md)
+- [README.md](../../README.md)
+- [apps/lyron_app/README.md](../../apps/lyron_app/README.md)
+- [docs/product/vision.md](../product/vision.md)
+- [docs/architecture/architecture.md](../architecture/architecture.md)
+- [docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md](../architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md)
+- [docs/testing/testing-strategy.md](../testing/testing-strategy.md)
+- [docs/workflows/development-workflow.md](../workflows/development-workflow.md)
+- [docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md](2026-03-25-local-first-cached-authenticated-song-reading.md)
+- [docs/specs/2026-03-25-local-first-manual-validation-scripts.md](2026-03-25-local-first-manual-validation-scripts.md)
+- [docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md](../plans/2026-03-25-local-first-cached-authenticated-song-reading.md)
 
 Those docs must stay consistent about:
 
@@ -78,7 +78,7 @@ Those docs must stay consistent about:
 
 ## Success Criteria
 
-- `apps/lyrica_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` is hardened so the local-first integration slot exercises persistent cache reopen instead of only same-process memory state.
+- `apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart` is hardened so the local-first integration slot exercises persistent cache reopen instead of only same-process memory state.
 - `./scripts/verify.sh` executes that hardened integration test in the existing local-first slot.
 - Repository docs no longer overclaim what the automated gate proves.
 - The native manual validation workflow remains the acceptance path for authenticated offline relaunch.

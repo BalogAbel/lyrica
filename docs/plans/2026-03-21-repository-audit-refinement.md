@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `README.md`
 - Modify: `AGENTS.md`
-- Modify: `apps/lyrica_app/README.md`
+- Modify: `apps/lyron_app/README.md`
 - Modify: `docs/product/vision.md`
 - Modify: `docs/domain/domain-model.md`
 - Modify: `docs/architecture/architecture.md`
@@ -46,9 +46,9 @@
 ### Task 3: Flutter Shell Simplification
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/...`
-- Modify: `apps/lyrica_app/test/...`
-- Modify: `apps/lyrica_app/pubspec.yaml`
+- Modify: `apps/lyron_app/lib/src/...`
+- Modify: `apps/lyron_app/test/...`
+- Modify: `apps/lyron_app/pubspec.yaml`
 
 - [ ] Step 1: Replace bootstrap-demo messaging with architecture-aligned, minimal shell behavior.
 - [ ] Step 2: Keep Riverpod, routing, and offline contracts, but remove fake or redundant abstraction where it adds no value.

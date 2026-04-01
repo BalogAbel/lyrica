@@ -18,7 +18,7 @@ Local-first manual validation environment is ready.
 
 Next steps:
 1. Run ./scripts/manual-validation/run-local-first-app.sh
-2. Sign in with demo@lyrica.local / LyricaDemo123!
+2. Sign in with demo@lyron.local / LyronDemo123!
 3. Load the song list and open at least one song before going offline
 4. Use ./scripts/manual-validation/print-checklist.sh while validating
 EOF

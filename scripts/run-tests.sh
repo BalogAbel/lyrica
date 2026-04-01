@@ -3,4 +3,4 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-(cd apps/lyrica_app && flutter test)
+(cd apps/lyron_app && flutter test)

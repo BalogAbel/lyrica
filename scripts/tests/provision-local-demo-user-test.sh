@@ -19,7 +19,7 @@ query_result="$(
       and user_id = (
         select id
         from auth.users
-        where email = 'demo@lyrica.local'
+        where email = 'demo@lyron.local'
       );
   "
 )"

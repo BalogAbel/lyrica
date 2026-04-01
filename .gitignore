@@ -24,6 +24,6 @@ tooling/supabase/node_modules/
 scripts/manual-validation/.supabase-env
 
 # Generated platform artifacts
-apps/lyrica_app/ios/Flutter/Generated.xcconfig
-apps/lyrica_app/ios/Flutter/flutter_export_environment.sh
-apps/lyrica_app/macos/Flutter/GeneratedPluginRegistrant.swift
+apps/lyron_app/ios/Flutter/Generated.xcconfig
+apps/lyron_app/ios/Flutter/flutter_export_environment.sh
+apps/lyron_app/macos/Flutter/GeneratedPluginRegistrant.swift

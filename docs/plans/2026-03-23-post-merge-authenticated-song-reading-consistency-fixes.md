@@ -42,10 +42,10 @@ Expected: PASS with one organization-scoped membership after repeated provisioni
 ### Task 2: Remove Hidden Asset Fallback From The Authenticated Slice
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_library_providers.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_library/song_list_screen.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_library_providers_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_library/song_list_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 
 - [ ] **Step 1: Write failing tests for backend-only repository ownership**
 
@@ -53,7 +53,7 @@ Add tests proving that the authenticated app slice does not read bundled song as
 
 - [ ] **Step 2: Run the focused provider and song-list tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
 Expected: FAIL because the current provider graph falls back to `AssetSongRepository`.
 
 - [ ] **Step 3: Implement the minimal provider fix**
@@ -62,22 +62,22 @@ Keep the repository boundary backend-only for this slice and let auth/routing ow
 
 - [ ] **Step 4: Re-run the focused provider and song-list tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/presentation/song_library/song_library_providers_test.dart test/presentation/song_library/song_list_screen_test.dart`
 Expected: PASS.
 
 ### Task 3: Make Auth Bootstrap And Reader Failure Semantics Match The Spec
 
 **Files:**
-- Modify: `apps/lyrica_app/lib/src/application/auth/app_auth_controller.dart`
-- Modify: `apps/lyrica_app/lib/src/domain/song/song_not_found_exception.dart`
-- Create: `apps/lyrica_app/lib/src/domain/song/song_access_denied_exception.dart`
-- Modify: `apps/lyrica_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
-- Modify: `apps/lyrica_app/lib/src/presentation/song_reader/song_reader_screen.dart`
-- Modify: `apps/lyrica_app/lib/src/shared/app_strings.dart`
-- Modify: `apps/lyrica_app/test/app/lyrica_app_test.dart`
-- Modify: `apps/lyrica_app/test/router/app_router_test.dart`
-- Modify: `apps/lyrica_app/test/infrastructure/song_library/supabase_song_repository_test.dart`
-- Modify: `apps/lyrica_app/test/presentation/song_reader/song_reader_screen_test.dart`
+- Modify: `apps/lyron_app/lib/src/application/auth/app_auth_controller.dart`
+- Modify: `apps/lyron_app/lib/src/domain/song/song_not_found_exception.dart`
+- Create: `apps/lyron_app/lib/src/domain/song/song_access_denied_exception.dart`
+- Modify: `apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
+- Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/app/lyron_app_test.dart`
+- Modify: `apps/lyron_app/test/router/app_router_test.dart`
+- Modify: `apps/lyron_app/test/infrastructure/song_library/supabase_song_repository_test.dart`
+- Modify: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 
 - [ ] **Step 1: Write failing tests for startup bootstrap and denied/not-found mapping**
 
@@ -88,7 +88,7 @@ Add tests that prove:
 
 - [ ] **Step 2: Run the focused auth, router, repository, and reader tests to verify they fail**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart test/router/app_router_test.dart test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_reader/song_reader_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart test/router/app_router_test.dart test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_reader/song_reader_screen_test.dart`
 Expected: FAIL because the current implementation redirects immediately during bootstrap and collapses denied/not-found behavior.
 
 - [ ] **Step 3: Implement the minimal auth and failure-semantics fix**
@@ -97,7 +97,7 @@ Keep auth bootstrap centralized, preserve the signed-out route policy, add an ex
 
 - [ ] **Step 4: Re-run the focused tests to verify they pass**
 
-Run: `cd apps/lyrica_app && flutter test test/app/lyrica_app_test.dart test/router/app_router_test.dart test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_reader/song_reader_screen_test.dart`
+Run: `cd apps/lyron_app && flutter test test/app/lyron_app_test.dart test/router/app_router_test.dart test/infrastructure/song_library/supabase_song_repository_test.dart test/presentation/song_reader/song_reader_screen_test.dart`
 Expected: PASS.
 
 ### Task 4: Align Specs, Plans, And Repository Docs With The Corrected Slice
