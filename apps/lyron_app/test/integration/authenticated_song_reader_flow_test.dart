@@ -47,7 +47,7 @@ void main() {
       await client.auth.signOut();
       final authResponse = await client.auth.signInWithPassword(
         email: 'demo@lyron.local',
-        password: 'LyricaDemo123!',
+        password: 'LyronDemo123!',
       );
 
       expect(authResponse.session, isNotNull);
@@ -209,7 +209,7 @@ Future<void> _signInDemoUser(SupabaseClient client) async {
   await client.auth.signOut();
   final authResponse = await client.auth.signInWithPassword(
     email: 'demo@lyron.local',
-    password: 'LyricaDemo123!',
+    password: 'LyronDemo123!',
   );
   expect(authResponse.session, isNotNull);
 }
