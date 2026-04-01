@@ -58,14 +58,14 @@ void main() {
         listPlansValue: [
           PlanSummary(
             id: 'plan-2',
-            name: 'Team Rehearsal',
+            name: 'Zulu Rehearsal',
             description: 'Multi-session rehearsal fixture',
             scheduledFor: null,
-            updatedAt: DateTime(2026, 3, 31, 9),
+            updatedAt: DateTime(2026, 3, 31, 12),
           ),
           PlanSummary(
             id: 'plan-1',
-            name: 'Sunday Morning',
+            name: 'Alpha Morning',
             description: 'Single-session Sunday fixture',
             scheduledFor: DateTime(2026, 4, 5, 8, 30),
             updatedAt: DateTime(2026, 3, 31, 8),
@@ -75,9 +75,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Sunday Morning'), findsOneWidget);
-    expect(find.text('Team Rehearsal'), findsOneWidget);
+    expect(find.text('Alpha Morning'), findsOneWidget);
+    expect(find.text('Zulu Rehearsal'), findsOneWidget);
     expect(find.byType(ListTile), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(find.text('Zulu Rehearsal')).dy,
+      lessThan(tester.getTopLeft(find.text('Alpha Morning')).dy),
+    );
   });
 
   testWidgets('navigates to the plan detail route when a plan is tapped', (
