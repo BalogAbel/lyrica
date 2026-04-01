@@ -556,6 +556,56 @@ void main() {
     expect(nextAtEnd.onPressed, isNull);
   });
 
+  testWidgets('single-item session disables both previous and next', (
+    tester,
+  ) async {
+    final singleItemPlan = PlanDetail(
+      plan: PlanSummary(
+        id: 'plan-1',
+        name: 'Plan Fixture',
+        description: 'Scoped reader test fixture',
+        scheduledFor: null,
+        updatedAt: DateTime(2026, 4, 1, 9),
+      ),
+      sessions: const [
+        SessionSummary(
+          id: 'session-1',
+          name: 'Main Set',
+          position: 10,
+          items: [
+            SessionItemSummary(
+              id: 'item-10',
+              position: 10,
+              song: SongSummary(id: 'song-1', title: 'Song One'),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      buildScopedReaderApp(
+        planDetail: singleItemPlan,
+        resultsBySongId: {'song-1': buildScopedResult('Song One')},
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/item-10/songs/song-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final previous = tester.widget<OutlinedButton>(
+      find.widgetWithText(
+        OutlinedButton,
+        AppStrings.scopedReaderPreviousAction,
+      ),
+    );
+    final next = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
+    );
+    expect(previous.onPressed, isNull);
+    expect(next.onPressed, isNull);
+  });
+
   testWidgets(
     'repeated next actions keep a single reader stack entry before returning to plan detail',
     (tester) async {
@@ -748,7 +798,7 @@ void main() {
               ),
             ),
             planningPlanDetailProvider('plan-1').overrideWith(
-              (ref) => Future<PlanDetail>.error(StateError('unavailable')),
+              (ref) => Future<PlanDetail>.error(Exception('unavailable')),
             ),
             songLibraryReaderProvider.overrideWithProvider(
               (songId) => FutureProvider.autoDispose(

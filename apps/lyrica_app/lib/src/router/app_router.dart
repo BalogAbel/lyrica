@@ -37,9 +37,12 @@ GoRouter createAppRouter({
           return null;
         }
 
+        final preserveLocation = !isOnSignIn;
         return Uri(
           path: AppRoutes.bootstrap.path,
-          queryParameters: {'from': state.uri.toString()},
+          queryParameters: preserveLocation
+              ? {'from': state.uri.toString()}
+              : null,
         ).toString();
       }
 

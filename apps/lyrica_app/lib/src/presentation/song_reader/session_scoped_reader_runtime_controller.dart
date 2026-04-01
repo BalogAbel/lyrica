@@ -64,6 +64,8 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
 }
 
 final sessionScopedReaderRuntimeControllerProvider =
-    ChangeNotifierProvider<SessionScopedReaderRuntimeController>((ref) {
-      return SessionScopedReaderRuntimeController();
-    });
+    ChangeNotifierProvider.family<SessionScopedReaderRuntimeController, String>(
+      (ref, sessionKey) {
+        return SessionScopedReaderRuntimeController();
+      },
+    );

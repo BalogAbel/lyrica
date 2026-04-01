@@ -30,7 +30,7 @@ final sessionScopedReaderContextProvider = FutureProvider.autoDispose
           sessionItemId: request.sessionItemId,
           songId: request.songId,
         );
-      } on Object {
+      } on Exception {
         return const SessionScopedReaderContextFailureResult(
           SessionScopedReaderContextFailure.unavailablePlanDetail,
         );
