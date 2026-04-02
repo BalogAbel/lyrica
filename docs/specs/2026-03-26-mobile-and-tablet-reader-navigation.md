@@ -4,156 +4,156 @@
 
 ## Goal
 
-Tegyük a Lyron Chords song reader navigációját platformhelyessé Androidon és iOS-en úgy, hogy a jelenlegi full-screen reader modell megmaradjon telefonon és tableten is.
+Make Lyron Chords song-reader navigation feel platform-correct on Android and iOS while keeping the current full-screen reader model on both phones and tablets.
 
 ## Scope
 
-- A song list maradjon a signed-in olvasási flow gyökérképernyője.
-- A song reader maradjon külön részletnézet.
-- A song listből a song readerbe történő navigáció valódi előrelépés legyen, ne puszta route-csere.
-- A song readerből a felhasználó egyértelműen vissza tudjon térni a song listára.
-- A song reader UI tartalmazzon látható vissza affordance-ot.
-- Androidon a rendszer back a song readerből a song listára vigyen vissza.
-- Ha a felhasználó közvetlenül a song reader route-ra érkezik, és nincs visszalépési verem, a readerből történő visszalépés a song listára vigyen.
-- A tablet használat elsődleges maradjon full-screen reader modellben.
+- The song list must remain the root screen of the signed-in reading flow.
+- The song reader must remain a separate detail screen.
+- Navigating from the song list to the song reader must behave like a true forward navigation step, not a route swap.
+- Users must be able to return clearly from the song reader to the song list.
+- The song-reader UI must include a visible back affordance.
+- On Android, system back from the song reader must return to the song list.
+- If a user lands directly on the song-reader route and there is no back stack, leaving the reader must return to the song list.
+- Tablets must continue to use the full-screen reader model as the primary reading experience.
 
 ## Non-Goals
 
-- Nincs master-detail vagy split view bevezetés ebben a slice-ban.
-- Nincs becsúszó vagy overlay song list.
-- Nincs új tablet-specifikus többpaneles layout.
-- Nincs reader workflow vagy információs architektúra áttervezése.
-- Nincs új dalválasztási mechanika a readeren belül.
-- Nincs változás az auth, offline cache, vagy backend authorization boundary működésében.
+- No master-detail or split-view layout in this slice.
+- No slide-in or overlay song list.
+- No new tablet-specific multi-panel layout.
+- No redesign of the reader workflow or information architecture.
+- No new in-reader song-selection mechanism.
+- No changes to auth, offline cache, or backend authorization-boundary behavior.
 
 ## Product Slice Summary
 
-A jelenlegi app flow funkcionálisan a song list és a song reader köré épül, de a navigáció nem viselkedik platformhelyesen. Androidon a system back a readerből kilép az alkalmazásból ahelyett, hogy visszatérne a listára. iOS-en nincs hardveres back, ezért a reader képernyőn jelenleg nem adott egyértelmű visszaút.
+The current app flow is functionally centered around the song list and song reader, but the navigation does not behave in a platform-correct way. On Android, system back from the reader exits the app instead of returning to the list. On iOS there is no hardware back, so the reader screen currently lacks a clear return path.
 
-Ez a slice nem új layout-rendszert vezet be tabletre. A cél a meglévő signed-in olvasási flow navigációs korrekciója úgy, hogy a reader továbbra is teljes képernyős maradjon, és a későbbi side sheet vagy split view fejlesztés lehetősége nyitva maradjon.
+This slice does not introduce a new tablet layout system. The goal is to correct navigation in the existing signed-in reading flow while keeping the reader full-screen and leaving room for a future side-sheet or split-view design.
 
 ## User Flows
 
 ### Signed-In Song Browsing
 
-1. A felhasználó sikeresen bejelentkezik vagy visszaállított sessionnel indul.
-2. Az app a song list képernyőt mutatja.
-3. A song list a signed-in olvasási flow gyökérképernyője.
+1. The user signs in successfully or starts with a restored session.
+2. The app shows the song-list screen.
+3. The song list is the root screen of the signed-in reading flow.
 
 ### Open Song Reader
 
-1. A felhasználó kiválaszt egy dalt a listából.
-2. Az app megnyitja a song reader részletnézetet.
-3. A reader külön navigációs szintként viselkedik a song list fölött.
+1. The user selects a song from the list.
+2. The app opens the song-reader detail view.
+3. The reader behaves as a separate navigation level above the song list.
 
 ### Return From Song Reader
 
-1. A felhasználó a readerben a látható vissza affordance-ot használja, vagy Androidon megnyomja a rendszer back gombot.
-2. Ha van előzmény a navigációs veremben, az app visszalép a song listára.
-3. Ha nincs előzmény a navigációs veremben, az app history-replace jelleggel a song list route-ra tér vissza, nem pedig újabb song list bejegyzést push-ol a reader fölé.
+1. The user uses the visible back affordance in the reader or presses the Android system back button.
+2. If navigation history exists, the app pops back to the song list.
+3. If no navigation history exists, the app returns to the song-list route with history-replace behavior rather than pushing another song-list entry above the reader.
 
 ### Root-Level Exit Behavior
 
-1. A felhasználó a song list képernyőn van.
-2. Innen nincs külön vissza affordance.
-3. Androidon a rendszer back a platform szokásos root-szintű viselkedését követi.
+1. The user is on the song-list screen.
+2. There is no dedicated back affordance from this root state.
+3. On Android, system back follows the platform's normal root-level behavior.
 
 ## UX Requirements
 
 ### Song List
 
-- A song list maradjon egyszerű gyökérképernyő.
-- A song list UI ne mutasson vissza affordance-ot.
-- A song listből a readerbe való átmenet továbbra is közvetlen és gyors maradjon.
+- The song list must remain a simple root screen.
+- The song-list UI must not show a back affordance.
+- Transitioning from the song list to the reader must remain direct and fast.
 
 ### Song Reader
 
-- A song reader mindig egyértelműen elhagyható legyen.
-- A readeren legyen látható vissza affordance.
-- A vissza affordance jelentése egyértelműen a song listára való visszatérés legyen.
-- A reader teljes képernyős maradjon tableten is.
-- A visszanavigáció ne kényszerítse a felhasználót rejtett gesztusokra vagy platformismeretre.
-- A reader full-screen navigációs modellje nem távolíthatja el a korábban specifikált tartós online, offline, refreshing, vagy refresh-failed állapotjelzéseket a reader élményből.
+- The song reader must always be clearly dismissible.
+- The reader must show a visible back affordance.
+- The back affordance must unambiguously mean "return to the song list."
+- The reader must remain full-screen on tablets.
+- Returning must not depend on hidden gestures or platform-specific knowledge.
+- The full-screen reader navigation model must not remove the previously specified persistent online, offline, refreshing, or refresh-failed status surfaces from the reader experience.
 
 ### Tablet Behavior
 
-- A tablet primary olvasási modell ebben a slice-ban teljes képernyős reader marad.
-- A spec nem követel meg állandóan látható listát a reader mellett.
-- A mostani megoldás ne zárja ki, hogy később side sheet, overlay lista vagy split view készüljön.
+- In this slice, the primary tablet reading model remains a full-screen reader.
+- The spec does not require a permanently visible list beside the reader.
+- The current solution must not block a future side sheet, overlay list, or split view.
 
 ## Routing And Navigation Requirements
 
 ### Navigation Model
 
-- A song list -> song reader átmenet a felhasználó számára valódi előrelépésként viselkedjen.
-- A song reader route nem cserélheti le úgy a song list route-ot, hogy közben megszűnjön a természetes visszalépés lehetősége.
-- A readerből történő visszalépés elsősorban `pop` alapú legyen, amikor van mit visszalépni.
+- The song list -> song reader transition must feel like a true forward step to the user.
+- The song-reader route must not replace the song-list route in a way that removes natural back navigation.
+- Returning from the reader should primarily use `pop` when there is something to pop.
 
 ### Fallback Return Behavior
 
-- Ha a song reader közvetlen route-belépéssel nyílik meg, és nincs visszalépési verem, a readerből való visszalépés a song list route-ra vigyen.
-- Ez a fallback visszatérés history-replace vagy azzal egyenértékű viselkedés legyen, ne új push a reader route fölé.
-- A fallback viselkedés nem eredményezhet üres képernyőt, kilépést, vagy hatástalan back akciót.
-- A fallback viselkedés nem hozhat létre back loopot, ahol a felhasználó a song list és a közvetlenül nyitott reader között reked.
+- If the song reader is opened by direct route entry and there is no back stack, leaving the reader must return to the song-list route.
+- This fallback return must use history-replace behavior or an equivalent, not push a new song-list route above the reader.
+- The fallback behavior must not produce a blank screen, app exit, or ineffective back action.
+- The fallback behavior must not create a back loop where the user gets stuck bouncing between the song list and a directly opened reader.
 
 ### Auth Boundary
 
-- A signed-in route policy változatlan marad.
-- A signed-out felhasználó továbbra sem érheti el a song list vagy song reader route-okat.
-- A navigációs korrekció nem gyengítheti a központosított auth redirect szabályokat.
+- The signed-in route policy remains unchanged.
+- Signed-out users still cannot access the song-list or song-reader routes.
+- The navigation correction must not weaken centralized auth-redirect rules.
 
 ## Platform Expectations
 
 ### Android
 
-- A rendszer back a song readerből visszavigyen a song listára.
-- A rendszer back a song list gyökérszintjén a platform szokásos viselkedését kövesse.
-- A readerből történő back ne zárja be az appot, ha a song listára való visszatérés értelmesen lehetséges.
+- System back from the song reader must return to the song list.
+- System back from the song-list root must follow the platform's usual behavior.
+- Back from the reader must not close the app when returning to the song list is still meaningful.
 
 ### iOS
 
-- A song reader képernyőn legyen látható, natívnak érződő vissza affordance.
-- A felhasználó ne maradjon a readerben egyértelmű kilépési út nélkül.
-- A navigációs minta illeszkedjen az iOS elvárásához, ahol a részletnézetből látható UI-n keresztül kell tudni visszatérni.
+- The song-reader screen must show a visible, native-feeling back affordance.
+- Users must not remain trapped in the reader without a clear way out.
+- The navigation pattern should match iOS expectations, where returning from a detail screen is available through visible UI.
 
 ## Deep Linking Expectations
 
-- A song reader route továbbra is maradhat közvetlenül címezhető.
-- Közvetlen belépés esetén is biztosított legyen az értelmes visszatérés a song listára.
-- A deep link nem teheti a readert zsákutcává.
+- The song-reader route may remain directly addressable.
+- Even with direct entry, the user must still have a meaningful way back to the song list.
+- A deep link must not turn the reader into a dead end.
 
 ## Testing Requirements
 
-TDD kötelező az implementációhoz.
+TDD is mandatory for the implementation.
 
 ### Widget Tests
 
-Fedjék le:
+Cover:
 
-- a song listből a readerbe történő navigációt
-- a reader vissza affordance meglétét
-- a readerből a listára való visszatérést
-- azt az esetet, amikor a reader fallback módon a listára tér vissza, mert nincs pop-olható előzmény
+- navigation from the song list into the reader
+- presence of the reader back affordance
+- return from the reader to the list
+- the fallback case where the reader returns to the list because there is no poppable navigation history
 
 ### Integration Tests
 
-Fedjék le:
+Cover:
 
-- signed-in flow: song list -> reader -> vissza a listára
-- session-restore flow mellett is helyes reader navigáció
-- közvetlen reader route belépésből történő visszatérés a listára
+- signed-in flow: song list -> reader -> back to the list
+- correct reader navigation when the app starts from a restored session
+- return to the list after direct entry to the reader route
 
 ### Regression Coverage
 
-- A változás nem törheti meg a jelenlegi auth redirect viselkedést.
-- A változás nem törheti meg a local-first authenticated reader flow-t.
-- A változás nem változtathatja meg a song list root státuszát.
+- The change must not break the current auth-redirect behavior.
+- The change must not break the local-first authenticated reader flow.
+- The change must not alter the root status of the song list.
 
 ## Success Criteria
 
-- Androidon a song readerből a back akció visszavisz a song listára, nem lépteti ki az appot.
-- iOS-en a song readerből látható UI affordance-szal vissza lehet térni a song listára.
-- A song list marad a signed-in olvasási flow gyökérképernyője.
-- A reader továbbra is teljes képernyős marad telefonon és tableten.
-- Közvetlen reader route belépés esetén sincs navigációs zsákutca.
-- A megoldás nem kényszerít most master-detail bevezetésére, de nem is zárja ki annak későbbi bevezetését.
+- On Android, back from the song reader returns to the song list instead of exiting the app.
+- On iOS, the user can return to the song list through a visible UI affordance in the reader.
+- The song list remains the root screen of the signed-in reading flow.
+- The reader remains full-screen on both phones and tablets.
+- Direct reader-route entry still does not create a navigation dead end.
+- The solution does not force a master-detail layout now, but it also does not block one later.
