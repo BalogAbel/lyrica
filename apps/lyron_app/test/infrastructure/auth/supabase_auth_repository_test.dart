@@ -65,11 +65,11 @@ void main() {
 
       final session = await repository.signIn(
         email: 'demo@lyron.local',
-        password: 'LyricaDemo123!',
+        password: 'LyronDemo123!',
       );
 
       expect(capturedEmail, 'demo@lyron.local');
-      expect(capturedPassword, 'LyricaDemo123!');
+      expect(capturedPassword, 'LyronDemo123!');
       expect(session.userId, 'user-2');
     },
   );

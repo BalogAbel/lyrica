@@ -2,7 +2,7 @@
 
 ## Summary
 
-Lyrica helps worship and music teams prepare, organize, and run services with reliable access to songs and plans even when connectivity is poor or unavailable for extended periods.
+Lyron Chords helps worship and music teams prepare, organize, and run services with reliable access to songs and plans even when connectivity is poor or unavailable for extended periods.
 
 ## Product Principles
 

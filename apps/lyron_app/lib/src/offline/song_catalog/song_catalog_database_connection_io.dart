@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 QueryExecutor openSongCatalogConnection() {
   return LazyDatabase(() async {
     final directory = await getApplicationDocumentsDirectory();
-    final file = File(p.join(directory.path, 'lyrica_song_catalog.sqlite'));
+    final file = File(p.join(directory.path, 'lyron_song_catalog.sqlite'));
     return NativeDatabase.createInBackground(file);
   });
 }

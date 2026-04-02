@@ -2,7 +2,7 @@
 
 ## System Summary
 
-Lyrica uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads through a repository boundary and a minimal online-only planning read flow for plans, sessions, and song-backed session items.
+Lyron Chords uses a monorepo with a Flutter client and a Supabase backend. The product is cloud-first but must remain operational offline for at least one week, so the client is designed as local-first with explicit synchronization. The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads through a repository boundary and a minimal online-only planning read flow for plans, sessions, and song-backed session items.
 
 ## Architectural Layers
 

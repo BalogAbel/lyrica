@@ -32,12 +32,12 @@ void main() {
       find.byType(TextFormField).at(0),
       'demo@lyron.local',
     );
-    await tester.enterText(find.byType(TextFormField).at(1), 'LyricaDemo123!');
+    await tester.enterText(find.byType(TextFormField).at(1), 'LyronDemo123!');
     await tester.tap(find.text('Continue'));
     await tester.pump();
 
     expect(repository.lastEmail, 'demo@lyron.local');
-    expect(repository.lastPassword, 'LyricaDemo123!');
+    expect(repository.lastPassword, 'LyronDemo123!');
   });
 }
 
