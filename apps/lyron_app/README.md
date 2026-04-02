@@ -35,7 +35,7 @@ For ADB-managed Android devices, including wireless targets whose Flutter id loo
 
 Documented demo credentials:
 
-- email: `demo@lyrica.local`
+- email: `demo@lyron.local`
 - password: `LyricaDemo123!`
 
 ## Structure
@@ -73,7 +73,7 @@ Run from the repository root:
 For the current slice, `./scripts/verify.sh --skip-migrations` is the end-to-end quality gate for app and documentation changes when the local Supabase path is unaffected.
 For the authenticated local-first song-reading and planning read slices, `./scripts/verify.sh` is the full local quality gate because it also provisions local Supabase auth and runs the real backend song-reading integration test, the cached offline reader integration test, and the backend-backed planning integration test. That local-first integration test proves persistent cache reopen behavior after the catalog database is closed and reopened; it does not replace native manual offline-relaunch validation.
 For repeatable manual validation, prefer `./scripts/manual-validation/run-local-first-app.sh` over `./scripts/run-authenticated-app.sh` because the manual-validation launcher preserves previously fetched app state between relaunches.
-The web path of that local-first cache depends on `apps/lyrica_app/web/sqlite3.wasm`; keep that asset versioned with Drift web cache changes instead of relying on ad-hoc local setup.
+The web path of that local-first cache depends on `apps/lyron_app/web/sqlite3.wasm`; keep that asset versioned with Drift web cache changes instead of relying on ad-hoc local setup.
 The manual-validation launcher also reuses a cached local Supabase env snapshot containing only `API_URL` and `ANON_KEY` from `supabase status -o env`, so offline relaunch remains scriptable after the backend is intentionally stopped.
 For this slice, authenticated offline relaunch is treated as a native-first requirement. The automated gate proves persistent cache reopen behavior, while the browser cache path remains useful and supported but browser relaunch behavior is best-effort rather than a product guarantee.
 Set `FLUTTER_DEVICE` when validating on a native target; use the default Chrome launcher only for browser diagnostics and general UI checks. Wireless Android devices can use the `adb-..._adb-tls-connect._tcp` id reported by `flutter devices`, while USB or other ADB-managed devices can use their Android serial.
