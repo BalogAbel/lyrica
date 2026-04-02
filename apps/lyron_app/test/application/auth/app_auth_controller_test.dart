@@ -54,12 +54,12 @@ void main() {
 
     await controller.signIn(
       email: 'demo@lyron.local',
-      password: 'LyricaDemo123!',
+      password: 'LyronDemo123!',
     );
 
     expect(controller.state.status, AppAuthStatus.signedIn);
     expect(repository.lastSignInEmail, 'demo@lyron.local');
-    expect(repository.lastSignInPassword, 'LyricaDemo123!');
+    expect(repository.lastSignInPassword, 'LyronDemo123!');
   });
 
   test(

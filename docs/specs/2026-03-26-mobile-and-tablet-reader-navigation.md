@@ -4,7 +4,7 @@
 
 ## Goal
 
-Tegyük a Lyrica song reader navigációját platformhelyessé Androidon és iOS-en úgy, hogy a jelenlegi full-screen reader modell megmaradjon telefonon és tableten is.
+Tegyük a Lyron Chords song reader navigációját platformhelyessé Androidon és iOS-en úgy, hogy a jelenlegi full-screen reader modell megmaradjon telefonon és tableten is.
 
 ## Scope
 

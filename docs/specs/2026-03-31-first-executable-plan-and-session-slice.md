@@ -4,7 +4,7 @@
 
 ## Goal
 
-Deliver the first executable planning slice for Lyrica by simplifying the canonical planning hierarchy to `plan -> session -> session_items`, seeding real local planning records in Supabase, and rendering those records in a minimal read-only Flutter flow.
+Deliver the first executable planning slice for Lyron Chords by simplifying the canonical planning hierarchy to `plan -> session -> session_items`, seeding real local planning records in Supabase, and rendering those records in a minimal read-only Flutter flow.
 
 ## Problem
 
@@ -12,7 +12,7 @@ The repository already contains a broader planning-oriented domain shape centere
 
 The immediate product need is narrower:
 
-- prove that Lyrica can model a planning container with one or more operational session lists
+- prove that Lyron Chords can model a planning container with one or more operational session lists
 - keep songs as separate canonical entities referenced from those lists
 - show real plan and session data in the app rather than leaving the planning domain as documentation-only structure
 

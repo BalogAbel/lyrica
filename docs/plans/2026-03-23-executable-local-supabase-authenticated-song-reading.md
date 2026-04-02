@@ -297,7 +297,7 @@ Add:
 - an auth-driven router refresh bridge, such as `auth_router_refresh_notifier.dart`
 - a router redirect callback that reads the auth/bootstrap state and decides between `/sign-in`, `/`, and `/songs/:songId`
 
-Pass the router through `LyricaApp` the same way the current tests do.
+Pass the router through `Lyron ChordsApp` the same way the current tests do.
 
 - [ ] **Step 5: Re-run the focused routing and sign-in tests to verify they pass**
 

@@ -4,7 +4,7 @@
 
 ## Goal
 
-Deliver the first executable authenticated backend reading slice for Lyrica by proving that the repository-owned local Supabase workflow can run end-to-end, a local demo user can authenticate, and the existing tablet-first ChordPro reader can load organization-scoped songs from the backend through the current repository boundary.
+Deliver the first executable authenticated backend reading slice for Lyron Chords by proving that the repository-owned local Supabase workflow can run end-to-end, a local demo user can authenticate, and the existing tablet-first ChordPro reader can load organization-scoped songs from the backend through the current repository boundary.
 
 ## Scope
 

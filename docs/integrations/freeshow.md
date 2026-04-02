@@ -6,7 +6,7 @@ FreeShow integration is important but intentionally not implemented in the MVP f
 
 ## Current Boundary
 
-Lyrica must preserve future compatibility by:
+Lyron Chords must preserve future compatibility by:
 
 - Keeping ChordPro as the canonical editable source
 - Modeling attachments separately from canonical song content

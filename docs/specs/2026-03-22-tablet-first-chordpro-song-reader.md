@@ -4,7 +4,7 @@
 
 ## Goal
 
-Deliver the first real Lyrica product slice as a tablet-first song reading flow built on ChordPro, using an asset-backed mock catalog and a repository boundary instead of auth or a real backend.
+Deliver the first real Lyron Chords product slice as a tablet-first song reading flow built on ChordPro, using an asset-backed mock catalog and a repository boundary instead of auth or a real backend.
 
 ## Scope
 
@@ -33,7 +33,7 @@ Deliver the first real Lyrica product slice as a tablet-first song reading flow 
 
 ## Product Slice Summary
 
-This slice validates the core Lyrica reading experience before offline sync, backend data flow, or editing are introduced. The user should be able to open the app, see a minimal list of mock songs, open a song, and use a reader optimized for tablet reading distance and touch interaction.
+This slice validates the core Lyron Chords reading experience before offline sync, backend data flow, or editing are introduced. The user should be able to open the app, see a minimal list of mock songs, open a song, and use a reader optimized for tablet reading distance and touch interaction.
 
 The slice is intentionally balanced rather than parser-heavy or UI-only. It includes a clean ChordPro parsing foundation, but only for an explicit supported subset. It also includes reader controls that prove the UX value of the format without forcing premature decisions about persistence, sync, or collaborative editing.
 The first catalog is bundled as app assets so the repository boundary stays real without requiring backend song storage.

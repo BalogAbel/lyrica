@@ -1,7 +1,7 @@
 class AppStrings {
   const AppStrings._();
 
-  static const appName = 'Lyrica';
+  static const appName = 'Lyron Chords';
   static const signInTitle = 'Sign in';
   static const signInSummary =
       'Use the local demo account to load backend songs.';

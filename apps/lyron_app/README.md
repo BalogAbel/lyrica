@@ -1,6 +1,6 @@
-# Lyrica App
+# Lyron Chords
 
-Flutter client shell for the Lyrica monorepo.
+Flutter client shell for the Lyron Chords monorepo.
 
 ## Purpose
 
@@ -36,7 +36,7 @@ For ADB-managed Android devices, including wireless targets whose Flutter id loo
 Documented demo credentials:
 
 - email: `demo@lyron.local`
-- password: `LyricaDemo123!`
+- password: `LyronDemo123!`
 
 ## Structure
 

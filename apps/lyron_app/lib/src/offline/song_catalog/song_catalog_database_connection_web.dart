@@ -13,14 +13,14 @@ QueryExecutor openInMemorySongCatalogConnection() {
 Future<DatabaseConnection> _openPersistentConnection() async {
   final sqlite3 = await _loadSqlite3();
   final fileSystem = await IndexedDbFileSystem.open(
-    dbName: 'lyrica_song_catalog',
+    dbName: 'lyron_song_catalog',
   );
   sqlite3.registerVirtualFileSystem(fileSystem, makeDefault: true);
 
   return DatabaseConnection(
     WasmDatabase(
       sqlite3: sqlite3,
-      path: '/lyrica_song_catalog.sqlite',
+      path: '/lyron_song_catalog.sqlite',
       fileSystem: fileSystem,
     ),
   );

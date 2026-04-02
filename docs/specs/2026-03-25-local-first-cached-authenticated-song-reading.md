@@ -4,7 +4,7 @@
 
 ## Goal
 
-Deliver the first local-first authenticated song-reading slice for Lyrica by making the latest successfully fetched full visible song catalog available for offline reading while preserving the current authenticated backend boundary, app-local ChordPro parsing, and read-only scope.
+Deliver the first local-first authenticated song-reading slice for Lyron Chords by making the latest successfully fetched full visible song catalog available for offline reading while preserving the current authenticated backend boundary, app-local ChordPro parsing, and read-only scope.
 
 ## Scope
 

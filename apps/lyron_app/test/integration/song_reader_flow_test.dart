@@ -74,7 +74,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Lyrica'), findsOneWidget);
+      expect(find.text('Lyron Chords'), findsOneWidget);
       expect(find.text('Egy út'), findsOneWidget);
 
       await tester.tap(find.text('Egy út'));
