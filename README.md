@@ -117,11 +117,13 @@ The canonical way to run Supabase CLI commands is through the wrapper script:
 
 ```bash
 ./scripts/supabase.sh start
+./scripts/supabase-cleanup.sh
 ./scripts/supabase.sh db reset
 ./scripts/supabase.sh migration list
 ```
 
 The wrapper resolves the repository-local CLI via `tooling/supabase` and should be preferred over direct `npx` or global `supabase` invocations.
+`./scripts/supabase-cleanup.sh` is the repository-owned convenience entrypoint for stopping the current local Supabase project through the wrapper script.
 
 Local Supabase development for the authenticated song-reading slice must provide:
 
@@ -165,6 +167,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/bootstrap-supabase.sh
 ./scripts/bootstrap-app.sh
 ./scripts/supabase.sh start
+./scripts/supabase-cleanup.sh
 ./scripts/supabase.sh db reset
 ./scripts/supabase.sh migration list
 ./scripts/supabase-start.sh
