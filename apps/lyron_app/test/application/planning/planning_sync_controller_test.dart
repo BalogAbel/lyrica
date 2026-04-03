@@ -248,6 +248,55 @@ void main() {
     );
 
     test(
+      'organization change while a refresh is in flight still triggers a refresh for the new generation',
+      () async {
+        final org1Refresh = Completer<PlanningSyncPayload>();
+        remoteRepository.payloadsByOrganizationId['org-1'] = org1Refresh.future;
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          refresh: false,
+        );
+
+        final firstRefresh = controller.refreshPlanning();
+        await Future<void>.delayed(Duration.zero);
+
+        remoteRepository.payloadsByOrganizationId['org-2'] = Future.value(
+          _payloadFor('org-2', planId: 'plan-2'),
+        );
+        final secondRefreshFuture = controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-2',
+          ),
+        );
+
+        org1Refresh.complete(_payloadFor('org-1', planId: 'plan-1'));
+        await firstRefresh;
+        await secondRefreshFuture;
+
+        expect(remoteRepository.fetchCallCount, 2);
+        expect(controller.state.organizationId, 'org-2');
+        expect(
+          await store.readPlanDetail(
+            userId: 'user-1',
+            organizationId: 'org-2',
+            planId: 'plan-2',
+          ),
+          isNotNull,
+        );
+      },
+    );
+
+    test(
       'switching to a new active organization that fails to refresh does not expose the previous organization projection',
       () async {
         final controller = PlanningSyncController(

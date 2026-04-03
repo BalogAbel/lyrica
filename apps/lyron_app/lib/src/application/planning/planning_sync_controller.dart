@@ -34,6 +34,8 @@ class PlanningSyncController extends ChangeNotifier {
   String? _lastAuthenticatedUserId;
   int _refreshGeneration = 0;
   Future<void>? _refreshFuture;
+  int? _refreshFutureGeneration;
+  bool _refreshQueued = false;
   bool _disposed = false;
 
   PlanningSyncState get state => _state;
@@ -95,18 +97,31 @@ class PlanningSyncController extends ChangeNotifier {
   Future<void> refreshPlanning() async {
     final inFlightRefresh = _refreshFuture;
     if (inFlightRefresh != null) {
+      if (_refreshFutureGeneration != _refreshGeneration) {
+        _refreshQueued = true;
+      }
       return inFlightRefresh;
     }
 
-    final refreshFuture = _refreshPlanning();
+    final refreshFuture = _drainRefreshQueue();
     _refreshFuture = refreshFuture;
     try {
       await refreshFuture;
     } finally {
       if (identical(_refreshFuture, refreshFuture)) {
         _refreshFuture = null;
+        _refreshFutureGeneration = null;
+        _refreshQueued = false;
       }
     }
+  }
+
+  Future<void> _drainRefreshQueue() async {
+    do {
+      _refreshQueued = false;
+      _refreshFutureGeneration = _refreshGeneration;
+      await _refreshPlanning();
+    } while (_shouldContinueQueuedRefresh());
   }
 
   Future<void> _refreshPlanning() async {
@@ -249,6 +264,14 @@ class PlanningSyncController extends ChangeNotifier {
 
   bool _isStale(int generation) {
     return _disposed || generation != _refreshGeneration;
+  }
+
+  bool _shouldContinueQueuedRefresh() {
+    return !_disposed &&
+        _refreshQueued &&
+        _state.accessStatus != PlanningAccessStatus.signedOut &&
+        _state.userId != null &&
+        _state.organizationId != null;
   }
 
   void _invalidateRefreshGeneration() {

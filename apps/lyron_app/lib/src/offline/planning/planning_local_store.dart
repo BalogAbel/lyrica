@@ -199,17 +199,24 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     }
 
     final rows =
-        await (_database.select(_database.cachedPlanningPlans)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion),
-            ))
+        await (_database.select(_database.cachedPlanningPlans)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(
+                  table.scheduledFor,
+                  nulls: NullsOrder.last,
+                ),
+                (table) => OrderingTerm.desc(table.updatedAt),
+                (table) => OrderingTerm.asc(table.planId),
+              ]))
             .get();
 
-    final plans = rows.map(_toPlanSummary).toList(growable: false)
-      ..sort(_comparePlans);
-    return plans;
+    return rows.map(_toPlanSummary).toList(growable: false);
   }
 
   @override
@@ -240,42 +247,40 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     }
 
     final sessionRows =
-        await (_database.select(_database.cachedPlanningSessions)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion) &
-                  table.planId.equals(planId),
-            ))
+        await (_database.select(_database.cachedPlanningSessions)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.planId.equals(planId),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(table.position),
+                (table) => OrderingTerm.asc(table.sessionId),
+              ]))
             .get();
-    sessionRows.sort(
-      (left, right) => left.position != right.position
-          ? left.position.compareTo(right.position)
-          : left.sessionId.compareTo(right.sessionId),
-    );
 
     final itemRows =
-        await (_database.select(_database.cachedPlanningSessionItems)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion) &
-                  table.planId.equals(planId),
-            ))
+        await (_database.select(_database.cachedPlanningSessionItems)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.planId.equals(planId),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(table.sessionId),
+                (table) => OrderingTerm.asc(table.position),
+                (table) => OrderingTerm.asc(table.sessionItemId),
+              ]))
             .get();
 
     final itemsBySessionId = <String, List<CachedPlanningSessionItem>>{};
     for (final row in itemRows) {
       itemsBySessionId.putIfAbsent(row.sessionId, () => []).add(row);
     }
-    for (final rows in itemsBySessionId.values) {
-      rows.sort(
-        (left, right) => left.position != right.position
-            ? left.position.compareTo(right.position)
-            : left.sessionItemId.compareTo(right.sessionItemId),
-      );
-    }
-
     return PlanDetail(
       plan: _toPlanSummary(planRow),
       sessions: sessionRows
@@ -396,30 +401,6 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       scheduledFor: row.scheduledFor?.toUtc(),
       updatedAt: row.updatedAt.toUtc(),
     );
-  }
-
-  int _comparePlans(PlanSummary left, PlanSummary right) {
-    final leftScheduled = left.scheduledFor;
-    final rightScheduled = right.scheduledFor;
-    if (leftScheduled == null && rightScheduled != null) {
-      return 1;
-    }
-    if (leftScheduled != null && rightScheduled == null) {
-      return -1;
-    }
-    if (leftScheduled != null && rightScheduled != null) {
-      final scheduledComparison = leftScheduled.compareTo(rightScheduled);
-      if (scheduledComparison != 0) {
-        return scheduledComparison;
-      }
-    }
-
-    final updatedComparison = right.updatedAt.compareTo(left.updatedAt);
-    if (updatedComparison != 0) {
-      return updatedComparison;
-    }
-
-    return left.id.compareTo(right.id);
   }
 
   void _validateProjection({

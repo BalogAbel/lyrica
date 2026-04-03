@@ -9,7 +9,8 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-typedef ListPlanRows = Future<List<Map<String, dynamic>>> Function();
+typedef ListPlanRows =
+    Future<List<Map<String, dynamic>>> Function({String? organizationId});
 typedef GetPlanRow = Future<Map<String, dynamic>?> Function(String planId);
 typedef ListSessionRows =
     Future<List<Map<String, dynamic>>> Function(String planId);
@@ -18,12 +19,16 @@ class SupabasePlanningRepository
     implements PlanningRepository, PlanningRemoteRefreshRepository {
   SupabasePlanningRepository(SupabaseClient client)
     : this.testing(
-        listPlanRows: () async {
-          final rows = await client
+        listPlanRows: ({String? organizationId}) async {
+          var query = client
               .from('plans')
               .select(
                 'id, organization_id, name, description, scheduled_for, updated_at',
               );
+          if (organizationId != null) {
+            query = query.eq('organization_id', organizationId);
+          }
+          final rows = await query;
           return List<Map<String, dynamic>>.from(rows);
         },
         getPlanRow: (planId) async {
@@ -117,13 +122,7 @@ class SupabasePlanningRepository
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
   }) async {
-    final planRows = (await _listPlanRows())
-        .where((row) {
-          final rowOrganizationId = row['organization_id'];
-          return rowOrganizationId == null ||
-              rowOrganizationId == organizationId;
-        })
-        .toList(growable: false);
+    final planRows = await _listPlanRows(organizationId: organizationId);
     final plans = planRows.map(_mapPlanSummary).toList(growable: false)
       ..sort((left, right) {
         final leftScheduled = left.scheduledFor;
