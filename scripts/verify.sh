@@ -57,4 +57,11 @@ fi
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
 )
 
+(
+  cd apps/lyron_app &&
+    "$flutter_bin" test test/integration/local_first_planning_read_flow_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)
+
 "$manual_validation_scripts_test_script"

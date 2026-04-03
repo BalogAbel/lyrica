@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -6,10 +7,37 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 final planningPlanListProvider = FutureProvider.autoDispose<List<PlanSummary>>((
   ref,
 ) {
-  return ref.watch(planningRepositoryProvider).listPlans();
+  return _readPlanningOrThrow<List<PlanSummary>>(
+    ref,
+    () => ref.watch(planningRepositoryProvider).listPlans(),
+  );
 });
 
 final planningPlanDetailProvider = FutureProvider.autoDispose
     .family<PlanDetail, String>((ref, planId) {
-      return ref.watch(planningRepositoryProvider).getPlanDetail(planId);
+      return _readPlanningOrThrow<PlanDetail>(
+        ref,
+        () => ref.watch(planningRepositoryProvider).getPlanDetail(planId),
+      );
     });
+
+Future<T> _readPlanningOrThrow<T>(Ref ref, Future<T> Function() read) async {
+  final syncState = ref.watch(planningSyncStateProvider);
+  if (syncState.accessStatus == PlanningAccessStatus.signedOut) {
+    throw StateError(
+      'Planning is unavailable without an authenticated session.',
+    );
+  }
+
+  if (!syncState.hasLocalPlanningData) {
+    await ref.read(planningSyncControllerProvider).refreshPlanning();
+    final refreshedState = ref.read(planningSyncStateProvider);
+    if (!refreshedState.hasLocalPlanningData) {
+      throw StateError(
+        'Planning local data is unavailable for the active organization.',
+      );
+    }
+  }
+
+  return read();
+}

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -19,7 +20,10 @@ void main() {
         throwOnGetPlanDetail: true,
       );
       final container = ProviderContainer(
-        overrides: [planningRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          planningRepositoryProvider.overrideWithValue(repository),
+          planningSyncStateProvider.overrideWithValue(_signedInPlanningState),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -43,7 +47,10 @@ void main() {
   test('cold direct entry resolves through planning provider path', () async {
     final repository = _FakePlanningRepository(planDetail: _planDetail());
     final container = ProviderContainer(
-      overrides: [planningRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        planningRepositoryProvider.overrideWithValue(repository),
+        planningSyncStateProvider.overrideWithValue(_signedInPlanningState),
+      ],
     );
     addTearDown(container.dispose);
 
@@ -68,7 +75,10 @@ void main() {
       getPlanDetailError: Exception('unavailable'),
     );
     final container = ProviderContainer(
-      overrides: [planningRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        planningRepositoryProvider.overrideWithValue(repository),
+        planningSyncStateProvider.overrideWithValue(_signedInPlanningState),
+      ],
     );
     addTearDown(container.dispose);
 
@@ -91,6 +101,15 @@ void main() {
     );
   });
 }
+
+const _signedInPlanningState = PlanningSyncState(
+  userId: 'user-1',
+  organizationId: 'org-1',
+  accessStatus: PlanningAccessStatus.signedIn,
+  refreshStatus: PlanningRefreshStatus.idle,
+  hasLocalPlanningData: true,
+  lastRefreshedAt: null,
+);
 
 class _FakePlanningRepository implements PlanningRepository {
   _FakePlanningRepository({
