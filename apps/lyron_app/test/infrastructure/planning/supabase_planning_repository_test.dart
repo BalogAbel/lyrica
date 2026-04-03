@@ -10,7 +10,7 @@ import 'package:lyron_app/src/infrastructure/planning/supabase_planning_reposito
 void main() {
   test('listPlans returns summaries in deterministic slice order', () async {
     final repository = SupabasePlanningRepository.testing(
-      listPlanRows: () async => [
+      listPlanRows: ({String? organizationId}) async => [
         {
           'id': 'plan-c',
           'name': 'Null Scheduled',
@@ -110,7 +110,7 @@ void main() {
     'getPlanDetail returns ordered sessions and song-backed items',
     () async {
       final repository = SupabasePlanningRepository.testing(
-        listPlanRows: () async => const [],
+        listPlanRows: ({String? organizationId}) async => const [],
         getPlanRow: (planId) async => {
           'id': planId,
           'name': 'Team Rehearsal',
@@ -203,7 +203,7 @@ void main() {
     'getPlanDetail fails when a session item song cannot be resolved',
     () async {
       final repository = SupabasePlanningRepository.testing(
-        listPlanRows: () async => const [],
+        listPlanRows: ({String? organizationId}) async => const [],
         getPlanRow: (planId) async => {
           'id': planId,
           'name': 'Broken Plan',
@@ -234,9 +234,10 @@ void main() {
     'fetchPlanningSyncPayload returns normalized ordered planning data for one organization refresh',
     () async {
       final repository = SupabasePlanningRepository.testing(
-        listPlanRows: () async => [
+        listPlanRows: ({String? organizationId}) async => [
           {
             'id': 'plan-b',
+            'organization_id': organizationId,
             'name': 'Later Tie Break',
             'description': 'Later description',
             'scheduled_for': '2026-04-06T09:00:00Z',
@@ -244,6 +245,7 @@ void main() {
           },
           {
             'id': 'plan-a',
+            'organization_id': organizationId,
             'name': 'Earlier',
             'description': 'Earlier description',
             'scheduled_for': '2026-04-05T09:00:00Z',
@@ -332,9 +334,10 @@ void main() {
     'fetchPlanningSyncPayload fails when readable planning data is incomplete',
     () async {
       final repository = SupabasePlanningRepository.testing(
-        listPlanRows: () async => [
+        listPlanRows: ({String? organizationId}) async => [
           {
             'id': 'plan-1',
+            'organization_id': organizationId,
             'name': 'Broken plan',
             'description': 'Broken description',
             'scheduled_for': null,
