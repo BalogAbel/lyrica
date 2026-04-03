@@ -7,6 +7,8 @@ import 'package:lyron_app/src/application/planning/planning_sync_controller.dart
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -153,6 +155,50 @@ void main() {
         expect(controller.state.hasLocalPlanningData, isFalse);
         expect(
           await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'sign-out during a blocked local commit prevents stale repopulation',
+      () async {
+        final inFlightRefresh = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = inFlightRefresh.future;
+        final replaceStarted = Completer<void>();
+        final commitGate = Completer<void>();
+        final localStore = _BlockingPlanningLocalStore(
+          replaceStarted: replaceStarted,
+          commitGate: commitGate,
+        );
+        final controller = PlanningSyncController(
+          localStore: () => localStore,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          refresh: false,
+        );
+
+        final refreshFuture = controller.refreshPlanning();
+        inFlightRefresh.complete(_payloadFor('org-1'));
+        await replaceStarted.future;
+
+        session = null;
+        await controller.handleExplicitSignOut();
+        commitGate.complete();
+        await refreshFuture;
+
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedOut);
+        expect(
+          await localStore.readPlanSummaries(
             userId: 'user-1',
             organizationId: 'org-1',
           ),
@@ -400,5 +446,95 @@ class _FakePlanningRemoteRefreshRepository
     }
 
     return _payloadFor(organizationId);
+  }
+}
+
+class _BlockingPlanningLocalStore implements PlanningLocalStore {
+  _BlockingPlanningLocalStore({
+    required this.replaceStarted,
+    required this.commitGate,
+  });
+
+  final Completer<void> replaceStarted;
+  final Completer<void> commitGate;
+  final Map<String, Map<String, PlanDetail>> _detailsByOrg = {};
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) async {
+    replaceStarted.complete();
+    await commitGate.future;
+    if (shouldContinue != null && !shouldContinue()) {
+      throw const PlanningProjectionAbortedException();
+    }
+
+    _detailsByOrg[organizationId] = {
+      for (final plan in plans)
+        plan.id: PlanDetail(
+          plan: PlanSummary(
+            id: plan.id,
+            name: plan.name,
+            description: plan.description,
+            scheduledFor: plan.scheduledFor,
+            updatedAt: plan.updatedAt,
+          ),
+          sessions: const [],
+        ),
+    };
+  }
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) async {
+    return _detailsByOrg[organizationId]?.values
+            .map((detail) => detail.plan)
+            .toList(growable: false) ??
+        const [];
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) async {
+    return _detailsByOrg[organizationId]?[planId];
+  }
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) async {
+    return _detailsByOrg.containsKey(organizationId);
+  }
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({
+    required String userId,
+  }) async {
+    return _detailsByOrg.keys.isEmpty ? null : _detailsByOrg.keys.first;
+  }
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+  }) async {
+    _detailsByOrg.remove(organizationId);
+  }
+
+  @override
+  Future<void> deletePlanningDataForUser({required String userId}) async {
+    _detailsByOrg.clear();
   }
 }

@@ -363,6 +363,71 @@ void main() {
     );
 
     test(
+      'aborts a stale replacement before it can repopulate the projection',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [_planRecord(id: 'plan-1', name: 'Original')],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              position: 10,
+              name: 'Session 1',
+            ),
+          ],
+          items: const [
+            CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Song 1',
+            ),
+          ],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+
+        await expectLater(
+          () => store.replaceActiveProjection(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plans: [_planRecord(id: 'plan-2', name: 'Stale')],
+            sessions: const [
+              CachedSessionRecord(
+                id: 'session-2',
+                planId: 'plan-2',
+                position: 10,
+                name: 'Session 2',
+              ),
+            ],
+            items: const [
+              CachedSessionItemRecord(
+                id: 'item-2',
+                planId: 'plan-2',
+                sessionId: 'session-2',
+                position: 10,
+                songId: 'song-2',
+                songTitle: 'Song 2',
+              ),
+            ],
+            refreshedAt: DateTime.utc(2026, 4, 3, 13),
+            shouldContinue: () => false,
+          ),
+          throwsA(isA<PlanningProjectionAbortedException>()),
+        );
+
+        final summaries = await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries.single.id, 'plan-1');
+      },
+    );
+
+    test(
       'preserves duplicate-song session items as distinct entries keyed by sessionItemId',
       () async {
         await store.replaceActiveProjection(
