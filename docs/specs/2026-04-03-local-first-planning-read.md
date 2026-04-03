@@ -2,6 +2,8 @@
 
 > Status: Implemented
 
+> This spec partially supersedes [docs/specs/2026-03-31-first-executable-plan-and-session-slice.md](docs/specs/2026-03-31-first-executable-plan-and-session-slice.md) and [docs/plans/2026-03-31-first-executable-plan-and-session-slice.md](docs/plans/2026-03-31-first-executable-plan-and-session-slice.md) specifically for the Goal, Architecture, Scope, Non-Goals, and Failure Rules content that assumed planning reads stayed online-only and that no local planning projection would be persisted.
+
 ## Goal
 
 Extend the current authenticated planning read slice so that planning becomes local-first for the active organization. After a successful signed-in refresh, the client must keep the full visible planning read model for the active organization available offline, including the planning context needed to enter the song reader from a plan session item.
@@ -23,6 +25,8 @@ The next planning slice should close that gap without prematurely introducing pl
 - Automatically fetch the full visible planning read model for the active organization when a signed-in active-organization context becomes available.
 - Persist the active organization's visible planning read model locally so it remains available offline.
 - Serve plan list, plan detail, sessions, ordered session items, and plan-origin reader context from the local planning store.
+- Fix the planning sync controller so an in-flight refresh cannot repopulate authenticated planning data after sign-out or active-organization invalidation.
+- Add regression tests that cover the sign-out race window, stale refresh generation handling, and the local projection deletion boundary.
 - Keep planning read behavior read-only in this slice.
 - Keep the current backend-owned authorization boundary.
 - Keep the current active-organization assumption.
@@ -207,7 +211,7 @@ This slice does not change reader-local runtime settings behavior. It only chang
 
 - If an eager planning refresh fails and no prior successful local planning state exists for the active organization, planning remains unavailable for offline use.
 - If an eager planning refresh fails and a prior successful local planning state exists, the app must keep serving the last successful local state.
-- If sign-out occurs during an in-flight planning refresh, that refresh must not repopulate authenticated planning data after sign-out.
+- If sign-out occurs during an in-flight planning refresh, that refresh must not repopulate authenticated planning data after sign-out, even if the remote payload arrives before the commit to the local store.
 - Explicit sign-out must delete all authenticated planning rows for the user, including ownership metadata, sync state, plan rows, session rows, and session-item rows, rather than leaving any cached projection as active readable state.
 - If a route describes invalid planning context, the app must continue to show explicit invalid-context behavior rather than silently degrading to unrelated navigation modes.
 

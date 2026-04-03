@@ -1,6 +1,6 @@
 # First Executable Plan And Session Slice Spec
 
-> Status: Implemented
+> Status: Implemented; partially superseded by docs/specs/2026-04-03-local-first-planning-read.md, docs/plans/2026-04-03-local-first-planning-read.md for the planning Goal, Architecture, Scope, Non-Goals, and Failure Rules that assumed planning reads stayed online-only and did not persist a local planning projection.
 
 ## Goal
 
