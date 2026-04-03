@@ -164,6 +164,7 @@ class PlanningSyncController extends ChangeNotifier {
         userId: userId,
         organizationId: organizationId,
         payload: payload,
+        shouldContinue: () => !_isStale(generation),
       );
       if (_isStale(generation)) {
         return;
@@ -221,6 +222,7 @@ class PlanningSyncController extends ChangeNotifier {
     required String userId,
     required String organizationId,
     required PlanningSyncPayload payload,
+    required bool Function() shouldContinue,
   }) {
     return _localStore().replaceActiveProjection(
       userId: userId,
@@ -259,6 +261,7 @@ class PlanningSyncController extends ChangeNotifier {
           )
           .toList(growable: false),
       refreshedAt: _clock(),
+      shouldContinue: shouldContinue,
     );
   }
 

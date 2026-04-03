@@ -6,6 +6,10 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 
+class PlanningProjectionAbortedException implements Exception {
+  const PlanningProjectionAbortedException();
+}
+
 class CachedPlanRecord {
   const CachedPlanRecord({
     required this.id,
@@ -62,6 +66,7 @@ abstract interface class PlanningLocalStore {
     required List<CachedSessionRecord> sessions,
     required List<CachedSessionItemRecord> items,
     required DateTime refreshedAt,
+    bool Function()? shouldContinue,
   });
 
   Future<List<PlanSummary>> readPlanSummaries({
@@ -103,10 +108,13 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required List<CachedSessionRecord> sessions,
     required List<CachedSessionItemRecord> items,
     required DateTime refreshedAt,
+    bool Function()? shouldContinue,
   }) async {
     _validateProjection(plans: plans, sessions: sessions, items: items);
+    _ensureProjectionCurrent(shouldContinue);
 
     await _database.transaction(() async {
+      _ensureProjectionCurrent(shouldContinue);
       final currentOwner =
           await (_database.select(_database.planningProjectionOwners)..where(
                 (table) =>
@@ -117,6 +125,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       final nextSnapshotVersion = (currentOwner?.snapshotVersion ?? 0) + 1;
 
       await deletePlanningData(userId: userId, organizationId: organizationId);
+      _ensureProjectionCurrent(shouldContinue);
 
       await _database
           .into(_database.planningProjectionOwners)
@@ -128,6 +137,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               refreshedAt: refreshedAt.toUtc(),
             ),
           );
+      _ensureProjectionCurrent(shouldContinue);
 
       await _database.batch((batch) {
         batch.insertAll(
@@ -182,6 +192,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               .toList(growable: false),
         );
       });
+      _ensureProjectionCurrent(shouldContinue);
     });
   }
 
@@ -450,6 +461,12 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
           'Session item ${item.id} plan ${item.planId} does not match its parent session plan $sessionPlanId.',
         );
       }
+    }
+  }
+
+  void _ensureProjectionCurrent(bool Function()? shouldContinue) {
+    if (shouldContinue != null && !shouldContinue()) {
+      throw const PlanningProjectionAbortedException();
     }
   }
 }
