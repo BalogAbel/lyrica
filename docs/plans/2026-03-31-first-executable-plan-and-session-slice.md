@@ -1,6 +1,6 @@
 # First Executable Plan And Session Slice Implementation Plan
 
-> Status: Implemented
+> Status: Implemented; partially superseded by docs/specs/2026-04-03-local-first-planning-read.md, docs/plans/2026-04-03-local-first-planning-read.md for the planning Goal and Architecture sections that assumed planning reads stayed online-only and did not persist a local planning projection.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
