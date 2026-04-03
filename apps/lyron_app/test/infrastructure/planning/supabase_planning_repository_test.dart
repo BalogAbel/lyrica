@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -224,6 +225,137 @@ void main() {
 
       await expectLater(
         repository.getPlanDetail('plan-1'),
+        throwsA(isA<StateError>()),
+      );
+    },
+  );
+
+  test(
+    'fetchPlanningSyncPayload returns normalized ordered planning data for one organization refresh',
+    () async {
+      final repository = SupabasePlanningRepository.testing(
+        listPlanRows: () async => [
+          {
+            'id': 'plan-b',
+            'name': 'Later Tie Break',
+            'description': 'Later description',
+            'scheduled_for': '2026-04-06T09:00:00Z',
+            'updated_at': '2026-03-31T09:00:00Z',
+          },
+          {
+            'id': 'plan-a',
+            'name': 'Earlier',
+            'description': 'Earlier description',
+            'scheduled_for': '2026-04-05T09:00:00Z',
+            'updated_at': '2026-03-31T08:00:00Z',
+          },
+        ],
+        getPlanRow: (planId) async => null,
+        listSessionRows: (planId) async {
+          if (planId == 'plan-a') {
+            return [
+              {
+                'id': 'session-b',
+                'name': 'Later Session',
+                'position': 20,
+                'session_items': [
+                  {
+                    'id': 'item-b',
+                    'position': 20,
+                    'song': {'id': 'song-1', 'title': 'Repeated Song'},
+                  },
+                  {
+                    'id': 'item-a',
+                    'position': 10,
+                    'song': {'id': 'song-1', 'title': 'Repeated Song'},
+                  },
+                ],
+              },
+              {
+                'id': 'session-a',
+                'name': 'Earlier Session',
+                'position': 20,
+                'session_items': const [],
+              },
+            ];
+          }
+
+          return [
+            {
+              'id': 'session-c',
+              'name': 'Only Session',
+              'position': 10,
+              'session_items': [
+                {
+                  'id': 'item-c',
+                  'position': 10,
+                  'song': {'id': 'song-2', 'title': 'Second Song'},
+                },
+              ],
+            },
+          ];
+        },
+      );
+
+      final payload = await repository.fetchPlanningSyncPayload(
+        organizationId: 'org-1',
+      );
+
+      expect(
+        payload,
+        isA<PlanningSyncPayload>()
+            .having(
+              (value) => value.plans.map((plan) => plan.id).toList(),
+              'plan ids',
+              ['plan-a', 'plan-b'],
+            )
+            .having(
+              (value) => value.sessions.map((session) => session.id).toList(),
+              'session ids',
+              ['session-a', 'session-b', 'session-c'],
+            )
+            .having(
+              (value) => value.items.map((item) => item.id).toList(),
+              'session item ids',
+              ['item-a', 'item-b', 'item-c'],
+            ),
+      );
+      expect(payload.items[0].songId, 'song-1');
+      expect(payload.items[1].songId, 'song-1');
+      expect(payload.items[0].id, isNot(payload.items[1].id));
+      expect(payload.items[0].sessionId, 'session-b');
+      expect(payload.items[1].sessionId, 'session-b');
+    },
+  );
+
+  test(
+    'fetchPlanningSyncPayload fails when readable planning data is incomplete',
+    () async {
+      final repository = SupabasePlanningRepository.testing(
+        listPlanRows: () async => [
+          {
+            'id': 'plan-1',
+            'name': 'Broken plan',
+            'description': 'Broken description',
+            'scheduled_for': null,
+            'updated_at': '2026-03-31T09:00:00Z',
+          },
+        ],
+        getPlanRow: (planId) async => null,
+        listSessionRows: (planId) async => [
+          {
+            'id': 'session-1',
+            'name': 'Broken session',
+            'position': 10,
+            'session_items': [
+              {'id': 'item-1', 'position': 10, 'song': null},
+            ],
+          },
+        ],
+      );
+
+      await expectLater(
+        repository.fetchPlanningSyncPayload(organizationId: 'org-1'),
         throwsA(isA<StateError>()),
       );
     },

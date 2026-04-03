@@ -6,6 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -18,6 +23,8 @@ import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart'
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/offline/sync_policy.dart';
@@ -75,12 +82,46 @@ final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
   return DriftSongCatalogStore(ref.watch(songCatalogDatabaseProvider));
 });
 
+final planningLocalDatabaseProvider = Provider<PlanningLocalDatabase>((ref) {
+  final database = PlanningLocalDatabase.local();
+  ref.onDispose(database.close);
+  return database;
+});
+
+final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
+  return DriftPlanningLocalStore(ref.watch(planningLocalDatabaseProvider));
+});
+
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
   return SupabaseSongRepository(ref.watch(supabaseClientProvider));
 });
 
+final planningLocalReadRepositoryProvider =
+    Provider<PlanningLocalReadRepository>((ref) {
+      return PlanningLocalReadRepository(
+        store: ref.watch(planningLocalStoreProvider),
+        contextReader: () async {
+          final syncState = ref.read(planningSyncStateProvider);
+          final userId = syncState.userId;
+          final organizationId = syncState.organizationId;
+          if (userId == null || organizationId == null) {
+            return null;
+          }
+          return ActivePlanningReadContext(
+            userId: userId,
+            organizationId: organizationId,
+          );
+        },
+      );
+    });
+
+final planningRemoteRefreshRepositoryProvider =
+    Provider<PlanningRemoteRefreshRepository>((ref) {
+      return SupabasePlanningRepository(ref.watch(supabaseClientProvider));
+    });
+
 final planningRepositoryProvider = Provider<PlanningRepository>((ref) {
-  return SupabasePlanningRepository(ref.watch(supabaseClientProvider));
+  return ref.watch(planningLocalReadRepositoryProvider);
 });
 
 final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
@@ -92,6 +133,108 @@ final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
     final response = await client.rpc('current_organization_ids');
     return selectActiveOrganizationId(response);
   };
+});
+
+final activePlanningContextControllerProvider =
+    ChangeNotifierProvider<ActivePlanningContextController>((ref) {
+      final authController = ref.watch(appAuthControllerProvider);
+      final controller = ActivePlanningContextController(
+        authSessionReader: () => authController.state.session,
+        organizationReader: () => ref.read(activeOrganizationReaderProvider)(),
+        latestOrganizationReader: ({required userId}) {
+          return ref
+              .read(planningLocalStoreProvider)
+              .readLatestCachedOrganizationId(userId: userId);
+        },
+      );
+
+      void handleAuthStateChanged(AppAuthState authState) {
+        switch (authState.status) {
+          case AppAuthStatus.initializing:
+            return;
+          case AppAuthStatus.signedOut:
+          case AppAuthStatus.sessionExpired:
+            controller.clear();
+            return;
+          case AppAuthStatus.signedIn:
+            unawaited(
+              controller.refresh(allowCachedFallback: controller.state == null),
+            );
+            return;
+        }
+      }
+
+      void authListener() {
+        handleAuthStateChanged(authController.state);
+      }
+
+      ref.listen<ActiveCatalogContext?>(activeCatalogContextProvider, (
+        _,
+        next,
+      ) {
+        controller.syncToCatalogContext(next);
+      });
+
+      authController.addListener(authListener);
+      ref.onDispose(() => authController.removeListener(authListener));
+      handleAuthStateChanged(authController.state);
+      return controller;
+    });
+
+final activePlanningContextProvider = Provider<ActivePlanningReadContext?>((
+  ref,
+) {
+  return ref.watch(activePlanningContextControllerProvider).state;
+});
+
+final planningSyncControllerProvider =
+    ChangeNotifierProvider<PlanningSyncController>((ref) {
+      final authController = ref.watch(appAuthControllerProvider);
+      final controller = PlanningSyncController(
+        localStore: () => ref.read(planningLocalStoreProvider),
+        remoteRepository: () =>
+            ref.read(planningRemoteRefreshRepositoryProvider),
+        authSessionReader: () => authController.state.session,
+      );
+
+      void handleAuthStateChanged(AppAuthState authState) {
+        switch (authState.status) {
+          case AppAuthStatus.initializing:
+            return;
+          case AppAuthStatus.signedOut:
+            unawaited(controller.handleExplicitSignOut());
+            return;
+          case AppAuthStatus.sessionExpired:
+            controller.handleSessionExpired();
+            return;
+          case AppAuthStatus.signedIn:
+            return;
+        }
+      }
+
+      ref.listen<ActivePlanningReadContext?>(activePlanningContextProvider, (
+        _,
+        next,
+      ) {
+        unawaited(controller.handleActiveContextChanged(next));
+      });
+
+      void authListener() {
+        handleAuthStateChanged(authController.state);
+      }
+
+      authController.addListener(authListener);
+      ref.onDispose(() => authController.removeListener(authListener));
+      final activeContext = ref.read(activePlanningContextProvider);
+      if (activeContext != null) {
+        unawaited(controller.handleActiveContextChanged(activeContext));
+      }
+      handleAuthStateChanged(authController.state);
+      return controller;
+    });
+
+final planningSyncStateProvider = Provider<PlanningSyncState>((ref) {
+  return ref.watch(planningSyncControllerProvider).state;
 });
 
 final catalogSessionVerifierProvider = Provider<CatalogSessionVerifier>((ref) {
@@ -156,6 +299,7 @@ final songCatalogControllerProvider =
             return;
           case AppAuthStatus.signedIn:
             controller.handleSessionAvailable();
+            unawaited(controller.refreshCatalog());
             return;
         }
       }

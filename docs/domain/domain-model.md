@@ -117,7 +117,7 @@ If `group_id` is present, it must belong to the same organization as the plan.
 
 Read-model note:
 
-- In the current executable planning slice, visible plans are read at organization scope for the signed-in user's active memberships.
+- In the current executable planning slice, visible plans for the active organization are synchronized into a local normalized read model owned by the authenticated user plus active organization boundary.
 - Planning writes remain capability-based backend decisions; the read-side slice does not introduce a separate planning view capability.
 
 ### sessions
@@ -143,7 +143,7 @@ Session organization scope is inherited from the owning plan and must never dive
 
 Read-model note:
 
-- In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan.
+- In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
 
 ### session_items
 
@@ -175,7 +175,7 @@ Invariants:
 
 Read-model note:
 
-- In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session.
+- In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, preserving duplicate-song entries as distinct ordered items.
 
 ### attachments
 
@@ -210,7 +210,7 @@ Offline-synced aggregates include:
 
 The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
 
-The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership), and it exposes an online-only planning read slice for plans, sessions, and session items. It does not yet introduce write-side sync records for songs, plans, or sessions.
+The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership), and it stores a read-only authenticated planning projection with ownership metadata plus normalized plan, session, and session-item rows for the active organization. It does not yet introduce write-side sync records for songs, plans, or sessions.
 
 ### sync_status
 

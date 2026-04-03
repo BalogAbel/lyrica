@@ -20,6 +20,7 @@ Lyron Chords helps worship and music teams prepare, organize, and run services w
 - The first executable backend slice validates authenticated song reads against organization-scoped Supabase data without moving ChordPro parsing or reader rendering out of the app.
 - The next executable local-first read slice validates that the latest successfully fetched authenticated song catalog remains readable offline from a current user-owned active-organization cache, with automated proof centered on persistent cache reopen behavior and native offline relaunch acceptance centered on manual validation on Flutter targets.
 - The first executable planning slice validates a simplified `plan -> session -> session_items` hierarchy with real seeded Supabase data and a minimal signed-in read-only plan list/detail flow.
+- The current planning read slice validates that the active organization's latest successfully refreshed visible planning model remains readable offline, including plan detail, ordered sessions, ordered session items, and plan-origin reader context.
 - The architecture preserves the repository, parser, and offline boundaries needed for later offline editing, sync, and planning workflows.
 - Android, iOS, and Web share a coherent product model and workflow vocabulary.
 - If durable offline desktop use becomes important later, it should be addressed through Flutter desktop rather than expanding the browser slice beyond best-effort offline relaunch.
@@ -45,4 +46,4 @@ The domain model remains expressive internally, while the UI presents guided act
 - Group-scoped workflows narrow access inside an organization but never bypass organization scope.
 - ChordPro remains the canonical editable song representation, while attachments stay supplemental.
 - The MVP favors stable, inspectable workflows over automation-heavy collaboration features.
-- Explicit sign-out must remove authenticated cached song access instead of leaving a device-global local archive.
+- Explicit sign-out must remove authenticated cached song and planning access instead of leaving a device-global local archive.

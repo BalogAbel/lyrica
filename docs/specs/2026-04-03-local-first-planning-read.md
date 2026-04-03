@@ -1,6 +1,6 @@
 # Local-First Planning Read Spec
 
-> Status: Proposed
+> Status: Implemented
 
 ## Goal
 

@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -12,19 +14,24 @@ typedef GetPlanRow = Future<Map<String, dynamic>?> Function(String planId);
 typedef ListSessionRows =
     Future<List<Map<String, dynamic>>> Function(String planId);
 
-class SupabasePlanningRepository implements PlanningRepository {
+class SupabasePlanningRepository
+    implements PlanningRepository, PlanningRemoteRefreshRepository {
   SupabasePlanningRepository(SupabaseClient client)
     : this.testing(
         listPlanRows: () async {
           final rows = await client
               .from('plans')
-              .select('id, name, description, scheduled_for, updated_at');
+              .select(
+                'id, organization_id, name, description, scheduled_for, updated_at',
+              );
           return List<Map<String, dynamic>>.from(rows);
         },
         getPlanRow: (planId) async {
           final row = await client
               .from('plans')
-              .select('id, name, description, scheduled_for, updated_at')
+              .select(
+                'id, organization_id, name, description, scheduled_for, updated_at',
+              )
               .eq('id', planId)
               .maybeSingle();
           return row == null ? null : Map<String, dynamic>.from(row);
@@ -104,6 +111,111 @@ class SupabasePlanningRepository implements PlanningRepository {
       ..sort((left, right) => left.position.compareTo(right.position));
 
     return PlanDetail(plan: _mapPlanSummary(planRow), sessions: sessions);
+  }
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+  }) async {
+    final planRows = (await _listPlanRows())
+        .where((row) {
+          final rowOrganizationId = row['organization_id'];
+          return rowOrganizationId == null ||
+              rowOrganizationId == organizationId;
+        })
+        .toList(growable: false);
+    final plans = planRows.map(_mapPlanSummary).toList(growable: false)
+      ..sort((left, right) {
+        final leftScheduled = left.scheduledFor;
+        final rightScheduled = right.scheduledFor;
+        if (leftScheduled == null && rightScheduled != null) {
+          return 1;
+        }
+        if (leftScheduled != null && rightScheduled == null) {
+          return -1;
+        }
+        if (leftScheduled != null && rightScheduled != null) {
+          final scheduledComparison = leftScheduled.compareTo(rightScheduled);
+          if (scheduledComparison != 0) {
+            return scheduledComparison;
+          }
+        }
+
+        final updatedComparison = right.updatedAt.compareTo(left.updatedAt);
+        if (updatedComparison != 0) {
+          return updatedComparison;
+        }
+
+        return left.id.compareTo(right.id);
+      });
+
+    final syncPlans = plans
+        .map(
+          (plan) => PlanningSyncPlan(
+            id: plan.id,
+            name: plan.name,
+            description: plan.description,
+            scheduledFor: plan.scheduledFor,
+            updatedAt: plan.updatedAt,
+          ),
+        )
+        .toList(growable: false);
+
+    final syncSessions = <PlanningSyncSession>[];
+    final syncItems = <PlanningSyncSessionItem>[];
+
+    for (final plan in plans) {
+      final sessionRows = await _listSessionRows(plan.id);
+      final sessions =
+          sessionRows.map(_mapSessionSummary).toList(growable: false)..sort((
+            left,
+            right,
+          ) {
+            final positionComparison = left.position.compareTo(right.position);
+            if (positionComparison != 0) {
+              return positionComparison;
+            }
+            return left.id.compareTo(right.id);
+          });
+
+      for (final session in sessions) {
+        syncSessions.add(
+          PlanningSyncSession(
+            id: session.id,
+            planId: plan.id,
+            position: session.position,
+            name: session.name,
+          ),
+        );
+
+        final items = [...session.items]
+          ..sort((left, right) {
+            final positionComparison = left.position.compareTo(right.position);
+            if (positionComparison != 0) {
+              return positionComparison;
+            }
+            return left.id.compareTo(right.id);
+          });
+        for (final item in items) {
+          syncItems.add(
+            PlanningSyncSessionItem(
+              id: item.id,
+              planId: plan.id,
+              sessionId: session.id,
+              position: item.position,
+              songId: item.song.id,
+              songTitle: item.song.title,
+            ),
+          );
+        }
+      }
+    }
+
+    return PlanningSyncPayload(
+      plans: syncPlans,
+      sessions: syncSessions,
+      items: syncItems,
+    );
   }
 
   PlanSummary _mapPlanSummary(Map<String, dynamic> row) {
