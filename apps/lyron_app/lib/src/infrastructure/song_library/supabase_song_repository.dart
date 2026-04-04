@@ -70,7 +70,7 @@ class SupabaseSongRepository implements SongRepository {
         .map(
           (row) => SongSummary(
             id: row['id'] as String,
-            slug: row['slug'] as String,
+            slug: row['slug'] as String? ?? row['id'] as String,
             title: row['title'] as String,
           ),
         )
@@ -90,12 +90,7 @@ class SupabaseSongRepository implements SongRepository {
     );
   }
 
-  @override
-  Future<SongSummary?> getSongSummaryBySlug({
-    required String userId,
-    required String organizationId,
-    required String songSlug,
-  }) async {
+  Future<SongSummary?> getSongSummaryBySlug(String songSlug) async {
     final row = await _getSongSummaryBySlugRow(songSlug);
     if (row == null) {
       return null;
@@ -103,7 +98,7 @@ class SupabaseSongRepository implements SongRepository {
 
     return SongSummary(
       id: row['id'] as String,
-      slug: row['slug'] as String,
+      slug: row['slug'] as String? ?? row['id'] as String,
       title: row['title'] as String,
     );
   }

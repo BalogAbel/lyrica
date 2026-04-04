@@ -9,9 +9,9 @@ import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/presentation/auth/sign_in_screen.dart';
 import 'package:lyron_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
-import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/auth_router_refresh_notifier.dart';
+import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 GoRouter createAppRouter({

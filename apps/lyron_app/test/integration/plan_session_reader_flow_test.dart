@@ -64,6 +64,18 @@ void main() {
             planningPlanDetailProvider(
               'plan-1',
             ).overrideWith((ref) async => _planDetailFixture()),
+            songLibraryListProvider.overrideWith(
+              (ref) async => [
+                _songSummaryFixture('song-1'),
+                _songSummaryFixture('song-2'),
+              ],
+            ),
+            songLibrarySongByIdProvider(
+              'song-1',
+            ).overrideWith((ref) async => _songSummaryFixture('song-1')),
+            songLibrarySongByIdProvider(
+              'song-2',
+            ).overrideWith((ref) async => _songSummaryFixture('song-2')),
             songLibraryReaderProvider.overrideWithProvider(
               (songId) => FutureProvider.autoDispose(
                 (ref) async => _songResultFor(songId),
@@ -113,7 +125,7 @@ void main() {
         authController: controller,
         refreshListenable: controller,
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-10/songs/song-1',
+            '/plans/plan-1/sessions/session-1/items/item-10/songs/repeated-song',
       );
 
       await tester.pumpWidget(
@@ -131,9 +143,24 @@ void main() {
                 hasCachedCatalog: true,
               ),
             ),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [_planSummaryFixture()],
+            ),
             planningPlanDetailProvider(
               'plan-1',
             ).overrideWith((ref) async => _duplicateSongPlanDetailFixture()),
+            songLibraryListProvider.overrideWith(
+              (ref) async => [
+                _songSummaryFixture('song-1'),
+                _songSummaryFixture('song-2'),
+              ],
+            ),
+            songLibrarySongByIdProvider(
+              'song-1',
+            ).overrideWith((ref) async => _songSummaryFixture('song-1')),
+            songLibrarySongByIdProvider(
+              'song-2',
+            ).overrideWith((ref) async => _songSummaryFixture('song-2')),
             songLibraryReaderProvider.overrideWithProvider(
               (songId) => FutureProvider.autoDispose(
                 (ref) async => _songResultFor(songId),
@@ -197,9 +224,21 @@ void main() {
                 hasCachedCatalog: true,
               ),
             ),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [_planSummaryFixture()],
+            ),
             planningPlanDetailProvider(
               'plan-1',
             ).overrideWith((ref) async => _longPlanDetailFixture()),
+            songLibraryListProvider.overrideWith(
+              (ref) async => [
+                for (final index in List<int>.generate(30, (i) => i + 1))
+                  _songSummaryFixture('song-$index'),
+              ],
+            ),
+            songLibrarySongByIdProvider(
+              'song-25',
+            ).overrideWith((ref) async => _songSummaryFixture('song-25')),
             songLibraryReaderProvider.overrideWithProvider(
               (songId) => FutureProvider.autoDispose(
                 (ref) async => _songResultFor(songId),
@@ -328,6 +367,16 @@ SongReaderResult _songResultFor(String songId) {
       diagnostics: const [],
     ),
   );
+}
+
+SongSummary _songSummaryFixture(String songId) {
+  final (slug, title) = switch (songId) {
+    'song-2' => ('second-song', 'Second Song'),
+    'song-25' => ('repeated-song-25', 'Repeated Song 25'),
+    _ => ('repeated-song', 'Repeated Song'),
+  };
+
+  return SongSummary(id: songId, slug: slug, title: title);
 }
 
 PlanDetail _longPlanDetailFixture() {
