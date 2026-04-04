@@ -6,9 +6,11 @@ class SessionSummary {
     required this.name,
     required this.position,
     required this.items,
-  });
+    String? slug,
+  }) : slug = slug ?? id;
 
   final String id;
+  final String slug;
   final String name;
   final int position;
   final List<SessionItemSummary> items;
@@ -17,13 +19,15 @@ class SessionSummary {
   bool operator ==(Object other) {
     return other is SessionSummary &&
         other.id == id &&
+        other.slug == slug &&
         other.name == name &&
         other.position == position &&
         _listEquals(other.items, items);
   }
 
   @override
-  int get hashCode => Object.hash(id, name, position, Object.hashAll(items));
+  int get hashCode =>
+      Object.hash(id, slug, name, position, Object.hashAll(items));
 }
 
 bool _listEquals<T>(List<T> left, List<T> right) {

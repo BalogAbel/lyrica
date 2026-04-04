@@ -37,4 +37,17 @@ class LocalFirstSongRepository implements SongCatalogReadRepository {
 
     return source;
   }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) {
+    return _store.readActiveSummaryBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      songSlug: songSlug,
+    );
+  }
 }

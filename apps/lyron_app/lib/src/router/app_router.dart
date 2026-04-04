@@ -6,12 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
-import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/presentation/auth/sign_in_screen.dart';
-import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
+import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/auth_router_refresh_notifier.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -91,24 +89,21 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.planDetail.path,
         builder: (context, state) =>
-            PlanDetailScreen(planId: state.pathParameters['planId']!),
+            PlanSlugRouteResolver(planSlug: state.pathParameters['planSlug']!),
       ),
       GoRoute(
         path: AppRoutes.planSessionSongReader.path,
-        builder: (context, state) => SongReaderScreen(
-          songId: state.pathParameters['songId']!,
-          planId: state.pathParameters['planId']!,
-          sessionId: state.pathParameters['sessionId']!,
+        builder: (context, state) => PlanSessionSongSlugRouteResolver(
+          planSlug: state.pathParameters['planSlug']!,
+          sessionSlug: state.pathParameters['sessionSlug']!,
           sessionItemId: state.pathParameters['sessionItemId']!,
-          warmPlanDetail: state.extra is PlanDetail
-              ? state.extra! as PlanDetail
-              : null,
+          songSlug: state.pathParameters['songSlug']!,
         ),
       ),
       GoRoute(
         path: AppRoutes.songReader.path,
         builder: (context, state) =>
-            SongReaderScreen(songId: state.pathParameters['songId']!),
+            SongSlugRouteResolver(songSlug: state.pathParameters['songSlug']!),
       ),
     ],
   );

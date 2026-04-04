@@ -6,6 +6,7 @@ import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -91,7 +92,7 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
-class _SongItemButton extends StatelessWidget {
+class _SongItemButton extends ConsumerWidget {
   const _SongItemButton({
     required this.planDetail,
     required this.session,
@@ -103,20 +104,26 @@ class _SongItemButton extends StatelessWidget {
   final SessionItemSummary item;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final resolvedSongSlug = ref
+        .watch(songLibrarySongByIdProvider(item.song.id))
+        .valueOrNull
+        ?.slug;
     return InkWell(
       key: ValueKey('plan-session-item-${item.id}'),
-      onTap: () {
-        context.push(
-          PlanningRoutes.planSessionSongReaderLocation(
-            planId: planDetail.plan.id,
-            sessionId: session.id,
-            sessionItemId: item.id,
-            songId: item.song.id,
-          ),
-          extra: planDetail,
-        );
-      },
+      onTap: resolvedSongSlug == null
+          ? null
+          : () {
+              context.push(
+                PlanningRoutes.planSessionSongReaderLocation(
+                  planSlug: planDetail.plan.slug,
+                  sessionSlug: session.slug,
+                  sessionItemId: item.id,
+                  songSlug: resolvedSongSlug,
+                ),
+                extra: planDetail,
+              );
+            },
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

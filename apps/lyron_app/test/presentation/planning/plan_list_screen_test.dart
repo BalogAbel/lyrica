@@ -24,8 +24,8 @@ void main() {
         GoRoute(
           path: AppRoutes.planDetail.path,
           builder: (context, state) {
-            final planId = state.pathParameters['planId']!;
-            return Material(child: Text('plan-detail:$planId'));
+            final planSlug = state.pathParameters['planSlug']!;
+            return Material(child: Text('plan-detail:$planSlug'));
           },
         ),
       ],
@@ -58,6 +58,7 @@ void main() {
         listPlansValue: [
           PlanSummary(
             id: 'plan-2',
+            slug: 'zulu-rehearsal',
             name: 'Zulu Rehearsal',
             description: 'Multi-session rehearsal fixture',
             scheduledFor: null,
@@ -65,6 +66,7 @@ void main() {
           ),
           PlanSummary(
             id: 'plan-1',
+            slug: 'alpha-morning',
             name: 'Alpha Morning',
             description: 'Single-session Sunday fixture',
             scheduledFor: DateTime(2026, 4, 5, 8, 30),
@@ -92,6 +94,7 @@ void main() {
         listPlansValue: [
           PlanSummary(
             id: 'plan-1',
+            slug: 'sunday-morning',
             name: 'Sunday Morning',
             description: 'Single-session Sunday fixture',
             scheduledFor: DateTime(2026, 4, 5, 8, 30),
@@ -105,7 +108,7 @@ void main() {
     await tester.tap(find.text('Sunday Morning'));
     await tester.pumpAndSettle();
 
-    expect(find.text('plan-detail:plan-1'), findsOneWidget);
+    expect(find.text('plan-detail:sunday-morning'), findsOneWidget);
   });
 
   testWidgets('shows a loading state while plans are loading', (tester) async {

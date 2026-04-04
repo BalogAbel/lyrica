@@ -105,8 +105,8 @@ class SongListScreen extends ConsumerWidget {
                                   title: Text(song.title),
                                   onTap: () => context.push(
                                     AppRoutes.songReader.path.replaceFirst(
-                                      ':songId',
-                                      song.id,
+                                      ':songSlug',
+                                      song.slug,
                                     ),
                                   ),
                                 );

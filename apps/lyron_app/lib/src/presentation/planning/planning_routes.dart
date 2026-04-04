@@ -7,17 +7,17 @@ class PlanningRoutes {
   static final planDetailPath = AppRoutes.planDetail.path;
   static final planSessionSongReaderPath = AppRoutes.planSessionSongReader.path;
 
-  static String planDetailLocation(String planId) =>
-      AppRoutes.planDetail.path.replaceFirst(':planId', planId);
+  static String planDetailLocation(String planSlug) =>
+      AppRoutes.planDetail.path.replaceFirst(':planSlug', planSlug);
 
   static String planSessionSongReaderLocation({
-    required String planId,
-    required String sessionId,
+    required String planSlug,
+    required String sessionSlug,
     required String sessionItemId,
-    required String songId,
+    required String songSlug,
   }) => AppRoutes.planSessionSongReader.path
-      .replaceFirst(':planId', planId)
-      .replaceFirst(':sessionId', sessionId)
+      .replaceFirst(':planSlug', planSlug)
+      .replaceFirst(':sessionSlug', sessionSlug)
       .replaceFirst(':sessionItemId', sessionItemId)
-      .replaceFirst(':songId', songId);
+      .replaceFirst(':songSlug', songSlug);
 }

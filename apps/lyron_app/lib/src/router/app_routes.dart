@@ -3,11 +3,11 @@ enum AppRoutes {
   home('/'),
   signIn('/sign-in'),
   planList('/plans'),
-  planDetail('/plans/:planId'),
+  planDetail('/plans/:planSlug'),
   planSessionSongReader(
-    '/plans/:planId/sessions/:sessionId/items/:sessionItemId/songs/:songId',
+    '/plans/:planSlug/sessions/:sessionSlug/items/:sessionItemId/songs/:songSlug',
   ),
-  songReader('/songs/:songId');
+  songReader('/songs/:songSlug');
 
   const AppRoutes(this.path);
 

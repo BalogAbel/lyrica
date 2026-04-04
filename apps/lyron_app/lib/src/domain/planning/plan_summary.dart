@@ -5,9 +5,11 @@ class PlanSummary {
     required this.description,
     required this.scheduledFor,
     required this.updatedAt,
-  });
+    String? slug,
+  }) : slug = slug ?? id;
 
   final String id;
+  final String slug;
   final String name;
   final String? description;
   final DateTime? scheduledFor;
@@ -17,6 +19,7 @@ class PlanSummary {
   bool operator ==(Object other) {
     return other is PlanSummary &&
         other.id == id &&
+        other.slug == slug &&
         other.name == name &&
         other.description == description &&
         other.scheduledFor == scheduledFor &&
@@ -25,5 +28,5 @@ class PlanSummary {
 
   @override
   int get hashCode =>
-      Object.hash(id, name, description, scheduledFor, updatedAt);
+      Object.hash(id, slug, name, description, scheduledFor, updatedAt);
 }

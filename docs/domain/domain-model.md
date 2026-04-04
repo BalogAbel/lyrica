@@ -75,6 +75,7 @@ Key fields:
 
 - `id`
 - `organization_id`
+- `slug`
 - `title`
 - `artist`
 - `key_signature`
@@ -87,6 +88,11 @@ Key fields:
 - `sync_status`
 - `updated_at`
 - `last_modified_by`
+
+Slug rule:
+
+- `slug` is required and unique within `(organization_id, slug)`.
+- The slug is the public URL segment for song routes; the internal song identifier remains `id`.
 
 Local-first read-model note:
 
@@ -104,6 +110,7 @@ Key fields:
 - `id`
 - `organization_id`
 - `group_id`
+- `slug`
 - `name`
 - `description`
 - `scheduled_for`
@@ -114,6 +121,11 @@ Key fields:
 - `last_modified_by`
 
 If `group_id` is present, it must belong to the same organization as the plan.
+
+Slug rule:
+
+- `slug` is required and unique within `(organization_id, slug)`.
+- The slug is the public URL segment for plan routes; the internal plan identifier remains `id`.
 
 Read-model note:
 
@@ -130,6 +142,7 @@ Key fields:
 - `organization_id`
 - `group_id`
 - `plan_id`
+- `slug`
 - `position`
 - `name`
 - `notes`
@@ -141,9 +154,15 @@ Key fields:
 
 Session organization scope is inherited from the owning plan and must never diverge from it. When `group_id` is present on a session, it must stay aligned with the owning plan.
 
+Slug rule:
+
+- `slug` is required and unique within `(plan_id, slug)`.
+- The slug is the public URL segment for session-scoped reader routes; the internal session identifier remains `id`.
+
 Read-model note:
 
 - In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
+- Public session-scoped reader URLs keep `sessionItemId` id-based even when the surrounding route uses plan and session slugs; song slugs are resolved at the presentation boundary so duplicate-song entries stay distinct by item id.
 
 ### session_items
 

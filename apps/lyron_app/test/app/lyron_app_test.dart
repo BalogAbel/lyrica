@@ -72,7 +72,7 @@ void main() {
           supabaseSongRepositoryProvider.overrideWithValue(
             SupabaseSongRepository.testing(
               listSongsRows: () async => [
-                {'id': 'song-1', 'title': 'Egy út'},
+                {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
               ],
               getSongRow: (id) async => {
                 'id': id,
@@ -125,7 +125,7 @@ void main() {
             supabaseSongRepositoryProvider.overrideWithValue(
               SupabaseSongRepository.testing(
                 listSongsRows: () async => [
-                  {'id': 'song-1', 'title': 'Egy út'},
+                  {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
                 ],
                 getSongRow: (id) async => {
                   'id': id,

@@ -24,7 +24,9 @@ void main() {
         resolved.context,
         SessionScopedReaderContext(
           planId: 'plan-1',
+          planSlug: 'plan-1',
           sessionId: 'session-1',
+          sessionSlug: 'session-1',
           sessionItemId: 'item-20',
           songId: 'song-2',
           selectedItem: const SessionScopedReaderNeighbor(

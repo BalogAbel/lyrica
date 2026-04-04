@@ -59,4 +59,13 @@ class _FakeSongRepository implements SongCatalogReadRepository {
     requestedSongId = songId;
     return const SongSource(id: 'egy_ut', source: '{title:Egy út}\n');
   }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    return const SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út');
+  }
 }

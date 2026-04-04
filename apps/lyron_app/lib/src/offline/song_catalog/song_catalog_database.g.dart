@@ -387,6 +387,15 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _slugMeta = const VerificationMeta('slug');
+  @override
+  late final GeneratedColumn<String> slug = GeneratedColumn<String>(
+    'slug',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -402,6 +411,7 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     organizationId,
     snapshotVersion,
     songId,
+    slug,
     title,
   ];
   @override
@@ -454,6 +464,14 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     } else if (isInserting) {
       context.missing(_songIdMeta);
     }
+    if (data.containsKey('slug')) {
+      context.handle(
+        _slugMeta,
+        slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_slugMeta);
+    }
     if (data.containsKey('title')) {
       context.handle(
         _titleMeta,
@@ -487,6 +505,10 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
         DriftSqlType.string,
         data['${effectivePrefix}song_id'],
       )!,
+      slug: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slug'],
+      )!,
       title: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}title'],
@@ -506,12 +528,14 @@ class CachedCatalogSummary extends DataClass
   final String organizationId;
   final int snapshotVersion;
   final String songId;
+  final String slug;
   final String title;
   const CachedCatalogSummary({
     required this.userId,
     required this.organizationId,
     required this.snapshotVersion,
     required this.songId,
+    required this.slug,
     required this.title,
   });
   @override
@@ -521,6 +545,7 @@ class CachedCatalogSummary extends DataClass
     map['organization_id'] = Variable<String>(organizationId);
     map['snapshot_version'] = Variable<int>(snapshotVersion);
     map['song_id'] = Variable<String>(songId);
+    map['slug'] = Variable<String>(slug);
     map['title'] = Variable<String>(title);
     return map;
   }
@@ -531,6 +556,7 @@ class CachedCatalogSummary extends DataClass
       organizationId: Value(organizationId),
       snapshotVersion: Value(snapshotVersion),
       songId: Value(songId),
+      slug: Value(slug),
       title: Value(title),
     );
   }
@@ -545,6 +571,7 @@ class CachedCatalogSummary extends DataClass
       organizationId: serializer.fromJson<String>(json['organizationId']),
       snapshotVersion: serializer.fromJson<int>(json['snapshotVersion']),
       songId: serializer.fromJson<String>(json['songId']),
+      slug: serializer.fromJson<String>(json['slug']),
       title: serializer.fromJson<String>(json['title']),
     );
   }
@@ -556,6 +583,7 @@ class CachedCatalogSummary extends DataClass
       'organizationId': serializer.toJson<String>(organizationId),
       'snapshotVersion': serializer.toJson<int>(snapshotVersion),
       'songId': serializer.toJson<String>(songId),
+      'slug': serializer.toJson<String>(slug),
       'title': serializer.toJson<String>(title),
     };
   }
@@ -565,12 +593,14 @@ class CachedCatalogSummary extends DataClass
     String? organizationId,
     int? snapshotVersion,
     String? songId,
+    String? slug,
     String? title,
   }) => CachedCatalogSummary(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
     snapshotVersion: snapshotVersion ?? this.snapshotVersion,
     songId: songId ?? this.songId,
+    slug: slug ?? this.slug,
     title: title ?? this.title,
   );
   CachedCatalogSummary copyWithCompanion(CachedCatalogSummariesCompanion data) {
@@ -583,6 +613,7 @@ class CachedCatalogSummary extends DataClass
           ? data.snapshotVersion.value
           : this.snapshotVersion,
       songId: data.songId.present ? data.songId.value : this.songId,
+      slug: data.slug.present ? data.slug.value : this.slug,
       title: data.title.present ? data.title.value : this.title,
     );
   }
@@ -594,6 +625,7 @@ class CachedCatalogSummary extends DataClass
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('songId: $songId, ')
+          ..write('slug: $slug, ')
           ..write('title: $title')
           ..write(')'))
         .toString();
@@ -601,7 +633,7 @@ class CachedCatalogSummary extends DataClass
 
   @override
   int get hashCode =>
-      Object.hash(userId, organizationId, snapshotVersion, songId, title);
+      Object.hash(userId, organizationId, snapshotVersion, songId, slug, title);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -610,6 +642,7 @@ class CachedCatalogSummary extends DataClass
           other.organizationId == this.organizationId &&
           other.snapshotVersion == this.snapshotVersion &&
           other.songId == this.songId &&
+          other.slug == this.slug &&
           other.title == this.title);
 }
 
@@ -619,6 +652,7 @@ class CachedCatalogSummariesCompanion
   final Value<String> organizationId;
   final Value<int> snapshotVersion;
   final Value<String> songId;
+  final Value<String> slug;
   final Value<String> title;
   final Value<int> rowid;
   const CachedCatalogSummariesCompanion({
@@ -626,6 +660,7 @@ class CachedCatalogSummariesCompanion
     this.organizationId = const Value.absent(),
     this.snapshotVersion = const Value.absent(),
     this.songId = const Value.absent(),
+    this.slug = const Value.absent(),
     this.title = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -634,18 +669,21 @@ class CachedCatalogSummariesCompanion
     required String organizationId,
     required int snapshotVersion,
     required String songId,
+    required String slug,
     required String title,
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
        snapshotVersion = Value(snapshotVersion),
        songId = Value(songId),
+       slug = Value(slug),
        title = Value(title);
   static Insertable<CachedCatalogSummary> custom({
     Expression<String>? userId,
     Expression<String>? organizationId,
     Expression<int>? snapshotVersion,
     Expression<String>? songId,
+    Expression<String>? slug,
     Expression<String>? title,
     Expression<int>? rowid,
   }) {
@@ -654,6 +692,7 @@ class CachedCatalogSummariesCompanion
       if (organizationId != null) 'organization_id': organizationId,
       if (snapshotVersion != null) 'snapshot_version': snapshotVersion,
       if (songId != null) 'song_id': songId,
+      if (slug != null) 'slug': slug,
       if (title != null) 'title': title,
       if (rowid != null) 'rowid': rowid,
     });
@@ -664,6 +703,7 @@ class CachedCatalogSummariesCompanion
     Value<String>? organizationId,
     Value<int>? snapshotVersion,
     Value<String>? songId,
+    Value<String>? slug,
     Value<String>? title,
     Value<int>? rowid,
   }) {
@@ -672,6 +712,7 @@ class CachedCatalogSummariesCompanion
       organizationId: organizationId ?? this.organizationId,
       snapshotVersion: snapshotVersion ?? this.snapshotVersion,
       songId: songId ?? this.songId,
+      slug: slug ?? this.slug,
       title: title ?? this.title,
       rowid: rowid ?? this.rowid,
     );
@@ -692,6 +733,9 @@ class CachedCatalogSummariesCompanion
     if (songId.present) {
       map['song_id'] = Variable<String>(songId.value);
     }
+    if (slug.present) {
+      map['slug'] = Variable<String>(slug.value);
+    }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
     }
@@ -708,6 +752,7 @@ class CachedCatalogSummariesCompanion
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('songId: $songId, ')
+          ..write('slug: $slug, ')
           ..write('title: $title, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1321,6 +1366,7 @@ typedef $$CachedCatalogSummariesTableCreateCompanionBuilder =
       required String organizationId,
       required int snapshotVersion,
       required String songId,
+      required String slug,
       required String title,
       Value<int> rowid,
     });
@@ -1330,6 +1376,7 @@ typedef $$CachedCatalogSummariesTableUpdateCompanionBuilder =
       Value<String> organizationId,
       Value<int> snapshotVersion,
       Value<String> songId,
+      Value<String> slug,
       Value<String> title,
       Value<int> rowid,
     });
@@ -1360,6 +1407,11 @@ class $$CachedCatalogSummariesTableFilterComposer
 
   ColumnFilters<String> get songId => $composableBuilder(
     column: $table.songId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slug => $composableBuilder(
+    column: $table.slug,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1398,6 +1450,11 @@ class $$CachedCatalogSummariesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get title => $composableBuilder(
     column: $table.title,
     builder: (column) => ColumnOrderings(column),
@@ -1428,6 +1485,9 @@ class $$CachedCatalogSummariesTableAnnotationComposer
 
   GeneratedColumn<String> get songId =>
       $composableBuilder(column: $table.songId, builder: (column) => column);
+
+  GeneratedColumn<String> get slug =>
+      $composableBuilder(column: $table.slug, builder: (column) => column);
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
@@ -1483,6 +1543,7 @@ class $$CachedCatalogSummariesTableTableManager
                 Value<String> organizationId = const Value.absent(),
                 Value<int> snapshotVersion = const Value.absent(),
                 Value<String> songId = const Value.absent(),
+                Value<String> slug = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSummariesCompanion(
@@ -1490,6 +1551,7 @@ class $$CachedCatalogSummariesTableTableManager
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 songId: songId,
+                slug: slug,
                 title: title,
                 rowid: rowid,
               ),
@@ -1499,6 +1561,7 @@ class $$CachedCatalogSummariesTableTableManager
                 required String organizationId,
                 required int snapshotVersion,
                 required String songId,
+                required String slug,
                 required String title,
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSummariesCompanion.insert(
@@ -1506,6 +1569,7 @@ class $$CachedCatalogSummariesTableTableManager
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 songId: songId,
+                slug: slug,
                 title: title,
                 rowid: rowid,
               ),

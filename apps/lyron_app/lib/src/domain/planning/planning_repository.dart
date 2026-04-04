@@ -5,4 +5,8 @@ abstract class PlanningRepository {
   Future<List<PlanSummary>> listPlans();
 
   Future<PlanDetail> getPlanDetail(String planId);
+
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug);
+
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug);
 }

@@ -30,24 +30,24 @@ void main() {
 
     final router = GoRouter(
       initialLocation: AppRoutes.planDetail.path.replaceFirst(
-        ':planId',
-        'plan-1',
+        ':planSlug',
+        'team-rehearsal',
       ),
       routes: [
         GoRoute(
           path: AppRoutes.planDetail.path,
-          builder: (context, state) {
-            final planId = state.pathParameters['planId']!;
-            return PlanDetailScreen(planId: planId);
-          },
+          builder: (context, state) => const PlanDetailScreen(planId: 'plan-1'),
         ),
         GoRoute(
           path: AppRoutes.planSessionSongReader.path,
           builder: (context, state) => SongReaderScreen(
-            songId: state.pathParameters['songId']!,
-            planId: state.pathParameters['planId']!,
-            sessionId: state.pathParameters['sessionId']!,
+            songId: 'song-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
             sessionItemId: state.pathParameters['sessionItemId']!,
+            warmPlanDetail: state.extra is PlanDetail
+                ? state.extra! as PlanDetail
+                : null,
           ),
         ),
       ],
@@ -79,6 +79,7 @@ void main() {
         planDetailValue: PlanDetail(
           plan: PlanSummary(
             id: 'plan-1',
+            slug: 'team-rehearsal',
             name: 'Team Rehearsal',
             description: 'Multi-session rehearsal fixture',
             scheduledFor: null,
@@ -87,30 +88,44 @@ void main() {
           sessions: const [
             SessionSummary(
               id: 'session-1',
+              slug: 'warm-up',
               name: 'Warm-Up',
               position: 10,
               items: [
                 SessionItemSummary(
                   id: 'item-1',
                   position: 10,
-                  song: SongSummary(id: 'song-1', title: 'Zulu Song'),
+                  song: SongSummary(
+                    id: 'song-1',
+                    slug: 'zulu-song',
+                    title: 'Zulu Song',
+                  ),
                 ),
                 SessionItemSummary(
                   id: 'item-2',
                   position: 20,
-                  song: SongSummary(id: 'song-2', title: 'Alpha Song'),
+                  song: SongSummary(
+                    id: 'song-2',
+                    slug: 'alpha-song',
+                    title: 'Alpha Song',
+                  ),
                 ),
               ],
             ),
             SessionSummary(
               id: 'session-2',
+              slug: 'run-through',
               name: 'Run-Through',
               position: 20,
               items: [
                 SessionItemSummary(
                   id: 'item-3',
                   position: 10,
-                  song: SongSummary(id: 'song-3', title: 'Egy út'),
+                  song: SongSummary(
+                    id: 'song-3',
+                    slug: 'egy-ut',
+                    title: 'Egy út',
+                  ),
                 ),
               ],
             ),
@@ -164,22 +179,25 @@ void main() {
 
       final router = GoRouter(
         initialLocation: AppRoutes.planDetail.path.replaceFirst(
-          ':planId',
-          'plan-1',
+          ':planSlug',
+          'team-rehearsal',
         ),
         routes: [
           GoRoute(
             path: AppRoutes.planDetail.path,
             builder: (context, state) =>
-                PlanDetailScreen(planId: state.pathParameters['planId']!),
+                const PlanDetailScreen(planId: 'plan-1'),
           ),
           GoRoute(
             path: AppRoutes.planSessionSongReader.path,
             builder: (context, state) => SongReaderScreen(
-              songId: state.pathParameters['songId']!,
-              planId: state.pathParameters['planId']!,
-              sessionId: state.pathParameters['sessionId']!,
+              songId: 'song-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
               sessionItemId: state.pathParameters['sessionItemId']!,
+              warmPlanDetail: state.extra is PlanDetail
+                  ? state.extra! as PlanDetail
+                  : null,
             ),
           ),
         ],
@@ -192,6 +210,7 @@ void main() {
               return PlanDetail(
                 plan: PlanSummary(
                   id: 'plan-1',
+                  slug: 'team-rehearsal',
                   name: 'Team Rehearsal',
                   description: 'Multi-session rehearsal fixture',
                   scheduledFor: null,
@@ -200,13 +219,18 @@ void main() {
                 sessions: const [
                   SessionSummary(
                     id: 'session-1',
+                    slug: 'warm-up',
                     name: 'Warm-Up',
                     position: 10,
                     items: [
                       SessionItemSummary(
                         id: 'item-1',
                         position: 10,
-                        song: SongSummary(id: 'song-1', title: 'A forrasnal'),
+                        song: SongSummary(
+                          id: 'song-1',
+                          slug: 'a-forrasnal',
+                          title: 'A forrasnal',
+                        ),
                       ),
                     ],
                   ),
@@ -234,6 +258,13 @@ void main() {
                 ),
               ),
             ),
+            songLibrarySongByIdProvider('song-1').overrideWith(
+              (ref) async => const SongSummary(
+                id: 'song-1',
+                slug: 'a-forrasnal',
+                title: 'A forrasnal',
+              ),
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -252,7 +283,80 @@ void main() {
       expect(find.text('Team Rehearsal'), findsOneWidget);
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
-        '/plans/plan-1',
+        '/plans/team-rehearsal',
+      );
+    },
+  );
+
+  testWidgets(
+    'session items stay disabled until a canonical song slug is available',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation: AppRoutes.planDetail.path.replaceFirst(
+          ':planSlug',
+          'team-rehearsal',
+        ),
+        routes: [
+          GoRoute(
+            path: AppRoutes.planDetail.path,
+            builder: (context, state) =>
+                const PlanDetailScreen(planId: 'plan-1'),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            planningPlanDetailProvider('plan-1').overrideWith((ref) async {
+              return PlanDetail(
+                plan: PlanSummary(
+                  id: 'plan-1',
+                  slug: 'team-rehearsal',
+                  name: 'Team Rehearsal',
+                  description: 'Multi-session rehearsal fixture',
+                  scheduledFor: null,
+                  updatedAt: DateTime(2026, 3, 31, 9),
+                ),
+                sessions: const [
+                  SessionSummary(
+                    id: 'session-1',
+                    slug: 'warm-up',
+                    name: 'Warm-Up',
+                    position: 10,
+                    items: [
+                      SessionItemSummary(
+                        id: 'item-1',
+                        position: 10,
+                        song: SongSummary(id: 'song-1', title: 'A forrasnal'),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            }),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('plan-session-item-item-1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Team Rehearsal'), findsOneWidget);
+      expect(
+        router.routerDelegate.currentConfiguration.uri.toString(),
+        '/plans/team-rehearsal',
       );
     },
   );

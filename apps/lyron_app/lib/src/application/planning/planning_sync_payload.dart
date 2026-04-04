@@ -13,6 +13,7 @@ class PlanningSyncPayload {
 class PlanningSyncPlan {
   const PlanningSyncPlan({
     required this.id,
+    required this.slug,
     required this.name,
     required this.description,
     required this.scheduledFor,
@@ -20,6 +21,7 @@ class PlanningSyncPlan {
   });
 
   final String id;
+  final String slug;
   final String name;
   final String? description;
   final DateTime? scheduledFor;
@@ -30,12 +32,14 @@ class PlanningSyncSession {
   const PlanningSyncSession({
     required this.id,
     required this.planId,
+    required this.slug,
     required this.position,
     required this.name,
   });
 
   final String id;
   final String planId;
+  final String slug;
   final int position;
   final String name;
 }

@@ -30,7 +30,9 @@ class AssetSongRepository implements SongRepository {
   @override
   Future<List<SongSummary>> listSongs() async {
     return _songs
-        .map((song) => SongSummary(id: song.id, title: song.title))
+        .map(
+          (song) => SongSummary(id: song.id, title: song.title, slug: song.id),
+        )
         .toList(growable: false);
   }
 

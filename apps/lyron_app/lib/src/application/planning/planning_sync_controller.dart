@@ -231,6 +231,7 @@ class PlanningSyncController extends ChangeNotifier {
           .map(
             (plan) => CachedPlanRecord(
               id: plan.id,
+              slug: plan.slug,
               name: plan.name,
               description: plan.description,
               scheduledFor: plan.scheduledFor,
@@ -243,6 +244,7 @@ class PlanningSyncController extends ChangeNotifier {
             (session) => CachedSessionRecord(
               id: session.id,
               planId: session.planId,
+              slug: session.slug,
               position: session.position,
               name: session.name,
             ),

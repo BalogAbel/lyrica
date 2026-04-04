@@ -31,7 +31,9 @@ void main() {
         sessionScopedReaderContextProvider(
           SessionScopedReaderContextRequest(
             planId: 'plan-1',
+            planSlug: 'team-rehearsal',
             sessionId: 'session-1',
+            sessionSlug: 'main',
             sessionItemId: 'item-20',
             songId: 'song-2',
             warmPlanDetail: _planDetail(),
@@ -58,7 +60,9 @@ void main() {
       sessionScopedReaderContextProvider(
         const SessionScopedReaderContextRequest(
           planId: 'plan-1',
+          planSlug: 'team-rehearsal',
           sessionId: 'session-1',
+          sessionSlug: 'main',
           sessionItemId: 'item-20',
           songId: 'song-2',
         ),
@@ -86,7 +90,9 @@ void main() {
       sessionScopedReaderContextProvider(
         const SessionScopedReaderContextRequest(
           planId: 'plan-1',
+          planSlug: 'team-rehearsal',
           sessionId: 'session-1',
+          sessionSlug: 'main',
           sessionItemId: 'item-20',
           songId: 'song-2',
         ),
@@ -139,6 +145,16 @@ class _FakePlanningRepository implements PlanningRepository {
   }
 
   @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
+    return planSlug == 'team-rehearsal' ? planDetail.plan : null;
+  }
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
+    return planSlug == 'team-rehearsal' ? planDetail : null;
+  }
+
+  @override
   Future<List<PlanSummary>> listPlans() async => const [];
 }
 
@@ -146,6 +162,7 @@ PlanDetail _planDetail() {
   return PlanDetail(
     plan: PlanSummary(
       id: 'plan-1',
+      slug: 'team-rehearsal',
       name: 'Plan',
       description: 'Desc',
       scheduledFor: DateTime(2026, 4, 1, 10),
@@ -154,23 +171,28 @@ PlanDetail _planDetail() {
     sessions: const [
       SessionSummary(
         id: 'session-1',
+        slug: 'main',
         name: 'Main',
         position: 10,
         items: [
           SessionItemSummary(
             id: 'item-10',
             position: 10,
-            song: SongSummary(id: 'song-1', title: 'Elso'),
+            song: SongSummary(id: 'song-1', slug: 'elso', title: 'Elso'),
           ),
           SessionItemSummary(
             id: 'item-20',
             position: 20,
-            song: SongSummary(id: 'song-2', title: 'Masodik'),
+            song: SongSummary(id: 'song-2', slug: 'masodik', title: 'Masodik'),
           ),
           SessionItemSummary(
             id: 'item-30',
             position: 30,
-            song: SongSummary(id: 'song-3', title: 'Harmadik'),
+            song: SongSummary(
+              id: 'song-3',
+              slug: 'harmadik',
+              title: 'Harmadik',
+            ),
           ),
         ],
       ),

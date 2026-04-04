@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -83,7 +84,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     }
 
     if (_isScopedMode) {
-      context.replace(PlanningRoutes.planDetailLocation(widget.planId!));
+      final planSlug = widget.warmPlanDetail?.plan.slug ?? widget.planId!;
+      context.replace(PlanningRoutes.planDetailLocation(planSlug));
       return;
     }
 
@@ -122,7 +124,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
             sessionScopedReaderContextProvider(
               SessionScopedReaderContextRequest(
                 planId: widget.planId!,
+                planSlug: widget.warmPlanDetail?.plan.slug ?? widget.planId!,
                 sessionId: widget.sessionId!,
+                sessionSlug: _sessionSlugFor(
+                  widget.warmPlanDetail,
+                  widget.sessionId!,
+                ),
                 sessionItemId: widget.sessionItemId!,
                 songId: widget.songId,
                 warmPlanDetail: widget.warmPlanDetail,
@@ -407,11 +414,11 @@ class _ScopedNavigationSurface extends StatelessWidget {
                   : () {
                       context.replace(
                         PlanningRoutes.planSessionSongReaderLocation(
-                          planId: scopedContext.planId,
-                          sessionId: scopedContext.sessionId,
+                          planSlug: scopedContext.planSlug,
+                          sessionSlug: scopedContext.sessionSlug,
                           sessionItemId:
                               scopedContext.previousItem!.sessionItemId,
-                          songId: scopedContext.previousItem!.songId,
+                          songSlug: scopedContext.previousItem!.songSlug,
                         ),
                         extra: currentWarmPlanDetail,
                       );
@@ -424,10 +431,10 @@ class _ScopedNavigationSurface extends StatelessWidget {
                   : () {
                       context.replace(
                         PlanningRoutes.planSessionSongReaderLocation(
-                          planId: scopedContext.planId,
-                          sessionId: scopedContext.sessionId,
+                          planSlug: scopedContext.planSlug,
+                          sessionSlug: scopedContext.sessionSlug,
                           sessionItemId: scopedContext.nextItem!.sessionItemId,
-                          songId: scopedContext.nextItem!.songId,
+                          songSlug: scopedContext.nextItem!.songSlug,
                         ),
                         extra: currentWarmPlanDetail,
                       );
@@ -439,6 +446,13 @@ class _ScopedNavigationSurface extends StatelessWidget {
       },
     );
   }
+}
+
+String _sessionSlugFor(PlanDetail? planDetail, String sessionId) {
+  final session = planDetail?.sessions
+      .where((candidate) => candidate.id == sessionId)
+      .firstOrNull;
+  return session?.slug ?? sessionId;
 }
 
 bool _hasVisibleStatus(CatalogSnapshotState state) {

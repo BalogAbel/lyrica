@@ -15,6 +15,7 @@ class CachedCatalogSummaries extends Table {
   TextColumn get organizationId => text()();
   IntColumn get snapshotVersion => integer()();
   TextColumn get songId => text()();
+  TextColumn get slug => text()();
   TextColumn get title => text()();
 
   @override

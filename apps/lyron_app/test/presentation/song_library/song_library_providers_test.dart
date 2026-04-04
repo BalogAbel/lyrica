@@ -37,7 +37,7 @@ void main() {
       final store = DriftSongCatalogStore(database);
       final remoteRepository = SupabaseSongRepository.testing(
         listSongsRows: () async => [
-          {'id': 'song-1', 'title': 'Egy út'},
+          {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
         ],
         getSongRow: (id) async => {
           'id': id,
@@ -193,7 +193,13 @@ void main() {
               listSongsImpl: ({required context}) async {
                 listCalls += 1;
                 return container.read(testCatalogStateProvider).hasCachedCatalog
-                    ? const [SongSummary(id: 'song-1', title: 'Egy út')]
+                    ? const [
+                        SongSummary(
+                          id: 'song-1',
+                          slug: 'egy-ut',
+                          title: 'Egy út',
+                        ),
+                      ]
                     : const [];
               },
             ),
@@ -218,7 +224,7 @@ void main() {
       );
 
       expect(await container.read(songLibraryListProvider.future), const [
-        SongSummary(id: 'song-1', title: 'Egy út'),
+        SongSummary(id: 'song-1', slug: 'egy-ut', title: 'Egy út'),
       ]);
       expect(listCalls, 2);
     },
@@ -288,7 +294,7 @@ void main() {
       final store = DriftSongCatalogStore(database);
       final remoteRepository = SupabaseSongRepository.testing(
         listSongsRows: () async => [
-          {'id': 'song-1', 'title': 'Egy út'},
+          {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
         ],
         getSongRow: (id) async => {
           'id': id,
@@ -435,6 +441,15 @@ class _StubSongRepository implements SongCatalogReadRepository {
     getSongSourceCalls += 1;
     return const SongSource(id: 'stub', source: 'source');
   }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    return null;
+  }
 }
 
 class _StubChordproParser extends ChordproParser {
@@ -465,7 +480,7 @@ class _CountingSongRepository extends SupabaseSongRepository {
   _CountingSongRepository()
     : super.testing(
         listSongsRows: () async => [
-          {'id': 'song-1', 'title': 'Egy út'},
+          {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
         ],
         getSongRow: (id) async => {
           'id': id,
@@ -496,6 +511,15 @@ class _NoopSongRepository implements SongCatalogReadRepository {
   Future<List<SongSummary>> listSongs({
     required String userId,
     required String organizationId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
   }) {
     throw UnimplementedError();
   }

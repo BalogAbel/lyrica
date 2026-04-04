@@ -14,6 +14,8 @@ typedef ListPlanRows =
 typedef GetPlanRow = Future<Map<String, dynamic>?> Function(String planId);
 typedef ListSessionRows =
     Future<List<Map<String, dynamic>>> Function(String planId);
+typedef GetPlanSummaryBySlugRow =
+    Future<Map<String, dynamic>?> Function(String planSlug);
 
 class SupabasePlanningRepository
     implements PlanningRepository, PlanningRemoteRefreshRepository {
@@ -23,7 +25,7 @@ class SupabasePlanningRepository
           var query = client
               .from('plans')
               .select(
-                'id, organization_id, name, description, scheduled_for, updated_at',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at',
               );
           if (organizationId != null) {
             query = query.eq('organization_id', organizationId);
@@ -35,7 +37,7 @@ class SupabasePlanningRepository
           final row = await client
               .from('plans')
               .select(
-                'id, organization_id, name, description, scheduled_for, updated_at',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at',
               )
               .eq('id', planId)
               .maybeSingle();
@@ -45,7 +47,7 @@ class SupabasePlanningRepository
           final rows = await client
               .from('sessions')
               .select(
-                'id, name, position, session_items(id, position, song:songs(id, title))',
+                'id, slug, name, position, session_items(id, position, song:songs(id, slug, title))',
               )
               .eq('plan_id', planId)
               .order('position', ascending: true)
@@ -56,6 +58,16 @@ class SupabasePlanningRepository
               );
           return List<Map<String, dynamic>>.from(rows);
         },
+        getPlanSummaryBySlugRow: (planSlug) async {
+          final row = await client
+              .from('plans')
+              .select(
+                'id, organization_id, slug, name, description, scheduled_for, updated_at',
+              )
+              .eq('slug', planSlug)
+              .maybeSingle();
+          return row == null ? null : Map<String, dynamic>.from(row);
+        },
       );
 
   @visibleForTesting
@@ -63,13 +75,26 @@ class SupabasePlanningRepository
     required ListPlanRows listPlanRows,
     required GetPlanRow getPlanRow,
     required ListSessionRows listSessionRows,
+    GetPlanSummaryBySlugRow? getPlanSummaryBySlugRow,
   }) : _listPlanRows = listPlanRows,
        _getPlanRow = getPlanRow,
-       _listSessionRows = listSessionRows;
+       _listSessionRows = listSessionRows,
+       _getPlanSummaryBySlugRow =
+           getPlanSummaryBySlugRow ??
+           ((planSlug) async {
+             final rows = await listPlanRows();
+             for (final row in rows) {
+               if (row['slug'] == planSlug) {
+                 return row;
+               }
+             }
+             return null;
+           });
 
   final ListPlanRows _listPlanRows;
   final GetPlanRow _getPlanRow;
   final ListSessionRows _listSessionRows;
+  final GetPlanSummaryBySlugRow _getPlanSummaryBySlugRow;
 
   @override
   Future<List<PlanSummary>> listPlans() async {
@@ -119,6 +144,22 @@ class SupabasePlanningRepository
   }
 
   @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
+    final row = await _getPlanSummaryBySlugRow(planSlug);
+    return row == null ? null : _mapPlanSummary(row);
+  }
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
+    final plan = await getPlanSummaryBySlug(planSlug);
+    if (plan == null) {
+      return null;
+    }
+
+    return getPlanDetail(plan.id);
+  }
+
+  @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
   }) async {
@@ -152,6 +193,7 @@ class SupabasePlanningRepository
         .map(
           (plan) => PlanningSyncPlan(
             id: plan.id,
+            slug: plan.slug,
             name: plan.name,
             description: plan.description,
             scheduledFor: plan.scheduledFor,
@@ -182,6 +224,7 @@ class SupabasePlanningRepository
           PlanningSyncSession(
             id: session.id,
             planId: plan.id,
+            slug: session.slug,
             position: session.position,
             name: session.name,
           ),
@@ -220,6 +263,7 @@ class SupabasePlanningRepository
   PlanSummary _mapPlanSummary(Map<String, dynamic> row) {
     return PlanSummary(
       id: row['id'] as String,
+      slug: row['slug'] as String,
       name: row['name'] as String,
       description: row['description'] as String?,
       scheduledFor: _parseNullableDateTime(row['scheduled_for']),
@@ -241,6 +285,7 @@ class SupabasePlanningRepository
 
     return SessionSummary(
       id: row['id'] as String,
+      slug: row['slug'] as String,
       name: row['name'] as String,
       position: row['position'] as int,
       items: items,
@@ -261,6 +306,7 @@ class SupabasePlanningRepository
       position: row['position'] as int,
       song: SongSummary(
         id: song['id'] as String,
+        slug: song['slug'] as String,
         title: song['title'] as String,
       ),
     );

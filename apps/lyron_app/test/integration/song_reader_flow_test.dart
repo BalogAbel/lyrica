@@ -31,7 +31,9 @@ void main() {
         ),
       );
       final songRepository = _StaticSongRepository(
-        summaries: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        summaries: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         sources: const {
           'egy_ut': SongSource(
             id: 'egy_ut',
@@ -122,7 +124,9 @@ void main() {
       addTearDown(authController.dispose);
 
       final songRepository = _StaticSongRepository(
-        summaries: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        summaries: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         sources: const {
           'egy_ut': SongSource(
             id: 'egy_ut',
@@ -138,7 +142,7 @@ void main() {
       final router = createAppRouter(
         authController: authController,
         refreshListenable: authController,
-        initialLocation: '/songs/egy_ut',
+        initialLocation: '/songs/egy-ut',
       );
 
       await tester.pumpWidget(
@@ -242,4 +246,18 @@ class _StaticSongRepository implements SongCatalogReadRepository {
     required String organizationId,
     required String songId,
   }) async => sources[songId]!;
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    for (final song in summaries) {
+      if (song.slug == songSlug) {
+        return song;
+      }
+    }
+    return null;
+  }
 }

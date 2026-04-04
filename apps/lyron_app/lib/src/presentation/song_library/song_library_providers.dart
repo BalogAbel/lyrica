@@ -66,6 +66,30 @@ final songLibraryListProvider = FutureProvider.autoDispose<List<SongSummary>>((
   return ref.watch(songLibraryServiceProvider).listSongs(context: context);
 });
 
+final songLibrarySongBySlugProvider = FutureProvider.autoDispose
+    .family<SongSummary?, String>((ref, songSlug) async {
+      final context = ref.watch(activeCatalogContextProvider);
+      if (context == null) {
+        return null;
+      }
+
+      return ref
+          .watch(songLibraryServiceProvider)
+          .getSongSummaryBySlug(context: context, songSlug: songSlug);
+    });
+
+final songLibrarySongByIdProvider = FutureProvider.autoDispose
+    .family<SongSummary?, String>((ref, songId) async {
+      final songs = await ref.watch(songLibraryListProvider.future);
+      for (final song in songs) {
+        if (song.id == songId) {
+          return song;
+        }
+      }
+
+      return null;
+    });
+
 final songLibraryReaderProvider = FutureProvider.autoDispose
     .family<SongReaderResult, String>((ref, songId) async {
       final context = ref.watch(activeCatalogContextProvider);

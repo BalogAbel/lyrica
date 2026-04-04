@@ -60,6 +60,26 @@ class PlanningLocalReadRepository implements PlanningRepository {
     return detail;
   }
 
+  @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
+    final context = await _requireContext();
+    return _store.readPlanSummaryBySlug(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      planSlug: planSlug,
+    );
+  }
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
+    final context = await _requireContext();
+    return _store.readPlanDetailBySlug(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      planSlug: planSlug,
+    );
+  }
+
   Future<ActivePlanningReadContext> _requireContext() async {
     final context = await _contextReader();
     if (context == null) {
