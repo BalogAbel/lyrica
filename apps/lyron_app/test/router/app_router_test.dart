@@ -39,7 +39,7 @@ void main() {
     expect(AppRoutes.planDetail.path, '/plans/:planSlug');
     expect(
       AppRoutes.planSessionSongReader.path,
-      '/plans/:planSlug/sessions/:sessionSlug/items/:sessionItemId/songs/:songSlug',
+      '/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug',
     );
     expect(AppRoutes.songReader.path, '/songs/:songSlug');
   });
@@ -232,7 +232,7 @@ void main() {
               authController: controller,
               refreshListenable: controller,
               initialLocation:
-                  '/plans/sunday-morning/sessions/main-set/items/item-1/songs/egy-ut',
+                  '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
             ),
           ),
         ),
@@ -489,7 +489,7 @@ void main() {
       authController: controller,
       refreshListenable: controller,
       initialLocation:
-          '/plans/sunday-morning/sessions/main-set/items/item-1/songs/egy-ut',
+          '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
     );
 
     await tester.pumpWidget(
@@ -584,7 +584,7 @@ void main() {
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
     expect(
       router.routerDelegate.currentConfiguration.uri.toString(),
-      '/plans/sunday-morning/sessions/main-set/items/item-1/songs/egy-ut',
+      '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
     );
   });
 
@@ -644,7 +644,6 @@ void main() {
             home: PlanSessionSongSlugRouteResolver(
               planSlug: 'sunday-morning',
               sessionSlug: 'missing-session',
-              sessionItemId: 'item-1',
               songSlug: 'egy-ut',
             ),
           ),
@@ -702,7 +701,6 @@ void main() {
             home: PlanSessionSongSlugRouteResolver(
               planSlug: 'sunday-morning',
               sessionSlug: 'main-set',
-              sessionItemId: 'item-1',
               songSlug: 'egy-ut',
             ),
           ),
@@ -727,7 +725,7 @@ void main() {
         authController: controller,
         refreshListenable: controller,
         initialLocation:
-            '/plans/sunday-morning/sessions/main-set/items/item-1/songs/egy-ut',
+            '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
       );
 
       await tester.pumpWidget(
@@ -824,7 +822,7 @@ void main() {
       expect(find.text('Song reader'), findsOneWidget);
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
-        '/plans/sunday-morning/sessions/main-set/items/item-1/songs/egy-ut',
+        '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
       );
     },
   );

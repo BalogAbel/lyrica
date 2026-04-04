@@ -118,7 +118,6 @@ class _SongItemButton extends ConsumerWidget {
                 PlanningRoutes.planSessionSongReaderLocation(
                   planSlug: planDetail.plan.slug,
                   sessionSlug: session.slug,
-                  sessionItemId: item.id,
                   songSlug: resolvedSongSlug,
                 ),
                 extra: planDetail,

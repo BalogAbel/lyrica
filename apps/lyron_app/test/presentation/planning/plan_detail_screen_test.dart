@@ -44,7 +44,7 @@ void main() {
             songId: 'song-1',
             planId: 'plan-1',
             sessionId: 'session-1',
-            sessionItemId: state.pathParameters['sessionItemId']!,
+            sessionItemId: 'item-1',
             warmPlanDetail: state.extra is PlanDetail
                 ? state.extra! as PlanDetail
                 : null,
@@ -194,7 +194,7 @@ void main() {
               songId: 'song-1',
               planId: 'plan-1',
               sessionId: 'session-1',
-              sessionItemId: state.pathParameters['sessionItemId']!,
+              sessionItemId: 'item-1',
               warmPlanDetail: state.extra is PlanDetail
                   ? state.extra! as PlanDetail
                   : null,

@@ -22,6 +22,7 @@ Cover:
 - Song repository boundary behavior and backend summary/source mapping
 - Planning repository boundary behavior, including plan ordering and plan-detail mapping
 - Slug-routing boundary behavior for route resolution, including explicit not-found surfaces for missing song, plan, and session slugs
+- Slug-routing boundary behavior for scoped reader song resolution within a session, including the assumption that a song appears at most once per session
 - Slug-routing boundary behavior for route generation, including canonical slug URLs and no id-based fallback when the canonical song slug is unavailable at the presentation edge
 - Parser diagnostics and warning policy for the supported ChordPro subset
 

@@ -1,12 +1,12 @@
 # Session-Scoped Plan Reader Navigation Implementation Plan
 
-> Status: Implemented — all automated tests green, review fixes applied, pending manual Chrome reload validation
+> Status: Implemented — later partially superseded by the slug-routing slice, which changed the public scoped reader URL to `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug` while keeping the same internal reader-context contract.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add plan-detail-to-reader navigation and session-scoped previous and next reader navigation without introducing a second reader screen or a broader global navigation model.
 
-**Architecture:** Keep the existing `SongReaderScreen` as the only reader screen, but add a dedicated plan-origin reader route that carries stable planning identifiers in the URL. Resolve session-scoped navigation through a narrow route-backed context layer with two explicit paths: warm same-stack entry reuses already-loaded plan detail data, while cold direct entry or reload re-fetches planning context online before enabling scoped navigation. Enter the scoped reader with `push`, keep previous and next on a single reader stack entry through route replacement or equivalent in-place route updates, and preserve reader-local controls through a session-scoped runtime state holder that outlives individual song route instances.
+**Architecture:** Keep the existing `SongReaderScreen` as the only reader screen, but add a dedicated plan-origin reader route that carries stable planning identifiers in the URL. This plan originally used id-based route segments; the shipped slug-routing slice later replaced the public route shape with `planSlug`, `sessionSlug`, and `songSlug` while keeping the same internal reader-context model. Resolve session-scoped navigation through a narrow route-backed context layer with two explicit paths: warm same-stack entry reuses already-loaded plan detail data, while cold direct entry or reload re-fetches planning context online before enabling scoped navigation. Enter the scoped reader with `push`, keep previous and next on a single reader stack entry through route replacement or equivalent in-place route updates, and preserve reader-local controls through a session-scoped runtime state holder that outlives individual song route instances.
 
 **Tech Stack:** Flutter, Riverpod, go_router, Dart, Flutter test, integration test, manual browser validation, Markdown
 
@@ -28,7 +28,7 @@ Add assertions in `apps/lyron_app/test/router/app_router_test.dart` for a new de
 ```dart
 expect(
   AppRoutes.planSessionSongReader.path,
-  '/plans/:planId/sessions/:sessionId/items/:sessionItemId/songs/:songId',
+  '/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug',
 );
 ```
 

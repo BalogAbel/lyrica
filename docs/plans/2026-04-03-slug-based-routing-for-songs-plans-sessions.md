@@ -4,9 +4,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move public song, plan, and session routes to slug-based URL segments while keeping ids as the canonical internal identifiers.
+**Goal:** Move public song, plan, and session routes to slug-based URL segments while keeping ids as the canonical internal identifiers, and simplify scoped reader URLs so session-scoped song entry no longer exposes a session-item segment.
 
-**Architecture:** Add slug columns and scoped uniqueness constraints in Postgres, backfill development data, and then introduce a thin slug-resolution seam at the route boundary. Router and navigation helpers will speak slug-based URLs, but repositories, local stores, and reader context will continue to use ids after route resolution.
+**Architecture:** Add slug columns and scoped uniqueness constraints in Postgres, backfill development data, and then introduce a thin slug-resolution seam at the route boundary. Router and navigation helpers will speak slug-based URLs, repositories, local stores, and reader context will continue to use ids after route resolution, and scoped reader entry will rely on the product rule that a song can appear only once within a session.
 
 **Tech Stack:** Flutter, Dart, Riverpod, go_router, Supabase Postgres migrations, Supabase seed data, Flutter test, integration test, Markdown
 
@@ -68,7 +68,7 @@ Expected: PASS.
 
 - [ ] **Step 1: Update the domain model doc**
 
-Add `slug` to the key fields for songs, plans, and sessions, and document the intended uniqueness scope for each aggregate.
+Add `slug` to the key fields for songs, plans, and sessions, document the intended uniqueness scope for each aggregate, and record that a session may contain a given song at most once so the public scoped reader URL does not need a separate session-item segment.
 
 - [ ] **Step 2: Update architecture and testing docs only if the implementation introduces durable new boundaries**
 
@@ -148,7 +148,7 @@ Update the router tests so they expect:
 
 - `/songs/:songSlug`
 - `/plans/:planSlug`
-- `/plans/:planSlug/sessions/:sessionSlug/items/:sessionItemId/songs/:songSlug`
+- `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug`
 
 Also cover direct entry and invalid-slug not-found behavior.
 
@@ -177,7 +177,7 @@ Update the route-facing summary/view-model objects so the screens have the slug 
 
 - [ ] **Step 5: Keep reader context id-based after resolution**
 
-Verify the scoped reader screen still receives ids for `planId`, `sessionId`, `sessionItemId`, and `songId` after the router completes slug resolution.
+Verify the scoped reader screen still receives ids for `planId`, `sessionId`, `sessionItemId`, and `songId` after the router resolves `planSlug`, `sessionSlug`, and `songSlug` to the single matching session item in that session.
 
 - [ ] **Step 6: Re-run the focused router and presentation tests**
 
@@ -231,5 +231,6 @@ Confirm the spec, plan, and domain documentation all match the shipped slug boun
 - songs unique within organization
 - plans unique within organization
 - sessions unique within plan
+- a session can contain a given song at most once
 - no redirect support
 - ids remain internal

@@ -156,7 +156,7 @@ void main() {
     required PlanDetail planDetail,
     required Map<String, SongReaderResult> resultsBySongId,
     String initialLocation =
-        '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
+        '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
     Object? planningError,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
@@ -179,14 +179,17 @@ void main() {
           builder: (context, state) {
             final planSlug = state.pathParameters['planSlug']!;
             final sessionSlug = state.pathParameters['sessionSlug']!;
-            final sessionItemId = state.pathParameters['sessionItemId']!;
             final songSlug = state.pathParameters['songSlug']!;
+            final sessionItemId = _sessionItemIdForScopedRoute(
+              planDetail,
+              sessionSlug: sessionSlug,
+              songSlug: songSlug,
+            );
 
             return SongReaderScreen(
               songId: _songIdForScopedRoute(
                 planDetail,
                 sessionSlug: sessionSlug,
-                sessionItemId: sessionItemId,
                 songSlug: songSlug,
               ),
               planId: _planIdForSlug(planDetail, planSlug),
@@ -545,7 +548,7 @@ void main() {
           'song-3': buildScopedResult('Song Three'),
         },
         initialLocation:
-            '/plans/plan-fixture/sessions/main-set/items/item-10/songs/song-one',
+            '/plans/plan-fixture/sessions/main-set/items/songs/song-one',
       ),
     );
     await tester.pumpAndSettle();
@@ -618,7 +621,7 @@ void main() {
         planDetail: singleItemPlan,
         resultsBySongId: {'song-1': buildScopedResult('Song One')},
         initialLocation:
-            '/plans/plan-fixture/sessions/main-set/items/item-10/songs/song-one',
+            '/plans/plan-fixture/sessions/main-set/items/songs/song-one',
       ),
     );
     await tester.pumpAndSettle();
@@ -712,7 +715,7 @@ void main() {
         planDetail: _multiItemPlanDetail(),
         resultsBySongId: {'song-999': buildScopedResult('Wrong Song')},
         initialLocation:
-            '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-999',
+            '/plans/plan-fixture/sessions/main-set/items/songs/song-999',
       ),
     );
     await tester.pumpAndSettle();
@@ -753,7 +756,7 @@ void main() {
           child: MaterialApp.router(
             routerConfig: GoRouter(
               initialLocation:
-                  '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
+                  '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
               routes: [
                 GoRoute(
                   path: AppRoutes.planDetail.path,
@@ -770,7 +773,11 @@ void main() {
                     songId: _songIdForScopedRoute(
                       _multiItemPlanDetail(),
                       sessionSlug: state.pathParameters['sessionSlug']!,
-                      sessionItemId: state.pathParameters['sessionItemId']!,
+                      songSlug: state.pathParameters['songSlug']!,
+                    ),
+                    sessionItemId: _sessionItemIdForScopedRoute(
+                      _multiItemPlanDetail(),
+                      sessionSlug: state.pathParameters['sessionSlug']!,
                       songSlug: state.pathParameters['songSlug']!,
                     ),
                     planId: _planIdForSlug(
@@ -781,7 +788,6 @@ void main() {
                       _multiItemPlanDetail(),
                       state.pathParameters['sessionSlug']!,
                     ),
-                    sessionItemId: state.pathParameters['sessionItemId']!,
                     warmPlanDetail: _multiItemPlanDetail(),
                   ),
                 ),
@@ -808,7 +814,7 @@ void main() {
     (tester) async {
       final router = GoRouter(
         initialLocation:
-            '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
+            '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
         routes: [
           GoRoute(
             path: '/',
@@ -829,7 +835,11 @@ void main() {
               songId: _songIdForScopedRoute(
                 _multiItemPlanDetail(),
                 sessionSlug: state.pathParameters['sessionSlug']!,
-                sessionItemId: state.pathParameters['sessionItemId']!,
+                songSlug: state.pathParameters['songSlug']!,
+              ),
+              sessionItemId: _sessionItemIdForScopedRoute(
+                _multiItemPlanDetail(),
+                sessionSlug: state.pathParameters['sessionSlug']!,
                 songSlug: state.pathParameters['songSlug']!,
               ),
               planId: _planIdForSlug(
@@ -840,7 +850,6 @@ void main() {
                 _multiItemPlanDetail(),
                 state.pathParameters['sessionSlug']!,
               ),
-              sessionItemId: state.pathParameters['sessionItemId']!,
             ),
           ),
         ],
@@ -879,7 +888,7 @@ void main() {
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
         contains(
-          '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
+          '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
         ),
       );
     },
@@ -978,24 +987,34 @@ String _sessionIdForSlug(PlanDetail planDetail, String sessionSlug) {
 String _songIdForScopedRoute(
   PlanDetail planDetail, {
   required String sessionSlug,
-  required String sessionItemId,
   required String songSlug,
 }) {
   final session = planDetail.sessions.where((candidate) {
     return candidate.slug == sessionSlug;
   }).firstOrNull;
-  final item = session?.items.where((candidate) {
-    return candidate.id == sessionItemId;
-  }).firstOrNull;
-
-  if (item != null && item.song.slug == songSlug) {
-    return item.song.id;
-  }
-
   final song = session?.items
       .map((candidate) => candidate.song)
       .where((candidate) => candidate.slug == songSlug)
       .firstOrNull;
 
   return song?.id ?? songSlug;
+}
+
+String _sessionItemIdForScopedRoute(
+  PlanDetail planDetail, {
+  required String sessionSlug,
+  required String songSlug,
+}) {
+  final session = planDetail.sessions.where((candidate) {
+    return candidate.slug == sessionSlug;
+  }).firstOrNull;
+  final item = session?.items.where((candidate) {
+    return candidate.song.id == _songIdForScopedRoute(
+      planDetail,
+      sessionSlug: sessionSlug,
+      songSlug: songSlug,
+    );
+  }).firstOrNull;
+
+  return item?.id ?? songSlug;
 }

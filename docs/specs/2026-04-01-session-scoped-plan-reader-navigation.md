@@ -1,6 +1,6 @@
 # Session-Scoped Plan Reader Navigation Spec
 
-> Status: Implemented on branch `feat/session-scoped-plan-reader-navigation`
+> Status: Implemented on branch `feat/session-scoped-plan-reader-navigation`; the later slug-routing slice superseded the public route shape with `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug` while preserving the same internal reader-context behavior.
 
 ## Goal
 
@@ -267,7 +267,7 @@ At minimum, cover:
 - previous is disabled at the first session item
 - next is disabled at the last session item
 - both controls are disabled for a single-item session
-- duplicate-song sessions still navigate by session-item identity in the correct order
+- session-scoped routes continue to navigate in session order after resolving the matching internal session item
 - moving previous and next preserves reader-local state during the same app session
 - inconsistent session-scoped route context shows an explicit error state
 
@@ -288,7 +288,7 @@ At minimum, cover:
 - previous and next move only within the current session
 - back from a plan-origin reader returns to the same plan detail route
 - returning from the reader preserves the prior plan detail scroll position
-- duplicate-song sessions navigate correctly by session-item identity
+- direct scoped entry resolves to the correct session item and preserves session order
 
 ### Browser Reload Verification
 

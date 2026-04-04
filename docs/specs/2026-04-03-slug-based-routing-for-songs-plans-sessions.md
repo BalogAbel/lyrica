@@ -29,10 +29,10 @@ The repository does not currently support that model for songs, plans, or sessio
 - Enforce slug uniqueness with scope-appropriate database constraints.
 - Change canonical app routes to use slugs instead of ids for songs, plans, and sessions.
 - Resolve route slugs back to internal ids before existing detail and reader flows execute.
-- Keep `sessionItemId` as an id-based route segment in the scoped reader route.
 - Preserve existing internal repository, projection, and navigation logic as id-based after route resolution.
 - Treat missing slug matches as explicit not-found behavior.
 - Keep slug generation app-owned for future create and edit flows.
+- Constrain each session so the same song can appear at most once in that session.
 
 ## Non-Goals
 
@@ -46,10 +46,12 @@ The repository does not currently support that model for songs, plans, or sessio
 ## Product Rules
 
 - Public URLs for songs, plans, and sessions must become slug-based.
+- Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug` only.
 - Internal aggregate identity remains id-based.
 - A missing or invalid slug must surface as not found, not as a silent fallback to some other route or entity.
 - Changing a slug in the future may invalidate older URLs; this slice intentionally accepts that behavior.
 - Route helpers should construct canonical slug-based URLs rather than leaking id-based path segments.
+- A session may contain a given song at most once, so `songSlug` is sufficient to identify the selected session item within that session.
 
 ## Data Model Requirements
 
@@ -87,9 +89,9 @@ The canonical route templates should become:
 
 - `/songs/:songSlug`
 - `/plans/:planSlug`
-- `/plans/:planSlug/sessions/:sessionSlug/items/:sessionItemId/songs/:songSlug`
+- `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug`
 
-The scoped reader route keeps `sessionItemId` id-based because the active reader context is anchored to session item identity, not only song identity.
+The scoped reader route omits a public session-item segment because each session may contain a given song at most once. The route layer resolves `songSlug` within the already-resolved session, then passes the matching internal `sessionItemId` into the existing reader context.
 
 ### Route Resolution
 
@@ -102,6 +104,7 @@ Required lookups:
 - song slug to song id within the active organization
 - plan slug to plan id within the active organization
 - session slug to session id within the resolved plan
+- session-scoped song slug to the matching session item id within the resolved session
 
 After resolution succeeds, the rest of the application should continue to operate on ids.
 
