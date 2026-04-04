@@ -263,7 +263,7 @@ class SupabasePlanningRepository
   PlanSummary _mapPlanSummary(Map<String, dynamic> row) {
     return PlanSummary(
       id: row['id'] as String,
-      slug: row['slug'] as String,
+      slug: row['slug'] as String? ?? row['id'] as String,
       name: row['name'] as String,
       description: row['description'] as String?,
       scheduledFor: _parseNullableDateTime(row['scheduled_for']),
@@ -285,7 +285,7 @@ class SupabasePlanningRepository
 
     return SessionSummary(
       id: row['id'] as String,
-      slug: row['slug'] as String,
+      slug: row['slug'] as String? ?? row['id'] as String,
       name: row['name'] as String,
       position: row['position'] as int,
       items: items,
@@ -303,10 +303,11 @@ class SupabasePlanningRepository
     final song = Map<String, dynamic>.from(rawSong);
     return SessionItemSummary(
       id: row['id'] as String,
+      slug: row['slug'] as String? ?? row['id'] as String,
       position: row['position'] as int,
       song: SongSummary(
         id: song['id'] as String,
-        slug: song['slug'] as String,
+        slug: song['slug'] as String? ?? song['id'] as String,
         title: song['title'] as String,
       ),
     );

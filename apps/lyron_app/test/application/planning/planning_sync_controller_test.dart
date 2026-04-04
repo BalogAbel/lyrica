@@ -390,6 +390,7 @@ PlanningSyncPayload _payloadFor(
     plans: [
       PlanningSyncPlan(
         id: planId,
+        slug: 'plan-$organizationId',
         name: 'Plan $organizationId',
         description: 'Description $organizationId',
         scheduledFor: DateTime.utc(2026, 4, 5, 9),
@@ -400,6 +401,7 @@ PlanningSyncPayload _payloadFor(
       PlanningSyncSession(
         id: 'session-$organizationId',
         planId: planId,
+        slug: 'session-$organizationId',
         position: 10,
         name: 'Session $organizationId',
       ),
@@ -480,6 +482,7 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
         plan.id: PlanDetail(
           plan: PlanSummary(
             id: plan.id,
+            slug: plan.slug,
             name: plan.name,
             description: plan.description,
             scheduledFor: plan.scheduledFor,
@@ -508,6 +511,44 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
     required String planId,
   }) async {
     return _detailsByOrg[organizationId]?[planId];
+  }
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    final details = _detailsByOrg[organizationId]?.values;
+    if (details == null) {
+      return null;
+    }
+
+    for (final detail in details) {
+      if (detail.plan.slug == planSlug) {
+        return detail.plan;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    final details = _detailsByOrg[organizationId]?.values;
+    if (details == null) {
+      return null;
+    }
+
+    for (final detail in details) {
+      if (detail.plan.slug == planSlug) {
+        return detail;
+      }
+    }
+    return null;
   }
 
   @override

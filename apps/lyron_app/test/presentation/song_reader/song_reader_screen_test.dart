@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -155,7 +156,7 @@ void main() {
     required PlanDetail planDetail,
     required Map<String, SongReaderResult> resultsBySongId,
     String initialLocation =
-        '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+        '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
     Object? planningError,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
@@ -165,18 +166,35 @@ void main() {
       routes: [
         GoRoute(
           path: AppRoutes.planDetail.path,
-          builder: (context, state) =>
-              PlanDetailScreen(planId: state.pathParameters['planId']!),
+          builder: (context, state) => PlanDetailScreen(
+            planId: _planIdForSlug(
+              planDetail,
+              state.pathParameters['planSlug']!,
+            ),
+          ),
         ),
         GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
         GoRoute(
           path: AppRoutes.planSessionSongReader.path,
-          builder: (context, state) => SongReaderScreen(
-            songId: state.pathParameters['songId']!,
-            planId: state.pathParameters['planId']!,
-            sessionId: state.pathParameters['sessionId']!,
-            sessionItemId: state.pathParameters['sessionItemId']!,
-          ),
+          builder: (context, state) {
+            final planSlug = state.pathParameters['planSlug']!;
+            final sessionSlug = state.pathParameters['sessionSlug']!;
+            final sessionItemId = state.pathParameters['sessionItemId']!;
+            final songSlug = state.pathParameters['songSlug']!;
+
+            return SongReaderScreen(
+              songId: _songIdForScopedRoute(
+                planDetail,
+                sessionSlug: sessionSlug,
+                sessionItemId: sessionItemId,
+                songSlug: songSlug,
+              ),
+              planId: _planIdForSlug(planDetail, planSlug),
+              sessionId: _sessionIdForSlug(planDetail, sessionSlug),
+              sessionItemId: sessionItemId,
+              warmPlanDetail: planDetail,
+            );
+          },
         ),
       ],
     );
@@ -192,6 +210,12 @@ void main() {
             hasCachedCatalog: true,
           ),
         ),
+        songLibraryListProvider.overrideWith((ref) async {
+          return [
+            for (final session in planDetail.sessions)
+              for (final item in session.items) item.song,
+          ];
+        }),
         planningPlanDetailProvider(planDetail.plan.id).overrideWith((ref) {
           if (planningError != null) {
             return Future<PlanDetail>.error(planningError);
@@ -521,7 +545,7 @@ void main() {
           'song-3': buildScopedResult('Song Three'),
         },
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-10/songs/song-1',
+            '/plans/plan-fixture/sessions/main-set/items/item-10/songs/song-one',
       ),
     );
     await tester.pumpAndSettle();
@@ -562,6 +586,7 @@ void main() {
     final singleItemPlan = PlanDetail(
       plan: PlanSummary(
         id: 'plan-1',
+        slug: 'plan-fixture',
         name: 'Plan Fixture',
         description: 'Scoped reader test fixture',
         scheduledFor: null,
@@ -570,13 +595,18 @@ void main() {
       sessions: const [
         SessionSummary(
           id: 'session-1',
+          slug: 'main-set',
           name: 'Main Set',
           position: 10,
           items: [
             SessionItemSummary(
               id: 'item-10',
               position: 10,
-              song: SongSummary(id: 'song-1', title: 'Song One'),
+              song: SongSummary(
+                id: 'song-1',
+                slug: 'song-one',
+                title: 'Song One',
+              ),
             ),
           ],
         ),
@@ -588,7 +618,7 @@ void main() {
         planDetail: singleItemPlan,
         resultsBySongId: {'song-1': buildScopedResult('Song One')},
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-10/songs/song-1',
+            '/plans/plan-fixture/sessions/main-set/items/item-10/songs/song-one',
       ),
     );
     await tester.pumpAndSettle();
@@ -617,7 +647,7 @@ void main() {
             'song-2': buildScopedResult('Song Two'),
             'song-3': buildScopedResult('Song Three'),
           },
-          initialLocation: '/plans/plan-1',
+          initialLocation: '/plans/plan-fixture',
         ),
       );
       await tester.pumpAndSettle();
@@ -682,7 +712,7 @@ void main() {
         planDetail: _multiItemPlanDetail(),
         resultsBySongId: {'song-999': buildScopedResult('Wrong Song')},
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-20/songs/song-999',
+            '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-999',
       ),
     );
     await tester.pumpAndSettle();
@@ -723,20 +753,36 @@ void main() {
           child: MaterialApp.router(
             routerConfig: GoRouter(
               initialLocation:
-                  '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+                  '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
               routes: [
                 GoRoute(
                   path: AppRoutes.planDetail.path,
-                  builder: (context, state) =>
-                      PlanDetailScreen(planId: state.pathParameters['planId']!),
+                  builder: (context, state) => PlanDetailScreen(
+                    planId: _planIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['planSlug']!,
+                    ),
+                  ),
                 ),
                 GoRoute(
                   path: AppRoutes.planSessionSongReader.path,
                   builder: (context, state) => SongReaderScreen(
-                    songId: state.pathParameters['songId']!,
-                    planId: state.pathParameters['planId']!,
-                    sessionId: state.pathParameters['sessionId']!,
+                    songId: _songIdForScopedRoute(
+                      _multiItemPlanDetail(),
+                      sessionSlug: state.pathParameters['sessionSlug']!,
+                      sessionItemId: state.pathParameters['sessionItemId']!,
+                      songSlug: state.pathParameters['songSlug']!,
+                    ),
+                    planId: _planIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['planSlug']!,
+                    ),
+                    sessionId: _sessionIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['sessionSlug']!,
+                    ),
                     sessionItemId: state.pathParameters['sessionItemId']!,
+                    warmPlanDetail: _multiItemPlanDetail(),
                   ),
                 ),
               ],
@@ -762,7 +808,7 @@ void main() {
     (tester) async {
       final router = GoRouter(
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-20/songs/song-2',
+            '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
         routes: [
           GoRoute(
             path: '/',
@@ -770,15 +816,30 @@ void main() {
           ),
           GoRoute(
             path: AppRoutes.planDetail.path,
-            builder: (context, state) =>
-                PlanDetailScreen(planId: state.pathParameters['planId']!),
+            builder: (context, state) => PlanDetailScreen(
+              planId: _planIdForSlug(
+                _multiItemPlanDetail(),
+                state.pathParameters['planSlug']!,
+              ),
+            ),
           ),
           GoRoute(
             path: AppRoutes.planSessionSongReader.path,
             builder: (context, state) => SongReaderScreen(
-              songId: state.pathParameters['songId']!,
-              planId: state.pathParameters['planId']!,
-              sessionId: state.pathParameters['sessionId']!,
+              songId: _songIdForScopedRoute(
+                _multiItemPlanDetail(),
+                sessionSlug: state.pathParameters['sessionSlug']!,
+                sessionItemId: state.pathParameters['sessionItemId']!,
+                songSlug: state.pathParameters['songSlug']!,
+              ),
+              planId: _planIdForSlug(
+                _multiItemPlanDetail(),
+                state.pathParameters['planSlug']!,
+              ),
+              sessionId: _sessionIdForSlug(
+                _multiItemPlanDetail(),
+                state.pathParameters['sessionSlug']!,
+              ),
               sessionItemId: state.pathParameters['sessionItemId']!,
             ),
           ),
@@ -817,7 +878,9 @@ void main() {
       );
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
-        contains('/plans/plan-1/sessions/session-1/items/item-20/songs/song-2'),
+        contains(
+          '/plans/plan-fixture/sessions/main-set/items/item-20/songs/song-two',
+        ),
       );
     },
   );
@@ -850,6 +913,7 @@ PlanDetail _multiItemPlanDetail() {
   return PlanDetail(
     plan: PlanSummary(
       id: 'plan-1',
+      slug: 'plan-fixture',
       name: 'Plan Fixture',
       description: 'Scoped reader test fixture',
       scheduledFor: null,
@@ -858,26 +922,80 @@ PlanDetail _multiItemPlanDetail() {
     sessions: const [
       SessionSummary(
         id: 'session-1',
+        slug: 'main-set',
         name: 'Main Set',
         position: 10,
         items: [
           SessionItemSummary(
             id: 'item-10',
             position: 10,
-            song: SongSummary(id: 'song-1', title: 'Song One'),
+            song: SongSummary(
+              id: 'song-1',
+              slug: 'song-one',
+              title: 'Song One',
+            ),
           ),
           SessionItemSummary(
             id: 'item-20',
             position: 20,
-            song: SongSummary(id: 'song-2', title: 'Song Two'),
+            song: SongSummary(
+              id: 'song-2',
+              slug: 'song-two',
+              title: 'Song Two',
+            ),
           ),
           SessionItemSummary(
             id: 'item-30',
             position: 30,
-            song: SongSummary(id: 'song-3', title: 'Song Three'),
+            song: SongSummary(
+              id: 'song-3',
+              slug: 'song-three',
+              title: 'Song Three',
+            ),
           ),
         ],
       ),
     ],
   );
+}
+
+String _planIdForSlug(PlanDetail planDetail, String planSlug) {
+  if (planDetail.plan.slug == planSlug) {
+    return planDetail.plan.id;
+  }
+
+  return planSlug;
+}
+
+String _sessionIdForSlug(PlanDetail planDetail, String sessionSlug) {
+  final session = planDetail.sessions.where((candidate) {
+    return candidate.slug == sessionSlug;
+  }).firstOrNull;
+
+  return session?.id ?? sessionSlug;
+}
+
+String _songIdForScopedRoute(
+  PlanDetail planDetail, {
+  required String sessionSlug,
+  required String sessionItemId,
+  required String songSlug,
+}) {
+  final session = planDetail.sessions.where((candidate) {
+    return candidate.slug == sessionSlug;
+  }).firstOrNull;
+  final item = session?.items.where((candidate) {
+    return candidate.id == sessionItemId;
+  }).firstOrNull;
+
+  if (item != null && item.song.slug == songSlug) {
+    return item.song.id;
+  }
+
+  final song = session?.items
+      .map((candidate) => candidate.song)
+      .where((candidate) => candidate.slug == songSlug)
+      .firstOrNull;
+
+  return song?.id ?? songSlug;
 }
