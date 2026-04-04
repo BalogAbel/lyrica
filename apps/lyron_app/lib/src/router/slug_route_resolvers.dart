@@ -83,13 +83,11 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
     super.key,
     required this.planSlug,
     required this.sessionSlug,
-    required this.sessionItemId,
     required this.songSlug,
   });
 
   final String planSlug;
   final String sessionSlug;
-  final String sessionItemId;
   final String songSlug;
 
   @override
@@ -159,14 +157,15 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
           );
         }
 
-        final selectedItem = session.items
-            .where((candidate) => candidate.id == sessionItemId)
-            .firstOrNull;
-        if (selectedItem == null || selectedItem.song.id != song.id) {
+        final matchingItems = session.items
+            .where((candidate) => candidate.song.id == song.id)
+            .toList(growable: false);
+        if (matchingItems.length != 1) {
           return const _RouteStateScaffold(
             message: AppStrings.routeNotFoundMessage,
           );
         }
+        final selectedItem = matchingItems.single;
 
         return SongReaderScreen(
           songId: song.id,

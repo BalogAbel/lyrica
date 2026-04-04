@@ -162,7 +162,7 @@ Slug rule:
 Read-model note:
 
 - In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
-- Public session-scoped reader URLs keep `sessionItemId` id-based even when the surrounding route uses plan and session slugs; song slugs are resolved at the presentation boundary so duplicate-song entries stay distinct by item id.
+- Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug`; the route layer resolves the matching internal `sessionItemId` before entering the existing id-based reader context.
 
 ### session_items
 
@@ -191,10 +191,11 @@ Invariants:
 - `item_type = 'attachment'` requires `attachment_id` and forbids `song_id`.
 - `item_type = 'note'` forbids both `song_id` and `attachment_id`.
 - Referenced songs and attachments must remain in the same organization as the owning session.
+- A session may contain a given song at most once.
 
 Read-model note:
 
-- In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, preserving duplicate-song entries as distinct ordered items.
+- In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, even though the public scoped reader URL resolves through `songSlug` within a session.
 
 ### attachments
 

@@ -13,11 +13,9 @@ class PlanningRoutes {
   static String planSessionSongReaderLocation({
     required String planSlug,
     required String sessionSlug,
-    required String sessionItemId,
     required String songSlug,
   }) => AppRoutes.planSessionSongReader.path
       .replaceFirst(':planSlug', planSlug)
       .replaceFirst(':sessionSlug', sessionSlug)
-      .replaceFirst(':sessionItemId', sessionItemId)
       .replaceFirst(':songSlug', songSlug);
 }

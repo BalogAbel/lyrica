@@ -5,7 +5,7 @@ enum AppRoutes {
   planList('/plans'),
   planDetail('/plans/:planSlug'),
   planSessionSongReader(
-    '/plans/:planSlug/sessions/:sessionSlug/items/:sessionItemId/songs/:songSlug',
+    '/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug',
   ),
   songReader('/songs/:songSlug');
 

@@ -96,7 +96,6 @@ GoRouter createAppRouter({
         builder: (context, state) => PlanSessionSongSlugRouteResolver(
           planSlug: state.pathParameters['planSlug']!,
           sessionSlug: state.pathParameters['sessionSlug']!,
-          sessionItemId: state.pathParameters['sessionItemId']!,
           songSlug: state.pathParameters['songSlug']!,
         ),
       ),

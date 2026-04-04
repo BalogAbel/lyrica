@@ -435,7 +435,7 @@ Extend the existing song-reader context tests so they prove:
 - plan-origin reader context resolves from locally synchronized planning data
 - offline scoped-reader context still computes previous and next within the same session
 - missing local planning context produces the existing explicit invalid-context failure behavior
-- duplicate-song sessions keep `sessionItemId` as the navigation anchor instead of collapsing to `songId`
+- session-scoped reader context continues to use internal `sessionItemId`, even though the public route resolves by `songSlug` within a session because each song may appear at most once per session
 
 - [ ] **Step 2: Run the focused reader-context tests to verify they fail**
 

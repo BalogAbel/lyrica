@@ -416,8 +416,6 @@ class _ScopedNavigationSurface extends StatelessWidget {
                         PlanningRoutes.planSessionSongReaderLocation(
                           planSlug: scopedContext.planSlug,
                           sessionSlug: scopedContext.sessionSlug,
-                          sessionItemId:
-                              scopedContext.previousItem!.sessionItemId,
                           songSlug: scopedContext.previousItem!.songSlug,
                         ),
                         extra: currentWarmPlanDetail,
@@ -433,7 +431,6 @@ class _ScopedNavigationSurface extends StatelessWidget {
                         PlanningRoutes.planSessionSongReaderLocation(
                           planSlug: scopedContext.planSlug,
                           sessionSlug: scopedContext.sessionSlug,
-                          sessionItemId: scopedContext.nextItem!.sessionItemId,
                           songSlug: scopedContext.nextItem!.songSlug,
                         ),
                         extra: currentWarmPlanDetail,

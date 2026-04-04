@@ -109,7 +109,7 @@ void main() {
   );
 
   testWidgets(
-    'duplicate songs navigate by session item identity instead of song id alone',
+    'scoped reader direct entry resolves by session and song slug',
     (tester) async {
       final repository = _StaticAuthRepository(
         restoredSession: const AppAuthSession(
@@ -125,7 +125,7 @@ void main() {
         authController: controller,
         refreshListenable: controller,
         initialLocation:
-            '/plans/plan-1/sessions/session-1/items/item-10/songs/repeated-song',
+            '/plans/plan-1/sessions/session-1/items/songs/repeated-song',
       );
 
       await tester.pumpWidget(
@@ -148,7 +148,7 @@ void main() {
             ),
             planningPlanDetailProvider(
               'plan-1',
-            ).overrideWith((ref) async => _duplicateSongPlanDetailFixture()),
+            ).overrideWith((ref) async => _planDetailFixture()),
             songLibraryListProvider.overrideWith(
               (ref) async => [
                 _songSummaryFixture('song-1'),
@@ -175,7 +175,7 @@ void main() {
       await tester.tap(find.text(AppStrings.scopedReaderNextAction));
       await tester.pumpAndSettle();
 
-      expect(find.text('Repeated Song'), findsOneWidget);
+      expect(find.text('Second Song'), findsOneWidget);
       final previousButton = tester.widget<OutlinedButton>(
         find.widgetWithText(
           OutlinedButton,
@@ -186,7 +186,7 @@ void main() {
         find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
       );
       expect(previousButton.onPressed, isNotNull);
-      expect(nextButton.onPressed, isNotNull);
+      expect(nextButton.onPressed, isNull);
     },
   );
 
@@ -314,36 +314,6 @@ PlanDetail _planDetailFixture() {
           SessionItemSummary(
             id: 'item-2',
             position: 20,
-            song: SongSummary(id: 'song-2', title: 'Second Song'),
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
-PlanDetail _duplicateSongPlanDetailFixture() {
-  return PlanDetail(
-    plan: _planSummaryFixture(),
-    sessions: const [
-      SessionSummary(
-        id: 'session-1',
-        name: 'Main Set',
-        position: 10,
-        items: [
-          SessionItemSummary(
-            id: 'item-10',
-            position: 10,
-            song: SongSummary(id: 'song-1', title: 'Repeated Song'),
-          ),
-          SessionItemSummary(
-            id: 'item-20',
-            position: 20,
-            song: SongSummary(id: 'song-1', title: 'Repeated Song'),
-          ),
-          SessionItemSummary(
-            id: 'item-30',
-            position: 30,
             song: SongSummary(id: 'song-2', title: 'Second Song'),
           ),
         ],
