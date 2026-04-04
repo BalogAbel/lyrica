@@ -390,6 +390,15 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _slugMeta = const VerificationMeta('slug');
+  @override
+  late final GeneratedColumn<String> slug = GeneratedColumn<String>(
+    'slug',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
@@ -438,6 +447,7 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     organizationId,
     snapshotVersion,
     planId,
+    slug,
     name,
     description,
     scheduledFor,
@@ -492,6 +502,14 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
       );
     } else if (isInserting) {
       context.missing(_planIdMeta);
+    }
+    if (data.containsKey('slug')) {
+      context.handle(
+        _slugMeta,
+        slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_slugMeta);
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -552,6 +570,10 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
         DriftSqlType.string,
         data['${effectivePrefix}plan_id'],
       )!,
+      slug: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slug'],
+      )!,
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}name'],
@@ -583,6 +605,7 @@ class CachedPlanningPlan extends DataClass
   final String organizationId;
   final int snapshotVersion;
   final String planId;
+  final String slug;
   final String name;
   final String? description;
   final DateTime? scheduledFor;
@@ -592,6 +615,7 @@ class CachedPlanningPlan extends DataClass
     required this.organizationId,
     required this.snapshotVersion,
     required this.planId,
+    required this.slug,
     required this.name,
     this.description,
     this.scheduledFor,
@@ -604,6 +628,7 @@ class CachedPlanningPlan extends DataClass
     map['organization_id'] = Variable<String>(organizationId);
     map['snapshot_version'] = Variable<int>(snapshotVersion);
     map['plan_id'] = Variable<String>(planId);
+    map['slug'] = Variable<String>(slug);
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
@@ -621,6 +646,7 @@ class CachedPlanningPlan extends DataClass
       organizationId: Value(organizationId),
       snapshotVersion: Value(snapshotVersion),
       planId: Value(planId),
+      slug: Value(slug),
       name: Value(name),
       description: description == null && nullToAbsent
           ? const Value.absent()
@@ -642,6 +668,7 @@ class CachedPlanningPlan extends DataClass
       organizationId: serializer.fromJson<String>(json['organizationId']),
       snapshotVersion: serializer.fromJson<int>(json['snapshotVersion']),
       planId: serializer.fromJson<String>(json['planId']),
+      slug: serializer.fromJson<String>(json['slug']),
       name: serializer.fromJson<String>(json['name']),
       description: serializer.fromJson<String?>(json['description']),
       scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
@@ -656,6 +683,7 @@ class CachedPlanningPlan extends DataClass
       'organizationId': serializer.toJson<String>(organizationId),
       'snapshotVersion': serializer.toJson<int>(snapshotVersion),
       'planId': serializer.toJson<String>(planId),
+      'slug': serializer.toJson<String>(slug),
       'name': serializer.toJson<String>(name),
       'description': serializer.toJson<String?>(description),
       'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
@@ -668,6 +696,7 @@ class CachedPlanningPlan extends DataClass
     String? organizationId,
     int? snapshotVersion,
     String? planId,
+    String? slug,
     String? name,
     Value<String?> description = const Value.absent(),
     Value<DateTime?> scheduledFor = const Value.absent(),
@@ -677,6 +706,7 @@ class CachedPlanningPlan extends DataClass
     organizationId: organizationId ?? this.organizationId,
     snapshotVersion: snapshotVersion ?? this.snapshotVersion,
     planId: planId ?? this.planId,
+    slug: slug ?? this.slug,
     name: name ?? this.name,
     description: description.present ? description.value : this.description,
     scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
@@ -692,6 +722,7 @@ class CachedPlanningPlan extends DataClass
           ? data.snapshotVersion.value
           : this.snapshotVersion,
       planId: data.planId.present ? data.planId.value : this.planId,
+      slug: data.slug.present ? data.slug.value : this.slug,
       name: data.name.present ? data.name.value : this.name,
       description: data.description.present
           ? data.description.value
@@ -710,6 +741,7 @@ class CachedPlanningPlan extends DataClass
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
@@ -724,6 +756,7 @@ class CachedPlanningPlan extends DataClass
     organizationId,
     snapshotVersion,
     planId,
+    slug,
     name,
     description,
     scheduledFor,
@@ -737,6 +770,7 @@ class CachedPlanningPlan extends DataClass
           other.organizationId == this.organizationId &&
           other.snapshotVersion == this.snapshotVersion &&
           other.planId == this.planId &&
+          other.slug == this.slug &&
           other.name == this.name &&
           other.description == this.description &&
           other.scheduledFor == this.scheduledFor &&
@@ -748,6 +782,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
   final Value<String> organizationId;
   final Value<int> snapshotVersion;
   final Value<String> planId;
+  final Value<String> slug;
   final Value<String> name;
   final Value<String?> description;
   final Value<DateTime?> scheduledFor;
@@ -758,6 +793,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     this.organizationId = const Value.absent(),
     this.snapshotVersion = const Value.absent(),
     this.planId = const Value.absent(),
+    this.slug = const Value.absent(),
     this.name = const Value.absent(),
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
@@ -769,6 +805,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     required String organizationId,
     required int snapshotVersion,
     required String planId,
+    required String slug,
     required String name,
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
@@ -778,6 +815,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
        organizationId = Value(organizationId),
        snapshotVersion = Value(snapshotVersion),
        planId = Value(planId),
+       slug = Value(slug),
        name = Value(name),
        updatedAt = Value(updatedAt);
   static Insertable<CachedPlanningPlan> custom({
@@ -785,6 +823,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Expression<String>? organizationId,
     Expression<int>? snapshotVersion,
     Expression<String>? planId,
+    Expression<String>? slug,
     Expression<String>? name,
     Expression<String>? description,
     Expression<DateTime>? scheduledFor,
@@ -796,6 +835,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       if (organizationId != null) 'organization_id': organizationId,
       if (snapshotVersion != null) 'snapshot_version': snapshotVersion,
       if (planId != null) 'plan_id': planId,
+      if (slug != null) 'slug': slug,
       if (name != null) 'name': name,
       if (description != null) 'description': description,
       if (scheduledFor != null) 'scheduled_for': scheduledFor,
@@ -809,6 +849,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Value<String>? organizationId,
     Value<int>? snapshotVersion,
     Value<String>? planId,
+    Value<String>? slug,
     Value<String>? name,
     Value<String?>? description,
     Value<DateTime?>? scheduledFor,
@@ -820,6 +861,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       organizationId: organizationId ?? this.organizationId,
       snapshotVersion: snapshotVersion ?? this.snapshotVersion,
       planId: planId ?? this.planId,
+      slug: slug ?? this.slug,
       name: name ?? this.name,
       description: description ?? this.description,
       scheduledFor: scheduledFor ?? this.scheduledFor,
@@ -842,6 +884,9 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     }
     if (planId.present) {
       map['plan_id'] = Variable<String>(planId.value);
+    }
+    if (slug.present) {
+      map['slug'] = Variable<String>(slug.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -868,6 +913,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
@@ -935,6 +981,15 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _slugMeta = const VerificationMeta('slug');
+  @override
+  late final GeneratedColumn<String> slug = GeneratedColumn<String>(
+    'slug',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _positionMeta = const VerificationMeta(
     'position',
   );
@@ -962,6 +1017,7 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     snapshotVersion,
     sessionId,
     planId,
+    slug,
     position,
     name,
   ];
@@ -1023,6 +1079,14 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     } else if (isInserting) {
       context.missing(_planIdMeta);
     }
+    if (data.containsKey('slug')) {
+      context.handle(
+        _slugMeta,
+        slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_slugMeta);
+    }
     if (data.containsKey('position')) {
       context.handle(
         _positionMeta,
@@ -1068,6 +1132,10 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
         DriftSqlType.string,
         data['${effectivePrefix}plan_id'],
       )!,
+      slug: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slug'],
+      )!,
       position: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}position'],
@@ -1092,6 +1160,7 @@ class CachedPlanningSession extends DataClass
   final int snapshotVersion;
   final String sessionId;
   final String planId;
+  final String slug;
   final int position;
   final String name;
   const CachedPlanningSession({
@@ -1100,6 +1169,7 @@ class CachedPlanningSession extends DataClass
     required this.snapshotVersion,
     required this.sessionId,
     required this.planId,
+    required this.slug,
     required this.position,
     required this.name,
   });
@@ -1111,6 +1181,7 @@ class CachedPlanningSession extends DataClass
     map['snapshot_version'] = Variable<int>(snapshotVersion);
     map['session_id'] = Variable<String>(sessionId);
     map['plan_id'] = Variable<String>(planId);
+    map['slug'] = Variable<String>(slug);
     map['position'] = Variable<int>(position);
     map['name'] = Variable<String>(name);
     return map;
@@ -1123,6 +1194,7 @@ class CachedPlanningSession extends DataClass
       snapshotVersion: Value(snapshotVersion),
       sessionId: Value(sessionId),
       planId: Value(planId),
+      slug: Value(slug),
       position: Value(position),
       name: Value(name),
     );
@@ -1139,6 +1211,7 @@ class CachedPlanningSession extends DataClass
       snapshotVersion: serializer.fromJson<int>(json['snapshotVersion']),
       sessionId: serializer.fromJson<String>(json['sessionId']),
       planId: serializer.fromJson<String>(json['planId']),
+      slug: serializer.fromJson<String>(json['slug']),
       position: serializer.fromJson<int>(json['position']),
       name: serializer.fromJson<String>(json['name']),
     );
@@ -1152,6 +1225,7 @@ class CachedPlanningSession extends DataClass
       'snapshotVersion': serializer.toJson<int>(snapshotVersion),
       'sessionId': serializer.toJson<String>(sessionId),
       'planId': serializer.toJson<String>(planId),
+      'slug': serializer.toJson<String>(slug),
       'position': serializer.toJson<int>(position),
       'name': serializer.toJson<String>(name),
     };
@@ -1163,6 +1237,7 @@ class CachedPlanningSession extends DataClass
     int? snapshotVersion,
     String? sessionId,
     String? planId,
+    String? slug,
     int? position,
     String? name,
   }) => CachedPlanningSession(
@@ -1171,6 +1246,7 @@ class CachedPlanningSession extends DataClass
     snapshotVersion: snapshotVersion ?? this.snapshotVersion,
     sessionId: sessionId ?? this.sessionId,
     planId: planId ?? this.planId,
+    slug: slug ?? this.slug,
     position: position ?? this.position,
     name: name ?? this.name,
   );
@@ -1187,6 +1263,7 @@ class CachedPlanningSession extends DataClass
           : this.snapshotVersion,
       sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       planId: data.planId.present ? data.planId.value : this.planId,
+      slug: data.slug.present ? data.slug.value : this.slug,
       position: data.position.present ? data.position.value : this.position,
       name: data.name.present ? data.name.value : this.name,
     );
@@ -1200,6 +1277,7 @@ class CachedPlanningSession extends DataClass
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('sessionId: $sessionId, ')
           ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
           ..write('position: $position, ')
           ..write('name: $name')
           ..write(')'))
@@ -1213,6 +1291,7 @@ class CachedPlanningSession extends DataClass
     snapshotVersion,
     sessionId,
     planId,
+    slug,
     position,
     name,
   );
@@ -1225,6 +1304,7 @@ class CachedPlanningSession extends DataClass
           other.snapshotVersion == this.snapshotVersion &&
           other.sessionId == this.sessionId &&
           other.planId == this.planId &&
+          other.slug == this.slug &&
           other.position == this.position &&
           other.name == this.name);
 }
@@ -1236,6 +1316,7 @@ class CachedPlanningSessionsCompanion
   final Value<int> snapshotVersion;
   final Value<String> sessionId;
   final Value<String> planId;
+  final Value<String> slug;
   final Value<int> position;
   final Value<String> name;
   final Value<int> rowid;
@@ -1245,6 +1326,7 @@ class CachedPlanningSessionsCompanion
     this.snapshotVersion = const Value.absent(),
     this.sessionId = const Value.absent(),
     this.planId = const Value.absent(),
+    this.slug = const Value.absent(),
     this.position = const Value.absent(),
     this.name = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1255,6 +1337,7 @@ class CachedPlanningSessionsCompanion
     required int snapshotVersion,
     required String sessionId,
     required String planId,
+    required String slug,
     required int position,
     required String name,
     this.rowid = const Value.absent(),
@@ -1263,6 +1346,7 @@ class CachedPlanningSessionsCompanion
        snapshotVersion = Value(snapshotVersion),
        sessionId = Value(sessionId),
        planId = Value(planId),
+       slug = Value(slug),
        position = Value(position),
        name = Value(name);
   static Insertable<CachedPlanningSession> custom({
@@ -1271,6 +1355,7 @@ class CachedPlanningSessionsCompanion
     Expression<int>? snapshotVersion,
     Expression<String>? sessionId,
     Expression<String>? planId,
+    Expression<String>? slug,
     Expression<int>? position,
     Expression<String>? name,
     Expression<int>? rowid,
@@ -1281,6 +1366,7 @@ class CachedPlanningSessionsCompanion
       if (snapshotVersion != null) 'snapshot_version': snapshotVersion,
       if (sessionId != null) 'session_id': sessionId,
       if (planId != null) 'plan_id': planId,
+      if (slug != null) 'slug': slug,
       if (position != null) 'position': position,
       if (name != null) 'name': name,
       if (rowid != null) 'rowid': rowid,
@@ -1293,6 +1379,7 @@ class CachedPlanningSessionsCompanion
     Value<int>? snapshotVersion,
     Value<String>? sessionId,
     Value<String>? planId,
+    Value<String>? slug,
     Value<int>? position,
     Value<String>? name,
     Value<int>? rowid,
@@ -1303,6 +1390,7 @@ class CachedPlanningSessionsCompanion
       snapshotVersion: snapshotVersion ?? this.snapshotVersion,
       sessionId: sessionId ?? this.sessionId,
       planId: planId ?? this.planId,
+      slug: slug ?? this.slug,
       position: position ?? this.position,
       name: name ?? this.name,
       rowid: rowid ?? this.rowid,
@@ -1327,6 +1415,9 @@ class CachedPlanningSessionsCompanion
     if (planId.present) {
       map['plan_id'] = Variable<String>(planId.value);
     }
+    if (slug.present) {
+      map['slug'] = Variable<String>(slug.value);
+    }
     if (position.present) {
       map['position'] = Variable<int>(position.value);
     }
@@ -1347,6 +1438,7 @@ class CachedPlanningSessionsCompanion
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('sessionId: $sessionId, ')
           ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
           ..write('position: $position, ')
           ..write('name: $name, ')
           ..write('rowid: $rowid')
@@ -2177,6 +2269,7 @@ typedef $$CachedPlanningPlansTableCreateCompanionBuilder =
       required String organizationId,
       required int snapshotVersion,
       required String planId,
+      required String slug,
       required String name,
       Value<String?> description,
       Value<DateTime?> scheduledFor,
@@ -2189,6 +2282,7 @@ typedef $$CachedPlanningPlansTableUpdateCompanionBuilder =
       Value<String> organizationId,
       Value<int> snapshotVersion,
       Value<String> planId,
+      Value<String> slug,
       Value<String> name,
       Value<String?> description,
       Value<DateTime?> scheduledFor,
@@ -2222,6 +2316,11 @@ class $$CachedPlanningPlansTableFilterComposer
 
   ColumnFilters<String> get planId => $composableBuilder(
     column: $table.planId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slug => $composableBuilder(
+    column: $table.slug,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2275,6 +2374,11 @@ class $$CachedPlanningPlansTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get name => $composableBuilder(
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
@@ -2320,6 +2424,9 @@ class $$CachedPlanningPlansTableAnnotationComposer
 
   GeneratedColumn<String> get planId =>
       $composableBuilder(column: $table.planId, builder: (column) => column);
+
+  GeneratedColumn<String> get slug =>
+      $composableBuilder(column: $table.slug, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
@@ -2385,6 +2492,7 @@ class $$CachedPlanningPlansTableTableManager
                 Value<String> organizationId = const Value.absent(),
                 Value<int> snapshotVersion = const Value.absent(),
                 Value<String> planId = const Value.absent(),
+                Value<String> slug = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
@@ -2395,6 +2503,7 @@ class $$CachedPlanningPlansTableTableManager
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 planId: planId,
+                slug: slug,
                 name: name,
                 description: description,
                 scheduledFor: scheduledFor,
@@ -2407,6 +2516,7 @@ class $$CachedPlanningPlansTableTableManager
                 required String organizationId,
                 required int snapshotVersion,
                 required String planId,
+                required String slug,
                 required String name,
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
@@ -2417,6 +2527,7 @@ class $$CachedPlanningPlansTableTableManager
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 planId: planId,
+                slug: slug,
                 name: name,
                 description: description,
                 scheduledFor: scheduledFor,
@@ -2459,6 +2570,7 @@ typedef $$CachedPlanningSessionsTableCreateCompanionBuilder =
       required int snapshotVersion,
       required String sessionId,
       required String planId,
+      required String slug,
       required int position,
       required String name,
       Value<int> rowid,
@@ -2470,6 +2582,7 @@ typedef $$CachedPlanningSessionsTableUpdateCompanionBuilder =
       Value<int> snapshotVersion,
       Value<String> sessionId,
       Value<String> planId,
+      Value<String> slug,
       Value<int> position,
       Value<String> name,
       Value<int> rowid,
@@ -2506,6 +2619,11 @@ class $$CachedPlanningSessionsTableFilterComposer
 
   ColumnFilters<String> get planId => $composableBuilder(
     column: $table.planId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slug => $composableBuilder(
+    column: $table.slug,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2554,6 +2672,11 @@ class $$CachedPlanningSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get position => $composableBuilder(
     column: $table.position,
     builder: (column) => ColumnOrderings(column),
@@ -2592,6 +2715,9 @@ class $$CachedPlanningSessionsTableAnnotationComposer
 
   GeneratedColumn<String> get planId =>
       $composableBuilder(column: $table.planId, builder: (column) => column);
+
+  GeneratedColumn<String> get slug =>
+      $composableBuilder(column: $table.slug, builder: (column) => column);
 
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
@@ -2651,6 +2777,7 @@ class $$CachedPlanningSessionsTableTableManager
                 Value<int> snapshotVersion = const Value.absent(),
                 Value<String> sessionId = const Value.absent(),
                 Value<String> planId = const Value.absent(),
+                Value<String> slug = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -2660,6 +2787,7 @@ class $$CachedPlanningSessionsTableTableManager
                 snapshotVersion: snapshotVersion,
                 sessionId: sessionId,
                 planId: planId,
+                slug: slug,
                 position: position,
                 name: name,
                 rowid: rowid,
@@ -2671,6 +2799,7 @@ class $$CachedPlanningSessionsTableTableManager
                 required int snapshotVersion,
                 required String sessionId,
                 required String planId,
+                required String slug,
                 required int position,
                 required String name,
                 Value<int> rowid = const Value.absent(),
@@ -2680,6 +2809,7 @@ class $$CachedPlanningSessionsTableTableManager
                 snapshotVersion: snapshotVersion,
                 sessionId: sessionId,
                 planId: planId,
+                slug: slug,
                 position: position,
                 name: name,
                 rowid: rowid,

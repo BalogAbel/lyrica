@@ -50,10 +50,10 @@ void main() {
               const Material(child: Text('plans:list')),
         ),
         GoRoute(
-          path: '/songs/:songId',
+          path: '/songs/:songSlug',
           builder: (context, state) {
-            final songId = state.pathParameters['songId']!;
-            return Material(child: Text('reader:$songId'));
+            final songSlug = state.pathParameters['songSlug']!;
+            return Material(child: Text('reader:$songSlug'));
           },
         ),
       ],
@@ -88,8 +88,12 @@ void main() {
     await tester.pumpWidget(
       buildApp(
         songs: const [
-          SongSummary(id: 'egy_ut', title: 'Egy út'),
-          SongSummary(id: 'felkel_a_nap', title: 'Felkel a nap'),
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+          SongSummary(
+            id: 'felkel_a_nap',
+            slug: 'felkel-a-nap',
+            title: 'Felkel a nap',
+          ),
         ],
         catalogState: const CatalogSnapshotState(
           context: null,
@@ -118,7 +122,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -126,7 +132,7 @@ void main() {
     await tester.tap(find.text('Egy út'));
     await tester.pumpAndSettle();
 
-    expect(find.text('reader:egy_ut'), findsOneWidget);
+    expect(find.text('reader:egy-ut'), findsOneWidget);
   });
 
   testWidgets('returns to the song list after opening a song from the list', (
@@ -134,7 +140,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -142,12 +150,12 @@ void main() {
     await tester.tap(find.text('Egy út'));
     await tester.pumpAndSettle();
 
-    expect(find.text('reader:egy_ut'), findsOneWidget);
+    expect(find.text('reader:egy-ut'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.text('reader:egy_ut'), findsNothing);
+    expect(find.text('reader:egy-ut'), findsNothing);
     expect(find.text('Egy út'), findsOneWidget);
     expect(find.byType(SongListScreen), findsOneWidget);
   });
@@ -190,7 +198,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         catalogState: const CatalogSnapshotState(
           context: null,
           connectionStatus: CatalogConnectionStatus.offlineCached,
@@ -214,7 +224,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -229,7 +241,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -259,7 +273,9 @@ void main() {
 
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         catalogController: controller,
       ),
     );
@@ -290,7 +306,9 @@ void main() {
 
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         catalogController: controller,
         catalogState: const CatalogSnapshotState(
           context: null,
@@ -315,7 +333,9 @@ void main() {
   testWidgets('shows a persistent refreshing status surface', (tester) async {
     await tester.pumpWidget(
       buildApp(
-        songs: const [SongSummary(id: 'egy_ut', title: 'Egy út')],
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
         catalogState: const CatalogSnapshotState(
           context: null,
           connectionStatus: CatalogConnectionStatus.online,
@@ -386,7 +406,9 @@ void main() {
               throw Exception('backend unavailable');
             }
 
-            return const [SongSummary(id: 'egy_ut', title: 'Egy út')];
+            return const [
+              SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+            ];
           },
         ),
       );
@@ -437,7 +459,13 @@ class _CountingSongRepository implements SongRepository {
   @override
   Future<List<SongSummary>> listSongs() async {
     listSongsCalls += 1;
-    return const [SongSummary(id: 'song-1', title: 'Refreshed Song')];
+    return const [
+      SongSummary(
+        id: 'song-1',
+        slug: 'refreshed-song',
+        title: 'Refreshed Song',
+      ),
+    ];
   }
 }
 

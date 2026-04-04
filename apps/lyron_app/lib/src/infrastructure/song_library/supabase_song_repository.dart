@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef ListSongRows = Future<List<Map<String, dynamic>>> Function();
 typedef GetSongRow = Future<Map<String, dynamic>?> Function(String id);
+typedef GetSongSummaryBySlugRow =
+    Future<Map<String, dynamic>?> Function(String songSlug);
 
 class SupabaseSongRepository implements SongRepository {
   SupabaseSongRepository(SupabaseClient client)
@@ -15,15 +17,23 @@ class SupabaseSongRepository implements SongRepository {
         listSongsRows: () async {
           final rows = await client
               .from('songs')
-              .select('id, title')
+              .select('id, slug, title')
               .order('title');
           return List<Map<String, dynamic>>.from(rows);
         },
         getSongRow: (id) async {
           final row = await client
               .from('songs')
-              .select('id, chordpro_source')
+              .select('id, slug, chordpro_source')
               .eq('id', id)
+              .maybeSingle();
+          return row == null ? null : Map<String, dynamic>.from(row);
+        },
+        getSongSummaryBySlugRow: (songSlug) async {
+          final row = await client
+              .from('songs')
+              .select('id, slug, title')
+              .eq('slug', songSlug)
               .maybeSingle();
           return row == null ? null : Map<String, dynamic>.from(row);
         },
@@ -33,11 +43,24 @@ class SupabaseSongRepository implements SongRepository {
   SupabaseSongRepository.testing({
     required ListSongRows listSongsRows,
     required GetSongRow getSongRow,
+    GetSongSummaryBySlugRow? getSongSummaryBySlugRow,
   }) : _listSongsRows = listSongsRows,
-       _getSongRow = getSongRow;
+       _getSongRow = getSongRow,
+       _getSongSummaryBySlugRow =
+           getSongSummaryBySlugRow ??
+           ((songSlug) async {
+             final rows = await listSongsRows();
+             for (final row in rows) {
+               if (row['slug'] == songSlug) {
+                 return row;
+               }
+             }
+             return null;
+           });
 
   final ListSongRows _listSongsRows;
   final GetSongRow _getSongRow;
+  final GetSongSummaryBySlugRow _getSongSummaryBySlugRow;
 
   @override
   Future<List<SongSummary>> listSongs() async {
@@ -47,6 +70,7 @@ class SupabaseSongRepository implements SongRepository {
         .map(
           (row) => SongSummary(
             id: row['id'] as String,
+            slug: row['slug'] as String,
             title: row['title'] as String,
           ),
         )
@@ -63,6 +87,24 @@ class SupabaseSongRepository implements SongRepository {
     return SongSource(
       id: row['id'] as String,
       source: row['chordpro_source'] as String,
+    );
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    final row = await _getSongSummaryBySlugRow(songSlug);
+    if (row == null) {
+      return null;
+    }
+
+    return SongSummary(
+      id: row['id'] as String,
+      slug: row['slug'] as String,
+      title: row['title'] as String,
     );
   }
 

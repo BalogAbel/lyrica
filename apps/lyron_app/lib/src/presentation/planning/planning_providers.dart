@@ -13,6 +13,20 @@ final planningPlanListProvider = FutureProvider.autoDispose<List<PlanSummary>>((
   );
 });
 
+final planningPlanBySlugProvider = FutureProvider.autoDispose
+    .family<PlanSummary?, String>((ref, planSlug) async {
+      return ref
+          .watch(planningRepositoryProvider)
+          .getPlanSummaryBySlug(planSlug);
+    });
+
+final planningPlanDetailBySlugProvider = FutureProvider.autoDispose
+    .family<PlanDetail?, String>((ref, planSlug) async {
+      return ref
+          .watch(planningRepositoryProvider)
+          .getPlanDetailBySlug(planSlug);
+    });
+
 final planningPlanDetailProvider = FutureProvider.autoDispose
     .family<PlanDetail, String>((ref, planId) {
       return _readPlanningOrThrow<PlanDetail>(

@@ -17,6 +17,12 @@ abstract interface class SongCatalogStore {
     required String organizationId,
   });
 
+  Future<SongSummary?> readActiveSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  });
+
   Future<SongSource?> readActiveSource({
     required String userId,
     required String organizationId,
@@ -80,6 +86,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
                   organizationId: organizationId,
                   snapshotVersion: nextSnapshotVersion,
                   songId: summary.id,
+                  slug: summary.slug,
                   title: summary.title,
                 ),
               )
@@ -128,8 +135,41 @@ class DriftSongCatalogStore implements SongCatalogStore {
             .get();
 
     return rows
-        .map((row) => SongSummary(id: row.songId, title: row.title))
+        .map(
+          (row) =>
+              SongSummary(id: row.songId, title: row.title, slug: row.slug),
+        )
         .toList(growable: false);
+  }
+
+  @override
+  Future<SongSummary?> readActiveSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    final snapshot = await _readSnapshot(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (snapshot == null) {
+      return null;
+    }
+
+    final row =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(snapshot.snapshotVersion) &
+                  table.slug.equals(songSlug),
+            ))
+            .getSingleOrNull();
+    if (row == null) {
+      return null;
+    }
+
+    return SongSummary(id: row.songId, title: row.title, slug: row.slug);
   }
 
   @override

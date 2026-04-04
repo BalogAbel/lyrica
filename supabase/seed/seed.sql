@@ -24,6 +24,7 @@ insert into public.songs (
   id,
   organization_id,
   title,
+  slug,
   artist,
   chordpro_source,
   metadata_json,
@@ -33,6 +34,7 @@ values (
   '33333333-3333-3333-3333-333333333333',
   '11111111-1111-1111-1111-111111111111',
   'A forrásnál',
+  'a-forrasnal',
   null,
   $song$
 {title:A forrásnál}
@@ -65,6 +67,7 @@ $song$,
   '33333333-3333-3333-3333-333333333334',
   '11111111-1111-1111-1111-111111111111',
   'A mi Istenünk (Leborulok előtted)',
+  'a-mi-istenunk-leborulok-elotted',
   null,
   $song$
 {title:A mi Istenünk (Leborulok előtted)}
@@ -102,6 +105,7 @@ $song$,
   '33333333-3333-3333-3333-333333333335',
   '11111111-1111-1111-1111-111111111111',
   'Egy út',
+  'egy-ut',
   null,
   $song$
 {title:Egy út}
@@ -143,6 +147,7 @@ $song$,
   '33333333-3333-3333-3333-333333333336',
   '11111111-1111-1111-1111-111111111112',
   'Hidden Seed Song',
+  'hidden-seed-song',
   null,
   $song$
 {title:Hidden Seed Song}
@@ -157,6 +162,7 @@ $song$,
 on conflict (id) do update
 set
   title = excluded.title,
+  slug = excluded.slug,
   artist = excluded.artist,
   chordpro_source = excluded.chordpro_source,
   metadata_json = excluded.metadata_json,
@@ -167,6 +173,7 @@ insert into public.plans (
   organization_id,
   group_id,
   name,
+  slug,
   description,
   scheduled_for,
   updated_at
@@ -176,6 +183,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   'Sunday Morning',
+  'sunday-morning',
   'Single-session fixture for the first planning read slice.',
   '2026-04-05T08:30:00Z',
   '2026-03-31T08:00:00Z'
@@ -184,6 +192,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   'Team Rehearsal',
+  'team-rehearsal',
   'Multi-session fixture proving the direct plan-to-session hierarchy.',
   null,
   '2026-03-31T09:00:00Z'
@@ -192,6 +201,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   'Evening Gathering',
+  'evening-gathering',
   'Later scheduled fixture for deterministic ordering checks.',
   '2026-04-12T17:00:00Z',
   '2026-03-31T07:30:00Z'
@@ -200,6 +210,7 @@ values (
   '11111111-1111-1111-1111-111111111112',
   null,
   'Hidden Organization Plan',
+  'hidden-organization-plan',
   'Authorization isolation fixture that must not be visible to the demo user.',
   '2026-04-06T09:00:00Z',
   '2026-03-31T10:00:00Z'
@@ -207,6 +218,7 @@ values (
 on conflict (id) do update
 set
   name = excluded.name,
+  slug = excluded.slug,
   description = excluded.description,
   scheduled_for = excluded.scheduled_for,
   updated_at = excluded.updated_at;
@@ -216,6 +228,7 @@ insert into public.sessions (
   organization_id,
   group_id,
   plan_id,
+  slug,
   position,
   name,
   notes,
@@ -226,6 +239,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   '44444444-4444-4444-4444-444444444441',
+  'main-set',
   10,
   'Main Set',
   'Single-session plan fixture.',
@@ -235,6 +249,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   '44444444-4444-4444-4444-444444444442',
+  'warm-up',
   10,
   'Warm-Up',
   'First session in the multi-session fixture.',
@@ -244,6 +259,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   '44444444-4444-4444-4444-444444444442',
+  'run-through',
   20,
   'Run-Through',
   'Second session in the multi-session fixture.',
@@ -253,6 +269,7 @@ values (
   '11111111-1111-1111-1111-111111111111',
   null,
   '44444444-4444-4444-4444-444444444443',
+  'evening-set',
   10,
   'Evening Set',
   'Later scheduled plan fixture.',
@@ -262,6 +279,7 @@ values (
   '11111111-1111-1111-1111-111111111112',
   null,
   '44444444-4444-4444-4444-444444444444',
+  'hidden-session',
   10,
   'Hidden Session',
   'Hidden organization fixture.',
@@ -270,6 +288,7 @@ values (
 on conflict (id) do update
 set
   plan_id = excluded.plan_id,
+  slug = excluded.slug,
   position = excluded.position,
   name = excluded.name,
   notes = excluded.notes,

@@ -25,4 +25,15 @@ class SongLibraryService {
       songId: songId,
     );
   }
+
+  Future<SongSummary?> getSongSummaryBySlug({
+    required ActiveCatalogContext context,
+    required String songSlug,
+  }) {
+    return _repository.getSongSummaryBySlug(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      songSlug: songSlug,
+    );
+  }
 }

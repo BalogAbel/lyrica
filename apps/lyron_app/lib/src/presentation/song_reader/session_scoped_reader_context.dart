@@ -10,10 +10,12 @@ class SessionScopedReaderNeighbor {
     required this.sessionItemId,
     required this.songId,
     required this.title,
-  });
+    String? songSlug,
+  }) : songSlug = songSlug ?? songId;
 
   final String sessionItemId;
   final String songId;
+  final String songSlug;
   final String title;
 
   @override
@@ -21,17 +23,20 @@ class SessionScopedReaderNeighbor {
     return other is SessionScopedReaderNeighbor &&
         other.sessionItemId == sessionItemId &&
         other.songId == songId &&
+        other.songSlug == songSlug &&
         other.title == title;
   }
 
   @override
-  int get hashCode => Object.hash(sessionItemId, songId, title);
+  int get hashCode => Object.hash(sessionItemId, songId, songSlug, title);
 }
 
 class SessionScopedReaderContext {
   const SessionScopedReaderContext({
     required this.planId,
+    required this.planSlug,
     required this.sessionId,
+    required this.sessionSlug,
     required this.sessionItemId,
     required this.songId,
     required this.selectedItem,
@@ -40,7 +45,9 @@ class SessionScopedReaderContext {
   });
 
   final String planId;
+  final String planSlug;
   final String sessionId;
+  final String sessionSlug;
   final String sessionItemId;
   final String songId;
   final SessionScopedReaderNeighbor selectedItem;
@@ -51,7 +58,9 @@ class SessionScopedReaderContext {
   bool operator ==(Object other) {
     return other is SessionScopedReaderContext &&
         other.planId == planId &&
+        other.planSlug == planSlug &&
         other.sessionId == sessionId &&
+        other.sessionSlug == sessionSlug &&
         other.sessionItemId == sessionItemId &&
         other.songId == songId &&
         other.selectedItem == selectedItem &&
@@ -62,7 +71,9 @@ class SessionScopedReaderContext {
   @override
   int get hashCode => Object.hash(
     planId,
+    planSlug,
     sessionId,
+    sessionSlug,
     sessionItemId,
     songId,
     selectedItem,
@@ -114,10 +125,15 @@ class SessionScopedReaderContextRequest {
     required this.sessionItemId,
     required this.songId,
     this.warmPlanDetail,
-  });
+    String? planSlug,
+    String? sessionSlug,
+  }) : planSlug = planSlug ?? planId,
+       sessionSlug = sessionSlug ?? sessionId;
 
   final String planId;
+  final String planSlug;
   final String sessionId;
+  final String sessionSlug;
   final String sessionItemId;
   final String songId;
   final PlanDetail? warmPlanDetail;
@@ -126,13 +142,22 @@ class SessionScopedReaderContextRequest {
   bool operator ==(Object other) {
     return other is SessionScopedReaderContextRequest &&
         other.planId == planId &&
+        other.planSlug == planSlug &&
         other.sessionId == sessionId &&
+        other.sessionSlug == sessionSlug &&
         other.sessionItemId == sessionItemId &&
         other.songId == songId &&
         other.warmPlanDetail == warmPlanDetail;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(planId, sessionId, sessionItemId, songId, warmPlanDetail);
+  int get hashCode => Object.hash(
+    planId,
+    planSlug,
+    sessionId,
+    sessionSlug,
+    sessionItemId,
+    songId,
+    warmPlanDetail,
+  );
 }

@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
@@ -45,7 +46,9 @@ SessionScopedReaderContextResult resolveSessionScopedReaderContext({
   return ResolvedSessionScopedReaderContextResult(
     SessionScopedReaderContext(
       planId: planId,
+      planSlug: planDetail.plan.slug,
       sessionId: sessionId,
+      sessionSlug: session.slug,
       sessionItemId: sessionItemId,
       songId: songId,
       selectedItem: _toNeighbor(selectedItem),
@@ -63,6 +66,7 @@ SessionScopedReaderNeighbor _toNeighbor(SessionItemSummary item) {
   return SessionScopedReaderNeighbor(
     sessionItemId: item.id,
     songId: item.song.id,
+    songSlug: item.song.slug,
     title: item.song.title,
   );
 }

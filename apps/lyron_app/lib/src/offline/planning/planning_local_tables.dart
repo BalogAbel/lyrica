@@ -15,6 +15,7 @@ class CachedPlanningPlans extends Table {
   TextColumn get organizationId => text()();
   IntColumn get snapshotVersion => integer()();
   TextColumn get planId => text()();
+  TextColumn get slug => text()();
   TextColumn get name => text()();
   TextColumn get description => text().nullable()();
   DateTimeColumn get scheduledFor => dateTime().nullable()();
@@ -30,6 +31,7 @@ class CachedPlanningSessions extends Table {
   IntColumn get snapshotVersion => integer()();
   TextColumn get sessionId => text()();
   TextColumn get planId => text()();
+  TextColumn get slug => text()();
   IntColumn get position => integer()();
   TextColumn get name => text()();
 

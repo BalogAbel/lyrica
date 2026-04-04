@@ -17,9 +17,11 @@ class CachedPlanRecord {
     required this.description,
     required this.scheduledFor,
     required this.updatedAt,
-  });
+    String? slug,
+  }) : slug = slug ?? id;
 
   final String id;
+  final String slug;
   final String name;
   final String? description;
   final DateTime? scheduledFor;
@@ -32,10 +34,12 @@ class CachedSessionRecord {
     required this.planId,
     required this.position,
     required this.name,
-  });
+    String? slug,
+  }) : slug = slug ?? id;
 
   final String id;
   final String planId;
+  final String slug;
   final int position;
   final String name;
 }
@@ -74,10 +78,22 @@ abstract interface class PlanningLocalStore {
     required String organizationId,
   });
 
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  });
+
   Future<PlanDetail?> readPlanDetail({
     required String userId,
     required String organizationId,
     required String planId,
+  });
+
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
   });
 
   Future<bool> hasProjection({
@@ -149,6 +165,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   organizationId: organizationId,
                   snapshotVersion: nextSnapshotVersion,
                   planId: plan.id,
+                  slug: plan.slug,
                   name: plan.name,
                   description: Value(plan.description),
                   scheduledFor: Value(plan.scheduledFor?.toUtc()),
@@ -167,6 +184,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   snapshotVersion: nextSnapshotVersion,
                   sessionId: session.id,
                   planId: session.planId,
+                  slug: session.slug,
                   position: session.position,
                   name: session.name,
                 ),
@@ -228,6 +246,32 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             .get();
 
     return rows.map(_toPlanSummary).toList(growable: false);
+  }
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    final owner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (owner == null) {
+      return null;
+    }
+
+    final row =
+        await (_database.select(_database.cachedPlanningPlans)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.slug.equals(planSlug),
+            ))
+            .getSingleOrNull();
+    return row == null ? null : _toPlanSummary(row);
   }
 
   @override
@@ -298,6 +342,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
           .map(
             (session) => SessionSummary(
               id: session.sessionId,
+              slug: session.slug,
               name: session.name,
               position: session.position,
               items: (itemsBySessionId[session.sessionId] ?? const [])
@@ -312,6 +357,28 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             ),
           )
           .toList(growable: false),
+    );
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    final summary = await readPlanSummaryBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      planSlug: planSlug,
+    );
+    if (summary == null) {
+      return null;
+    }
+
+    return readPlanDetail(
+      userId: userId,
+      organizationId: organizationId,
+      planId: summary.id,
     );
   }
 
@@ -407,6 +474,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   PlanSummary _toPlanSummary(CachedPlanningPlan row) {
     return PlanSummary(
       id: row.planId,
+      slug: row.slug,
       name: row.name,
       description: row.description,
       scheduledFor: row.scheduledFor?.toUtc(),

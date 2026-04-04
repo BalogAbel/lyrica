@@ -56,7 +56,7 @@ class PlanListScreen extends ConsumerWidget {
                       title: Text(plan.name),
                       subtitle: _PlanSummarySubtitle(plan: plan),
                       onTap: () => context.push(
-                        PlanningRoutes.planDetailLocation(plan.id),
+                        PlanningRoutes.planDetailLocation(plan.slug),
                       ),
                     );
                   },
