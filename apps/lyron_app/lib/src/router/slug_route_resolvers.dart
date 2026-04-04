@@ -1,11 +1,10 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:collection/collection.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -95,6 +94,14 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final catalogState = ref.watch(catalogSnapshotStateProvider);
+    if (catalogState.context == null &&
+        catalogState.refreshStatus == CatalogRefreshStatus.refreshing) {
+      return const _RouteStateScaffold(
+        message: AppStrings.songReaderLoadingMessage,
+      );
+    }
+
     final plansAsync = ref.watch(planningPlanListProvider);
     final songsAsync = ref.watch(songLibraryListProvider);
 

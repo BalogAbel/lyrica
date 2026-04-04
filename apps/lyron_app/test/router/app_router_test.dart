@@ -5,15 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -21,14 +22,12 @@ import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
-import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
+import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
@@ -608,15 +607,37 @@ void main() {
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
             appAuthListenableProvider.overrideWithValue(controller),
-            planningPlanDetailBySlugProvider(
-              'sunday-morning',
+            planningPlanListProvider.overrideWith(
+              (ref) async => [
+                PlanSummary(
+                  id: 'plan-1',
+                  slug: 'sunday-morning',
+                  name: 'Sunday Morning',
+                  description: 'Single-session Sunday fixture',
+                  scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                  updatedAt: DateTime(2026, 3, 31, 8),
+                ),
+              ],
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
             ).overrideWith((ref) async => _planDetailFixture()),
-            songLibrarySongBySlugProvider('egy-ut').overrideWith(
-              (ref) async => const SongSummary(
-                id: 'song-1',
-                slug: 'egy-ut',
-                title: 'Egy út',
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
               ),
+            ),
+            songLibraryListProvider.overrideWith(
+              (ref) async => const [
+                SongSummary(id: 'song-1', slug: 'egy-ut', title: 'Egy út'),
+              ],
             ),
           ],
           child: const MaterialApp(
@@ -632,6 +653,65 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Song reader'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'scoped reader route stays loading while catalog context is refreshing',
+    (WidgetTester tester) async {
+      final repository = _TestAuthRepository(
+        restoredSession: const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        ),
+      );
+      final controller = AppAuthController(repository);
+      await controller.restoreSession();
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [
+                PlanSummary(
+                  id: 'plan-1',
+                  slug: 'sunday-morning',
+                  name: 'Sunday Morning',
+                  description: 'Single-session Sunday fixture',
+                  scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                  updatedAt: DateTime(2026, 3, 31, 8),
+                ),
+              ],
+            ),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.refreshing,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            songLibraryListProvider.overrideWith((ref) async => const []),
+          ],
+          child: const MaterialApp(
+            home: PlanSessionSongSlugRouteResolver(
+              planSlug: 'sunday-morning',
+              sessionSlug: 'main-set',
+              sessionItemId: 'item-1',
+              songSlug: 'egy-ut',
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(AppStrings.songReaderLoadingMessage), findsOneWidget);
+      expect(find.text(AppStrings.routeNotFoundMessage), findsNothing);
     },
   );
 
