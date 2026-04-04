@@ -108,87 +108,86 @@ void main() {
     },
   );
 
-  testWidgets(
-    'scoped reader direct entry resolves by session and song slug',
-    (tester) async {
-      final repository = _StaticAuthRepository(
-        restoredSession: const AppAuthSession(
-          userId: 'user-1',
-          email: 'demo@lyron.local',
-        ),
-      );
-      final controller = AppAuthController(repository);
-      await controller.restoreSession();
-      addTearDown(controller.dispose);
+  testWidgets('scoped reader direct entry resolves by session and song slug', (
+    tester,
+  ) async {
+    final repository = _StaticAuthRepository(
+      restoredSession: const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+      ),
+    );
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    addTearDown(controller.dispose);
 
-      final router = createAppRouter(
-        authController: controller,
-        refreshListenable: controller,
-        initialLocation:
-            '/plans/plan-1/sessions/session-1/items/songs/repeated-song',
-      );
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation:
+          '/plans/plan-1/sessions/session-1/items/songs/repeated-song',
+    );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
-            appAuthListenableProvider.overrideWithValue(controller),
-            catalogSnapshotStateProvider.overrideWithValue(
-              const CatalogSnapshotState(
-                context: null,
-                connectionStatus: CatalogConnectionStatus.online,
-                refreshStatus: CatalogRefreshStatus.idle,
-                sessionStatus: CatalogSessionStatus.verified,
-                hasCachedCatalog: true,
-              ),
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
             ),
-            planningPlanListProvider.overrideWith(
-              (ref) async => [_planSummaryFixture()],
+          ),
+          planningPlanListProvider.overrideWith(
+            (ref) async => [_planSummaryFixture()],
+          ),
+          planningPlanDetailProvider(
+            'plan-1',
+          ).overrideWith((ref) async => _planDetailFixture()),
+          songLibraryListProvider.overrideWith(
+            (ref) async => [
+              _songSummaryFixture('song-1'),
+              _songSummaryFixture('song-2'),
+            ],
+          ),
+          songLibrarySongByIdProvider(
+            'song-1',
+          ).overrideWith((ref) async => _songSummaryFixture('song-1')),
+          songLibrarySongByIdProvider(
+            'song-2',
+          ).overrideWith((ref) async => _songSummaryFixture('song-2')),
+          songLibraryReaderProvider.overrideWithProvider(
+            (songId) => FutureProvider.autoDispose(
+              (ref) async => _songResultFor(songId),
             ),
-            planningPlanDetailProvider(
-              'plan-1',
-            ).overrideWith((ref) async => _planDetailFixture()),
-            songLibraryListProvider.overrideWith(
-              (ref) async => [
-                _songSummaryFixture('song-1'),
-                _songSummaryFixture('song-2'),
-              ],
-            ),
-            songLibrarySongByIdProvider(
-              'song-1',
-            ).overrideWith((ref) async => _songSummaryFixture('song-1')),
-            songLibrarySongByIdProvider(
-              'song-2',
-            ).overrideWith((ref) async => _songSummaryFixture('song-2')),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => _songResultFor(songId),
-              ),
-            ),
-          ],
-          child: LyronApp(router: router),
-        ),
-      );
-      await tester.pumpAndSettle();
+          ),
+        ],
+        child: LyronApp(router: router),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Second Song'), findsOneWidget);
-      final previousButton = tester.widget<OutlinedButton>(
-        find.widgetWithText(
-          OutlinedButton,
-          AppStrings.scopedReaderPreviousAction,
-        ),
-      );
-      final nextButton = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
-      );
-      expect(previousButton.onPressed, isNotNull);
-      expect(nextButton.onPressed, isNull);
-    },
-  );
+    expect(find.text('Second Song'), findsOneWidget);
+    final previousButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(
+        OutlinedButton,
+        AppStrings.scopedReaderPreviousAction,
+      ),
+    );
+    final nextButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
+    );
+    expect(previousButton.onPressed, isNotNull);
+    expect(nextButton.onPressed, isNull);
+  });
 
   testWidgets(
     'returning from the scoped reader keeps the previously opened item visible in plan detail',

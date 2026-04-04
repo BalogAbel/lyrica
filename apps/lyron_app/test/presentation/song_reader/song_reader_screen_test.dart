@@ -887,9 +887,7 @@ void main() {
       );
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
-        contains(
-          '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
-        ),
+        contains('/plans/plan-fixture/sessions/main-set/items/songs/song-two'),
       );
     },
   );
@@ -1009,11 +1007,12 @@ String _sessionItemIdForScopedRoute(
     return candidate.slug == sessionSlug;
   }).firstOrNull;
   final item = session?.items.where((candidate) {
-    return candidate.song.id == _songIdForScopedRoute(
-      planDetail,
-      sessionSlug: sessionSlug,
-      songSlug: songSlug,
-    );
+    return candidate.song.id ==
+        _songIdForScopedRoute(
+          planDetail,
+          sessionSlug: sessionSlug,
+          songSlug: songSlug,
+        );
   }).firstOrNull;
 
   return item?.id ?? songSlug;
