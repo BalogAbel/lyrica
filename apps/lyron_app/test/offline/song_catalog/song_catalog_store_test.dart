@@ -435,6 +435,55 @@ void main() {
     );
 
     test(
+      'slug lookup hides the snapshot slug when a local mutation moves the same song to a new slug',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [
+            SongSummary(id: 'song-1', title: 'Alpha', slug: 'alpha'),
+          ],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 27, 9),
+        );
+
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+            slug: 'alpha-edited',
+            title: 'Alpha Edited',
+            source: '{title: Alpha Edited}',
+            syncStatus: SongSyncStatus.pendingUpdate,
+            baseVersion: 1,
+          ),
+        );
+
+        expect(
+          await store.readActiveSummaryBySlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songSlug: 'alpha',
+          ),
+          isNull,
+        );
+        expect(
+          await store.readActiveSummaryBySlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songSlug: 'alpha-edited',
+          ),
+          const SongSummary(
+            id: 'song-1',
+            title: 'Alpha Edited',
+            slug: 'alpha-edited',
+          ),
+        );
+      },
+    );
+
+    test(
       'allocates unique slugs without reusing pending delete mutation slugs',
       () async {
         await store.replaceActiveSnapshot(

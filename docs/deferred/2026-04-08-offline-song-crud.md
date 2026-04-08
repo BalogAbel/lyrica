@@ -27,6 +27,7 @@ This leaves an avoidable sync-consistency gap. The client can keep a local recor
 - Define the domain behavior for "server deleted the song" during sync.
 - Decide whether this becomes a dedicated sync error state, a conflict subtype, or a convergence path that removes the local row.
 - Define explicit `discard mine` semantics when the server row is already gone.
+- If a future slice allows server-side disappearance to surface in planning or reader flows, do not degrade to a bare "song not found" placeholder. Preserve at least a human-readable song title or tombstone-style label so historical session items remain understandable.
 - Add application tests and backend-backed integration coverage for this case.
 
 ## Planning Note
