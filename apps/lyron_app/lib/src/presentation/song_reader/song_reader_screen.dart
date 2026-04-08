@@ -127,50 +127,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
     final draft = await showDialog<(String, String)>(
       context: context,
-      builder: (context) {
-        final titleController = TextEditingController(text: result.song.title);
-        final sourceController = TextEditingController(
-          text: currentSource.source,
-        );
-        return AlertDialog(
-          title: const Text(AppStrings.songEditAction),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: AppStrings.songTitleLabel,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: sourceController,
-                  minLines: 4,
-                  maxLines: 8,
-                  decoration: const InputDecoration(
-                    labelText: AppStrings.songSourceLabel,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(AppStrings.songCancelAction),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).pop((titleController.text.trim(), sourceController.text)),
-              child: const Text(AppStrings.songSaveAction),
-            ),
-          ],
-        );
-      },
+      builder: (context) => _SongEditDialog(
+        initialTitle: result.song.title,
+        initialSource: currentSource.source,
+      ),
     );
 
     if (draft == null) {
@@ -536,6 +496,80 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 ),
         ),
       ),
+    );
+  }
+}
+
+class _SongEditDialog extends StatefulWidget {
+  const _SongEditDialog({
+    required this.initialTitle,
+    required this.initialSource,
+  });
+
+  final String initialTitle;
+  final String initialSource;
+
+  @override
+  State<_SongEditDialog> createState() => _SongEditDialogState();
+}
+
+class _SongEditDialogState extends State<_SongEditDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _sourceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.initialTitle);
+    _sourceController = TextEditingController(text: widget.initialSource);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _sourceController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text(AppStrings.songEditAction),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: AppStrings.songTitleLabel,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _sourceController,
+              minLines: 4,
+              maxLines: 8,
+              decoration: const InputDecoration(
+                labelText: AppStrings.songSourceLabel,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(AppStrings.songCancelAction),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(
+            context,
+          ).pop((_titleController.text.trim(), _sourceController.text)),
+          child: const Text(AppStrings.songSaveAction),
+        ),
+      ],
     );
   }
 }

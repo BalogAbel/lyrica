@@ -265,24 +265,41 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String organizationId,
     required String songSlug,
   }) async {
-    final visibleRows = await _readVisibleSongs(
+    final visibleMutation = await _readVisibleMutationBySlug(
       userId: userId,
       organizationId: organizationId,
-      includeSources: false,
+      songSlug: songSlug,
     );
-
-    for (final row in visibleRows.values) {
-      if (row.slug == songSlug) {
-        return SongSummary(
-          id: row.songId,
-          title: row.title,
-          slug: row.slug,
-          version: row.version,
-        );
-      }
+    if (visibleMutation != null) {
+      return _summaryFromVisibleMutation(visibleMutation);
     }
 
-    return null;
+    final snapshotRow =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.slug.equals(songSlug),
+            ))
+            .getSingleOrNull();
+    if (snapshotRow == null) {
+      return null;
+    }
+
+    if (await _isSnapshotSongHidden(
+      userId: userId,
+      organizationId: organizationId,
+      songId: snapshotRow.songId,
+    )) {
+      return null;
+    }
+
+    return SongSummary(
+      id: snapshotRow.songId,
+      title: snapshotRow.title,
+      slug: snapshotRow.slug,
+      version: snapshotRow.version,
+    );
   }
 
   @override
@@ -291,12 +308,31 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String organizationId,
     required String songId,
   }) async {
-    final visibleRows = await _readVisibleSongs(
+    final visibleMutation = await _readVisibleMutationBySongId(
       userId: userId,
       organizationId: organizationId,
-      includeSources: false,
+      songId: songId,
     );
-    final row = visibleRows[songId];
+    if (visibleMutation != null) {
+      return _summaryFromVisibleMutation(visibleMutation);
+    }
+
+    if (await _isSnapshotSongHidden(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    )) {
+      return null;
+    }
+
+    final row =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(songId),
+            ))
+            .getSingleOrNull();
     if (row == null) {
       return null;
     }
@@ -315,17 +351,36 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String organizationId,
     required String songId,
   }) async {
-    final visibleRows = await _readVisibleSongs(
+    final visibleMutation = await _readVisibleMutationBySongId(
       userId: userId,
       organizationId: organizationId,
-      includeSources: true,
+      songId: songId,
     );
-    final row = visibleRows[songId];
-    if (row?.source == null) {
+    if (visibleMutation != null) {
+      return SongSource(id: visibleMutation.songId, source: visibleMutation.source);
+    }
+
+    if (await _isSnapshotSongHidden(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    )) {
       return null;
     }
 
-    return SongSource(id: row!.songId, source: row.source!);
+    final sourceRow =
+        await (_database.select(_database.cachedCatalogSources)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(songId),
+            ))
+            .getSingleOrNull();
+    if (sourceRow == null) {
+      return null;
+    }
+
+    return SongSource(id: sourceRow.songId, source: sourceRow.source);
   }
 
   @override
@@ -755,6 +810,68 @@ class DriftSongCatalogStore implements SongCatalogStore {
       organizationId: organizationId,
       songSlug: songSlug,
     );
+  }
+
+  SongSummary _summaryFromVisibleMutation(CachedCatalogSongMutation row) {
+    return SongSummary(
+      id: row.songId,
+      title: row.title,
+      slug: row.slug,
+      version: row.version,
+    );
+  }
+
+  Future<CachedCatalogSongMutation?> _readVisibleMutationBySongId({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) {
+    return (_database.select(_database.cachedCatalogSongMutations)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId) &
+              table.songId.equals(songId) &
+              table.syncStatus
+                  .equals(SongSyncStatus.pendingDelete.value)
+                  .not() &
+              table.syncStatus.equals(SongSyncStatus.synced.value).not(),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<CachedCatalogSongMutation?> _readVisibleMutationBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) {
+    return (_database.select(_database.cachedCatalogSongMutations)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId) &
+              table.slug.equals(songSlug) &
+              table.syncStatus
+                  .equals(SongSyncStatus.pendingDelete.value)
+                  .not() &
+              table.syncStatus.equals(SongSyncStatus.synced.value).not(),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<bool> _isSnapshotSongHidden({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    final mutationRow = await readSongMutationBySongId(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    );
+    if (mutationRow == null) {
+      return false;
+    }
+
+    return _songSyncStatusFromValue(mutationRow.syncStatus) != SongSyncStatus.synced;
   }
 
   void _upsertVisibleRow(
