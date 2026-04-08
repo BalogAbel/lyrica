@@ -35,6 +35,7 @@ Update these files whenever their subject changes:
 - `docs/integrations/freeshow.md` for presentation integration boundaries
 - `docs/specs/` for change specs
 - `docs/plans/` for implementation plans
+- `docs/deferred/` for intentionally deferred work that must stay visible for future slice planning
 
 ## Commit Expectations
 

@@ -157,6 +157,39 @@ declare
 begin
   perform public.require_song_write_access(p_organization_id);
 
+  if p_enforce_version and p_base_version is null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'song_version_conflict',
+      detail = format(
+        'expected base_version %s but found current version %s',
+        coalesce(p_base_version::text, 'null'),
+        'unknown'
+      );
+  end if;
+
+  update public.songs as song
+  set
+    title = p_title,
+    artist = coalesce(p_artist, song.artist),
+    key_signature = coalesce(p_key_signature, song.key_signature),
+    tempo_bpm = coalesce(p_tempo_bpm, song.tempo_bpm),
+    tags = coalesce(p_tags, song.tags),
+    chordpro_source = coalesce(p_chordpro_source, song.chordpro_source),
+    metadata_json = coalesce(p_metadata_json, song.metadata_json),
+    version = song.version + 1,
+    base_version = coalesce(p_base_version, song.version),
+    sync_status = 'synced',
+    last_modified_by = auth.uid()
+  where song.organization_id = p_organization_id
+    and song.id = p_song_id
+    and (not p_enforce_version or song.version = p_base_version)
+  returning * into updated_song;
+
+  if found then
+    return updated_song;
+  end if;
+
   select *
   into existing_song
   from public.songs as song
@@ -170,35 +203,14 @@ begin
       detail = 'The target song does not exist in the requested organization';
   end if;
 
-  if p_enforce_version and (p_base_version is null or existing_song.version <> p_base_version) then
-    raise exception using
-      errcode = 'P0001',
-      message = 'song_version_conflict',
-      detail = format(
-        'expected base_version %s but found current version %s',
-        coalesce(p_base_version::text, 'null'),
-        existing_song.version::text
-      );
-  end if;
-
-  update public.songs as song
-  set
-    title = p_title,
-    artist = coalesce(p_artist, song.artist),
-    key_signature = coalesce(p_key_signature, song.key_signature),
-    tempo_bpm = coalesce(p_tempo_bpm, song.tempo_bpm),
-    tags = coalesce(p_tags, song.tags),
-    chordpro_source = coalesce(p_chordpro_source, song.chordpro_source),
-    metadata_json = coalesce(p_metadata_json, song.metadata_json),
-    version = existing_song.version + 1,
-    base_version = coalesce(p_base_version, existing_song.version),
-    sync_status = 'synced',
-    last_modified_by = auth.uid()
-  where song.organization_id = p_organization_id
-    and song.id = p_song_id
-  returning * into updated_song;
-
-  return updated_song;
+  raise exception using
+    errcode = 'P0001',
+    message = 'song_version_conflict',
+    detail = format(
+      'expected base_version %s but found current version %s',
+      coalesce(p_base_version::text, 'null'),
+      existing_song.version::text
+    );
 end;
 $$;
 
@@ -287,6 +299,33 @@ declare
 begin
   perform public.require_song_write_access(p_organization_id);
 
+  if p_enforce_version and p_base_version is null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'song_version_conflict',
+      detail = format(
+        'expected base_version %s but found current version %s',
+        coalesce(p_base_version::text, 'null'),
+        'unknown'
+      );
+  end if;
+
+  delete from public.songs as song
+  where song.organization_id = p_organization_id
+    and song.id = p_song_id
+    and (not p_enforce_version or song.version = p_base_version)
+    and not exists (
+      select 1
+      from public.session_items as session_item
+      where session_item.organization_id = p_organization_id
+        and session_item.song_id = p_song_id
+    )
+  returning * into deleted_song;
+
+  if found then
+    return deleted_song;
+  end if;
+
   select *
   into existing_song
   from public.songs as song
@@ -312,23 +351,14 @@ begin
       detail = 'A session item still references this song';
   end if;
 
-  if p_enforce_version and (p_base_version is null or existing_song.version <> p_base_version) then
-    raise exception using
-      errcode = 'P0001',
-      message = 'song_version_conflict',
-      detail = format(
-        'expected base_version %s but found current version %s',
-        coalesce(p_base_version::text, 'null'),
-        existing_song.version::text
-      );
-  end if;
-
-  delete from public.songs as song
-  where song.organization_id = p_organization_id
-    and song.id = p_song_id
-  returning * into deleted_song;
-
-  return deleted_song;
+  raise exception using
+    errcode = 'P0001',
+    message = 'song_version_conflict',
+    detail = format(
+      'expected base_version %s but found current version %s',
+      coalesce(p_base_version::text, 'null'),
+      existing_song.version::text
+    );
 end;
 $$;
 

@@ -50,31 +50,55 @@ class SongMutationSyncController {
       songId: songId,
       includeConflicts: true,
     );
-    final syncedRecord = await _remoteRepository.overwriteSong(
-      organizationId: context.organizationId,
-      record: record,
-    );
-    await _applySuccessfulSync(context, syncedRecord, original: record);
+    try {
+      final syncedRecord = await _remoteRepository.overwriteSong(
+        organizationId: context.organizationId,
+        record: record,
+      );
+      await _applySuccessfulSync(context, syncedRecord, original: record);
+    } on SongMutationSyncException catch (error) {
+      await _store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: error.code,
+        errorMessage: error.message,
+      );
+      rethrow;
+    }
   }
 
   Future<void> discardMine(
     SongMutationContext context, {
     required String songId,
   }) async {
-    final serverRecord = await _remoteRepository.fetchSong(
-      organizationId: context.organizationId,
-      songId: songId,
-    );
-    await _store.reconcileSyncedSong(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      record: serverRecord.copyWith(
-        syncStatus: SongSyncStatus.synced,
-        clearErrorCode: true,
-        clearErrorMessage: true,
-        clearConflictSourceSyncStatus: true,
-      ),
-    );
+    try {
+      final serverRecord = await _remoteRepository.fetchSong(
+        organizationId: context.organizationId,
+        songId: songId,
+      );
+      await _store.reconcileSyncedSong(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        record: serverRecord.copyWith(
+          syncStatus: SongSyncStatus.synced,
+          clearErrorCode: true,
+          clearErrorMessage: true,
+          clearConflictSourceSyncStatus: true,
+        ),
+      );
+    } on SongMutationSyncException catch (error) {
+      await _store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: error.code,
+        errorMessage: error.message,
+      );
+      rethrow;
+    }
   }
 
   Future<SongMutationRecord> _requireSong(

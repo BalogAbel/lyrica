@@ -22,6 +22,7 @@ This repository is the canonical source of truth for:
 - ChordPro defined as the canonical editable song format, with a documented supported subset for the first slice
 - Capability-based authorization enforced in Postgres, not in Flutter
 - Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
+- Intentionally deferred slice follow-ups stored under `docs/deferred/`
 
 Desktop platforms are intentionally out of scope for the MVP, but the architecture must not block later support for macOS, Windows, or Linux.
 
@@ -32,7 +33,7 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 ├── .github/                # CI workflows
 ├── apps/
 │   └── lyron_app/         # Flutter application
-├── docs/                   # Product, domain, architecture, workflow, specs, plans
+├── docs/                   # Product, domain, architecture, workflow, specs, plans, deferred work
 ├── scripts/                # Developer entrypoints
 ├── tooling/
 │   └── supabase/           # Repository-local Supabase CLI package
@@ -76,10 +77,11 @@ The expected engineering loop is:
 
 1. Capture or update the spec in `docs/specs/`.
 2. Write or update the implementation plan in `docs/plans/`.
-3. Create or switch to a non-`main` branch for the slice, named with the Conventional Branch pattern such as `feat/local-cache-refresh` or `chore/update-workflows`.
-4. Implement via TDD.
-5. Run verification locally and in CI.
-6. Update documentation before merge and land the change through a pull request.
+3. Review any relevant deferred items in `docs/deferred/` before finalizing the slice plan.
+4. Create or switch to a non-`main` branch for the slice, named with the Conventional Branch pattern such as `feat/local-cache-refresh` or `chore/update-workflows`.
+5. Implement via TDD.
+6. Run verification locally and in CI.
+7. Update documentation before merge and land the change through a pull request.
 
 See [development workflow](docs/workflows/development-workflow.md) and [AGENTS.md](AGENTS.md) for operational detail.
 

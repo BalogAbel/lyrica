@@ -95,6 +95,9 @@ class SongLibraryService {
     if (existing == null) {
       throw StateError('Song mutation record not found: $songId');
     }
+    if (existing.syncStatus == SongSyncStatus.conflict) {
+      throw SongConflictResolutionRequiredException(songId);
+    }
 
     final updated = existing.copyWith(
       title: title,
@@ -131,6 +134,9 @@ class SongLibraryService {
     );
     if (existing == null) {
       throw StateError('Song mutation record not found: $songId');
+    }
+    if (existing.syncStatus == SongSyncStatus.conflict) {
+      throw SongConflictResolutionRequiredException(songId);
     }
 
     if (existing.syncStatus == SongSyncStatus.pendingCreate) {

@@ -5,12 +5,15 @@
 1. Capture the requirement or decision in repository docs.
 2. Update or create a design/spec document in `docs/specs/` when the change is material.
 3. Write an implementation plan in `docs/plans/`.
-4. Create or switch to a branch before making implementation changes; do not develop directly on `main`.
+4. Review any relevant deferred work in `docs/deferred/` before finalizing the slice plan.
+5. Create or switch to a branch before making implementation changes; do not develop directly on `main`.
    Branch names must follow the Conventional Branch pattern `<type>/<description>`, for example `feat/song-reader-search`, `fix/catalog-refresh-timeout`, or `chore/update-docs`.
-5. Implement with tests first where behavior is introduced.
-6. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
-7. Update documentation and ADRs if the change affects durable knowledge.
-8. Open or update a pull request from that branch; changes reach `main` only through PR merge with green CI.
+6. Implement with tests first where behavior is introduced.
+7. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
+8. Update documentation and ADRs if the change affects durable knowledge.
+9. Open or update a pull request from that branch; changes reach `main` only through PR merge with green CI.
+
+When a deferred item touches the same workflow, state machine, or backend contract as the new slice, treat it as priority work to close soon rather than optional polish.
 
 ## Spec And Plan Status Labels
 

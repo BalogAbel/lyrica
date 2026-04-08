@@ -324,6 +324,65 @@ void main() {
     expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
   });
 
+  testWidgets('editing a conflicted row shows the explicit resolution dialog', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        result: buildResult(),
+        songLibraryService: _ConflictRejectingSongLibraryService(),
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songEditAction));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songConflictTitle), findsOneWidget);
+    expect(find.text(AppStrings.songConflictMessage), findsOneWidget);
+  });
+
+  testWidgets(
+    'deleting a conflicted row shows the explicit resolution dialog',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          result: buildResult(),
+          songLibraryService: _ConflictRejectingSongLibraryService(),
+          catalogState: const CatalogSnapshotState(
+            context: ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.songDeleteAction));
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.songConflictTitle), findsOneWidget);
+      expect(find.text(AppStrings.songConflictMessage), findsOneWidget);
+    },
+  );
+
   testWidgets('hides chords in lyrics only mode', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
@@ -1069,6 +1128,37 @@ class _BlockingSongLibraryService extends SongLibraryService {
     required String songId,
   }) async {
     throw SongDeleteBlockedException(songId);
+  }
+
+  @override
+  Future<SongSource> getSongSource({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async {
+    return const SongSource(id: 'reader_song', source: '{title: Reader Song}');
+  }
+}
+
+class _ConflictRejectingSongLibraryService extends SongLibraryService {
+  _ConflictRejectingSongLibraryService()
+    : super(_ReaderFakeSongRepository(), _ReaderFakeSongRepository());
+
+  @override
+  Future<SongMutationRecord> updateSong({
+    required ActiveCatalogContext context,
+    required String songId,
+    required String title,
+    required String chordproSource,
+  }) async {
+    throw SongConflictResolutionRequiredException(songId);
+  }
+
+  @override
+  Future<SongMutationRecord> deleteSong({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async {
+    throw SongConflictResolutionRequiredException(songId);
   }
 
   @override

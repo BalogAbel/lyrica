@@ -177,17 +177,24 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
-    await ref
-        .read(songLibraryServiceProvider)
-        .updateSong(
-          context: activeContext,
-          songId: widget.songId,
-          title: draft.$1,
-          chordproSource: draft.$2,
-        );
-    ref.invalidate(songMutationEntriesProvider);
-    ref.invalidate(songLibraryListProvider);
-    ref.invalidate(songLibraryReaderProvider(widget.songId));
+    try {
+      await ref
+          .read(songLibraryServiceProvider)
+          .updateSong(
+            context: activeContext,
+            songId: widget.songId,
+            title: draft.$1,
+            chordproSource: draft.$2,
+          );
+      ref.invalidate(songMutationEntriesProvider);
+      ref.invalidate(songLibraryListProvider);
+      ref.invalidate(songLibraryReaderProvider(widget.songId));
+    } on SongConflictResolutionRequiredException {
+      if (!context.mounted) {
+        return;
+      }
+      await _showConflictResolutionRequiredDialog(context);
+    }
   }
 
   Future<void> _deleteSong(BuildContext context) async {
@@ -221,7 +228,28 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           ],
         ),
       );
+    } on SongConflictResolutionRequiredException {
+      if (!context.mounted) {
+        return;
+      }
+      await _showConflictResolutionRequiredDialog(context);
     }
+  }
+
+  Future<void> _showConflictResolutionRequiredDialog(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.songConflictTitle),
+        content: const Text(AppStrings.songConflictMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.songCancelAction),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -16,6 +16,7 @@ import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.da
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
@@ -36,7 +37,9 @@ void main() {
     Future<List<SongSummary>> Function()? listSongs,
     SongCatalogController? catalogController,
     SongLibraryService? songLibraryService,
+    SongMutationSyncController? songMutationSyncController,
     List<SongMutationRecord>? mutationEntries,
+    Future<List<SongMutationRecord>> Function()? loadMutationEntries,
     bool? hasUnsyncedChanges,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
@@ -76,6 +79,14 @@ void main() {
           ),
         if (songLibraryService != null)
           songLibraryServiceProvider.overrideWithValue(songLibraryService),
+        if (songMutationSyncController != null)
+          songMutationSyncControllerProvider.overrideWithValue(
+            songMutationSyncController,
+          ),
+        if (loadMutationEntries != null)
+          songMutationEntriesProvider.overrideWith(
+            (ref) => loadMutationEntries(),
+          ),
         if (mutationEntries != null)
           songMutationEntriesProvider.overrideWith(
             (ref) async => mutationEntries,
@@ -340,6 +351,108 @@ void main() {
     expect(find.text(AppStrings.songDiscardMineAction), findsOneWidget);
   });
 
+  testWidgets('shows a surfaced error when keep mine fails', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        songMutationSyncController: _ThrowingSongMutationSyncController(
+          const SongMutationSyncException(
+            SongMutationSyncErrorCode.dependencyBlocked,
+          ),
+        ),
+        mutationEntries: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'conflict-song',
+            title: 'Conflict Song',
+            chordproSource: '{title: Conflict Song}',
+            version: 4,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.conflict,
+            conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+          ),
+        ],
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songKeepMineAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
+  });
+
+  testWidgets('reloads conflict entries after keep mine failure', (
+    tester,
+  ) async {
+    var loadCalls = 0;
+
+    Future<List<SongMutationRecord>> loadEntries() async {
+      loadCalls += 1;
+      return [
+        SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'conflict-song',
+          title: 'Conflict Song',
+          chordproSource: '{title: Conflict Song}',
+          version: 4,
+          baseVersion: 3,
+          syncStatus: SongSyncStatus.conflict,
+          conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+          errorCode: loadCalls > 1
+              ? SongMutationSyncErrorCode.dependencyBlocked
+              : null,
+        ),
+      ];
+    }
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        songMutationSyncController: _ThrowingSongMutationSyncController(
+          const SongMutationSyncException(
+            SongMutationSyncErrorCode.dependencyBlocked,
+          ),
+        ),
+        loadMutationEntries: loadEntries,
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 1);
+
+    await tester.tap(find.text(AppStrings.songKeepMineAction));
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, greaterThanOrEqualTo(2));
+  });
+
   testWidgets('navigates to the planning area from the song list', (
     tester,
   ) async {
@@ -578,6 +691,32 @@ class _RecordingSongLibraryService extends SongLibraryService {
   }
 }
 
+class _ThrowingSongMutationSyncController extends SongMutationSyncController {
+  _ThrowingSongMutationSyncController(this._error)
+    : super(
+        store: _SongMutationTestRepository(),
+        remoteRepository: _UnusedSongMutationRemoteRepository(),
+      );
+
+  final SongMutationSyncException _error;
+
+  @override
+  Future<void> keepMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    throw _error;
+  }
+
+  @override
+  Future<void> discardMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    throw _error;
+  }
+}
+
 class _SongMutationTestRepository
     implements SongCatalogReadRepository, SongMutationStore {
   @override
@@ -693,6 +832,27 @@ class _CountingSongRepository implements SongRepository {
       ),
     ];
   }
+}
+
+class _UnusedSongMutationRemoteRepository
+    implements SongMutationRemoteRepository {
+  @override
+  Future<SongMutationRecord> fetchSong({
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> overwriteSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> syncSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
 }
 
 class _StaticForegroundState implements AppForegroundState {
