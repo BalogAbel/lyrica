@@ -217,110 +217,115 @@ class SongListScreen extends ConsumerWidget {
 class _MutationStatusSurface extends ConsumerWidget {
   const _MutationStatusSurface({required this.entries});
 
+  static const _maxHeight = 240.0;
   final List<SongMutationRecord> entries;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Column(
-        children: entries
-            .map(
-              (entry) => Card(
-                child: ListTile(
-                  title: Text(entry.title),
-                  subtitle: Text(_messageFor(entry)),
-                  trailing: entry.syncStatus == SongSyncStatus.conflict
-                      ? Wrap(
-                          spacing: 8,
-                          children: [
-                            TextButton(
-                              onPressed: () async {
-                                final activeContext = ref.read(
-                                  activeCatalogContextProvider,
-                                );
-                                if (activeContext == null) {
-                                  return;
-                                }
-                                try {
-                                  await ref
-                                      .read(songMutationSyncControllerProvider)
-                                      .keepMine(
-                                        SongMutationContext(
-                                          userId: activeContext.userId,
-                                          organizationId:
-                                              activeContext.organizationId,
-                                        ),
-                                        songId: entry.id,
-                                      );
-                                  ref.invalidate(songMutationEntriesProvider);
-                                  ref.invalidate(songLibraryListProvider);
-                                } on SongMutationSyncException catch (error) {
-                                  ref.invalidate(songMutationEntriesProvider);
-                                  if (!context.mounted) {
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: _maxHeight),
+        child: ListView(
+          shrinkWrap: true,
+          children: entries
+              .map(
+                (entry) => Card(
+                  child: ListTile(
+                    title: Text(entry.title),
+                    subtitle: Text(_messageFor(entry)),
+                    trailing: entry.syncStatus == SongSyncStatus.conflict
+                        ? Wrap(
+                            spacing: 8,
+                            children: [
+                              TextButton(
+                                onPressed: () async {
+                                  final activeContext = ref.read(
+                                    activeCatalogContextProvider,
+                                  );
+                                  if (activeContext == null) {
                                     return;
                                   }
-                                  await _showSyncIssueDialog(
-                                    context,
-                                    message: _messageFor(
-                                      entry.copyWith(
-                                        errorCode: error.code,
-                                        errorMessage: error.message,
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: const Text(AppStrings.songKeepMineAction),
-                            ),
-                            TextButton(
-                              onPressed: () async {
-                                final activeContext = ref.read(
-                                  activeCatalogContextProvider,
-                                );
-                                if (activeContext == null) {
-                                  return;
-                                }
-                                try {
-                                  await ref
-                                      .read(songMutationSyncControllerProvider)
-                                      .discardMine(
-                                        SongMutationContext(
-                                          userId: activeContext.userId,
-                                          organizationId:
-                                              activeContext.organizationId,
+                                  try {
+                                    await ref
+                                        .read(songMutationSyncControllerProvider)
+                                        .keepMine(
+                                          SongMutationContext(
+                                            userId: activeContext.userId,
+                                            organizationId:
+                                                activeContext.organizationId,
+                                          ),
+                                          songId: entry.id,
+                                        );
+                                    ref.invalidate(songMutationEntriesProvider);
+                                    ref.invalidate(songLibraryListProvider);
+                                  } on SongMutationSyncException catch (error) {
+                                    ref.invalidate(songMutationEntriesProvider);
+                                    if (!context.mounted) {
+                                      return;
+                                    }
+                                    await _showSyncIssueDialog(
+                                      context,
+                                      message: _messageFor(
+                                        entry.copyWith(
+                                          errorCode: error.code,
+                                          errorMessage: error.message,
                                         ),
-                                        songId: entry.id,
-                                      );
-                                  ref.invalidate(songMutationEntriesProvider);
-                                  ref.invalidate(songLibraryListProvider);
-                                } on SongMutationSyncException catch (error) {
-                                  ref.invalidate(songMutationEntriesProvider);
-                                  if (!context.mounted) {
-                                    return;
-                                  }
-                                  await _showSyncIssueDialog(
-                                    context,
-                                    message: _messageFor(
-                                      entry.copyWith(
-                                        errorCode: error.code,
-                                        errorMessage: error.message,
                                       ),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: const Text(
-                                AppStrings.songDiscardMineAction,
+                                    );
+                                  }
+                                },
+                                child: const Text(AppStrings.songKeepMineAction),
                               ),
-                            ),
-                          ],
-                        )
-                      : null,
+                              TextButton(
+                                onPressed: () async {
+                                  final activeContext = ref.read(
+                                    activeCatalogContextProvider,
+                                  );
+                                  if (activeContext == null) {
+                                    return;
+                                  }
+                                  try {
+                                    await ref
+                                        .read(songMutationSyncControllerProvider)
+                                        .discardMine(
+                                          SongMutationContext(
+                                            userId: activeContext.userId,
+                                            organizationId:
+                                                activeContext.organizationId,
+                                          ),
+                                          songId: entry.id,
+                                        );
+                                    ref.invalidate(songMutationEntriesProvider);
+                                    ref.invalidate(songLibraryListProvider);
+                                  } on SongMutationSyncException catch (error) {
+                                    ref.invalidate(songMutationEntriesProvider);
+                                    if (!context.mounted) {
+                                      return;
+                                    }
+                                    await _showSyncIssueDialog(
+                                      context,
+                                      message: _messageFor(
+                                        entry.copyWith(
+                                          errorCode: error.code,
+                                          errorMessage: error.message,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: const Text(
+                                  AppStrings.songDiscardMineAction,
+                                ),
+                              ),
+                            ],
+                          )
+                        : null,
+                  ),
                 ),
-              ),
-            )
-            .toList(growable: false),
+              )
+              .toList(growable: false),
+        ),
       ),
     );
   }
