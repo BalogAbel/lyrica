@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -607,6 +608,45 @@ void main() {
         expect(record, isNotNull);
         expect(record?.errorCode, isNull);
         expect(record?.errorMessage, 'not-json');
+      },
+    );
+
+    test(
+      'drift mutation store tolerates unknown conflict source sync status values',
+      () async {
+        await database
+            .into(database.cachedCatalogSongMutations)
+            .insert(
+              CachedCatalogSongMutationsCompanion.insert(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                songId: 'song-1',
+                slug: 'alpha',
+                title: 'Alpha',
+                source: '{title: Alpha}',
+                version: 1,
+                syncStatus: 'conflict',
+                syncErrorContext: Value(
+                  '{"code":"conflict","message":"server conflict","conflictSourceSyncStatus":"mystery_status"}',
+                ),
+              ),
+            );
+
+        final mutationStore = DriftSongMutationStore(
+          songCatalogStore: store,
+          planningLocalStore: const _NoopPlanningLocalStore(),
+        );
+
+        final record = await mutationStore.readById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+
+        expect(record, isNotNull);
+        expect(record?.errorCode, SongMutationSyncErrorCode.conflict);
+        expect(record?.errorMessage, 'server conflict');
+        expect(record?.conflictSourceSyncStatus, isNull);
       },
     );
 
