@@ -30,6 +30,16 @@ class SongDeleteBlockedException implements Exception {
   String toString() => 'SongDeleteBlockedException(songId: $songId)';
 }
 
+class SongConflictResolutionRequiredException implements Exception {
+  const SongConflictResolutionRequiredException(this.songId);
+
+  final String songId;
+
+  @override
+  String toString() =>
+      'SongConflictResolutionRequiredException(songId: $songId)';
+}
+
 class SongMutationContext {
   const SongMutationContext({
     required this.userId,

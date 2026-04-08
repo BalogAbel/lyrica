@@ -242,18 +242,34 @@ class _MutationStatusSurface extends ConsumerWidget {
                                 if (activeContext == null) {
                                   return;
                                 }
-                                await ref
-                                    .read(songMutationSyncControllerProvider)
-                                    .keepMine(
-                                      SongMutationContext(
-                                        userId: activeContext.userId,
-                                        organizationId:
-                                            activeContext.organizationId,
+                                try {
+                                  await ref
+                                      .read(songMutationSyncControllerProvider)
+                                      .keepMine(
+                                        SongMutationContext(
+                                          userId: activeContext.userId,
+                                          organizationId:
+                                              activeContext.organizationId,
+                                        ),
+                                        songId: entry.id,
+                                      );
+                                  ref.invalidate(songMutationEntriesProvider);
+                                  ref.invalidate(songLibraryListProvider);
+                                } on SongMutationSyncException catch (error) {
+                                  ref.invalidate(songMutationEntriesProvider);
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  await _showSyncIssueDialog(
+                                    context,
+                                    message: _messageFor(
+                                      entry.copyWith(
+                                        errorCode: error.code,
+                                        errorMessage: error.message,
                                       ),
-                                      songId: entry.id,
-                                    );
-                                ref.invalidate(songMutationEntriesProvider);
-                                ref.invalidate(songLibraryListProvider);
+                                    ),
+                                  );
+                                }
                               },
                               child: const Text(AppStrings.songKeepMineAction),
                             ),
@@ -265,18 +281,34 @@ class _MutationStatusSurface extends ConsumerWidget {
                                 if (activeContext == null) {
                                   return;
                                 }
-                                await ref
-                                    .read(songMutationSyncControllerProvider)
-                                    .discardMine(
-                                      SongMutationContext(
-                                        userId: activeContext.userId,
-                                        organizationId:
-                                            activeContext.organizationId,
+                                try {
+                                  await ref
+                                      .read(songMutationSyncControllerProvider)
+                                      .discardMine(
+                                        SongMutationContext(
+                                          userId: activeContext.userId,
+                                          organizationId:
+                                              activeContext.organizationId,
+                                        ),
+                                        songId: entry.id,
+                                      );
+                                  ref.invalidate(songMutationEntriesProvider);
+                                  ref.invalidate(songLibraryListProvider);
+                                } on SongMutationSyncException catch (error) {
+                                  ref.invalidate(songMutationEntriesProvider);
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  await _showSyncIssueDialog(
+                                    context,
+                                    message: _messageFor(
+                                      entry.copyWith(
+                                        errorCode: error.code,
+                                        errorMessage: error.message,
                                       ),
-                                      songId: entry.id,
-                                    );
-                                ref.invalidate(songMutationEntriesProvider);
-                                ref.invalidate(songLibraryListProvider);
+                                    ),
+                                  );
+                                }
                               },
                               child: const Text(
                                 AppStrings.songDiscardMineAction,
@@ -294,7 +326,9 @@ class _MutationStatusSurface extends ConsumerWidget {
   }
 
   String _messageFor(SongMutationRecord entry) {
-    if (entry.syncStatus == SongSyncStatus.conflict) {
+    if (entry.syncStatus == SongSyncStatus.conflict &&
+        (entry.errorCode == null ||
+            entry.errorCode == SongMutationSyncErrorCode.conflict)) {
       return AppStrings.songConflictMessage;
     }
     return switch (entry.errorCode) {
@@ -309,6 +343,25 @@ class _MutationStatusSurface extends ConsumerWidget {
       null => 'Song changes are pending sync.',
       SongMutationSyncErrorCode.conflict => AppStrings.songConflictMessage,
     };
+  }
+
+  Future<void> _showSyncIssueDialog(
+    BuildContext context, {
+    required String message,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.songSyncIssueTitle),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.songCancelAction),
+          ),
+        ],
+      ),
+    );
   }
 }
 

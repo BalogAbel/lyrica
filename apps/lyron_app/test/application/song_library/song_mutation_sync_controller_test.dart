@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
@@ -158,6 +157,109 @@ void main() {
       expect(store.lastUpsertedRecord?.syncStatus, SongSyncStatus.synced);
     });
 
+    test(
+      'keep mine persists the failure on the conflict row before rethrowing',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          overwriteHandler: (record) async =>
+              throw const SongMutationSyncException(
+                SongMutationSyncErrorCode.dependencyBlocked,
+              ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await expectLater(
+          () => controller.keepMine(
+            const SongMutationContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            songId: 'song-1',
+          ),
+          throwsA(isA<SongMutationSyncException>()),
+        );
+
+        expect(store.lastSavedStatus, SongSyncStatus.conflict);
+        expect(
+          store.lastSavedErrorCode,
+          SongMutationSyncErrorCode.dependencyBlocked,
+        );
+        expect(
+          store.lastUpsertedRecord?.conflictSourceSyncStatus,
+          SongSyncStatus.pendingDelete,
+        );
+      },
+    );
+
+    test(
+      'discard mine persists the failure on the conflict row before rethrowing',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          fetchHandler: (songId) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.authorizationDenied,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await expectLater(
+          () => controller.discardMine(
+            const SongMutationContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            songId: 'song-1',
+          ),
+          throwsA(isA<SongMutationSyncException>()),
+        );
+
+        expect(store.lastSavedStatus, SongSyncStatus.conflict);
+        expect(
+          store.lastSavedErrorCode,
+          SongMutationSyncErrorCode.authorizationDenied,
+        );
+        expect(
+          store.lastUpsertedRecord?.conflictSourceSyncStatus,
+          SongSyncStatus.pendingUpdate,
+        );
+      },
+    );
+
     test('stops syncing later records after a connectivity failure', () async {
       final store = _FakeSongMutationStore(
         pendingSongs: const [
@@ -215,11 +317,12 @@ class _FakeSongMutationStore implements SongMutationStore {
   _FakeSongMutationStore({
     List<SongMutationRecord> pendingSongs = const [],
     List<SongMutationRecord> conflictSongs = const [],
-  }) : _pendingSongs = pendingSongs,
-       _conflictSongs = conflictSongs;
+  }) : _records = {
+         for (final record in [...pendingSongs, ...conflictSongs])
+           record.id: record,
+       };
 
-  final List<SongMutationRecord> _pendingSongs;
-  final List<SongMutationRecord> _conflictSongs;
+  final Map<String, SongMutationRecord> _records;
 
   SongMutationSyncErrorCode? lastSavedErrorCode;
   SongSyncStatus? lastSavedStatus;
@@ -231,30 +334,30 @@ class _FakeSongMutationStore implements SongMutationStore {
     required String userId,
     required String organizationId,
     required String songId,
-  }) async {
-    final records = <SongMutationRecord>[..._pendingSongs, ..._conflictSongs];
-    final upsertedRecord = lastUpsertedRecord;
-    if (upsertedRecord != null) {
-      records.add(upsertedRecord);
-    }
-    return records.where((record) => record.id == songId).firstOrNull;
-  }
+  }) async => _records[songId];
 
   @override
   Future<List<SongMutationRecord>> readConflictSongs({
     required String userId,
     required String organizationId,
-  }) async {
-    return _conflictSongs;
-  }
+  }) async => _records.values
+      .where((record) => record.syncStatus == SongSyncStatus.conflict)
+      .toList(growable: false);
 
   @override
   Future<List<SongMutationRecord>> readPendingSongs({
     required String userId,
     required String organizationId,
-  }) async {
-    return _pendingSongs;
-  }
+  }) async => _records.values
+      .where(
+        (record) => switch (record.syncStatus) {
+          SongSyncStatus.pendingCreate ||
+          SongSyncStatus.pendingUpdate ||
+          SongSyncStatus.pendingDelete => true,
+          SongSyncStatus.conflict || SongSyncStatus.synced => false,
+        },
+      )
+      .toList(growable: false);
 
   @override
   Future<void> saveSyncAttemptResult({
@@ -278,10 +381,11 @@ class _FakeSongMutationStore implements SongMutationStore {
         errorCode: errorCode,
         errorMessage: errorMessage,
         conflictSourceSyncStatus: syncStatus == SongSyncStatus.conflict
-            ? existing.syncStatus
+            ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
             : null,
         clearConflictSourceSyncStatus: syncStatus != SongSyncStatus.conflict,
       );
+      _records[songId] = lastUpsertedRecord!;
     }
   }
 
@@ -291,6 +395,7 @@ class _FakeSongMutationStore implements SongMutationStore {
     required SongMutationRecord record,
   }) async {
     lastUpsertedRecord = record;
+    _records[record.id] = record;
   }
 
   @override
@@ -300,6 +405,7 @@ class _FakeSongMutationStore implements SongMutationStore {
     required String songId,
   }) async {
     deletedSongId = songId;
+    _records.remove(songId);
   }
 
   @override
@@ -309,6 +415,7 @@ class _FakeSongMutationStore implements SongMutationStore {
     required SongMutationRecord record,
   }) async {
     lastUpsertedRecord = record;
+    _records[record.id] = record;
   }
 
   @override

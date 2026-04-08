@@ -31,6 +31,7 @@ class AppStrings {
   static const songConflictTitle = 'Song conflict';
   static const songConflictMessage =
       'A song was modified elsewhere. Keep your version or discard it and pull the latest server version.';
+  static const songSyncIssueTitle = 'Song sync issue';
   static const songKeepMineAction = 'Keep mine';
   static const songDiscardMineAction = 'Discard mine';
   static const songListLoadingMessage = 'Loading songs...';

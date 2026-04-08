@@ -120,10 +120,13 @@ Expected: FAIL because song mutation orchestration does not exist yet.
 
 Implement the application layer so it:
 - creates and updates local rows first
-- queues manual and background sync attempts through one coordinator
+- queues manual sync attempts through one coordinator in this MVP branch
 - distinguishes conflict, authorization, dependency, and connectivity failures
+- keeps authorization/dependency failures visible on the mutation row while leaving explicit user-initiated manual sync as the only shipped retry path in this MVP branch
 - applies the server-returned canonical row after successful create/update or explicit overwrite
 - clears local rows only after accepted delete sync
+- blocks ordinary edit/delete flows while a row is in `conflict`, forcing the explicit keep/discard resolution path
+- persists keep/discard failure outcomes back onto the local conflict row instead of dropping the exception on the floor
 
 - [ ] **Step 4: Re-run the focused application tests**
 
@@ -188,6 +191,7 @@ Add integration tests for:
 - delete blocked by `session_items`
 - accepted delete cascading attachment cleanup
 - sign-out discard flow for unsynced mutations
+- Treat reconnect-triggered background mutation sync as deferred follow-up work for a later slice; do not claim it as shipped behavior in this plan.
 
 - [ ] **Step 2: Run the focused integration suite**
 

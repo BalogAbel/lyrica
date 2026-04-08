@@ -171,6 +171,70 @@ void main() {
       expect(repository.songById, isNull);
     },
   );
+
+  test(
+    'update rejects conflict rows until the user resolves the conflict',
+    () async {
+      final repository = _FakeSongRepository();
+      repository.songById = const SongMutationRecord(
+        id: 'song-1',
+        organizationId: 'org-1',
+        slug: 'amazing-grace',
+        title: 'Amazing Grace',
+        chordproSource: '{title: Amazing Grace}',
+        version: 7,
+        baseVersion: 6,
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+      );
+      final service = SongLibraryService(repository, repository);
+
+      await expectLater(
+        () => service.updateSong(
+          context: const ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          songId: 'song-1',
+          title: 'Amazing Grace (Edited)',
+          chordproSource: '{title: Amazing Grace (Edited)}',
+        ),
+        throwsA(isA<SongConflictResolutionRequiredException>()),
+      );
+    },
+  );
+
+  test(
+    'delete rejects conflict rows until the user resolves the conflict',
+    () async {
+      final repository = _FakeSongRepository();
+      repository.songById = const SongMutationRecord(
+        id: 'song-1',
+        organizationId: 'org-1',
+        slug: 'amazing-grace',
+        title: 'Amazing Grace',
+        chordproSource: '{title: Amazing Grace}',
+        version: 7,
+        baseVersion: 6,
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+      );
+      final service = SongLibraryService(repository, repository);
+
+      await expectLater(
+        () => service.deleteSong(
+          context: const ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          songId: 'song-1',
+        ),
+        throwsA(isA<SongConflictResolutionRequiredException>()),
+      );
+    },
+  );
 }
 
 class _FakeSongRepository

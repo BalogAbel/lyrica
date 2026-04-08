@@ -47,6 +47,7 @@ PY
 
 python3 - "$db_container_name" "$demo_user_id" <<'PY'
 import json
+import time
 import subprocess
 import sys
 from textwrap import dedent
@@ -130,6 +131,45 @@ def run_psql(sql: str, user_id: str | None = None) -> str:
         )
 
     return result.stdout.strip()
+
+
+def start_psql(sql: str, user_id: str | None = None) -> subprocess.Popen[str]:
+    if user_id is not None:
+        sql = dedent(
+            f"""
+            do $$
+            begin
+              perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
+              perform set_config('request.jwt.claim.role', 'authenticated', true);
+            end $$;
+            {sql}
+            """
+        )
+
+    return subprocess.Popen(
+        [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-X",
+            "-qAt",
+            "-F",
+            "\t",
+            "-c",
+            sql,
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
 
 
 def fetch_json(sql: str, user_id: str | None = None) -> dict:
@@ -261,6 +301,13 @@ def assert_equal(actual, expected, label):
         raise SystemExit(f"{label} mismatch:\nexpected: {expected!r}\nactual:   {actual!r}")
 
 
+def assert_contains(actual: str, expected_fragment: str, label: str) -> None:
+    if expected_fragment not in actual:
+        raise SystemExit(
+            f"{label} missing fragment:\nexpected to contain: {expected_fragment!r}\nactual: {actual!r}"
+        )
+
+
 unauthorized_sql, unauthorized_message, unauthorized_detail = capture_error(
     dedent(
         f"""
@@ -363,6 +410,98 @@ assert_equal(stale_update_sql, "P0001", "stale update sqlstate")
 assert_equal(stale_update_message, "song_version_conflict", "stale update message")
 assert "current version 3" in stale_update_detail, stale_update_detail
 
+atomic_update_target = create_song(
+    "Atomic Update Target",
+    "write-contract-atomic-update",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        create or replace function public.test_song_write_sleep()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          if new.id = {sql_quote(atomic_update_target['id'])}::uuid then
+            perform pg_sleep(1.0);
+          end if;
+          return new;
+        end;
+        $$;
+
+        drop trigger if exists test_song_write_sleep on public.songs;
+        create trigger test_song_write_sleep
+        before update on public.songs
+        for each row
+        execute function public.test_song_write_sleep();
+        """
+    )
+)
+try:
+    first_update = start_psql(
+        dedent(
+            f"""
+            select to_jsonb(public.update_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(atomic_update_target['id'])},
+              p_base_version => 1,
+              p_title => 'Atomic Update Winner',
+              p_chordpro_source => {song_source('Atomic Update Winner')}
+            ));
+            """
+        ),
+        user_id=demo_user_id,
+    )
+    time.sleep(0.2)
+    stale_concurrent_update = start_psql(
+        dedent(
+            f"""
+            select to_jsonb(public.update_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(atomic_update_target['id'])},
+              p_base_version => 1,
+              p_title => 'Atomic Update Loser',
+              p_chordpro_source => {song_source('Atomic Update Loser')}
+            ));
+            """
+        ),
+        user_id=demo_user_id,
+    )
+
+    first_update_stdout, first_update_stderr = first_update.communicate(timeout=15)
+    stale_update_stdout, stale_update_stderr = stale_concurrent_update.communicate(timeout=15)
+
+    if first_update.returncode != 0:
+        raise SystemExit(
+            f"atomic update winner failed unexpectedly:\nstdout:\n{first_update_stdout}\nstderr:\n{first_update_stderr}"
+        )
+    assert_equal(stale_concurrent_update.returncode, 1, "concurrent stale update should fail")
+    assert_contains(stale_update_stderr, "song_version_conflict", "concurrent stale update error")
+
+    atomic_update_row = fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(song)
+            from public.songs as song
+            where song.organization_id = {sql_quote(organization_id)}
+              and song.id = {sql_quote(atomic_update_target['id'])};
+            """
+        ),
+        user_id=demo_user_id,
+    )
+    assert_equal(atomic_update_row["title"], "Atomic Update Winner", "atomic update preserved winner title")
+    assert_equal(atomic_update_row["version"], 2, "atomic update preserved winner version")
+finally:
+    run_psql(
+        dedent(
+            """
+            drop trigger if exists test_song_write_sleep on public.songs;
+            drop function if exists public.test_song_write_sleep();
+            """
+        )
+    )
+
 overwrite_update = update_song(
     updatable["id"],
     2,
@@ -411,6 +550,96 @@ stale_delete_sql, stale_delete_message, stale_delete_detail = capture_error(
 assert_equal(stale_delete_sql, "P0001", "stale delete sqlstate")
 assert_equal(stale_delete_message, "song_version_conflict", "stale delete message")
 assert "current version 2" in stale_delete_detail, stale_delete_detail
+
+atomic_delete_target = create_song(
+    "Atomic Delete Target",
+    "write-contract-atomic-delete",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        create or replace function public.test_song_write_sleep()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          if new.id = {sql_quote(atomic_delete_target['id'])}::uuid then
+            perform pg_sleep(1.0);
+          end if;
+          return new;
+        end;
+        $$;
+
+        drop trigger if exists test_song_write_sleep on public.songs;
+        create trigger test_song_write_sleep
+        before update on public.songs
+        for each row
+        execute function public.test_song_write_sleep();
+        """
+    )
+)
+try:
+    winner_update = start_psql(
+        dedent(
+            f"""
+            select to_jsonb(public.update_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(atomic_delete_target['id'])},
+              p_base_version => 1,
+              p_title => 'Atomic Delete Winner',
+              p_chordpro_source => {song_source('Atomic Delete Winner')}
+            ));
+            """
+        ),
+        user_id=demo_user_id,
+    )
+    time.sleep(0.2)
+    stale_concurrent_delete = start_psql(
+        dedent(
+            f"""
+            select to_jsonb(public.delete_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(atomic_delete_target['id'])},
+              p_base_version => 1
+            ));
+            """
+        ),
+        user_id=demo_user_id,
+    )
+
+    winner_update_stdout, winner_update_stderr = winner_update.communicate(timeout=15)
+    stale_delete_stdout, stale_delete_stderr = stale_concurrent_delete.communicate(timeout=15)
+
+    if winner_update.returncode != 0:
+        raise SystemExit(
+            f"atomic delete winner update failed unexpectedly:\nstdout:\n{winner_update_stdout}\nstderr:\n{winner_update_stderr}"
+        )
+    assert_equal(stale_concurrent_delete.returncode, 1, "concurrent stale delete should fail")
+    assert_contains(stale_delete_stderr, "song_version_conflict", "concurrent stale delete error")
+
+    atomic_delete_row = fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(song)
+            from public.songs as song
+            where song.organization_id = {sql_quote(organization_id)}
+              and song.id = {sql_quote(atomic_delete_target['id'])};
+            """
+        ),
+        user_id=demo_user_id,
+    )
+    assert_equal(atomic_delete_row["title"], "Atomic Delete Winner", "atomic delete preserved updated row title")
+    assert_equal(atomic_delete_row["version"], 2, "atomic delete preserved updated row version")
+finally:
+    run_psql(
+        dedent(
+            """
+            drop trigger if exists test_song_write_sleep on public.songs;
+            drop function if exists public.test_song_write_sleep();
+            """
+        )
+    )
 
 deleted_song = delete_song(delete_target["id"], 1, overwrite=True, user_id=demo_user_id)
 assert_equal(deleted_song["id"], delete_target["id"], "overwrite delete id")

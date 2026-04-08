@@ -193,7 +193,7 @@ class DriftSongMutationStore implements SongMutationStore {
         errorCode: errorCode,
         errorMessage: errorMessage,
         conflictSourceSyncStatus: syncStatus == SongSyncStatus.conflict
-            ? existing.syncStatus
+            ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
             : null,
         clearConflictSourceSyncStatus: syncStatus != SongSyncStatus.conflict,
       ),
