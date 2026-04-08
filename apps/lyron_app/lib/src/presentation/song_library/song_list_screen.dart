@@ -11,19 +11,28 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-class SongListScreen extends ConsumerWidget {
+class SongListScreen extends ConsumerStatefulWidget {
   const SongListScreen({super.key});
 
   static const _contentWidth = 720.0;
   static const _horizontalPadding = 24.0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SongListScreen> createState() => _SongListScreenState();
+}
+
+class _SongListScreenState extends ConsumerState<SongListScreen> {
+  Future<void>? _syncInFlight;
+  var _syncQueued = false;
+
+  @override
+  Widget build(BuildContext context) {
     final songsAsync = ref.watch(songLibraryListProvider);
     final catalogState = ref.watch(catalogSnapshotStateProvider);
     final mutationEntriesAsync = ref.watch(songMutationEntriesProvider);
     final isRefreshing =
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
+    final isSyncing = _syncInFlight != null;
     final isResolvingCatalogContext =
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
@@ -33,10 +42,10 @@ class SongListScreen extends ConsumerWidget {
         title: const Text(AppStrings.appName),
         actions: [
           IconButton(
-            onPressed: isRefreshing
+            onPressed: isRefreshing || isSyncing
                 ? null
                 : () {
-                    unawaited(_syncNow(ref));
+                    unawaited(_syncNow());
                   },
             icon: const Icon(Icons.sync),
             tooltip: AppStrings.songCatalogRefreshAction,
@@ -64,7 +73,9 @@ class SongListScreen extends ConsumerWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: _contentWidth),
+            constraints: const BoxConstraints(
+              maxWidth: SongListScreen._contentWidth,
+            ),
             child: Column(
               children: [
                 _CatalogStatusSurface(state: catalogState),
@@ -107,7 +118,9 @@ class SongListScreen extends ConsumerWidget {
                             }
 
                             return ListView.separated(
-                              padding: const EdgeInsets.all(_horizontalPadding),
+                              padding: const EdgeInsets.all(
+                                SongListScreen._horizontalPadding,
+                              ),
                               itemCount: songs.length,
                               separatorBuilder: (context, index) =>
                                   const SizedBox(height: 8),
@@ -136,22 +149,48 @@ class SongListScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _syncNow(WidgetRef ref) async {
-    final context = ref.read(activeCatalogContextProvider);
-    if (context != null) {
-      await ref
-          .read(songMutationSyncControllerProvider)
-          .syncPendingSongs(
-            SongMutationContext(
-              userId: context.userId,
-              organizationId: context.organizationId,
-            ),
-          );
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
+  Future<void> _syncNow() {
+    if (_syncInFlight != null) {
+      _syncQueued = true;
+      return _syncInFlight!;
     }
-    await ref.read(songCatalogControllerProvider).refreshCatalog();
-    ref.invalidate(songLibraryListProvider);
+
+    final future = _runQueuedSync();
+    setState(() {
+      _syncInFlight = future;
+    });
+    return future;
+  }
+
+  Future<void> _runQueuedSync() async {
+    try {
+      do {
+        _syncQueued = false;
+        final context = ref.read(activeCatalogContextProvider);
+        if (context != null) {
+          await ref
+              .read(songMutationSyncControllerProvider)
+              .syncPendingSongs(
+                SongMutationContext(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                ),
+              );
+          ref.invalidate(songMutationEntriesProvider);
+          ref.invalidate(songLibraryListProvider);
+        }
+        await ref.read(songCatalogControllerProvider).refreshCatalog();
+        ref.invalidate(songLibraryListProvider);
+      } while (_syncQueued);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _syncInFlight = null;
+        });
+      } else {
+        _syncInFlight = null;
+      }
+    }
   }
 
   Future<void> _createSong(BuildContext context, WidgetRef ref) async {
