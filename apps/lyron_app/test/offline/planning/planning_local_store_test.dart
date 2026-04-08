@@ -216,6 +216,61 @@ void main() {
       );
     });
 
+    test(
+      'counts local song references within the active organization projection',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [_planRecord(id: 'plan-1', name: 'Org 1')],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              position: 10,
+              name: 'Session 1',
+            ),
+          ],
+          items: const [
+            CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Song 1',
+            ),
+            CachedSessionItemRecord(
+              id: 'item-2',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 20,
+              songId: 'song-1',
+              songTitle: 'Song 1 repeat',
+            ),
+          ],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+
+        expect(
+          await store.countSongReferences(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          ),
+          2,
+        );
+        expect(
+          await store.countSongReferences(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-9',
+          ),
+          0,
+        );
+      },
+    );
+
     test('deletes all authenticated planning data for one user', () async {
       await store.replaceActiveProjection(
         userId: 'user-1',

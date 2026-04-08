@@ -101,6 +101,12 @@ abstract interface class PlanningLocalStore {
     required String organizationId,
   });
 
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  });
+
   Future<String?> readLatestCachedOrganizationId({required String userId});
 
   Future<void> deletePlanningData({
@@ -392,6 +398,38 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       organizationId: organizationId,
     );
     return owner != null;
+  }
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    final owner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (owner == null) {
+      return 0;
+    }
+
+    final countExpression = _database.cachedPlanningSessionItems.sessionItemId
+        .count();
+    final query = _database.selectOnly(_database.cachedPlanningSessionItems)
+      ..addColumns([countExpression])
+      ..where(
+        _database.cachedPlanningSessionItems.userId.equals(userId) &
+            _database.cachedPlanningSessionItems.organizationId.equals(
+              organizationId,
+            ) &
+            _database.cachedPlanningSessionItems.snapshotVersion.equals(
+              owner.snapshotVersion,
+            ) &
+            _database.cachedPlanningSessionItems.songId.equals(songId),
+      );
+    final row = await query.getSingle();
+    return row.read(countExpression) ?? 0;
   }
 
   @override

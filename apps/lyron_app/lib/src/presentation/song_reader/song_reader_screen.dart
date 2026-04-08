@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
@@ -110,6 +111,117 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
             songId: widget.songId,
           );
     });
+  }
+
+  Future<void> _editSong(BuildContext context, SongReaderResult result) async {
+    final activeContext = ref.read(activeCatalogContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final currentSource = await ref
+        .read(songLibraryServiceProvider)
+        .getSongSource(context: activeContext, songId: widget.songId);
+    if (!context.mounted) {
+      return;
+    }
+
+    final draft = await showDialog<(String, String)>(
+      context: context,
+      builder: (context) {
+        final titleController = TextEditingController(text: result.song.title);
+        final sourceController = TextEditingController(
+          text: currentSource.source,
+        );
+        return AlertDialog(
+          title: const Text(AppStrings.songEditAction),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: AppStrings.songTitleLabel,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: sourceController,
+                  minLines: 4,
+                  maxLines: 8,
+                  decoration: const InputDecoration(
+                    labelText: AppStrings.songSourceLabel,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(AppStrings.songCancelAction),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(
+                context,
+              ).pop((titleController.text.trim(), sourceController.text)),
+              child: const Text(AppStrings.songSaveAction),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (draft == null) {
+      return;
+    }
+
+    await ref
+        .read(songLibraryServiceProvider)
+        .updateSong(
+          context: activeContext,
+          songId: widget.songId,
+          title: draft.$1,
+          chordproSource: draft.$2,
+        );
+    ref.invalidate(songMutationEntriesProvider);
+    ref.invalidate(songLibraryListProvider);
+    ref.invalidate(songLibraryReaderProvider(widget.songId));
+  }
+
+  Future<void> _deleteSong(BuildContext context) async {
+    final activeContext = ref.read(activeCatalogContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(songLibraryServiceProvider)
+          .deleteSong(context: activeContext, songId: widget.songId);
+      ref.invalidate(songMutationEntriesProvider);
+      ref.invalidate(songLibraryListProvider);
+      if (context.mounted) {
+        _handleBack(context);
+      }
+    } on SongDeleteBlockedException {
+      if (!context.mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          content: const Text(AppStrings.songDeleteBlockedMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(AppStrings.songCancelAction),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -262,6 +374,22 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                             _CatalogStatusSurface(state: catalogState),
                             if (_hasVisibleStatus(catalogState))
                               const SizedBox(height: 24),
+                            Row(
+                              children: [
+                                FilledButton.tonal(
+                                  onPressed: () => _editSong(context, result),
+                                  child: const Text(AppStrings.songEditAction),
+                                ),
+                                const SizedBox(width: 12),
+                                FilledButton.tonal(
+                                  onPressed: () => _deleteSong(context),
+                                  child: const Text(
+                                    AppStrings.songDeleteAction,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
                             if (_isScopedMode)
                               _ScopedNavigationSurface(
                                 scopedContextAsync: scopedContextAsync!,

@@ -7,12 +7,16 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
+import 'package:lyron_app/src/application/song_library/song_library_service.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -31,6 +35,9 @@ void main() {
     Completer<List<SongSummary>>? loadingCompleter,
     Future<List<SongSummary>> Function()? listSongs,
     SongCatalogController? catalogController,
+    SongLibraryService? songLibraryService,
+    List<SongMutationRecord>? mutationEntries,
+    bool? hasUnsyncedChanges,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
       connectionStatus: CatalogConnectionStatus.online,
@@ -67,7 +74,18 @@ void main() {
           songCatalogControllerProvider.overrideWith(
             (ref) => catalogController,
           ),
+        if (songLibraryService != null)
+          songLibraryServiceProvider.overrideWithValue(songLibraryService),
+        if (mutationEntries != null)
+          songMutationEntriesProvider.overrideWith(
+            (ref) async => mutationEntries,
+          ),
+        if (hasUnsyncedChanges != null)
+          hasUnsyncedSongMutationsProvider.overrideWith(
+            (ref) async => hasUnsyncedChanges,
+          ),
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
         songLibraryListProvider.overrideWith((ref) {
           if (listSongs != null) {
             return listSongs();
@@ -232,8 +250,94 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip(AppStrings.songCatalogRefreshAction), findsOneWidget);
+    expect(find.text(AppStrings.songCreateAction), findsOneWidget);
     expect(find.text(AppStrings.planningEntryAction), findsOneWidget);
     expect(find.text(AppStrings.signOutAction), findsOneWidget);
+  });
+
+  testWidgets('shows a warning before sign out when unsynced changes exist', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        hasUnsyncedChanges: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
+    expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+  });
+
+  testWidgets('create action opens the song editor and saves locally', (
+    tester,
+  ) async {
+    final service = _RecordingSongLibraryService();
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        songLibraryService: service,
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songCreateAction));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'New Song');
+    await tester.enterText(find.byType(TextField).last, '{title: New Song}');
+    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(service.createdTitle, 'New Song');
+  });
+
+  testWidgets('shows conflict actions for conflicted song mutations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        mutationEntries: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'conflict-song',
+            title: 'Conflict Song',
+            chordproSource: '{title: Conflict Song}',
+            version: 4,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.conflict,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Conflict Song'), findsOneWidget);
+    expect(find.text(AppStrings.songKeepMineAction), findsOneWidget);
+    expect(find.text(AppStrings.songDiscardMineAction), findsOneWidget);
   });
 
   testWidgets('navigates to the planning area from the song list', (
@@ -446,6 +550,128 @@ class _TestAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _RecordingSongLibraryService extends SongLibraryService {
+  _RecordingSongLibraryService()
+    : super(_SongMutationTestRepository(), _SongMutationTestRepository());
+
+  String? createdTitle;
+
+  @override
+  Future<SongMutationRecord> createSong({
+    required ActiveCatalogContext context,
+    required String title,
+    required String chordproSource,
+  }) async {
+    createdTitle = title;
+    return SongMutationRecord(
+      id: 'created-song',
+      organizationId: context.organizationId,
+      slug: 'created-song',
+      title: title,
+      chordproSource: chordproSource,
+      version: 1,
+      baseVersion: null,
+      syncStatus: SongSyncStatus.pendingCreate,
+    );
+  }
+}
+
+class _SongMutationTestRepository
+    implements SongCatalogReadRepository, SongMutationStore {
+  @override
+  Future<String> allocateUniqueSlug({
+    required String userId,
+    required String organizationId,
+    required String title,
+  }) async => 'created-song';
+
+  @override
+  Future<int> countReferencingSessionItems({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+
+  @override
+  Future<void> deleteSong({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {}
+
+  @override
+  Future<SongSource> getSongSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => const SongSource(id: 'song-1', source: '{title: Song}');
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async => const SongSummary(id: 'song-1', title: 'Song');
+
+  @override
+  Future<bool> hasUnsyncedChanges({required String userId}) async => false;
+
+  @override
+  Future<List<SongSummary>> listSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [SongSummary(id: 'song-1', title: 'Song')];
+
+  @override
+  Future<SongMutationRecord?> readById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => null;
+
+  @override
+  Future<List<SongMutationRecord>> readConflictSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<List<SongMutationRecord>> readPendingSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required SongSyncStatus syncStatus,
+    SongMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) async {}
+
+  @override
+  Future<void> upsertSong({
+    required String userId,
+    required SongMutationRecord record,
+  }) async {}
+
+  @override
+  Future<void> reconcileSyncedSong({
+    required String userId,
+    required String organizationId,
+    required SongMutationRecord record,
+  }) async {}
+
+  @override
+  Future<void> clearSongMutation({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {}
 }
 
 class _CountingSongRepository implements SongRepository {

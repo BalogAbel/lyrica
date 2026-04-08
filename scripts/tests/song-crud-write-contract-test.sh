@@ -1,0 +1,439 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$repo_root"
+
+./scripts/supabase.sh start >/dev/null
+./scripts/db-reset.sh >/dev/null
+./scripts/provision-local-demo-user.sh >/dev/null
+
+db_container_name="$(
+  docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1
+)"
+
+if [[ -z "$db_container_name" ]]; then
+  echo "Could not find the local Supabase database container." >&2
+  exit 1
+fi
+
+demo_user_query="$(
+  ./scripts/supabase.sh db query -o json "
+    select id
+    from auth.users
+    where email = 'demo@lyron.local';
+  "
+)"
+
+demo_user_id="$(
+  QUERY_RESULT="$demo_user_query" REPO_ROOT="$repo_root" python3 - <<'PY'
+import json
+import os
+import subprocess
+
+payload = json.loads(
+    subprocess.check_output(
+        ["python3", f"{os.environ['REPO_ROOT']}/scripts/extract_supabase_json.py"],
+        input=os.environ["QUERY_RESULT"],
+        text=True,
+    )
+)
+rows = payload if isinstance(payload, list) else payload.get("rows", [])
+if len(rows) != 1:
+    raise SystemExit(f"unexpected rows: {rows!r}")
+print(rows[0]["id"])
+PY
+)"
+
+python3 - "$db_container_name" "$demo_user_id" <<'PY'
+import json
+import subprocess
+import sys
+from textwrap import dedent
+
+container_name = sys.argv[1]
+demo_user_id = sys.argv[2]
+blocked_user_id = "88888888-8888-8888-8888-888888888888"
+organization_id = "11111111-1111-1111-1111-111111111111"
+seed_song_id = "33333333-3333-3333-3333-333333333333"
+seed_song_version = 1
+
+
+def normalize_uuid(value: str) -> str:
+    if value.startswith("["):
+        parts = json.loads(value)
+        if len(parts) != 16:
+            raise SystemExit(f"unexpected uuid bytes: {parts!r}")
+        hex_value = "".join(f"{part:02x}" for part in parts)
+        return (
+            f"{hex_value[0:8]}-{hex_value[8:12]}-{hex_value[12:16]}-"
+            f"{hex_value[16:20]}-{hex_value[20:32]}"
+        )
+    return value
+
+
+demo_user_id = normalize_uuid(demo_user_id)
+
+
+def sql_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def song_source(title: str) -> str:
+    return sql_quote("{title:" + title + "}\n[C] " + title)
+
+
+def run_psql(sql: str, user_id: str | None = None) -> str:
+    if user_id is not None:
+        sql = dedent(
+            f"""
+            do $$
+            begin
+              perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
+              perform set_config('request.jwt.claim.role', 'authenticated', true);
+            end $$;
+            {sql}
+            """
+        )
+
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-X",
+            "-qAt",
+            "-F",
+            "\t",
+            "-c",
+            sql,
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        raise SystemExit(
+            "psql failed:\n"
+            f"SQL:\n{sql}\n"
+            f"stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+
+    return result.stdout.strip()
+
+
+def fetch_json(sql: str, user_id: str | None = None) -> dict:
+    raw = run_psql(sql, user_id=user_id)
+    if not raw:
+        raise SystemExit(f"expected JSON output, got empty result for:\n{sql}")
+    return json.loads(raw)
+
+
+def fetch_row(sql: str, user_id: str | None = None) -> list[str]:
+    raw = run_psql(sql, user_id=user_id)
+    if not raw:
+        raise SystemExit(f"expected row output, got empty result for:\n{sql}")
+    return raw.split("\t")
+
+
+def capture_error(sql: str, user_id: str | None = None) -> tuple[str, str, str]:
+    capture_sql = dedent(
+        f"""
+        create temp table if not exists song_write_error_capture (
+          sqlstate text,
+          message text,
+          detail text
+        );
+        truncate song_write_error_capture;
+        do $$
+        declare
+          v_sqlstate text;
+          v_message text;
+          v_detail text;
+        begin
+          begin
+            {sql}
+          exception when others then
+            get stacked diagnostics
+              v_sqlstate = RETURNED_SQLSTATE,
+              v_message = MESSAGE_TEXT,
+              v_detail = PG_EXCEPTION_DETAIL;
+            insert into song_write_error_capture values (
+              v_sqlstate,
+              v_message,
+              coalesce(v_detail, '')
+            );
+          end;
+        end $$;
+        select sqlstate, message, detail
+        from song_write_error_capture
+        limit 1;
+        """
+    )
+
+    row = fetch_row(capture_sql, user_id=user_id)
+    if len(row) != 3:
+        raise SystemExit(f"unexpected captured error row: {row!r}")
+    return row[0], row[1], row[2]
+
+
+def create_song(
+    title: str,
+    requested_slug: str | None = None,
+    user_id: str | None = None,
+) -> dict:
+    slug_arg = (
+        f", p_requested_slug => {sql_quote(requested_slug)}"
+        if requested_slug is not None
+        else ""
+    )
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.create_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_title => {sql_quote(title)},
+              p_chordpro_source => {song_source(title)}{slug_arg}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def update_song(
+    song_id: str,
+    base_version: int,
+    title: str,
+    overwrite: bool = False,
+    user_id: str | None = None,
+) -> dict:
+    function_name = "public.overwrite_song_update" if overwrite else "public.update_song"
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb({function_name}(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(song_id)},
+              p_base_version => {base_version},
+              p_title => {sql_quote(title)},
+              p_chordpro_source => {song_source(title)}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def delete_song(
+    song_id: str,
+    base_version: int,
+    overwrite: bool = False,
+    user_id: str | None = None,
+) -> dict:
+    function_name = "public.overwrite_song_delete" if overwrite else "public.delete_song"
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb({function_name}(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(song_id)},
+              p_base_version => {base_version}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def assert_equal(actual, expected, label):
+    if actual != expected:
+        raise SystemExit(f"{label} mismatch:\nexpected: {expected!r}\nactual:   {actual!r}")
+
+
+unauthorized_sql, unauthorized_message, unauthorized_detail = capture_error(
+    dedent(
+        f"""
+        perform public.create_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_title => 'Unauthorized Song',
+          p_chordpro_source => {song_source('Unauthorized Song')}
+        );
+        """
+    ),
+    user_id=blocked_user_id,
+)
+assert_equal(unauthorized_sql, "42501", "authorization sqlstate")
+assert_equal(unauthorized_message, "song_write_not_authorized", "authorization message")
+assert "canEditSongs" in unauthorized_detail, unauthorized_detail
+
+first_collision = create_song("Collision Song", "write-contract-collision", user_id=demo_user_id)
+assert_equal(first_collision["slug"], "write-contract-collision", "first collision slug")
+assert_equal(first_collision["version"], 1, "first collision version")
+
+second_collision = create_song("Collision Song", "write-contract-collision", user_id=demo_user_id)
+assert_equal(second_collision["slug"], "write-contract-collision-2", "second collision slug")
+assert_equal(second_collision["version"], 1, "second collision version")
+
+collision_row = fetch_json(
+    dedent(
+        f"""
+        select to_jsonb(song)
+        from public.songs as song
+        where organization_id = {sql_quote(organization_id)}
+          and slug = 'write-contract-collision';
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(collision_row["slug"], "write-contract-collision", "collision persisted slug")
+
+updatable = create_song("Update Target", "write-contract-update", user_id=demo_user_id)
+assert_equal(updatable["slug"], "write-contract-update", "updatable slug")
+
+updated_once = update_song(
+    updatable["id"],
+    1,
+    "Update Target Revised",
+    user_id=demo_user_id,
+)
+assert_equal(updated_once["slug"], "write-contract-update", "update preserves slug")
+assert_equal(updated_once["version"], 2, "update version bump")
+
+stale_update_sql, stale_update_message, stale_update_detail = capture_error(
+    dedent(
+        f"""
+        perform public.update_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(updatable['id'])},
+          p_base_version => 1,
+          p_title => 'Update Target Stale',
+          p_chordpro_source => {song_source('Update Target Stale')}
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(stale_update_sql, "P0001", "stale update sqlstate")
+assert_equal(stale_update_message, "song_version_conflict", "stale update message")
+assert "current version 2" in stale_update_detail, stale_update_detail
+
+overwrite_update = update_song(
+    updatable["id"],
+    1,
+    "Update Target Overwritten",
+    overwrite=True,
+    user_id=demo_user_id,
+)
+assert_equal(overwrite_update["version"], 3, "overwrite update version bump")
+assert_equal(overwrite_update["slug"], "write-contract-update", "overwrite update preserves slug")
+
+dependency_sql, dependency_message, dependency_detail = capture_error(
+    dedent(
+        f"""
+        perform public.delete_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(seed_song_id)},
+          p_base_version => {seed_song_version}
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(dependency_sql, "23503", "dependency sqlstate")
+assert_equal(
+    dependency_message,
+    "song_delete_blocked_by_session_items",
+    "dependency message",
+)
+assert "session item" in dependency_detail.lower(), dependency_detail
+
+delete_target = create_song("Delete Target", "write-contract-delete", user_id=demo_user_id)
+update_song(delete_target["id"], 1, "Delete Target Revised", user_id=demo_user_id)
+
+stale_delete_sql, stale_delete_message, stale_delete_detail = capture_error(
+    dedent(
+        f"""
+        perform public.delete_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(delete_target['id'])},
+          p_base_version => 1
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(stale_delete_sql, "P0001", "stale delete sqlstate")
+assert_equal(stale_delete_message, "song_version_conflict", "stale delete message")
+assert "current version 2" in stale_delete_detail, stale_delete_detail
+
+deleted_song = delete_song(delete_target["id"], 1, overwrite=True, user_id=demo_user_id)
+assert_equal(deleted_song["id"], delete_target["id"], "overwrite delete id")
+
+delete_lookup = run_psql(
+    f"""
+    select count(*)
+    from public.songs
+    where organization_id = {sql_quote(organization_id)}
+      and id = {sql_quote(delete_target['id'])};
+    """,
+    user_id=demo_user_id,
+)
+assert_equal(delete_lookup, "0", "overwrite delete removal")
+
+attachment_target = create_song("Attachment Target", "write-contract-attachment", user_id=demo_user_id)
+run_psql(
+    dedent(
+        f"""
+        insert into public.attachments (
+          id,
+          organization_id,
+          song_id,
+          storage_bucket,
+          storage_path,
+          mime_type,
+          file_name
+        )
+        values (
+          gen_random_uuid(),
+          {sql_quote(organization_id)},
+          {sql_quote(attachment_target['id'])},
+          'song-assets',
+          'attachments/write-contract-attachment.pdf',
+          'application/pdf',
+          'write-contract-attachment.pdf'
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+deleted_attachment_song = delete_song(attachment_target["id"], 1, user_id=demo_user_id)
+assert_equal(
+    deleted_attachment_song["id"],
+    attachment_target["id"],
+    "attachment cascade delete id",
+)
+
+attachment_count = run_psql(
+    f"""
+    select count(*)
+    from public.attachments
+    where organization_id = {sql_quote(organization_id)}
+      and song_id = {sql_quote(attachment_target['id'])};
+    """,
+    user_id=demo_user_id,
+)
+assert_equal(attachment_count, "0", "attachment cascade cleanup")
+
+print("song CRUD write contract regression passed")
+PY

@@ -4,10 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
+import 'package:lyron_app/src/application/song_library/song_library_service.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -16,6 +20,7 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
+import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
@@ -94,6 +99,7 @@ void main() {
 
   Widget buildApp({
     required SongReaderResult result,
+    SongLibraryService? songLibraryService,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
       connectionStatus: CatalogConnectionStatus.online,
@@ -105,6 +111,9 @@ void main() {
     return ProviderScope(
       overrides: [
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        if (songLibraryService != null)
+          songLibraryServiceProvider.overrideWithValue(songLibraryService),
         songLibraryReaderProvider.overrideWithProvider(
           (value) => FutureProvider.autoDispose((ref) async => result),
         ),
@@ -141,6 +150,7 @@ void main() {
     return ProviderScope(
       overrides: [
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
         songLibraryListProvider.overrideWith(
           (ref) async => const [SongSummary(id: songId, title: 'Reader Song')],
         ),
@@ -213,6 +223,7 @@ void main() {
             hasCachedCatalog: true,
           ),
         ),
+        activeCatalogContextProvider.overrideWithValue(null),
         songLibraryListProvider.overrideWith((ref) async {
           return [
             for (final session in planDetail.sessions)
@@ -249,6 +260,7 @@ void main() {
     return ProviderScope(
       overrides: [
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
         songLibraryReaderProvider.overrideWithProvider(
           (value) => FutureProvider.autoDispose((ref) => loadSong()),
         ),
@@ -280,8 +292,37 @@ void main() {
 
       expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
       expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
+      expect(find.text(AppStrings.songEditAction), findsOneWidget);
+      expect(find.text(AppStrings.songDeleteAction), findsOneWidget);
     },
   );
+
+  testWidgets('delete blocked locally shows an explicit dialog', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        result: buildResult(),
+        songLibraryService: _BlockingSongLibraryService(),
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songDeleteAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
+  });
 
   testWidgets('hides chords in lyrics only mode', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
@@ -1016,4 +1057,122 @@ String _sessionItemIdForScopedRoute(
   }).firstOrNull;
 
   return item?.id ?? songSlug;
+}
+
+class _BlockingSongLibraryService extends SongLibraryService {
+  _BlockingSongLibraryService()
+    : super(_ReaderFakeSongRepository(), _ReaderFakeSongRepository());
+
+  @override
+  Future<SongMutationRecord> deleteSong({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async {
+    throw SongDeleteBlockedException(songId);
+  }
+
+  @override
+  Future<SongSource> getSongSource({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async {
+    return const SongSource(id: 'reader_song', source: '{title: Reader Song}');
+  }
+}
+
+class _ReaderFakeSongRepository
+    implements SongCatalogReadRepository, SongMutationStore {
+  @override
+  Future<String> allocateUniqueSlug({
+    required String userId,
+    required String organizationId,
+    required String title,
+  }) async => 'reader-song';
+
+  @override
+  Future<int> countReferencingSessionItems({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+
+  @override
+  Future<void> deleteSong({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {}
+
+  @override
+  Future<SongSource> getSongSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async =>
+      const SongSource(id: 'reader_song', source: '{title: Reader Song}');
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async => const SongSummary(id: 'reader_song', title: 'Reader Song');
+
+  @override
+  Future<bool> hasUnsyncedChanges({required String userId}) async => false;
+
+  @override
+  Future<List<SongSummary>> listSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [SongSummary(id: 'reader_song', title: 'Reader Song')];
+
+  @override
+  Future<SongMutationRecord?> readById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => null;
+
+  @override
+  Future<List<SongMutationRecord>> readConflictSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<List<SongMutationRecord>> readPendingSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required SongSyncStatus syncStatus,
+    SongMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) async {}
+
+  @override
+  Future<void> upsertSong({
+    required String userId,
+    required SongMutationRecord record,
+  }) async {}
+
+  @override
+  Future<void> reconcileSyncedSong({
+    required String userId,
+    required String organizationId,
+    required SongMutationRecord record,
+  }) async {}
+
+  @override
+  Future<void> clearSongMutation({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {}
 }

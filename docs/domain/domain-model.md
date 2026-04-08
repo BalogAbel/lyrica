@@ -69,11 +69,11 @@ Operational note:
 
 ### songs
 
-Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app.
+Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app. A later song CRUD slice adds offline-created UUID-backed rows plus write-side sync metadata without moving authorization into Flutter.
 
 Key fields:
 
-- `id`
+- `id` (UUID v4)
 - `organization_id`
 - `slug`
 - `title`
@@ -93,6 +93,13 @@ Slug rule:
 
 - `slug` is required and unique within `(organization_id, slug)`.
 - The slug is the public URL segment for song routes; the internal song identifier remains `id`.
+- The slug is generated at creation time and remains stable across later title edits unless an explicit slug-edit slice is introduced.
+- Offline-created songs must also keep local slug uniqueness within the active organization before sync succeeds.
+
+Deletion rule:
+
+- A song may be deleted only when no `session_items` still reference it.
+- Accepted song deletion cascades to song-owned `attachments`.
 
 Local-first read-model note:
 
@@ -100,6 +107,7 @@ Local-first read-model note:
 - That snapshot stores only `SongSummary` values and raw `SongSource` payloads for the active visible catalog.
 - ChordPro parsing, diagnostics, and reader projection remain Flutter-owned concerns and are not persisted as backend-owned rendered projections.
 - Explicit sign-out removes access to that cached authenticated song catalog.
+- In the future song CRUD slice, rows marked `pending_delete` are hidden from normal reads and slug lookups until the deletion is either synchronized or discarded.
 
 ### plans
 
@@ -230,7 +238,7 @@ Offline-synced aggregates include:
 
 The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
 
-The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata (`refreshed_at`, snapshot version, and authenticated user plus active-organization ownership), and it stores a read-only authenticated planning projection with ownership metadata plus normalized plan, session, and session-item rows for the active organization. It does not yet introduce write-side sync records for songs, plans, or sessions.
+The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata for the current authenticated user and active organization, and it stores a read-only authenticated planning projection with ownership metadata plus normalized plan, session, and session-item rows for the active organization. The planned song CRUD slice adds write-side sync records for songs; planning writes are deferred to a later slice.
 
 ### sync_status
 
@@ -264,6 +272,10 @@ Authorization evaluates capabilities, not raw role strings in application code. 
 - `canManagePlans`
 
 Roles map to capabilities in backend-owned policy logic.
+
+Song mutation note:
+
+- `canEditSongs` gates song create, update, delete, and explicit conflict-overwrite actions at the backend boundary.
 
 Membership administration is also capability-based:
 

@@ -17,7 +17,7 @@ class SupabaseSongRepository implements SongRepository {
         listSongsRows: () async {
           final rows = await client
               .from('songs')
-              .select('id, slug, title')
+              .select('id, slug, title, version')
               .order('title');
           return List<Map<String, dynamic>>.from(rows);
         },
@@ -32,7 +32,7 @@ class SupabaseSongRepository implements SongRepository {
         getSongSummaryBySlugRow: (songSlug) async {
           final row = await client
               .from('songs')
-              .select('id, slug, title')
+              .select('id, slug, title, version')
               .eq('slug', songSlug)
               .maybeSingle();
           return row == null ? null : Map<String, dynamic>.from(row);
@@ -72,6 +72,7 @@ class SupabaseSongRepository implements SongRepository {
             id: row['id'] as String,
             slug: row['slug'] as String? ?? row['id'] as String,
             title: row['title'] as String,
+            version: (row['version'] as num?)?.toInt() ?? 1,
           ),
         )
         .toList(growable: false);
@@ -100,6 +101,7 @@ class SupabaseSongRepository implements SongRepository {
       id: row['id'] as String,
       slug: row['slug'] as String? ?? row['id'] as String,
       title: row['title'] as String,
+      version: (row['version'] as num?)?.toInt() ?? 1,
     );
   }
 

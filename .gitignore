@@ -1,6 +1,8 @@
 # macOS
 .DS_Store
 
+.agents/
+
 # Flutter / Dart
 **/.dart_tool/
 **/.flutter-plugins

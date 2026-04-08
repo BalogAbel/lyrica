@@ -14,6 +14,25 @@ class AppStrings {
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';
+  static const songMutationSyncAction = 'Sync changes';
+  static const songCreateAction = 'Add song';
+  static const songEditAction = 'Edit song';
+  static const songDeleteAction = 'Delete song';
+  static const songSaveAction = 'Save';
+  static const songCancelAction = 'Cancel';
+  static const songTitleLabel = 'Title';
+  static const songSourceLabel = 'ChordPro source';
+  static const unsyncedSignOutTitle = 'Discard unsynced changes?';
+  static const unsyncedSignOutMessage =
+      'You have unsynced modifications. Signing out will permanently discard these changes.';
+  static const unsyncedSignOutConfirmAction = 'Discard and sign out';
+  static const songDeleteBlockedMessage =
+      'This song cannot be deleted because a session still references it.';
+  static const songConflictTitle = 'Song conflict';
+  static const songConflictMessage =
+      'A song was modified elsewhere. Keep your version or discard it and pull the latest server version.';
+  static const songKeepMineAction = 'Keep mine';
+  static const songDiscardMineAction = 'Discard mine';
   static const songListLoadingMessage = 'Loading songs...';
   static const songListLoadFailureMessage =
       'Unable to load songs. Please try again.';
