@@ -520,13 +520,7 @@ void main() {
               syncStatus: SongSyncStatus.pendingCreate,
             ),
           ),
-          throwsA(
-            isA<StateError>().having(
-              (error) => error.message,
-              'message',
-              contains('Local song slug is already reserved'),
-            ),
-          ),
+          throwsA(isA<LocalSongSlugConflictException>()),
         );
       },
     );

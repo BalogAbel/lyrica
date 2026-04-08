@@ -205,40 +205,24 @@ class DriftSongMutationStore implements SongMutationStore {
     required String userId,
     required SongMutationRecord record,
   }) async {
-    try {
-      await _songCatalogStore.saveSongMutation(
-        SongCatalogMutationDraft(
-          userId: userId,
-          organizationId: record.organizationId,
-          songId: record.id,
-          slug: record.slug,
-          title: record.title,
-          source: record.chordproSource,
-          version: record.version,
-          syncStatus: record.syncStatus,
-          baseVersion: record.baseVersion,
-          syncErrorContext: _encodeError(
-            code: record.errorCode,
-            message: record.errorMessage,
-            conflictSourceSyncStatus: record.conflictSourceSyncStatus,
-          ),
+    await _songCatalogStore.saveSongMutation(
+      SongCatalogMutationDraft(
+        userId: userId,
+        organizationId: record.organizationId,
+        songId: record.id,
+        slug: record.slug,
+        title: record.title,
+        source: record.chordproSource,
+        version: record.version,
+        syncStatus: record.syncStatus,
+        baseVersion: record.baseVersion,
+        syncErrorContext: _encodeError(
+          code: record.errorCode,
+          message: record.errorMessage,
+          conflictSourceSyncStatus: record.conflictSourceSyncStatus,
         ),
-      );
-    } on Object catch (error) {
-      if (_isLocalSlugUniquenessViolation(error)) {
-        throw const LocalSongSlugConflictException();
-      }
-      rethrow;
-    }
-  }
-
-  static bool _isLocalSlugUniquenessViolation(Object error) {
-    if (error is! StateError) {
-      return false;
-    }
-
-    final message = error.message.toString().toLowerCase();
-    return message.startsWith('local song slug is already reserved');
+      ),
+    );
   }
 
   SongMutationRecord _toRecord(CachedCatalogSongMutation row) {

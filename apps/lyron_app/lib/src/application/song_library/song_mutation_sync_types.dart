@@ -4,7 +4,7 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart'
     show SongSyncStatus;
 
 export 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart'
-    show SongSyncStatus;
+    show LocalSongSlugConflictException, SongSyncStatus;
 
 enum SongMutationSyncErrorCode {
   authorizationDenied,
@@ -28,13 +28,6 @@ class SongDeleteBlockedException implements Exception {
 
   @override
   String toString() => 'SongDeleteBlockedException(songId: $songId)';
-}
-
-class LocalSongSlugConflictException implements Exception {
-  const LocalSongSlugConflictException();
-
-  @override
-  String toString() => 'LocalSongSlugConflictException()';
 }
 
 class SongMutationContext {
