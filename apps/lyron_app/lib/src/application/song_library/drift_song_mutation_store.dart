@@ -108,17 +108,11 @@ class DriftSongMutationStore implements SongMutationStore {
       return _toRecord(mutation);
     }
 
-    final summaries = await _songCatalogStore.readActiveSummaries(
+    final summary = await _songCatalogStore.readActiveSummaryById(
       userId: userId,
       organizationId: organizationId,
+      songId: songId,
     );
-    SongSummary? summary;
-    for (final candidate in summaries) {
-      if (candidate.id == songId) {
-        summary = candidate;
-        break;
-      }
-    }
     if (summary == null) {
       return null;
     }

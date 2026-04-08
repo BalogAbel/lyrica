@@ -184,10 +184,10 @@ begin
   update public.songs as song
   set
     title = p_title,
-    artist = p_artist,
-    key_signature = p_key_signature,
-    tempo_bpm = p_tempo_bpm,
-    tags = coalesce(p_tags, '{}'::text[]),
+    artist = coalesce(p_artist, song.artist),
+    key_signature = coalesce(p_key_signature, song.key_signature),
+    tempo_bpm = coalesce(p_tempo_bpm, song.tempo_bpm),
+    tags = coalesce(p_tags, song.tags),
     chordpro_source = coalesce(p_chordpro_source, song.chordpro_source),
     metadata_json = coalesce(p_metadata_json, song.metadata_json),
     version = existing_song.version + 1,

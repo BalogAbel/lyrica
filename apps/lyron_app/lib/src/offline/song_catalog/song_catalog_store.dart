@@ -78,6 +78,12 @@ abstract interface class SongCatalogStore {
     required String songSlug,
   });
 
+  Future<SongSummary?> readActiveSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  });
+
   Future<SongSource?> readActiveSource({
     required String userId,
     required String organizationId,
@@ -103,6 +109,12 @@ abstract interface class SongCatalogStore {
   });
 
   Future<CachedCatalogSongMutation?> readSongMutationBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  });
+
+  Future<bool> hasVisibleSongSlug({
     required String userId,
     required String organizationId,
     required String songSlug,
@@ -223,6 +235,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
     final visibleRows = await _readVisibleSongs(
       userId: userId,
       organizationId: organizationId,
+      includeSources: false,
     );
 
     final summaries = visibleRows.values
@@ -248,6 +261,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
     final visibleRows = await _readVisibleSongs(
       userId: userId,
       organizationId: organizationId,
+      includeSources: false,
     );
 
     for (final row in visibleRows.values) {
@@ -265,6 +279,30 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
+  Future<SongSummary?> readActiveSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    final visibleRows = await _readVisibleSongs(
+      userId: userId,
+      organizationId: organizationId,
+      includeSources: false,
+    );
+    final row = visibleRows[songId];
+    if (row == null) {
+      return null;
+    }
+
+    return SongSummary(
+      id: row.songId,
+      title: row.title,
+      slug: row.slug,
+      version: row.version,
+    );
+  }
+
+  @override
   Future<SongSource?> readActiveSource({
     required String userId,
     required String organizationId,
@@ -273,6 +311,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
     final visibleRows = await _readVisibleSongs(
       userId: userId,
       organizationId: organizationId,
+      includeSources: true,
     );
     final row = visibleRows[songId];
     if (row?.source == null) {
@@ -405,6 +444,51 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
+  Future<bool> hasVisibleSongSlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    final matchingMutation =
+        await (_database.select(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.slug.equals(songSlug) &
+                  table.syncStatus
+                      .equals(SongSyncStatus.pendingDelete.value)
+                      .not(),
+            ))
+            .getSingleOrNull();
+    if (matchingMutation != null) {
+      return true;
+    }
+
+    final matchingSummary =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.slug.equals(songSlug),
+            ))
+            .getSingleOrNull();
+    if (matchingSummary == null) {
+      return false;
+    }
+
+    final deletingMutation =
+        await (_database.select(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(matchingSummary.songId) &
+                  table.syncStatus.equals(SongSyncStatus.pendingDelete.value),
+            ))
+            .getSingleOrNull();
+    return deletingMutation == null;
+  }
+
+  @override
   Future<String> allocateAvailableSongSlug({
     required String userId,
     required String organizationId,
@@ -414,18 +498,11 @@ class DriftSongCatalogStore implements SongCatalogStore {
     var candidate = baseSlug;
     var suffix = 2;
 
-    while (await readActiveSummaryBySlug(
-              userId: userId,
-              organizationId: organizationId,
-              songSlug: candidate,
-            ) !=
-            null ||
-        await readSongMutationBySlug(
-              userId: userId,
-              organizationId: organizationId,
-              songSlug: candidate,
-            ) !=
-            null) {
+    while (await _hasReservedSongSlug(
+      userId: userId,
+      organizationId: organizationId,
+      songSlug: candidate,
+    )) {
       candidate = '$baseSlug-$suffix';
       suffix += 1;
     }
@@ -579,6 +656,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
   Future<Map<String, _VisibleSongRow>> _readVisibleSongs({
     required String userId,
     required String organizationId,
+    required bool includeSources,
   }) async {
     final visibleRows = <String, _VisibleSongRow>{};
 
@@ -589,16 +667,19 @@ class DriftSongCatalogStore implements SongCatalogStore {
                   table.organizationId.equals(organizationId),
             ))
             .get();
-    final snapshotSources =
-        await (_database.select(_database.cachedCatalogSources)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId),
-            ))
-            .get();
-    final snapshotSourceBySongId = {
-      for (final row in snapshotSources) row.songId: row.source,
-    };
+    final snapshotSourceBySongId = includeSources
+        ? {
+            for (final row
+                in await (_database.select(_database.cachedCatalogSources)
+                      ..where(
+                        (table) =>
+                            table.userId.equals(userId) &
+                            table.organizationId.equals(organizationId),
+                      ))
+                    .get())
+              row.songId: row.source,
+          }
+        : const <String, String>{};
 
     for (final row in snapshotRows) {
       _upsertVisibleRow(
@@ -607,7 +688,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
           songId: row.songId,
           title: row.title,
           slug: row.slug,
-          source: snapshotSourceBySongId[row.songId],
+          source: includeSources ? snapshotSourceBySongId[row.songId] : null,
           version: row.version,
         ),
       );
@@ -641,13 +722,34 @@ class DriftSongCatalogStore implements SongCatalogStore {
           songId: row.songId,
           title: row.title,
           slug: row.slug,
-          source: row.source,
+          source: includeSources ? row.source : null,
           version: row.version,
         ),
       );
     }
 
     return visibleRows;
+  }
+
+  Future<bool> _hasReservedSongSlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    final matchingMutation = await readSongMutationBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      songSlug: songSlug,
+    );
+    if (matchingMutation != null) {
+      return true;
+    }
+
+    return hasVisibleSongSlug(
+      userId: userId,
+      organizationId: organizationId,
+      songSlug: songSlug,
+    );
   }
 
   void _upsertVisibleRow(
