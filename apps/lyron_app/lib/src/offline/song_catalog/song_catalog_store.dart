@@ -831,9 +831,69 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   String _slugify(String value) {
-    final normalized = value
+    const replacements = <String, String>{
+      'à': 'a',
+      'á': 'a',
+      'â': 'a',
+      'ã': 'a',
+      'ä': 'a',
+      'å': 'a',
+      'ā': 'a',
+      'ă': 'a',
+      'ą': 'a',
+      'ç': 'c',
+      'ć': 'c',
+      'č': 'c',
+      'ď': 'd',
+      'è': 'e',
+      'é': 'e',
+      'ê': 'e',
+      'ë': 'e',
+      'ē': 'e',
+      'ė': 'e',
+      'ę': 'e',
+      'ì': 'i',
+      'í': 'i',
+      'î': 'i',
+      'ï': 'i',
+      'ī': 'i',
+      'į': 'i',
+      'ł': 'l',
+      'ñ': 'n',
+      'ń': 'n',
+      'ò': 'o',
+      'ó': 'o',
+      'ô': 'o',
+      'õ': 'o',
+      'ö': 'o',
+      'ő': 'o',
+      'ø': 'o',
+      'ō': 'o',
+      'ř': 'r',
+      'ś': 's',
+      'š': 's',
+      'ß': 'ss',
+      'ť': 't',
+      'ù': 'u',
+      'ú': 'u',
+      'û': 'u',
+      'ü': 'u',
+      'ű': 'u',
+      'ū': 'u',
+      'ý': 'y',
+      'ÿ': 'y',
+      'ž': 'z',
+      'ź': 'z',
+      'ż': 'z',
+    };
+
+    final unaccented = value
         .trim()
         .toLowerCase()
+        .split('')
+        .map((char) => replacements[char] ?? char)
+        .join();
+    final normalized = unaccented
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'-{2,}'), '-')
         .replaceAll(RegExp(r'^-|-$'), '');

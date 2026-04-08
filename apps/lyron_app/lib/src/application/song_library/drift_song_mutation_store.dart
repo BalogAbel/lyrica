@@ -233,9 +233,12 @@ class DriftSongMutationStore implements SongMutationStore {
   }
 
   static bool _isLocalSlugUniquenessViolation(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('local song slug is already reserved') ||
-        message.contains('unique constraint');
+    if (error is! StateError) {
+      return false;
+    }
+
+    final message = error.message.toString().toLowerCase();
+    return message.startsWith('local song slug is already reserved');
   }
 
   SongMutationRecord _toRecord(CachedCatalogSongMutation row) {
@@ -298,7 +301,12 @@ class DriftSongMutationStore implements SongMutationStore {
       return (null, null, null);
     }
 
-    final decoded = jsonDecode(value);
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(value);
+    } on FormatException {
+      return (null, value, null);
+    }
     if (decoded is! Map<String, dynamic>) {
       return (null, value, null);
     }
