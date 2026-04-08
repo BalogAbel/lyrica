@@ -157,6 +157,57 @@ void main() {
       expect(store.lastUpsertedRecord?.slug, 'alpha');
       expect(store.lastUpsertedRecord?.syncStatus, SongSyncStatus.synced);
     });
+
+    test('stops syncing later records after a connectivity failure', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+          SongMutationRecord(
+            id: 'song-2',
+            organizationId: 'org-1',
+            slug: 'beta',
+            title: 'Beta',
+            chordproSource: '{title: Beta}',
+            version: 1,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async {
+          if (record.id == 'song-1') {
+            throw const SongMutationSyncException(
+              SongMutationSyncErrorCode.connectivityFailure,
+            );
+          }
+          return record.copyWith(syncStatus: SongSyncStatus.synced);
+        },
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(repository.syncedSongIds, ['song-1']);
+      expect(
+        store.lastSavedErrorCode,
+        SongMutationSyncErrorCode.connectivityFailure,
+      );
+    });
   });
 }
 
@@ -304,6 +355,7 @@ class _FakeSongMutationRemoteRepository
 
   int overwriteCalls = 0;
   SongSyncStatus? lastOverwriteRpcType;
+  final List<String> syncedSongIds = [];
 
   @override
   Future<SongMutationRecord> fetchSong({
@@ -336,6 +388,7 @@ class _FakeSongMutationRemoteRepository
     required String organizationId,
     required SongMutationRecord record,
   }) {
+    syncedSongIds.add(record.id);
     final handler = _syncHandler;
     if (handler == null) {
       throw UnimplementedError();

@@ -34,6 +34,9 @@ class SongMutationSyncController {
           errorCode: error.code,
           errorMessage: error.message,
         );
+        if (error.code == SongMutationSyncErrorCode.connectivityFailure) {
+          break;
+        }
       }
     }
   }

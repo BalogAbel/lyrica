@@ -1,10 +1,14 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
@@ -476,6 +480,20 @@ void main() {
     );
 
     test(
+      'slugifies accented titles close to backend slugify behavior',
+      () async {
+        expect(
+          await store.allocateAvailableSongSlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            title: 'Egy út',
+          ),
+          'egy-ut',
+        );
+      },
+    );
+
+    test(
       'rejects saving a mutation when another song already reserves its slug',
       () async {
         await store.saveSongMutation(
@@ -510,6 +528,42 @@ void main() {
             ),
           ),
         );
+      },
+    );
+
+    test(
+      'drift mutation store tolerates malformed sync error payloads',
+      () async {
+        await database
+            .into(database.cachedCatalogSongMutations)
+            .insert(
+              CachedCatalogSongMutationsCompanion.insert(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                songId: 'song-1',
+                slug: 'alpha',
+                title: 'Alpha',
+                source: '{title: Alpha}',
+                version: 1,
+                syncStatus: 'pending_update',
+                syncErrorContext: Value('not-json'),
+              ),
+            );
+
+        final mutationStore = DriftSongMutationStore(
+          songCatalogStore: store,
+          planningLocalStore: const _NoopPlanningLocalStore(),
+        );
+
+        final record = await mutationStore.readById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+
+        expect(record, isNotNull);
+        expect(record?.errorCode, isNull);
+        expect(record?.errorMessage, 'not-json');
       },
     );
 
@@ -620,4 +674,73 @@ void main() {
       );
     });
   });
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  const _NoopPlanningLocalStore();
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> deletePlanningDataForUser({required String userId}) async {}
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) async => false;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) async => null;
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) async {}
 }
