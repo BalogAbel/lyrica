@@ -357,7 +357,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
       songId: songId,
     );
     if (visibleMutation != null) {
-      return SongSource(id: visibleMutation.songId, source: visibleMutation.source);
+      return SongSource(
+        id: visibleMutation.songId,
+        source: visibleMutation.source,
+      );
     }
 
     if (await _isSnapshotSongHidden(
@@ -871,7 +874,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       return false;
     }
 
-    return _songSyncStatusFromValue(mutationRow.syncStatus) != SongSyncStatus.synced;
+    return _songSyncStatusFromValue(mutationRow.syncStatus) !=
+        SongSyncStatus.synced;
   }
 
   void _upsertVisibleRow(
