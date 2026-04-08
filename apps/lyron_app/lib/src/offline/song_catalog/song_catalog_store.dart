@@ -11,6 +11,13 @@ enum SongSyncStatus {
   conflict,
 }
 
+class LocalSongSlugConflictException implements Exception {
+  const LocalSongSlugConflictException();
+
+  @override
+  String toString() => 'LocalSongSlugConflictException()';
+}
+
 extension SongSyncStatusX on SongSyncStatus {
   String get value => switch (this) {
     SongSyncStatus.pendingCreate => 'pending_create',
@@ -343,9 +350,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
       songSlug: mutation.slug,
     );
     if (conflictingRow != null && conflictingRow.songId != mutation.songId) {
-      throw StateError(
-        'Local song slug is already reserved by another mutation: ${mutation.slug}',
-      );
+      throw const LocalSongSlugConflictException();
     }
 
     await _database
