@@ -310,6 +310,41 @@ updated_once = update_song(
 assert_equal(updated_once["slug"], "write-contract-update", "update preserves slug")
 assert_equal(updated_once["version"], 2, "update version bump")
 
+metadata_target = fetch_json(
+    dedent(
+        f"""
+        with updated as (
+          update public.songs
+          set
+            artist = 'Existing Artist',
+            key_signature = 'G',
+            tempo_bpm = 96,
+            tags = array['worship', 'test']
+          where id = {sql_quote(updatable['id'])}
+          returning *
+        )
+        select to_jsonb(updated) from updated;
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(metadata_target["artist"], "Existing Artist", "seeded artist")
+assert_equal(metadata_target["key_signature"], "G", "seeded key signature")
+assert_equal(metadata_target["tempo_bpm"], 96, "seeded tempo")
+assert_equal(metadata_target["tags"], ["worship", "test"], "seeded tags")
+
+metadata_preserved = update_song(
+    updatable["id"],
+    2,
+    "Update Target Keeps Metadata",
+    user_id=demo_user_id,
+)
+assert_equal(metadata_preserved["artist"], "Existing Artist", "update preserves artist")
+assert_equal(metadata_preserved["key_signature"], "G", "update preserves key signature")
+assert_equal(metadata_preserved["tempo_bpm"], 96, "update preserves tempo")
+assert_equal(metadata_preserved["tags"], ["worship", "test"], "update preserves tags")
+assert_equal(metadata_preserved["version"], 3, "metadata-preserving update version bump")
+
 stale_update_sql, stale_update_message, stale_update_detail = capture_error(
     dedent(
         f"""
@@ -326,16 +361,16 @@ stale_update_sql, stale_update_message, stale_update_detail = capture_error(
 )
 assert_equal(stale_update_sql, "P0001", "stale update sqlstate")
 assert_equal(stale_update_message, "song_version_conflict", "stale update message")
-assert "current version 2" in stale_update_detail, stale_update_detail
+assert "current version 3" in stale_update_detail, stale_update_detail
 
 overwrite_update = update_song(
     updatable["id"],
-    1,
+    2,
     "Update Target Overwritten",
     overwrite=True,
     user_id=demo_user_id,
 )
-assert_equal(overwrite_update["version"], 3, "overwrite update version bump")
+assert_equal(overwrite_update["version"], 4, "overwrite update version bump")
 assert_equal(overwrite_update["slug"], "write-contract-update", "overwrite update preserves slug")
 
 dependency_sql, dependency_message, dependency_detail = capture_error(
