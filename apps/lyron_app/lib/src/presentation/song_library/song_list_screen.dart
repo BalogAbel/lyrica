@@ -340,7 +340,7 @@ class _MutationStatusSurface extends ConsumerWidget {
         'Song changes are pending until connectivity returns.',
       SongMutationSyncErrorCode.unknown =>
         entry.errorMessage ?? 'Song changes are pending sync.',
-      null => 'Song changes are pending sync.',
+      null => entry.errorMessage ?? 'Song changes are pending sync.',
       SongMutationSyncErrorCode.conflict => AppStrings.songConflictMessage,
     };
   }

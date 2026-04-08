@@ -395,6 +395,35 @@ void main() {
     expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
   });
 
+  testWidgets('shows raw error message when sync code is unavailable', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        mutationEntries: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'stuck-song',
+            title: 'Stuck Song',
+            chordproSource: '{title: Stuck Song}',
+            version: 4,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+            errorCode: null,
+            errorMessage: 'Stored plain sync error',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stored plain sync error'), findsOneWidget);
+  });
+
   testWidgets('reloads conflict entries after keep mine failure', (
     tester,
   ) async {
