@@ -761,6 +761,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
           exceptSongId: row.songId,
         );
         visibleRows.remove(row.songId);
+        final currentOwner = slugOwners[row.slug];
+        if (currentOwner == row.songId) {
+          slugOwners.remove(row.slug);
+        }
         continue;
       }
       if (status == SongSyncStatus.synced) {
@@ -795,11 +799,40 @@ class DriftSongCatalogStore implements SongCatalogStore {
       return true;
     }
 
-    return hasVisibleSongSlug(
+    return _hasVisibleSnapshotSongSlug(
       userId: userId,
       organizationId: organizationId,
       songSlug: songSlug,
     );
+  }
+
+  Future<bool> _hasVisibleSnapshotSongSlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    final matchingSummary =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.slug.equals(songSlug),
+            ))
+            .getSingleOrNull();
+    if (matchingSummary == null) {
+      return false;
+    }
+
+    final deletingMutation =
+        await (_database.select(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(matchingSummary.songId) &
+                  table.syncStatus.equals(SongSyncStatus.pendingDelete.value),
+            ))
+            .getSingleOrNull();
+    return deletingMutation == null;
   }
 
   SongSummary _summaryFromVisibleMutation(CachedCatalogSongMutation row) {
