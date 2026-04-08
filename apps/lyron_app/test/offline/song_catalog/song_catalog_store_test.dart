@@ -262,5 +262,362 @@ void main() {
         expect(reopenedSource?.source, '{title: Alpha}');
       },
     );
+
+    test(
+      'overlays local mutation states while hiding pending delete rows from normal reads',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 27, 9),
+        );
+
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+            slug: 'alpha',
+            title: 'Alpha Edited',
+            source: '{title: Alpha Edited}',
+            syncStatus: SongSyncStatus.pendingUpdate,
+            baseVersion: 7,
+            syncErrorContext: 'offline while editing',
+          ),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'beta',
+            title: 'Beta',
+            source: '{title: Beta}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-3',
+            slug: 'gamma',
+            title: 'Gamma',
+            source: '{title: Gamma}',
+            syncStatus: SongSyncStatus.pendingDelete,
+            baseVersion: 2,
+            syncErrorContext: 'dependency check deferred',
+          ),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-4',
+            slug: 'delta',
+            title: 'Delta',
+            source: '{title: Delta}',
+            syncStatus: SongSyncStatus.synced,
+            baseVersion: 5,
+          ),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-5',
+            slug: 'epsilon',
+            title: 'Epsilon',
+            source: '{title: Epsilon}',
+            syncStatus: SongSyncStatus.conflict,
+            baseVersion: 11,
+            syncErrorContext: 'server version is newer',
+          ),
+        );
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [
+            SongSummary(id: 'song-1', title: 'Alpha Edited', slug: 'alpha'),
+            SongSummary(id: 'song-2', title: 'Beta', slug: 'beta'),
+            SongSummary(id: 'song-5', title: 'Epsilon', slug: 'epsilon'),
+          ],
+        );
+
+        final updatedSource = await store.readActiveSource(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+
+        expect(updatedSource?.source, '{title: Alpha Edited}');
+        expect(
+          await store.readActiveSummaryBySlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songSlug: 'gamma',
+          ),
+          isNull,
+        );
+        final pendingDeletes = await store.readSongMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          syncStatuses: const [SongSyncStatus.pendingDelete],
+        );
+
+        expect(pendingDeletes, hasLength(1));
+        expect(pendingDeletes.single.songId, 'song-3');
+
+        final conflictRow = await store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-5',
+        );
+
+        expect(conflictRow?.syncStatus, SongSyncStatus.conflict.value);
+        expect(conflictRow?.baseVersion, 11);
+        expect(conflictRow?.syncErrorContext, 'server version is newer');
+      },
+    );
+
+    test(
+      'pending mutations shadow snapshot rows that still collide on the same slug',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [
+            SongSummary(id: 'song-1', title: 'Alpha', slug: 'alpha'),
+          ],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 27, 9),
+        );
+
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha',
+            title: 'Alpha Local',
+            source: '{title: Alpha Local}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        );
+
+        expect(
+          await store.readActiveSummaryBySlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songSlug: 'alpha',
+          ),
+          const SongSummary(id: 'song-2', title: 'Alpha Local', slug: 'alpha'),
+        );
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [
+            SongSummary(id: 'song-2', title: 'Alpha Local', slug: 'alpha'),
+          ],
+        );
+      },
+    );
+
+    test(
+      'allocates unique slugs without reusing pending delete mutation slugs',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [
+            SongSummary(id: 'song-1', title: 'Alpha', slug: 'alpha'),
+          ],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 27, 10),
+        );
+
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha-2',
+            title: 'Alpha',
+            source: '{title: Alpha local delete}',
+            syncStatus: SongSyncStatus.pendingDelete,
+          ),
+        );
+
+        expect(
+          await store.readActiveSummaryBySlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songSlug: 'alpha-2',
+          ),
+          isNull,
+        );
+
+        expect(
+          await store.allocateAvailableSongSlug(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            title: 'Alpha',
+          ),
+          'alpha-3',
+        );
+      },
+    );
+
+    test(
+      'rejects saving a mutation when another song already reserves its slug',
+      () async {
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            source: '{title: Alpha}',
+            syncStatus: SongSyncStatus.pendingDelete,
+          ),
+        );
+
+        await expectLater(
+          () => store.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-2',
+              slug: 'alpha',
+              title: 'Alpha Recreated',
+              source: '{title: Alpha Recreated}',
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('Local song slug is already reserved'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test('reconciles the canonical slug after a successful sync', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      await store.reconcileSyncedSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summary: const SongSummary(
+          id: 'song-1',
+          title: 'Alpha',
+          slug: 'alpha-2',
+          version: 12,
+        ),
+        source: const SongSource(
+          id: 'song-1',
+          source: '{title: Alpha canonical}',
+        ),
+      );
+
+      final syncedRow = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+
+      expect(syncedRow, isNull);
+      expect(
+        await store.readActiveSummaryBySlug(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songSlug: 'alpha',
+        ),
+        isNull,
+      );
+      expect(
+        await store.readActiveSummaryBySlug(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songSlug: 'alpha-2',
+        ),
+        const SongSummary(
+          id: 'song-1',
+          title: 'Alpha',
+          slug: 'alpha-2',
+          version: 12,
+        ),
+      );
+      final canonicalSource = await store.readActiveSource(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(canonicalSource?.source, '{title: Alpha canonical}');
+    });
+
+    test('purges a single song from snapshot and mutation storage', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 27, 11),
+      );
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha pending delete}',
+          syncStatus: SongSyncStatus.pendingDelete,
+          baseVersion: 3,
+        ),
+      );
+
+      await store.deleteSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+      expect(
+        await store.readSongMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    });
   });
 }

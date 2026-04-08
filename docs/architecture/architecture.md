@@ -54,7 +54,7 @@ Backend policy helpers are responsible for:
 5. While the app is foregrounded and the signed-in song-library subtree remains mounted, the controller polls on a fixed 5-minute cadence and manual refresh uses the same guarded refresh path.
 6. Only a completed full summary-plus-source refresh replaces the active local snapshot.
 7. Supabase applies RLS and function-based authorization on every online refresh.
-8. Future write slices will record local mutations in the sync queue with version metadata.
+8. Future write slices will record local mutations in the sync queue with version metadata and backend-authorized capability checks.
 9. MVP conflict handling for writes remains manual and explicit.
 
 For the current planning slice, UI reads plan summaries and plan detail from a repository-owned local planning projection. A planning sync controller eagerly refreshes the full visible planning model for the active organization from Supabase, atomically replaces the local projection on success, preserves the previous local projection when refresh fails, clears authenticated planning data on explicit sign-out, and discards stale refresh completions after organization-boundary changes. Cached-organization fallback is limited to signed-in cold-start recovery when no current planning boundary exists yet; once an active planning boundary is established in memory, transient organization-resolution failures keep that boundary until a new explicit organization boundary is observed. Ordering rules and song-backed session expansion remain repository-owned, while authorization remains fully backend-enforced through Supabase Auth identity and Postgres RLS.
@@ -85,6 +85,7 @@ For the current song-reader slice, UI reads song summaries and raw ChordPro sour
 
 The current reader cache keeps only one active authenticated catalog snapshot per user for the currently active organization. It does not retain a historical local snapshot archive or parallel retained organization catalogs, and it removes cached authenticated access on explicit sign-out. The automated verification path proves persistent cache reopen behavior; true offline relaunch acceptance remains a native manual-validation concern.
 The current planning slice keeps one authenticated planning projection per user for the active organization, purges the previous active organization projection when the active organization changes, and removes authenticated planning access on explicit sign-out. The automated verification path proves persistent planning-cache reopen behavior and offline reuse after refresh failure.
+The planned song CRUD slice keeps authorization backend-enforced through Supabase capability helpers and RLS, hides `pending_delete` rows from normal local reads immediately, and requires explicit user action for conflict overwrites instead of silent last-write-wins retries.
 
 ## Simplicity Rules
 

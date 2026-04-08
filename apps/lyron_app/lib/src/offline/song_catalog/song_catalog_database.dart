@@ -10,6 +10,7 @@ part 'song_catalog_database.g.dart';
     CachedCatalogSnapshots,
     CachedCatalogSummaries,
     CachedCatalogSources,
+    CachedCatalogSongMutations,
   ],
 )
 class SongCatalogDatabase extends _$SongCatalogDatabase {
@@ -28,5 +29,5 @@ class SongCatalogDatabase extends _$SongCatalogDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 }

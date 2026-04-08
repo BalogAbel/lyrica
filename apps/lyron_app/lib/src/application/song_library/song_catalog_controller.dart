@@ -231,13 +231,13 @@ class SongCatalogController extends ChangeNotifier {
   Future<void> handleExplicitSignOut() async {
     _invalidateRefreshWork();
     _stopRefreshScheduler();
-    final context = await _readCachedContextForSignOut();
+    final userId =
+        _state.context?.userId ??
+        _authSessionReader()?.userId ??
+        _lastAuthenticatedUserId;
     _setState(const CatalogSnapshotState.initial());
-    if (context != null) {
-      await _store.deleteCatalog(
-        userId: context.userId,
-        organizationId: context.organizationId,
-      );
+    if (userId != null) {
+      await _store.deleteCatalogsForUser(userId: userId);
     }
   }
 
@@ -257,28 +257,6 @@ class SongCatalogController extends ChangeNotifier {
       _rememberAuthenticatedUser(session.userId);
     }
     _updateRefreshScheduler();
-  }
-
-  Future<ActiveCatalogContext?> _readCachedContextForSignOut() async {
-    final context = _state.context;
-    if (context != null) {
-      return context;
-    }
-
-    final session = _authSessionReader();
-    final userId = session?.userId ?? _lastAuthenticatedUserId;
-    if (userId == null) {
-      return null;
-    }
-
-    final organizationId = await _store.readLatestCachedOrganizationId(
-      userId: userId,
-    );
-    if (organizationId == null) {
-      return null;
-    }
-
-    return ActiveCatalogContext(userId: userId, organizationId: organizationId);
   }
 
   Future<bool> _hasCachedCatalog(ActiveCatalogContext context) async {

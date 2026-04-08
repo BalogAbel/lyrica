@@ -20,6 +20,7 @@ Cover:
 - Authenticated catalog snapshot selection and refresh-state mapping
 - ChordPro parsing and metadata mapping rules
 - Song repository boundary behavior and backend summary/source mapping
+- Song CRUD orchestration behavior, including authorization-failure handling, OCC conflict branching, slug reconciliation, and `pending_delete` filtering
 - Planning repository boundary behavior, including plan ordering and plan-detail mapping
 - Slug-routing boundary behavior for route resolution, including explicit not-found surfaces for missing song, plan, and session slugs
 - Slug-routing boundary behavior for scoped reader song resolution within a session, including the assumption that a song appears at most once per session
@@ -39,6 +40,7 @@ Cover:
 - Empty, loading, and failure states
 - Capability-driven UX affordances
 - Offline indicators and conflict surfaces
+- Song CRUD flows, including delete-blocked messaging for referenced songs and sign-out warnings for unsynced mutations
 - Persistent song-catalog status surfaces for online, offline, refreshing, and refresh-failed modes
 - Song list and reader controls, including view mode, transposition, font scaling, and warning surfaces
 - Planning list/detail loading, empty, and failure states plus signed-in navigation affordances into planning
@@ -51,6 +53,7 @@ Cover:
 - App bootstrap and routing
 - Local-first flows
 - Sync queue lifecycle
+- Offline song create, update, delete, sync, and conflict-resolution flows
 - Auth session bootstrap against test doubles or integration backends
 - Authenticated backend song reads against the local Supabase stack, including organization-scope isolation
 - Authenticated backend planning reads against the local Supabase stack, including ordered plan/session expansion and hidden-organization isolation
@@ -66,6 +69,8 @@ Cover:
 - Slug-column backfill and uniqueness verification for songs, plans, and sessions
 - SQL function behavior
 - RLS policy expectations
+- Song write authorization enforcement for `canEditSongs`
+- Delete rejection while `session_items` still reference the song, plus attachment cleanup after accepted song deletion
 - Seed script idempotency where applicable
 - Local demo auth provisioning through `./scripts/provision-local-demo-user.sh`
 - Regression coverage for repeated local demo auth provisioning where workflow scripts depend on idempotency

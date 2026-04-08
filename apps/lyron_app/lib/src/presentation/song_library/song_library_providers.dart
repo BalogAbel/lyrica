@@ -1,8 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
@@ -10,6 +13,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chord_transposer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
+import 'package:lyron_app/src/infrastructure/song_library/supabase_song_mutation_repository.dart';
 
 typedef SongLibraryDiagnosticLogger = void Function(ParseDiagnostic diagnostic);
 
@@ -51,7 +55,73 @@ final songLibraryTransposerProvider = Provider<ChordTransposer>((ref) {
 });
 
 final songLibraryServiceProvider = Provider<SongLibraryService>((ref) {
-  return SongLibraryService(ref.watch(songLibraryRepositoryProvider));
+  return SongLibraryService(
+    ref.watch(songLibraryRepositoryProvider),
+    ref.watch(songMutationStoreProvider),
+  );
+});
+
+final songMutationStoreProvider = Provider<SongMutationStore>((ref) {
+  return DriftSongMutationStore(
+    songCatalogStore: ref.watch(songCatalogStoreProvider),
+    planningLocalStore: ref.watch(planningLocalStoreProvider),
+  );
+});
+
+final songMutationRemoteRepositoryProvider =
+    Provider<SongMutationRemoteRepository>((ref) {
+      return SupabaseSongMutationRemoteRepository(
+        ref.watch(supabaseClientProvider),
+      );
+    });
+
+final songMutationSyncControllerProvider = Provider<SongMutationSyncController>(
+  (ref) {
+    return SongMutationSyncController(
+      store: ref.watch(songMutationStoreProvider),
+      remoteRepository: ref.watch(songMutationRemoteRepositoryProvider),
+    );
+  },
+);
+
+final songMutationEntriesProvider =
+    FutureProvider.autoDispose<List<SongMutationRecord>>((ref) async {
+      final context = ref.watch(activeCatalogContextProvider);
+      if (context == null) {
+        return const [];
+      }
+
+      final store = ref.watch(songMutationStoreProvider);
+      final pending = await store.readPendingSongs(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+      final conflicts = await store.readConflictSongs(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+
+      return [...pending, ...conflicts]..sort((left, right) {
+        final titleCompare = left.title.compareTo(right.title);
+        if (titleCompare != 0) {
+          return titleCompare;
+        }
+        return left.id.compareTo(right.id);
+      });
+    });
+
+final hasUnsyncedSongMutationsProvider = FutureProvider.autoDispose<bool>((
+  ref,
+) {
+  final session = ref.watch(appAuthControllerProvider).state.session;
+  final userId = session?.userId;
+  if (userId == null) {
+    return Future.value(false);
+  }
+
+  return ref
+      .watch(songMutationStoreProvider)
+      .hasUnsyncedChanges(userId: userId);
 });
 
 final songLibraryListProvider = FutureProvider.autoDispose<List<SongSummary>>((

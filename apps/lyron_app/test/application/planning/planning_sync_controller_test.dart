@@ -560,6 +560,15 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return 0;
+  }
+
+  @override
   Future<String?> readLatestCachedOrganizationId({
     required String userId,
   }) async {

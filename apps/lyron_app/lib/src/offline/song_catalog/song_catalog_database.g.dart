@@ -405,6 +405,17 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -413,6 +424,7 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     songId,
     slug,
     title,
+    version,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -480,6 +492,14 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
     } else if (isInserting) {
       context.missing(_titleMeta);
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
     return context;
   }
 
@@ -513,6 +533,10 @@ class $CachedCatalogSummariesTable extends CachedCatalogSummaries
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
     );
   }
 
@@ -530,6 +554,7 @@ class CachedCatalogSummary extends DataClass
   final String songId;
   final String slug;
   final String title;
+  final int version;
   const CachedCatalogSummary({
     required this.userId,
     required this.organizationId,
@@ -537,6 +562,7 @@ class CachedCatalogSummary extends DataClass
     required this.songId,
     required this.slug,
     required this.title,
+    required this.version,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -547,6 +573,7 @@ class CachedCatalogSummary extends DataClass
     map['song_id'] = Variable<String>(songId);
     map['slug'] = Variable<String>(slug);
     map['title'] = Variable<String>(title);
+    map['version'] = Variable<int>(version);
     return map;
   }
 
@@ -558,6 +585,7 @@ class CachedCatalogSummary extends DataClass
       songId: Value(songId),
       slug: Value(slug),
       title: Value(title),
+      version: Value(version),
     );
   }
 
@@ -573,6 +601,7 @@ class CachedCatalogSummary extends DataClass
       songId: serializer.fromJson<String>(json['songId']),
       slug: serializer.fromJson<String>(json['slug']),
       title: serializer.fromJson<String>(json['title']),
+      version: serializer.fromJson<int>(json['version']),
     );
   }
   @override
@@ -585,6 +614,7 @@ class CachedCatalogSummary extends DataClass
       'songId': serializer.toJson<String>(songId),
       'slug': serializer.toJson<String>(slug),
       'title': serializer.toJson<String>(title),
+      'version': serializer.toJson<int>(version),
     };
   }
 
@@ -595,6 +625,7 @@ class CachedCatalogSummary extends DataClass
     String? songId,
     String? slug,
     String? title,
+    int? version,
   }) => CachedCatalogSummary(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -602,6 +633,7 @@ class CachedCatalogSummary extends DataClass
     songId: songId ?? this.songId,
     slug: slug ?? this.slug,
     title: title ?? this.title,
+    version: version ?? this.version,
   );
   CachedCatalogSummary copyWithCompanion(CachedCatalogSummariesCompanion data) {
     return CachedCatalogSummary(
@@ -615,6 +647,7 @@ class CachedCatalogSummary extends DataClass
       songId: data.songId.present ? data.songId.value : this.songId,
       slug: data.slug.present ? data.slug.value : this.slug,
       title: data.title.present ? data.title.value : this.title,
+      version: data.version.present ? data.version.value : this.version,
     );
   }
 
@@ -626,14 +659,22 @@ class CachedCatalogSummary extends DataClass
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('songId: $songId, ')
           ..write('slug: $slug, ')
-          ..write('title: $title')
+          ..write('title: $title, ')
+          ..write('version: $version')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(userId, organizationId, snapshotVersion, songId, slug, title);
+  int get hashCode => Object.hash(
+    userId,
+    organizationId,
+    snapshotVersion,
+    songId,
+    slug,
+    title,
+    version,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -643,7 +684,8 @@ class CachedCatalogSummary extends DataClass
           other.snapshotVersion == this.snapshotVersion &&
           other.songId == this.songId &&
           other.slug == this.slug &&
-          other.title == this.title);
+          other.title == this.title &&
+          other.version == this.version);
 }
 
 class CachedCatalogSummariesCompanion
@@ -654,6 +696,7 @@ class CachedCatalogSummariesCompanion
   final Value<String> songId;
   final Value<String> slug;
   final Value<String> title;
+  final Value<int> version;
   final Value<int> rowid;
   const CachedCatalogSummariesCompanion({
     this.userId = const Value.absent(),
@@ -662,6 +705,7 @@ class CachedCatalogSummariesCompanion
     this.songId = const Value.absent(),
     this.slug = const Value.absent(),
     this.title = const Value.absent(),
+    this.version = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedCatalogSummariesCompanion.insert({
@@ -671,13 +715,15 @@ class CachedCatalogSummariesCompanion
     required String songId,
     required String slug,
     required String title,
+    required int version,
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
        snapshotVersion = Value(snapshotVersion),
        songId = Value(songId),
        slug = Value(slug),
-       title = Value(title);
+       title = Value(title),
+       version = Value(version);
   static Insertable<CachedCatalogSummary> custom({
     Expression<String>? userId,
     Expression<String>? organizationId,
@@ -685,6 +731,7 @@ class CachedCatalogSummariesCompanion
     Expression<String>? songId,
     Expression<String>? slug,
     Expression<String>? title,
+    Expression<int>? version,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -694,6 +741,7 @@ class CachedCatalogSummariesCompanion
       if (songId != null) 'song_id': songId,
       if (slug != null) 'slug': slug,
       if (title != null) 'title': title,
+      if (version != null) 'version': version,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -705,6 +753,7 @@ class CachedCatalogSummariesCompanion
     Value<String>? songId,
     Value<String>? slug,
     Value<String>? title,
+    Value<int>? version,
     Value<int>? rowid,
   }) {
     return CachedCatalogSummariesCompanion(
@@ -714,6 +763,7 @@ class CachedCatalogSummariesCompanion
       songId: songId ?? this.songId,
       slug: slug ?? this.slug,
       title: title ?? this.title,
+      version: version ?? this.version,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -739,6 +789,9 @@ class CachedCatalogSummariesCompanion
     if (title.present) {
       map['title'] = Variable<String>(title.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -754,6 +807,7 @@ class CachedCatalogSummariesCompanion
           ..write('songId: $songId, ')
           ..write('slug: $slug, ')
           ..write('title: $title, ')
+          ..write('version: $version, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1134,6 +1188,642 @@ class CachedCatalogSourcesCompanion
   }
 }
 
+class $CachedCatalogSongMutationsTable extends CachedCatalogSongMutations
+    with
+        TableInfo<$CachedCatalogSongMutationsTable, CachedCatalogSongMutation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedCatalogSongMutationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _organizationIdMeta = const VerificationMeta(
+    'organizationId',
+  );
+  @override
+  late final GeneratedColumn<String> organizationId = GeneratedColumn<String>(
+    'organization_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _songIdMeta = const VerificationMeta('songId');
+  @override
+  late final GeneratedColumn<String> songId = GeneratedColumn<String>(
+    'song_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _slugMeta = const VerificationMeta('slug');
+  @override
+  late final GeneratedColumn<String> slug = GeneratedColumn<String>(
+    'slug',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<String> syncStatus = GeneratedColumn<String>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baseVersionMeta = const VerificationMeta(
+    'baseVersion',
+  );
+  @override
+  late final GeneratedColumn<int> baseVersion = GeneratedColumn<int>(
+    'base_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncErrorContextMeta = const VerificationMeta(
+    'syncErrorContext',
+  );
+  @override
+  late final GeneratedColumn<String> syncErrorContext = GeneratedColumn<String>(
+    'sync_error_context',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    userId,
+    organizationId,
+    songId,
+    slug,
+    title,
+    source,
+    version,
+    syncStatus,
+    baseVersion,
+    syncErrorContext,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_catalog_song_mutations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedCatalogSongMutation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('organization_id')) {
+      context.handle(
+        _organizationIdMeta,
+        organizationId.isAcceptableOrUnknown(
+          data['organization_id']!,
+          _organizationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_organizationIdMeta);
+    }
+    if (data.containsKey('song_id')) {
+      context.handle(
+        _songIdMeta,
+        songId.isAcceptableOrUnknown(data['song_id']!, _songIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_songIdMeta);
+    }
+    if (data.containsKey('slug')) {
+      context.handle(
+        _slugMeta,
+        slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_slugMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncStatusMeta);
+    }
+    if (data.containsKey('base_version')) {
+      context.handle(
+        _baseVersionMeta,
+        baseVersion.isAcceptableOrUnknown(
+          data['base_version']!,
+          _baseVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sync_error_context')) {
+      context.handle(
+        _syncErrorContextMeta,
+        syncErrorContext.isAcceptableOrUnknown(
+          data['sync_error_context']!,
+          _syncErrorContextMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId, organizationId, songId};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {userId, organizationId, slug},
+  ];
+  @override
+  CachedCatalogSongMutation map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedCatalogSongMutation(
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      organizationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}organization_id'],
+      )!,
+      songId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}song_id'],
+      )!,
+      slug: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slug'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      baseVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_version'],
+      ),
+      syncErrorContext: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_error_context'],
+      ),
+    );
+  }
+
+  @override
+  $CachedCatalogSongMutationsTable createAlias(String alias) {
+    return $CachedCatalogSongMutationsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedCatalogSongMutation extends DataClass
+    implements Insertable<CachedCatalogSongMutation> {
+  final String userId;
+  final String organizationId;
+  final String songId;
+  final String slug;
+  final String title;
+  final String source;
+  final int version;
+  final String syncStatus;
+  final int? baseVersion;
+  final String? syncErrorContext;
+  const CachedCatalogSongMutation({
+    required this.userId,
+    required this.organizationId,
+    required this.songId,
+    required this.slug,
+    required this.title,
+    required this.source,
+    required this.version,
+    required this.syncStatus,
+    this.baseVersion,
+    this.syncErrorContext,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['organization_id'] = Variable<String>(organizationId);
+    map['song_id'] = Variable<String>(songId);
+    map['slug'] = Variable<String>(slug);
+    map['title'] = Variable<String>(title);
+    map['source'] = Variable<String>(source);
+    map['version'] = Variable<int>(version);
+    map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || baseVersion != null) {
+      map['base_version'] = Variable<int>(baseVersion);
+    }
+    if (!nullToAbsent || syncErrorContext != null) {
+      map['sync_error_context'] = Variable<String>(syncErrorContext);
+    }
+    return map;
+  }
+
+  CachedCatalogSongMutationsCompanion toCompanion(bool nullToAbsent) {
+    return CachedCatalogSongMutationsCompanion(
+      userId: Value(userId),
+      organizationId: Value(organizationId),
+      songId: Value(songId),
+      slug: Value(slug),
+      title: Value(title),
+      source: Value(source),
+      version: Value(version),
+      syncStatus: Value(syncStatus),
+      baseVersion: baseVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseVersion),
+      syncErrorContext: syncErrorContext == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncErrorContext),
+    );
+  }
+
+  factory CachedCatalogSongMutation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedCatalogSongMutation(
+      userId: serializer.fromJson<String>(json['userId']),
+      organizationId: serializer.fromJson<String>(json['organizationId']),
+      songId: serializer.fromJson<String>(json['songId']),
+      slug: serializer.fromJson<String>(json['slug']),
+      title: serializer.fromJson<String>(json['title']),
+      source: serializer.fromJson<String>(json['source']),
+      version: serializer.fromJson<int>(json['version']),
+      syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      baseVersion: serializer.fromJson<int?>(json['baseVersion']),
+      syncErrorContext: serializer.fromJson<String?>(json['syncErrorContext']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'organizationId': serializer.toJson<String>(organizationId),
+      'songId': serializer.toJson<String>(songId),
+      'slug': serializer.toJson<String>(slug),
+      'title': serializer.toJson<String>(title),
+      'source': serializer.toJson<String>(source),
+      'version': serializer.toJson<int>(version),
+      'syncStatus': serializer.toJson<String>(syncStatus),
+      'baseVersion': serializer.toJson<int?>(baseVersion),
+      'syncErrorContext': serializer.toJson<String?>(syncErrorContext),
+    };
+  }
+
+  CachedCatalogSongMutation copyWith({
+    String? userId,
+    String? organizationId,
+    String? songId,
+    String? slug,
+    String? title,
+    String? source,
+    int? version,
+    String? syncStatus,
+    Value<int?> baseVersion = const Value.absent(),
+    Value<String?> syncErrorContext = const Value.absent(),
+  }) => CachedCatalogSongMutation(
+    userId: userId ?? this.userId,
+    organizationId: organizationId ?? this.organizationId,
+    songId: songId ?? this.songId,
+    slug: slug ?? this.slug,
+    title: title ?? this.title,
+    source: source ?? this.source,
+    version: version ?? this.version,
+    syncStatus: syncStatus ?? this.syncStatus,
+    baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
+    syncErrorContext: syncErrorContext.present
+        ? syncErrorContext.value
+        : this.syncErrorContext,
+  );
+  CachedCatalogSongMutation copyWithCompanion(
+    CachedCatalogSongMutationsCompanion data,
+  ) {
+    return CachedCatalogSongMutation(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      organizationId: data.organizationId.present
+          ? data.organizationId.value
+          : this.organizationId,
+      songId: data.songId.present ? data.songId.value : this.songId,
+      slug: data.slug.present ? data.slug.value : this.slug,
+      title: data.title.present ? data.title.value : this.title,
+      source: data.source.present ? data.source.value : this.source,
+      version: data.version.present ? data.version.value : this.version,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      baseVersion: data.baseVersion.present
+          ? data.baseVersion.value
+          : this.baseVersion,
+      syncErrorContext: data.syncErrorContext.present
+          ? data.syncErrorContext.value
+          : this.syncErrorContext,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedCatalogSongMutation(')
+          ..write('userId: $userId, ')
+          ..write('organizationId: $organizationId, ')
+          ..write('songId: $songId, ')
+          ..write('slug: $slug, ')
+          ..write('title: $title, ')
+          ..write('source: $source, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('baseVersion: $baseVersion, ')
+          ..write('syncErrorContext: $syncErrorContext')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    userId,
+    organizationId,
+    songId,
+    slug,
+    title,
+    source,
+    version,
+    syncStatus,
+    baseVersion,
+    syncErrorContext,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedCatalogSongMutation &&
+          other.userId == this.userId &&
+          other.organizationId == this.organizationId &&
+          other.songId == this.songId &&
+          other.slug == this.slug &&
+          other.title == this.title &&
+          other.source == this.source &&
+          other.version == this.version &&
+          other.syncStatus == this.syncStatus &&
+          other.baseVersion == this.baseVersion &&
+          other.syncErrorContext == this.syncErrorContext);
+}
+
+class CachedCatalogSongMutationsCompanion
+    extends UpdateCompanion<CachedCatalogSongMutation> {
+  final Value<String> userId;
+  final Value<String> organizationId;
+  final Value<String> songId;
+  final Value<String> slug;
+  final Value<String> title;
+  final Value<String> source;
+  final Value<int> version;
+  final Value<String> syncStatus;
+  final Value<int?> baseVersion;
+  final Value<String?> syncErrorContext;
+  final Value<int> rowid;
+  const CachedCatalogSongMutationsCompanion({
+    this.userId = const Value.absent(),
+    this.organizationId = const Value.absent(),
+    this.songId = const Value.absent(),
+    this.slug = const Value.absent(),
+    this.title = const Value.absent(),
+    this.source = const Value.absent(),
+    this.version = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.baseVersion = const Value.absent(),
+    this.syncErrorContext = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedCatalogSongMutationsCompanion.insert({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required String slug,
+    required String title,
+    required String source,
+    required int version,
+    required String syncStatus,
+    this.baseVersion = const Value.absent(),
+    this.syncErrorContext = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId),
+       organizationId = Value(organizationId),
+       songId = Value(songId),
+       slug = Value(slug),
+       title = Value(title),
+       source = Value(source),
+       version = Value(version),
+       syncStatus = Value(syncStatus);
+  static Insertable<CachedCatalogSongMutation> custom({
+    Expression<String>? userId,
+    Expression<String>? organizationId,
+    Expression<String>? songId,
+    Expression<String>? slug,
+    Expression<String>? title,
+    Expression<String>? source,
+    Expression<int>? version,
+    Expression<String>? syncStatus,
+    Expression<int>? baseVersion,
+    Expression<String>? syncErrorContext,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (organizationId != null) 'organization_id': organizationId,
+      if (songId != null) 'song_id': songId,
+      if (slug != null) 'slug': slug,
+      if (title != null) 'title': title,
+      if (source != null) 'source': source,
+      if (version != null) 'version': version,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (baseVersion != null) 'base_version': baseVersion,
+      if (syncErrorContext != null) 'sync_error_context': syncErrorContext,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedCatalogSongMutationsCompanion copyWith({
+    Value<String>? userId,
+    Value<String>? organizationId,
+    Value<String>? songId,
+    Value<String>? slug,
+    Value<String>? title,
+    Value<String>? source,
+    Value<int>? version,
+    Value<String>? syncStatus,
+    Value<int?>? baseVersion,
+    Value<String?>? syncErrorContext,
+    Value<int>? rowid,
+  }) {
+    return CachedCatalogSongMutationsCompanion(
+      userId: userId ?? this.userId,
+      organizationId: organizationId ?? this.organizationId,
+      songId: songId ?? this.songId,
+      slug: slug ?? this.slug,
+      title: title ?? this.title,
+      source: source ?? this.source,
+      version: version ?? this.version,
+      syncStatus: syncStatus ?? this.syncStatus,
+      baseVersion: baseVersion ?? this.baseVersion,
+      syncErrorContext: syncErrorContext ?? this.syncErrorContext,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (organizationId.present) {
+      map['organization_id'] = Variable<String>(organizationId.value);
+    }
+    if (songId.present) {
+      map['song_id'] = Variable<String>(songId.value);
+    }
+    if (slug.present) {
+      map['slug'] = Variable<String>(slug.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<String>(syncStatus.value);
+    }
+    if (baseVersion.present) {
+      map['base_version'] = Variable<int>(baseVersion.value);
+    }
+    if (syncErrorContext.present) {
+      map['sync_error_context'] = Variable<String>(syncErrorContext.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedCatalogSongMutationsCompanion(')
+          ..write('userId: $userId, ')
+          ..write('organizationId: $organizationId, ')
+          ..write('songId: $songId, ')
+          ..write('slug: $slug, ')
+          ..write('title: $title, ')
+          ..write('source: $source, ')
+          ..write('version: $version, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('baseVersion: $baseVersion, ')
+          ..write('syncErrorContext: $syncErrorContext, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$SongCatalogDatabase extends GeneratedDatabase {
   _$SongCatalogDatabase(QueryExecutor e) : super(e);
   $SongCatalogDatabaseManager get managers => $SongCatalogDatabaseManager(this);
@@ -1143,6 +1833,8 @@ abstract class _$SongCatalogDatabase extends GeneratedDatabase {
       $CachedCatalogSummariesTable(this);
   late final $CachedCatalogSourcesTable cachedCatalogSources =
       $CachedCatalogSourcesTable(this);
+  late final $CachedCatalogSongMutationsTable cachedCatalogSongMutations =
+      $CachedCatalogSongMutationsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1151,6 +1843,7 @@ abstract class _$SongCatalogDatabase extends GeneratedDatabase {
     cachedCatalogSnapshots,
     cachedCatalogSummaries,
     cachedCatalogSources,
+    cachedCatalogSongMutations,
   ];
 }
 
@@ -1368,6 +2061,7 @@ typedef $$CachedCatalogSummariesTableCreateCompanionBuilder =
       required String songId,
       required String slug,
       required String title,
+      required int version,
       Value<int> rowid,
     });
 typedef $$CachedCatalogSummariesTableUpdateCompanionBuilder =
@@ -1378,6 +2072,7 @@ typedef $$CachedCatalogSummariesTableUpdateCompanionBuilder =
       Value<String> songId,
       Value<String> slug,
       Value<String> title,
+      Value<int> version,
       Value<int> rowid,
     });
 
@@ -1417,6 +2112,11 @@ class $$CachedCatalogSummariesTableFilterComposer
 
   ColumnFilters<String> get title => $composableBuilder(
     column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1459,6 +2159,11 @@ class $$CachedCatalogSummariesTableOrderingComposer
     column: $table.title,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedCatalogSummariesTableAnnotationComposer
@@ -1491,6 +2196,9 @@ class $$CachedCatalogSummariesTableAnnotationComposer
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
 }
 
 class $$CachedCatalogSummariesTableTableManager
@@ -1545,6 +2253,7 @@ class $$CachedCatalogSummariesTableTableManager
                 Value<String> songId = const Value.absent(),
                 Value<String> slug = const Value.absent(),
                 Value<String> title = const Value.absent(),
+                Value<int> version = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSummariesCompanion(
                 userId: userId,
@@ -1553,6 +2262,7 @@ class $$CachedCatalogSummariesTableTableManager
                 songId: songId,
                 slug: slug,
                 title: title,
+                version: version,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1563,6 +2273,7 @@ class $$CachedCatalogSummariesTableTableManager
                 required String songId,
                 required String slug,
                 required String title,
+                required int version,
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSummariesCompanion.insert(
                 userId: userId,
@@ -1571,6 +2282,7 @@ class $$CachedCatalogSummariesTableTableManager
                 songId: songId,
                 slug: slug,
                 title: title,
+                version: version,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -1822,6 +2534,328 @@ typedef $$CachedCatalogSourcesTableProcessedTableManager =
       CachedCatalogSource,
       PrefetchHooks Function()
     >;
+typedef $$CachedCatalogSongMutationsTableCreateCompanionBuilder =
+    CachedCatalogSongMutationsCompanion Function({
+      required String userId,
+      required String organizationId,
+      required String songId,
+      required String slug,
+      required String title,
+      required String source,
+      required int version,
+      required String syncStatus,
+      Value<int?> baseVersion,
+      Value<String?> syncErrorContext,
+      Value<int> rowid,
+    });
+typedef $$CachedCatalogSongMutationsTableUpdateCompanionBuilder =
+    CachedCatalogSongMutationsCompanion Function({
+      Value<String> userId,
+      Value<String> organizationId,
+      Value<String> songId,
+      Value<String> slug,
+      Value<String> title,
+      Value<String> source,
+      Value<int> version,
+      Value<String> syncStatus,
+      Value<int?> baseVersion,
+      Value<String?> syncErrorContext,
+      Value<int> rowid,
+    });
+
+class $$CachedCatalogSongMutationsTableFilterComposer
+    extends Composer<_$SongCatalogDatabase, $CachedCatalogSongMutationsTable> {
+  $$CachedCatalogSongMutationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get songId => $composableBuilder(
+    column: $table.songId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncErrorContext => $composableBuilder(
+    column: $table.syncErrorContext,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedCatalogSongMutationsTableOrderingComposer
+    extends Composer<_$SongCatalogDatabase, $CachedCatalogSongMutationsTable> {
+  $$CachedCatalogSongMutationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get songId => $composableBuilder(
+    column: $table.songId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncErrorContext => $composableBuilder(
+    column: $table.syncErrorContext,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedCatalogSongMutationsTableAnnotationComposer
+    extends Composer<_$SongCatalogDatabase, $CachedCatalogSongMutationsTable> {
+  $$CachedCatalogSongMutationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get songId =>
+      $composableBuilder(column: $table.songId, builder: (column) => column);
+
+  GeneratedColumn<String> get slug =>
+      $composableBuilder(column: $table.slug, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get syncErrorContext => $composableBuilder(
+    column: $table.syncErrorContext,
+    builder: (column) => column,
+  );
+}
+
+class $$CachedCatalogSongMutationsTableTableManager
+    extends
+        RootTableManager<
+          _$SongCatalogDatabase,
+          $CachedCatalogSongMutationsTable,
+          CachedCatalogSongMutation,
+          $$CachedCatalogSongMutationsTableFilterComposer,
+          $$CachedCatalogSongMutationsTableOrderingComposer,
+          $$CachedCatalogSongMutationsTableAnnotationComposer,
+          $$CachedCatalogSongMutationsTableCreateCompanionBuilder,
+          $$CachedCatalogSongMutationsTableUpdateCompanionBuilder,
+          (
+            CachedCatalogSongMutation,
+            BaseReferences<
+              _$SongCatalogDatabase,
+              $CachedCatalogSongMutationsTable,
+              CachedCatalogSongMutation
+            >,
+          ),
+          CachedCatalogSongMutation,
+          PrefetchHooks Function()
+        > {
+  $$CachedCatalogSongMutationsTableTableManager(
+    _$SongCatalogDatabase db,
+    $CachedCatalogSongMutationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedCatalogSongMutationsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CachedCatalogSongMutationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CachedCatalogSongMutationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> userId = const Value.absent(),
+                Value<String> organizationId = const Value.absent(),
+                Value<String> songId = const Value.absent(),
+                Value<String> slug = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<int?> baseVersion = const Value.absent(),
+                Value<String?> syncErrorContext = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedCatalogSongMutationsCompanion(
+                userId: userId,
+                organizationId: organizationId,
+                songId: songId,
+                slug: slug,
+                title: title,
+                source: source,
+                version: version,
+                syncStatus: syncStatus,
+                baseVersion: baseVersion,
+                syncErrorContext: syncErrorContext,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String userId,
+                required String organizationId,
+                required String songId,
+                required String slug,
+                required String title,
+                required String source,
+                required int version,
+                required String syncStatus,
+                Value<int?> baseVersion = const Value.absent(),
+                Value<String?> syncErrorContext = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedCatalogSongMutationsCompanion.insert(
+                userId: userId,
+                organizationId: organizationId,
+                songId: songId,
+                slug: slug,
+                title: title,
+                source: source,
+                version: version,
+                syncStatus: syncStatus,
+                baseVersion: baseVersion,
+                syncErrorContext: syncErrorContext,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedCatalogSongMutationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$SongCatalogDatabase,
+      $CachedCatalogSongMutationsTable,
+      CachedCatalogSongMutation,
+      $$CachedCatalogSongMutationsTableFilterComposer,
+      $$CachedCatalogSongMutationsTableOrderingComposer,
+      $$CachedCatalogSongMutationsTableAnnotationComposer,
+      $$CachedCatalogSongMutationsTableCreateCompanionBuilder,
+      $$CachedCatalogSongMutationsTableUpdateCompanionBuilder,
+      (
+        CachedCatalogSongMutation,
+        BaseReferences<
+          _$SongCatalogDatabase,
+          $CachedCatalogSongMutationsTable,
+          CachedCatalogSongMutation
+        >,
+      ),
+      CachedCatalogSongMutation,
+      PrefetchHooks Function()
+    >;
 
 class $SongCatalogDatabaseManager {
   final _$SongCatalogDatabase _db;
@@ -1838,4 +2872,10 @@ class $SongCatalogDatabaseManager {
       );
   $$CachedCatalogSourcesTableTableManager get cachedCatalogSources =>
       $$CachedCatalogSourcesTableTableManager(_db, _db.cachedCatalogSources);
+  $$CachedCatalogSongMutationsTableTableManager
+  get cachedCatalogSongMutations =>
+      $$CachedCatalogSongMutationsTableTableManager(
+        _db,
+        _db.cachedCatalogSongMutations,
+      );
 }
