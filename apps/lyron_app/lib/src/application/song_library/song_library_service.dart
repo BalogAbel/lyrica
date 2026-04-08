@@ -5,6 +5,8 @@ import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 
 class SongLibraryService {
+  static const _maxCreateSlugRetries = 100;
+
   SongLibraryService(
     this._repository, [
     SongMutationStore? mutationStore,
@@ -53,7 +55,7 @@ class SongLibraryService {
     final mutationStore = _requireMutationStore();
     final songId = _idGenerator();
 
-    while (true) {
+    for (var attempt = 0; attempt < _maxCreateSlugRetries; attempt += 1) {
       final slug = await mutationStore.allocateUniqueSlug(
         userId: context.userId,
         organizationId: context.organizationId,
@@ -78,6 +80,9 @@ class SongLibraryService {
         }
       }
     }
+    throw StateError(
+      'Failed to allocate a unique local song slug after $_maxCreateSlugRetries attempts.',
+    );
   }
 
   Future<SongMutationRecord> updateSong({

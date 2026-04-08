@@ -242,7 +242,6 @@ class DriftSongCatalogStore implements SongCatalogStore {
     final visibleRows = await _readVisibleSongs(
       userId: userId,
       organizationId: organizationId,
-      includeSources: false,
     );
 
     final summaries = visibleRows.values
@@ -719,9 +718,9 @@ class DriftSongCatalogStore implements SongCatalogStore {
   Future<Map<String, _VisibleSongRow>> _readVisibleSongs({
     required String userId,
     required String organizationId,
-    required bool includeSources,
   }) async {
     final visibleRows = <String, _VisibleSongRow>{};
+    final slugOwners = <String, String>{};
 
     final snapshotRows =
         await (_database.select(_database.cachedCatalogSummaries)..where(
@@ -730,28 +729,15 @@ class DriftSongCatalogStore implements SongCatalogStore {
                   table.organizationId.equals(organizationId),
             ))
             .get();
-    final snapshotSourceBySongId = includeSources
-        ? {
-            for (final row
-                in await (_database.select(_database.cachedCatalogSources)
-                      ..where(
-                        (table) =>
-                            table.userId.equals(userId) &
-                            table.organizationId.equals(organizationId),
-                      ))
-                    .get())
-              row.songId: row.source,
-          }
-        : const <String, String>{};
 
     for (final row in snapshotRows) {
       _upsertVisibleRow(
         visibleRows,
+        slugOwners,
         _VisibleSongRow(
           songId: row.songId,
           title: row.title,
           slug: row.slug,
-          source: includeSources ? snapshotSourceBySongId[row.songId] : null,
           version: row.version,
         ),
       );
@@ -770,6 +756,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
       if (status == SongSyncStatus.pendingDelete) {
         _removeVisibleRowsBySlug(
           visibleRows,
+          slugOwners: slugOwners,
           slug: row.slug,
           exceptSongId: row.songId,
         );
@@ -781,11 +768,11 @@ class DriftSongCatalogStore implements SongCatalogStore {
       }
       _upsertVisibleRow(
         visibleRows,
+        slugOwners,
         _VisibleSongRow(
           songId: row.songId,
           title: row.title,
           slug: row.slug,
-          source: includeSources ? row.source : null,
           version: row.version,
         ),
       );
@@ -880,28 +867,38 @@ class DriftSongCatalogStore implements SongCatalogStore {
 
   void _upsertVisibleRow(
     Map<String, _VisibleSongRow> visibleRows,
+    Map<String, String> slugOwners,
     _VisibleSongRow row,
   ) {
     _removeVisibleRowsBySlug(
       visibleRows,
+      slugOwners: slugOwners,
       slug: row.slug,
       exceptSongId: row.songId,
     );
+    final previousRow = visibleRows[row.songId];
+    if (previousRow != null && previousRow.slug != row.slug) {
+      final currentOwner = slugOwners[previousRow.slug];
+      if (currentOwner == row.songId) {
+        slugOwners.remove(previousRow.slug);
+      }
+    }
     visibleRows[row.songId] = row;
+    slugOwners[row.slug] = row.songId;
   }
 
   void _removeVisibleRowsBySlug(
     Map<String, _VisibleSongRow> visibleRows, {
+    required Map<String, String> slugOwners,
     required String slug,
     String? exceptSongId,
   }) {
-    final conflictingSongIds = visibleRows.entries
-        .where((entry) => entry.value.slug == slug && entry.key != exceptSongId)
-        .map((entry) => entry.key)
-        .toList(growable: false);
-    for (final songId in conflictingSongIds) {
-      visibleRows.remove(songId);
+    final conflictingSongId = slugOwners[slug];
+    if (conflictingSongId == null || conflictingSongId == exceptSongId) {
+      return;
     }
+    visibleRows.remove(conflictingSongId);
+    slugOwners.remove(slug);
   }
 
   Future<void> _deleteCatalogRows({
@@ -1032,13 +1029,11 @@ class _VisibleSongRow {
     required this.songId,
     required this.title,
     required this.slug,
-    required this.source,
     required this.version,
   });
 
   final String songId;
   final String title;
   final String slug;
-  final String? source;
   final int version;
 }
