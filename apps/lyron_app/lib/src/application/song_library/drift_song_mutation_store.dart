@@ -305,9 +305,16 @@ class DriftSongMutationStore implements SongMutationStore {
             (candidate) => candidate.name == codeName,
             orElse: () => SongMutationSyncErrorCode.unknown,
           );
-    final conflictSourceSyncStatus = conflictSourceSyncStatusValue == null
-        ? null
-        : _fromStoreStatus(conflictSourceSyncStatusValue);
+    SongSyncStatus? conflictSourceSyncStatus;
+    if (conflictSourceSyncStatusValue != null) {
+      try {
+        conflictSourceSyncStatus = _fromStoreStatus(
+          conflictSourceSyncStatusValue,
+        );
+      } on ArgumentError {
+        conflictSourceSyncStatus = null;
+      }
+    }
     return (code, message, conflictSourceSyncStatus);
   }
 }
