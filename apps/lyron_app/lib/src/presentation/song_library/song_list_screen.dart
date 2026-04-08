@@ -248,7 +248,9 @@ class _MutationStatusSurface extends ConsumerWidget {
                                   }
                                   try {
                                     await ref
-                                        .read(songMutationSyncControllerProvider)
+                                        .read(
+                                          songMutationSyncControllerProvider,
+                                        )
                                         .keepMine(
                                           SongMutationContext(
                                             userId: activeContext.userId,
@@ -275,7 +277,9 @@ class _MutationStatusSurface extends ConsumerWidget {
                                     );
                                   }
                                 },
-                                child: const Text(AppStrings.songKeepMineAction),
+                                child: const Text(
+                                  AppStrings.songKeepMineAction,
+                                ),
                               ),
                               TextButton(
                                 onPressed: () async {
@@ -287,7 +291,9 @@ class _MutationStatusSurface extends ConsumerWidget {
                                   }
                                   try {
                                     await ref
-                                        .read(songMutationSyncControllerProvider)
+                                        .read(
+                                          songMutationSyncControllerProvider,
+                                        )
                                         .discardMine(
                                           SongMutationContext(
                                             userId: activeContext.userId,
