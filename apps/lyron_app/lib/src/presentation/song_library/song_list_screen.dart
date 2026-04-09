@@ -459,7 +459,7 @@ class _SongEditorDialogState extends State<_SongEditorDialog> {
             TextField(
               controller: _sourceController,
               minLines: 4,
-              maxLines: 8,
+              maxLines: null,
               decoration: const InputDecoration(
                 labelText: AppStrings.songSourceLabel,
               ),

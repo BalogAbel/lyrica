@@ -347,6 +347,10 @@ void main() {
 
     await tester.tap(find.text(AppStrings.songEditAction));
     await tester.pumpAndSettle();
+
+    final sourceField = tester.widget<TextField>(find.byType(TextField).last);
+    expect(sourceField.maxLines, isNull);
+
     await tester.tap(find.text(AppStrings.songSaveAction));
     await tester.pumpAndSettle();
 
