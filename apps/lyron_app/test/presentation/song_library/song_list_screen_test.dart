@@ -314,6 +314,9 @@ void main() {
     await tester.tap(find.text(AppStrings.songCreateAction));
     await tester.pumpAndSettle();
 
+    final sourceField = tester.widget<TextField>(find.byType(TextField).last);
+    expect(sourceField.maxLines, isNull);
+
     await tester.enterText(find.byType(TextField).first, 'New Song');
     await tester.enterText(find.byType(TextField).last, '{title: New Song}');
     await tester.tap(find.text(AppStrings.songSaveAction));
