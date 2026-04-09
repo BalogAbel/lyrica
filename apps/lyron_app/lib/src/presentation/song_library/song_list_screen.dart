@@ -177,7 +177,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                 ),
               );
           ref.invalidate(songMutationEntriesProvider);
-          ref.invalidate(songLibraryListProvider);
         }
         await ref.read(songCatalogControllerProvider).refreshCatalog();
         ref.invalidate(songLibraryListProvider);
