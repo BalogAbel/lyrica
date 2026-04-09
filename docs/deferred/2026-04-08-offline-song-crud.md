@@ -30,6 +30,25 @@ This leaves an avoidable sync-consistency gap. The client can keep a local recor
 - If a future slice allows server-side disappearance to surface in planning or reader flows, do not degrade to a bare "song not found" placeholder. Preserve at least a human-readable song title or tombstone-style label so historical session items remain understandable.
 - Add application tests and backend-backed integration coverage for this case.
 
+### Extract a shared song editor dialog if create/edit surfaces keep growing
+
+The current create-song dialog in the song list and edit-song dialog in the song reader now share the same core form shape:
+
+- title field
+- ChordPro source field
+- cancel/save actions
+
+They intentionally remain separate in this slice because they live in different feature surfaces and the branch has already gone through heavy review-driven churn. A late cross-screen refactor would add coordination risk without changing correctness.
+
+If future work adds more song create/edit entry points or starts changing these dialogs in parallel, extract a shared song editor dialog instead of continuing to duplicate the same form behavior.
+
+Expected follow-up scope:
+
+- define one shared draft/result contract for create and edit flows
+- keep screen-specific orchestration outside the shared widget
+- preserve current source-editing behavior, including untrimmed ChordPro payloads
+- add widget coverage for both create and edit consumers after extraction
+
 ## Planning Note
 
 Any future slice that changes song mutation sync, conflict handling, overwrite/discard flows, or delete semantics must review this deferred item first and treat it as priority work rather than optional cleanup.
