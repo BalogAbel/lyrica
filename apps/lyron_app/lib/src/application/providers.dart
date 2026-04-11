@@ -172,6 +172,54 @@ final planningMutationSyncControllerProvider =
             ref.read(planningMutationRemoteRepositoryProvider),
         refreshPlanning: () =>
             ref.read(planningSyncControllerProvider).refreshPlanning(),
+        reconcileAcceptedMutation: (context, record) async {
+          final localStore = ref.read(planningLocalStoreProvider);
+          final reconciledAt = DateTime.now().toUtc();
+
+          switch (record.kind) {
+            case PlanningMutationKind.planCreate:
+            case PlanningMutationKind.planEdit:
+              await localStore.upsertSyncedPlan(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                refreshedAt: reconciledAt,
+                plan: CachedPlanRecord(
+                  id: record.aggregateId,
+                  slug: record.slug ?? record.aggregateId,
+                  name: record.name ?? '',
+                  description: record.description,
+                  scheduledFor: record.scheduledFor,
+                  updatedAt: reconciledAt,
+                  version: record.baseVersion ?? 1,
+                ),
+              );
+              return;
+            case PlanningMutationKind.sessionCreate:
+            case PlanningMutationKind.sessionRename:
+              await localStore.upsertSyncedSession(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                refreshedAt: reconciledAt,
+                session: CachedSessionRecord(
+                  id: record.aggregateId,
+                  planId: record.planId ?? '',
+                  slug: record.slug ?? record.aggregateId,
+                  position: record.position ?? 0,
+                  name: record.name ?? '',
+                  version: record.baseVersion ?? 1,
+                ),
+              );
+              return;
+            case PlanningMutationKind.sessionDelete:
+              await localStore.deleteSyncedSession(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                sessionId: record.aggregateId,
+                refreshedAt: reconciledAt,
+              );
+              return;
+          }
+        },
       );
     });
 
@@ -260,7 +308,7 @@ final planningSyncControllerProvider =
             unawaited(controller.handleExplicitSignOut());
             return;
           case AppAuthStatus.sessionExpired:
-            controller.handleSessionExpired();
+            unawaited(controller.handleSessionExpired());
             return;
           case AppAuthStatus.signedIn:
             return;

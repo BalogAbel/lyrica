@@ -238,6 +238,38 @@ void main() {
     );
 
     test(
+      'session expiry clears persisted planning data for the previous user',
+      () async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        session = null;
+        await controller.handleSessionExpired();
+
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedOut);
+        expect(controller.state.userId, isNull);
+        expect(controller.state.organizationId, isNull);
+        expect(
+          await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
       'stale refresh completions are discarded after the active organization changes',
       () async {
         final org1Refresh = Completer<PlanningSyncPayload>();
@@ -589,4 +621,28 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningDataForUser({required String userId}) async {
     _detailsByOrg.clear();
   }
+
+  @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {}
 }

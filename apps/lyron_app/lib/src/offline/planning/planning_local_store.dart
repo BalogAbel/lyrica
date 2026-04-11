@@ -121,6 +121,27 @@ abstract interface class PlanningLocalStore {
   });
 
   Future<void> deletePlanningDataForUser({required String userId});
+
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  });
+
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  });
+
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  });
 }
 
 class DriftPlanningLocalStore implements PlanningLocalStore {
@@ -516,6 +537,137 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
         _database.planningProjectionOwners,
       )..where((table) => table.userId.equals(userId))).go();
     });
+  }
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      await _database
+          .into(_database.cachedPlanningPlans)
+          .insertOnConflictUpdate(
+            CachedPlanningPlansCompanion.insert(
+              userId: userId,
+              organizationId: organizationId,
+              snapshotVersion: owner.snapshotVersion,
+              planId: plan.id,
+              slug: plan.slug,
+              name: plan.name,
+              description: Value(plan.description),
+              scheduledFor: Value(plan.scheduledFor?.toUtc()),
+              updatedAt: plan.updatedAt.toUtc(),
+              version: plan.version,
+            ),
+          );
+    });
+  }
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      await _database
+          .into(_database.cachedPlanningSessions)
+          .insertOnConflictUpdate(
+            CachedPlanningSessionsCompanion.insert(
+              userId: userId,
+              organizationId: organizationId,
+              snapshotVersion: owner.snapshotVersion,
+              sessionId: session.id,
+              planId: session.planId,
+              slug: session.slug,
+              position: session.position,
+              name: session.name,
+              version: session.version,
+            ),
+          );
+    });
+  }
+
+  @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      await (_database.delete(_database.cachedPlanningSessionItems)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionId.equals(sessionId),
+          ))
+          .go();
+      await (_database.delete(_database.cachedPlanningSessions)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionId.equals(sessionId),
+          ))
+          .go();
+    });
+  }
+
+  Future<PlanningProjectionOwner> _ensureOwner({
+    required String userId,
+    required String organizationId,
+    required DateTime refreshedAt,
+  }) async {
+    final existingOwner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (existingOwner != null) {
+      await (_database.update(_database.planningProjectionOwners)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .write(
+            PlanningProjectionOwnersCompanion(
+              refreshedAt: Value(refreshedAt.toUtc()),
+            ),
+          );
+      return existingOwner;
+    }
+
+    await _database
+        .into(_database.planningProjectionOwners)
+        .insert(
+          PlanningProjectionOwnersCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: 1,
+            refreshedAt: refreshedAt.toUtc(),
+          ),
+        );
+    return (await _readOwner(userId: userId, organizationId: organizationId))!;
   }
 
   Future<void> deletePlanningProjection({

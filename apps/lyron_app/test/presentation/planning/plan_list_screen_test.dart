@@ -359,7 +359,8 @@ class _FakePlanningMutationSyncController
     : super(
         mutationStore: () => _FakePlanningMutationStore(),
         remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-        refreshPlanning: () async {},
+        refreshPlanning: () async => true,
+        reconcileAcceptedMutation: (_, _) async {},
       );
 
   final List<String> retriedAggregateIds = [];

@@ -29,7 +29,9 @@ void main() {
           remoteRepository: () => repository,
           refreshPlanning: () async {
             refreshCalls += 1;
+            return true;
           },
+          reconcileAcceptedMutation: (_, _) async {},
         );
 
         await controller.syncPendingMutations(
@@ -68,7 +70,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {},
+          refreshPlanning: () async => true,
+          reconcileAcceptedMutation: (_, _) async {},
         );
 
         await controller.syncPendingMutations(
@@ -116,7 +119,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async {},
+        refreshPlanning: () async => true,
+        reconcileAcceptedMutation: (_, _) async {},
       );
 
       await controller.syncPendingMutations(
@@ -153,7 +157,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {},
+          refreshPlanning: () async => true,
+          reconcileAcceptedMutation: (_, _) async {},
         );
 
         await controller.retryMutation(
@@ -166,6 +171,61 @@ void main() {
 
         expect(store.retriedAggregateIds, ['plan-1']);
         expect(repository.calls, 1);
+        expect(store.clearedAggregateIds, ['plan-1']);
+      },
+    );
+
+    test(
+      'successful sync reconciles the accepted mutation locally when refresh fails',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              slug: 'draft-slug',
+              name: 'Draft name',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final syncedRecord = PlanningMutationRecord(
+          aggregateId: 'plan-1',
+          organizationId: 'org-1',
+          slug: 'canonical-slug',
+          name: 'Canonical name',
+          kind: PlanningMutationKind.planCreate,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          baseVersion: 3,
+          updatedAt: DateTime.utc(2026),
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          result: syncedRecord,
+        );
+        PlanningMutationRecord? reconciledRecord;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          reconcileAcceptedMutation: (_, record) async {
+            reconciledRecord = record;
+          },
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(reconciledRecord, isNotNull);
+        expect(reconciledRecord?.slug, 'canonical-slug');
+        expect(reconciledRecord?.baseVersion, 3);
         expect(store.clearedAggregateIds, ['plan-1']);
       },
     );
@@ -294,9 +354,10 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
 
 class _FakePlanningMutationRemoteRepository
     implements PlanningMutationRemoteRepository {
-  _FakePlanningMutationRemoteRepository({this.error});
+  _FakePlanningMutationRemoteRepository({this.error, this.result});
 
   final PlanningMutationSyncException? error;
+  final PlanningMutationRecord? result;
   int calls = 0;
 
   @override
@@ -308,6 +369,6 @@ class _FakePlanningMutationRemoteRepository
     if (error != null) {
       throw error!;
     }
-    return record;
+    return result ?? record;
   }
 }

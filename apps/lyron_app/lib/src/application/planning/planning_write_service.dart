@@ -80,7 +80,7 @@ typedef PlanningWriteSyncScheduler =
     Future<void> Function(PlanningWriteContext context);
 
 class PlanningWriteService {
-  static const _positionStep = 10;
+  static const _positionStep = 1;
 
   PlanningWriteService(
     this._repository, {

@@ -311,6 +311,10 @@ void main() {
           detail.sessions.map((session) => session.id),
           orderedEquals(const ['session-1', 'generated-id-1']),
         );
+        expect(
+          detail.sessions.map((session) => session.position),
+          orderedEquals(const [10, 11]),
+        );
         expect(syncCalls, 2);
       },
     );

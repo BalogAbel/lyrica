@@ -4,20 +4,28 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 typedef PlanningMutationStoreReader = PlanningMutationStore Function();
 typedef PlanningMutationRemoteRepositoryReader =
     PlanningMutationRemoteRepository Function();
-typedef PlanningRefreshTrigger = Future<void> Function();
+typedef PlanningRefreshTrigger = Future<bool> Function();
+typedef PlanningAcceptedMutationReconciler =
+    Future<void> Function(
+      ActivePlanningReadContext context,
+      PlanningMutationRecord record,
+    );
 
 class PlanningMutationSyncController {
   const PlanningMutationSyncController({
     required PlanningMutationStoreReader mutationStore,
     required PlanningMutationRemoteRepositoryReader remoteRepository,
     required PlanningRefreshTrigger refreshPlanning,
+    required PlanningAcceptedMutationReconciler reconcileAcceptedMutation,
   }) : _mutationStore = mutationStore,
        _remoteRepository = remoteRepository,
-       _refreshPlanning = refreshPlanning;
+       _refreshPlanning = refreshPlanning,
+       _reconcileAcceptedMutation = reconcileAcceptedMutation;
 
   final PlanningMutationStoreReader _mutationStore;
   final PlanningMutationRemoteRepositoryReader _remoteRepository;
   final PlanningRefreshTrigger _refreshPlanning;
+  final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
 
   Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
     final pending = await _mutationStore().readPendingMutations(
@@ -27,11 +35,14 @@ class PlanningMutationSyncController {
 
     for (final mutation in pending) {
       try {
-        await _remoteRepository().syncMutation(
+        final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
           record: mutation,
         );
-        await _refreshPlanning();
+        final refreshed = await _refreshPlanning();
+        if (!refreshed) {
+          await _reconcileAcceptedMutation(context, syncedMutation);
+        }
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
