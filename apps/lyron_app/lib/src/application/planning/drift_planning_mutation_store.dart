@@ -18,34 +18,36 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,
   }) async {
-    if (await _hasReservedPlanSlug(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      slug: draft.slug,
-      excludingAggregateId: draft.planId,
-    )) {
-      throw const LocalPlanningSlugConflictException();
-    }
-
-    await _upsertRecord(
-      context: context,
-      aggregateType: 'plan',
-      record: PlanningMutationRecord(
-        aggregateId: draft.planId,
+    await _database.transaction(() async {
+      if (await _hasReservedPlanSlug(
+        userId: context.userId,
         organizationId: context.organizationId,
-        kind: PlanningMutationKind.planCreate,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey: await _nextOrderKey(
-          userId: context.userId,
-          organizationId: context.organizationId,
-        ),
-        updatedAt: DateTime.now().toUtc(),
         slug: draft.slug,
-        name: draft.name,
-        description: draft.description,
-        scheduledFor: draft.scheduledFor?.toUtc(),
-      ),
-    );
+        excludingAggregateId: draft.planId,
+      )) {
+        throw const LocalPlanningSlugConflictException();
+      }
+
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'plan',
+        record: PlanningMutationRecord(
+          aggregateId: draft.planId,
+          organizationId: context.organizationId,
+          kind: PlanningMutationKind.planCreate,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
+          updatedAt: DateTime.now().toUtc(),
+          slug: draft.slug,
+          name: draft.name,
+          description: draft.description,
+          scheduledFor: draft.scheduledFor?.toUtc(),
+        ),
+      );
+    });
   }
 
   @override
@@ -53,46 +55,48 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
   }) async {
-    final existing = await readMutation(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      aggregateId: draft.planId,
-    );
-    if (existing?.kind == PlanningMutationKind.planCreate) {
+    await _database.transaction(() async {
+      final existing = await readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateId: draft.planId,
+      );
+      if (existing?.kind == PlanningMutationKind.planCreate) {
+        await _upsertRecord(
+          context: context,
+          aggregateType: 'plan',
+          record: existing!.copyWith(
+            name: draft.name,
+            description: draft.description,
+            scheduledFor: draft.scheduledFor?.toUtc(),
+            updatedAt: DateTime.now().toUtc(),
+          ),
+        );
+        return;
+      }
+
       await _upsertRecord(
         context: context,
         aggregateType: 'plan',
-        record: existing!.copyWith(
+        record: PlanningMutationRecord(
+          aggregateId: draft.planId,
+          organizationId: context.organizationId,
+          kind: PlanningMutationKind.planEdit,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+          updatedAt: DateTime.now().toUtc(),
           name: draft.name,
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
-          updatedAt: DateTime.now().toUtc(),
+          baseVersion: draft.baseVersion ?? existing?.baseVersion,
         ),
       );
-      return;
-    }
-
-    await _upsertRecord(
-      context: context,
-      aggregateType: 'plan',
-      record: PlanningMutationRecord(
-        aggregateId: draft.planId,
-        organizationId: context.organizationId,
-        kind: PlanningMutationKind.planEdit,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey:
-            existing?.orderKey ??
-            await _nextOrderKey(
-              userId: context.userId,
-              organizationId: context.organizationId,
-            ),
-        updatedAt: DateTime.now().toUtc(),
-        name: draft.name,
-        description: draft.description,
-        scheduledFor: draft.scheduledFor?.toUtc(),
-        baseVersion: draft.baseVersion ?? existing?.baseVersion,
-      ),
-    );
+    });
   }
 
   @override
@@ -100,35 +104,37 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationContext context,
     required PlanningSessionCreateMutationDraft draft,
   }) async {
-    if (await _hasReservedSessionSlug(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      planId: draft.planId,
-      slug: draft.slug,
-      excludingAggregateId: draft.sessionId,
-    )) {
-      throw const LocalPlanningSlugConflictException();
-    }
-
-    await _upsertRecord(
-      context: context,
-      aggregateType: 'session',
-      record: PlanningMutationRecord(
-        aggregateId: draft.sessionId,
+    await _database.transaction(() async {
+      if (await _hasReservedSessionSlug(
+        userId: context.userId,
         organizationId: context.organizationId,
         planId: draft.planId,
         slug: draft.slug,
-        name: draft.name,
-        position: draft.position,
-        kind: PlanningMutationKind.sessionCreate,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey: await _nextOrderKey(
-          userId: context.userId,
+        excludingAggregateId: draft.sessionId,
+      )) {
+        throw const LocalPlanningSlugConflictException();
+      }
+
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session',
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionId,
           organizationId: context.organizationId,
+          planId: draft.planId,
+          slug: draft.slug,
+          name: draft.name,
+          position: draft.position,
+          kind: PlanningMutationKind.sessionCreate,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
+          updatedAt: DateTime.now().toUtc(),
         ),
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
+      );
+    });
   }
 
   @override
@@ -136,43 +142,45 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationContext context,
     required PlanningSessionRenameMutationDraft draft,
   }) async {
-    final existing = await readMutation(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      aggregateId: draft.sessionId,
-    );
-    if (existing?.kind == PlanningMutationKind.sessionCreate) {
+    await _database.transaction(() async {
+      final existing = await readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateId: draft.sessionId,
+      );
+      if (existing?.kind == PlanningMutationKind.sessionCreate) {
+        await _upsertRecord(
+          context: context,
+          aggregateType: 'session',
+          record: existing!.copyWith(
+            name: draft.name,
+            updatedAt: DateTime.now().toUtc(),
+          ),
+        );
+        return;
+      }
+
       await _upsertRecord(
         context: context,
         aggregateType: 'session',
-        record: existing!.copyWith(
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
           name: draft.name,
+          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          kind: PlanningMutationKind.sessionRename,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
           updatedAt: DateTime.now().toUtc(),
         ),
       );
-      return;
-    }
-
-    await _upsertRecord(
-      context: context,
-      aggregateType: 'session',
-      record: PlanningMutationRecord(
-        aggregateId: draft.sessionId,
-        organizationId: context.organizationId,
-        planId: draft.planId,
-        name: draft.name,
-        baseVersion: draft.baseVersion ?? existing?.baseVersion,
-        kind: PlanningMutationKind.sessionRename,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey:
-            existing?.orderKey ??
-            await _nextOrderKey(
-              userId: context.userId,
-              organizationId: context.organizationId,
-            ),
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
+    });
   }
 
   @override
@@ -180,42 +188,44 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationContext context,
     required PlanningSessionDeleteMutationDraft draft,
   }) async {
-    final existing = await readMutation(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      aggregateId: draft.sessionId,
-    );
-    if (existing?.kind == PlanningMutationKind.sessionCreate) {
-      await (_database.delete(_database.cachedPlanningMutations)..where(
-            (table) =>
-                table.userId.equals(context.userId) &
-                table.organizationId.equals(context.organizationId) &
-                table.aggregateType.equals('session') &
-                table.aggregateId.equals(draft.sessionId),
-          ))
-          .go();
-      return;
-    }
-
-    await _upsertRecord(
-      context: context,
-      aggregateType: 'session',
-      record: PlanningMutationRecord(
-        aggregateId: draft.sessionId,
+    await _database.transaction(() async {
+      final existing = await readMutation(
+        userId: context.userId,
         organizationId: context.organizationId,
-        planId: draft.planId,
-        baseVersion: draft.baseVersion ?? existing?.baseVersion,
-        kind: PlanningMutationKind.sessionDelete,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey:
-            existing?.orderKey ??
-            await _nextOrderKey(
-              userId: context.userId,
-              organizationId: context.organizationId,
-            ),
-        updatedAt: DateTime.now().toUtc(),
-      ),
-    );
+        aggregateId: draft.sessionId,
+      );
+      if (existing?.kind == PlanningMutationKind.sessionCreate) {
+        await (_database.delete(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(context.userId) &
+                  table.organizationId.equals(context.organizationId) &
+                  table.aggregateType.equals('session') &
+                  table.aggregateId.equals(draft.sessionId),
+            ))
+            .go();
+        return;
+      }
+
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session',
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
+          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          kind: PlanningMutationKind.sessionDelete,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+    });
   }
 
   @override
