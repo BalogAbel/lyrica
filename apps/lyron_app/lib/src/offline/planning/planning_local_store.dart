@@ -17,8 +17,10 @@ class CachedPlanRecord {
     required this.description,
     required this.scheduledFor,
     required this.updatedAt,
+    int? version,
     String? slug,
-  }) : slug = slug ?? id;
+  }) : slug = slug ?? id,
+       version = version ?? 1;
 
   final String id;
   final String slug;
@@ -26,6 +28,7 @@ class CachedPlanRecord {
   final String? description;
   final DateTime? scheduledFor;
   final DateTime updatedAt;
+  final int version;
 }
 
 class CachedSessionRecord {
@@ -34,14 +37,17 @@ class CachedSessionRecord {
     required this.planId,
     required this.position,
     required this.name,
+    int? version,
     String? slug,
-  }) : slug = slug ?? id;
+  }) : slug = slug ?? id,
+       version = version ?? 1;
 
   final String id;
   final String planId;
   final String slug;
   final int position;
   final String name;
+  final int version;
 }
 
 class CachedSessionItemRecord {
@@ -146,7 +152,10 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               .getSingleOrNull();
       final nextSnapshotVersion = (currentOwner?.snapshotVersion ?? 0) + 1;
 
-      await deletePlanningData(userId: userId, organizationId: organizationId);
+      await deletePlanningProjection(
+        userId: userId,
+        organizationId: organizationId,
+      );
       _ensureProjectionCurrent(shouldContinue);
 
       await _database
@@ -176,6 +185,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   description: Value(plan.description),
                   scheduledFor: Value(plan.scheduledFor?.toUtc()),
                   updatedAt: plan.updatedAt.toUtc(),
+                  version: plan.version,
                 ),
               )
               .toList(growable: false),
@@ -193,6 +203,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   slug: session.slug,
                   position: session.position,
                   name: session.name,
+                  version: session.version,
                 ),
               )
               .toList(growable: false),
@@ -351,6 +362,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               slug: session.slug,
               name: session.name,
               position: session.position,
+              version: session.version,
               items: (itemsBySessionId[session.sessionId] ?? const [])
                   .map(
                     (item) => SessionItemSummary(
@@ -452,6 +464,12 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required String organizationId,
   }) async {
     await _database.transaction(() async {
+      await (_database.delete(_database.cachedPlanningMutations)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .go();
       await (_database.delete(_database.cachedPlanningSessionItems)..where(
             (table) =>
                 table.userId.equals(userId) &
@@ -483,6 +501,9 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningDataForUser({required String userId}) async {
     await _database.transaction(() async {
       await (_database.delete(
+        _database.cachedPlanningMutations,
+      )..where((table) => table.userId.equals(userId))).go();
+      await (_database.delete(
         _database.cachedPlanningSessionItems,
       )..where((table) => table.userId.equals(userId))).go();
       await (_database.delete(
@@ -494,6 +515,38 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       await (_database.delete(
         _database.planningProjectionOwners,
       )..where((table) => table.userId.equals(userId))).go();
+    });
+  }
+
+  Future<void> deletePlanningProjection({
+    required String userId,
+    required String organizationId,
+  }) async {
+    await _database.transaction(() async {
+      await (_database.delete(_database.cachedPlanningSessionItems)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .go();
+      await (_database.delete(_database.cachedPlanningSessions)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .go();
+      await (_database.delete(_database.cachedPlanningPlans)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .go();
+      await (_database.delete(_database.planningProjectionOwners)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .go();
     });
   }
 
@@ -517,6 +570,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       description: row.description,
       scheduledFor: row.scheduledFor?.toUtc(),
       updatedAt: row.updatedAt.toUtc(),
+      version: row.version,
     );
   }
 

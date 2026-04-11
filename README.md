@@ -2,7 +2,7 @@
 
 Lyron Chords is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and a local-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
-The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads and a local-first authenticated planning read flow for plans, sessions, song-backed session items, and plan-origin reader context within the active organization. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization and refresh boundary for both song and planning reads.
+The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads, local-first song CRUD, and a local-first authenticated planning flow for plan create/edit plus session create/rename/delete within the active organization. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization, optimistic-concurrency, and canonical write-acceptance boundary for both song and planning flows.
 
 This repository is the canonical source of truth for:
 
@@ -215,8 +215,8 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
 - The current authenticated slice reads the active song catalog from a local Drift-backed cache for the current authenticated user and active organization. Supabase is used to verify session state and refresh the full visible catalog.
-- The current planning slice adds a signed-in read-only plan list/detail flow served from a local Drift planning projection that is eagerly refreshed from Supabase for the active organization.
-- Planning reads are synchronized for the current active organization only, while planning writes remain backend-owned RBAC decisions.
+- The current planning slice uses a normalized Drift projection for reads plus a persisted planning mutation store for local plan create/edit and session create/rename/delete
+- Planning reads and writes are synchronized for the current active organization only, while write authorization and optimistic concurrency remain backend-owned RBAC decisions
 - While the signed-in song library subtree is mounted and the app stays foregrounded, the catalog controller polls every five minutes and uses the same guarded full-refresh path as the manual song-list refresh action.
 - On web, that cache runs through Drift wasm and the repository-versioned `apps/lyron_app/web/sqlite3.wasm` runtime asset.
 - Hard offline authenticated relaunch is a native-first guarantee for this slice. The browser path keeps a best-effort local cache, but web session persistence is not treated as equivalent to native offline relaunch.
@@ -232,4 +232,4 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 
 ## Status
 
-This repository contains a refined production-oriented foundation: architecture and workflow documents with concrete rules, a hardened Supabase schema and RLS baseline, realistic verification scripts, CI quality gates, and a minimal Flutter shell aligned to the documented boundaries. The currently executable product evidence includes authenticated local-first song reading plus a local-first read-only planning slice with real seeded plans, sessions, session items, and offline-readable plan-origin reader context for the active organization.
+This repository contains a refined production-oriented foundation: architecture and workflow documents with concrete rules, a hardened Supabase schema and RLS baseline, realistic verification scripts, CI quality gates, and a minimal Flutter shell aligned to the documented boundaries. The currently executable product evidence includes authenticated local-first song reading plus CRUD, and a local-first planning slice with real seeded plans, sessions, session items, offline-readable plan-origin reader context, and locally persisted plan/session writes for the active organization.

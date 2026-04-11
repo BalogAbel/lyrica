@@ -441,6 +441,17 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -452,6 +463,7 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     description,
     scheduledFor,
     updatedAt,
+    version,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -545,6 +557,14 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
     return context;
   }
 
@@ -590,6 +610,10 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
     );
   }
 
@@ -610,6 +634,7 @@ class CachedPlanningPlan extends DataClass
   final String? description;
   final DateTime? scheduledFor;
   final DateTime updatedAt;
+  final int version;
   const CachedPlanningPlan({
     required this.userId,
     required this.organizationId,
@@ -620,6 +645,7 @@ class CachedPlanningPlan extends DataClass
     this.description,
     this.scheduledFor,
     required this.updatedAt,
+    required this.version,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -637,6 +663,7 @@ class CachedPlanningPlan extends DataClass
       map['scheduled_for'] = Variable<DateTime>(scheduledFor);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['version'] = Variable<int>(version);
     return map;
   }
 
@@ -655,6 +682,7 @@ class CachedPlanningPlan extends DataClass
           ? const Value.absent()
           : Value(scheduledFor),
       updatedAt: Value(updatedAt),
+      version: Value(version),
     );
   }
 
@@ -673,6 +701,7 @@ class CachedPlanningPlan extends DataClass
       description: serializer.fromJson<String?>(json['description']),
       scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      version: serializer.fromJson<int>(json['version']),
     );
   }
   @override
@@ -688,6 +717,7 @@ class CachedPlanningPlan extends DataClass
       'description': serializer.toJson<String?>(description),
       'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'version': serializer.toJson<int>(version),
     };
   }
 
@@ -701,6 +731,7 @@ class CachedPlanningPlan extends DataClass
     Value<String?> description = const Value.absent(),
     Value<DateTime?> scheduledFor = const Value.absent(),
     DateTime? updatedAt,
+    int? version,
   }) => CachedPlanningPlan(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -711,6 +742,7 @@ class CachedPlanningPlan extends DataClass
     description: description.present ? description.value : this.description,
     scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
     updatedAt: updatedAt ?? this.updatedAt,
+    version: version ?? this.version,
   );
   CachedPlanningPlan copyWithCompanion(CachedPlanningPlansCompanion data) {
     return CachedPlanningPlan(
@@ -731,6 +763,7 @@ class CachedPlanningPlan extends DataClass
           ? data.scheduledFor.value
           : this.scheduledFor,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      version: data.version.present ? data.version.value : this.version,
     );
   }
 
@@ -745,7 +778,8 @@ class CachedPlanningPlan extends DataClass
           ..write('name: $name, ')
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version')
           ..write(')'))
         .toString();
   }
@@ -761,6 +795,7 @@ class CachedPlanningPlan extends DataClass
     description,
     scheduledFor,
     updatedAt,
+    version,
   );
   @override
   bool operator ==(Object other) =>
@@ -774,7 +809,8 @@ class CachedPlanningPlan extends DataClass
           other.name == this.name &&
           other.description == this.description &&
           other.scheduledFor == this.scheduledFor &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.version == this.version);
 }
 
 class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
@@ -787,6 +823,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
   final Value<String?> description;
   final Value<DateTime?> scheduledFor;
   final Value<DateTime> updatedAt;
+  final Value<int> version;
   final Value<int> rowid;
   const CachedPlanningPlansCompanion({
     this.userId = const Value.absent(),
@@ -798,6 +835,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.version = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningPlansCompanion.insert({
@@ -810,6 +848,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
     required DateTime updatedAt,
+    required int version,
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -817,7 +856,8 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
        planId = Value(planId),
        slug = Value(slug),
        name = Value(name),
-       updatedAt = Value(updatedAt);
+       updatedAt = Value(updatedAt),
+       version = Value(version);
   static Insertable<CachedPlanningPlan> custom({
     Expression<String>? userId,
     Expression<String>? organizationId,
@@ -828,6 +868,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Expression<String>? description,
     Expression<DateTime>? scheduledFor,
     Expression<DateTime>? updatedAt,
+    Expression<int>? version,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -840,6 +881,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       if (description != null) 'description': description,
       if (scheduledFor != null) 'scheduled_for': scheduledFor,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (version != null) 'version': version,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -854,6 +896,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Value<String?>? description,
     Value<DateTime?>? scheduledFor,
     Value<DateTime>? updatedAt,
+    Value<int>? version,
     Value<int>? rowid,
   }) {
     return CachedPlanningPlansCompanion(
@@ -866,6 +909,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       description: description ?? this.description,
       scheduledFor: scheduledFor ?? this.scheduledFor,
       updatedAt: updatedAt ?? this.updatedAt,
+      version: version ?? this.version,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -900,6 +944,9 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -918,6 +965,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1010,6 +1058,17 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -1020,6 +1079,7 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     slug,
     position,
     name,
+    version,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1103,6 +1163,14 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
     return context;
   }
 
@@ -1144,6 +1212,10 @@ class $CachedPlanningSessionsTable extends CachedPlanningSessions
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
     );
   }
 
@@ -1163,6 +1235,7 @@ class CachedPlanningSession extends DataClass
   final String slug;
   final int position;
   final String name;
+  final int version;
   const CachedPlanningSession({
     required this.userId,
     required this.organizationId,
@@ -1172,6 +1245,7 @@ class CachedPlanningSession extends DataClass
     required this.slug,
     required this.position,
     required this.name,
+    required this.version,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1184,6 +1258,7 @@ class CachedPlanningSession extends DataClass
     map['slug'] = Variable<String>(slug);
     map['position'] = Variable<int>(position);
     map['name'] = Variable<String>(name);
+    map['version'] = Variable<int>(version);
     return map;
   }
 
@@ -1197,6 +1272,7 @@ class CachedPlanningSession extends DataClass
       slug: Value(slug),
       position: Value(position),
       name: Value(name),
+      version: Value(version),
     );
   }
 
@@ -1214,6 +1290,7 @@ class CachedPlanningSession extends DataClass
       slug: serializer.fromJson<String>(json['slug']),
       position: serializer.fromJson<int>(json['position']),
       name: serializer.fromJson<String>(json['name']),
+      version: serializer.fromJson<int>(json['version']),
     );
   }
   @override
@@ -1228,6 +1305,7 @@ class CachedPlanningSession extends DataClass
       'slug': serializer.toJson<String>(slug),
       'position': serializer.toJson<int>(position),
       'name': serializer.toJson<String>(name),
+      'version': serializer.toJson<int>(version),
     };
   }
 
@@ -1240,6 +1318,7 @@ class CachedPlanningSession extends DataClass
     String? slug,
     int? position,
     String? name,
+    int? version,
   }) => CachedPlanningSession(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -1249,6 +1328,7 @@ class CachedPlanningSession extends DataClass
     slug: slug ?? this.slug,
     position: position ?? this.position,
     name: name ?? this.name,
+    version: version ?? this.version,
   );
   CachedPlanningSession copyWithCompanion(
     CachedPlanningSessionsCompanion data,
@@ -1266,6 +1346,7 @@ class CachedPlanningSession extends DataClass
       slug: data.slug.present ? data.slug.value : this.slug,
       position: data.position.present ? data.position.value : this.position,
       name: data.name.present ? data.name.value : this.name,
+      version: data.version.present ? data.version.value : this.version,
     );
   }
 
@@ -1279,7 +1360,8 @@ class CachedPlanningSession extends DataClass
           ..write('planId: $planId, ')
           ..write('slug: $slug, ')
           ..write('position: $position, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('version: $version')
           ..write(')'))
         .toString();
   }
@@ -1294,6 +1376,7 @@ class CachedPlanningSession extends DataClass
     slug,
     position,
     name,
+    version,
   );
   @override
   bool operator ==(Object other) =>
@@ -1306,7 +1389,8 @@ class CachedPlanningSession extends DataClass
           other.planId == this.planId &&
           other.slug == this.slug &&
           other.position == this.position &&
-          other.name == this.name);
+          other.name == this.name &&
+          other.version == this.version);
 }
 
 class CachedPlanningSessionsCompanion
@@ -1319,6 +1403,7 @@ class CachedPlanningSessionsCompanion
   final Value<String> slug;
   final Value<int> position;
   final Value<String> name;
+  final Value<int> version;
   final Value<int> rowid;
   const CachedPlanningSessionsCompanion({
     this.userId = const Value.absent(),
@@ -1329,6 +1414,7 @@ class CachedPlanningSessionsCompanion
     this.slug = const Value.absent(),
     this.position = const Value.absent(),
     this.name = const Value.absent(),
+    this.version = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningSessionsCompanion.insert({
@@ -1340,6 +1426,7 @@ class CachedPlanningSessionsCompanion
     required String slug,
     required int position,
     required String name,
+    required int version,
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -1348,7 +1435,8 @@ class CachedPlanningSessionsCompanion
        planId = Value(planId),
        slug = Value(slug),
        position = Value(position),
-       name = Value(name);
+       name = Value(name),
+       version = Value(version);
   static Insertable<CachedPlanningSession> custom({
     Expression<String>? userId,
     Expression<String>? organizationId,
@@ -1358,6 +1446,7 @@ class CachedPlanningSessionsCompanion
     Expression<String>? slug,
     Expression<int>? position,
     Expression<String>? name,
+    Expression<int>? version,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1369,6 +1458,7 @@ class CachedPlanningSessionsCompanion
       if (slug != null) 'slug': slug,
       if (position != null) 'position': position,
       if (name != null) 'name': name,
+      if (version != null) 'version': version,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1382,6 +1472,7 @@ class CachedPlanningSessionsCompanion
     Value<String>? slug,
     Value<int>? position,
     Value<String>? name,
+    Value<int>? version,
     Value<int>? rowid,
   }) {
     return CachedPlanningSessionsCompanion(
@@ -1393,6 +1484,7 @@ class CachedPlanningSessionsCompanion
       slug: slug ?? this.slug,
       position: position ?? this.position,
       name: name ?? this.name,
+      version: version ?? this.version,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1424,6 +1516,9 @@ class CachedPlanningSessionsCompanion
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1441,6 +1536,7 @@ class CachedPlanningSessionsCompanion
           ..write('slug: $slug, ')
           ..write('position: $position, ')
           ..write('name: $name, ')
+          ..write('version: $version, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2033,6 +2129,1003 @@ class CachedPlanningSessionItemsCompanion
   }
 }
 
+class $CachedPlanningMutationsTable extends CachedPlanningMutations
+    with TableInfo<$CachedPlanningMutationsTable, CachedPlanningMutation> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedPlanningMutationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _organizationIdMeta = const VerificationMeta(
+    'organizationId',
+  );
+  @override
+  late final GeneratedColumn<String> organizationId = GeneratedColumn<String>(
+    'organization_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _aggregateTypeMeta = const VerificationMeta(
+    'aggregateType',
+  );
+  @override
+  late final GeneratedColumn<String> aggregateType = GeneratedColumn<String>(
+    'aggregate_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _aggregateIdMeta = const VerificationMeta(
+    'aggregateId',
+  );
+  @override
+  late final GeneratedColumn<String> aggregateId = GeneratedColumn<String>(
+    'aggregate_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mutationKindMeta = const VerificationMeta(
+    'mutationKind',
+  );
+  @override
+  late final GeneratedColumn<String> mutationKind = GeneratedColumn<String>(
+    'mutation_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncStatusMeta = const VerificationMeta(
+    'syncStatus',
+  );
+  @override
+  late final GeneratedColumn<String> syncStatus = GeneratedColumn<String>(
+    'sync_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _planIdMeta = const VerificationMeta('planId');
+  @override
+  late final GeneratedColumn<String> planId = GeneratedColumn<String>(
+    'plan_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _slugMeta = const VerificationMeta('slug');
+  @override
+  late final GeneratedColumn<String> slug = GeneratedColumn<String>(
+    'slug',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _scheduledForMeta = const VerificationMeta(
+    'scheduledFor',
+  );
+  @override
+  late final GeneratedColumn<DateTime> scheduledFor = GeneratedColumn<DateTime>(
+    'scheduled_for',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _baseVersionMeta = const VerificationMeta(
+    'baseVersion',
+  );
+  @override
+  late final GeneratedColumn<int> baseVersion = GeneratedColumn<int>(
+    'base_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorCodeMeta = const VerificationMeta(
+    'errorCode',
+  );
+  @override
+  late final GeneratedColumn<String> errorCode = GeneratedColumn<String>(
+    'error_code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _orderKeyMeta = const VerificationMeta(
+    'orderKey',
+  );
+  @override
+  late final GeneratedColumn<int> orderKey = GeneratedColumn<int>(
+    'order_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    userId,
+    organizationId,
+    aggregateType,
+    aggregateId,
+    mutationKind,
+    syncStatus,
+    planId,
+    slug,
+    name,
+    description,
+    scheduledFor,
+    position,
+    baseVersion,
+    errorCode,
+    errorMessage,
+    orderKey,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_planning_mutations';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedPlanningMutation> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('organization_id')) {
+      context.handle(
+        _organizationIdMeta,
+        organizationId.isAcceptableOrUnknown(
+          data['organization_id']!,
+          _organizationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_organizationIdMeta);
+    }
+    if (data.containsKey('aggregate_type')) {
+      context.handle(
+        _aggregateTypeMeta,
+        aggregateType.isAcceptableOrUnknown(
+          data['aggregate_type']!,
+          _aggregateTypeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_aggregateTypeMeta);
+    }
+    if (data.containsKey('aggregate_id')) {
+      context.handle(
+        _aggregateIdMeta,
+        aggregateId.isAcceptableOrUnknown(
+          data['aggregate_id']!,
+          _aggregateIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_aggregateIdMeta);
+    }
+    if (data.containsKey('mutation_kind')) {
+      context.handle(
+        _mutationKindMeta,
+        mutationKind.isAcceptableOrUnknown(
+          data['mutation_kind']!,
+          _mutationKindMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_mutationKindMeta);
+    }
+    if (data.containsKey('sync_status')) {
+      context.handle(
+        _syncStatusMeta,
+        syncStatus.isAcceptableOrUnknown(data['sync_status']!, _syncStatusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncStatusMeta);
+    }
+    if (data.containsKey('plan_id')) {
+      context.handle(
+        _planIdMeta,
+        planId.isAcceptableOrUnknown(data['plan_id']!, _planIdMeta),
+      );
+    }
+    if (data.containsKey('slug')) {
+      context.handle(
+        _slugMeta,
+        slug.isAcceptableOrUnknown(data['slug']!, _slugMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('scheduled_for')) {
+      context.handle(
+        _scheduledForMeta,
+        scheduledFor.isAcceptableOrUnknown(
+          data['scheduled_for']!,
+          _scheduledForMeta,
+        ),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('base_version')) {
+      context.handle(
+        _baseVersionMeta,
+        baseVersion.isAcceptableOrUnknown(
+          data['base_version']!,
+          _baseVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('error_code')) {
+      context.handle(
+        _errorCodeMeta,
+        errorCode.isAcceptableOrUnknown(data['error_code']!, _errorCodeMeta),
+      );
+    }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('order_key')) {
+      context.handle(
+        _orderKeyMeta,
+        orderKey.isAcceptableOrUnknown(data['order_key']!, _orderKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orderKeyMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {
+    userId,
+    organizationId,
+    aggregateType,
+    aggregateId,
+  };
+  @override
+  CachedPlanningMutation map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedPlanningMutation(
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      organizationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}organization_id'],
+      )!,
+      aggregateType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}aggregate_type'],
+      )!,
+      aggregateId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}aggregate_id'],
+      )!,
+      mutationKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mutation_kind'],
+      )!,
+      syncStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_status'],
+      )!,
+      planId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plan_id'],
+      ),
+      slug: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}slug'],
+      ),
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      scheduledFor: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}scheduled_for'],
+      ),
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      ),
+      baseVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_version'],
+      ),
+      errorCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_code'],
+      ),
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
+      orderKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}order_key'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedPlanningMutationsTable createAlias(String alias) {
+    return $CachedPlanningMutationsTable(attachedDatabase, alias);
+  }
+}
+
+class CachedPlanningMutation extends DataClass
+    implements Insertable<CachedPlanningMutation> {
+  final String userId;
+  final String organizationId;
+  final String aggregateType;
+  final String aggregateId;
+  final String mutationKind;
+  final String syncStatus;
+  final String? planId;
+  final String? slug;
+  final String? name;
+  final String? description;
+  final DateTime? scheduledFor;
+  final int? position;
+  final int? baseVersion;
+  final String? errorCode;
+  final String? errorMessage;
+  final int orderKey;
+  final DateTime updatedAt;
+  const CachedPlanningMutation({
+    required this.userId,
+    required this.organizationId,
+    required this.aggregateType,
+    required this.aggregateId,
+    required this.mutationKind,
+    required this.syncStatus,
+    this.planId,
+    this.slug,
+    this.name,
+    this.description,
+    this.scheduledFor,
+    this.position,
+    this.baseVersion,
+    this.errorCode,
+    this.errorMessage,
+    required this.orderKey,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['organization_id'] = Variable<String>(organizationId);
+    map['aggregate_type'] = Variable<String>(aggregateType);
+    map['aggregate_id'] = Variable<String>(aggregateId);
+    map['mutation_kind'] = Variable<String>(mutationKind);
+    map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || planId != null) {
+      map['plan_id'] = Variable<String>(planId);
+    }
+    if (!nullToAbsent || slug != null) {
+      map['slug'] = Variable<String>(slug);
+    }
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || scheduledFor != null) {
+      map['scheduled_for'] = Variable<DateTime>(scheduledFor);
+    }
+    if (!nullToAbsent || position != null) {
+      map['position'] = Variable<int>(position);
+    }
+    if (!nullToAbsent || baseVersion != null) {
+      map['base_version'] = Variable<int>(baseVersion);
+    }
+    if (!nullToAbsent || errorCode != null) {
+      map['error_code'] = Variable<String>(errorCode);
+    }
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
+    map['order_key'] = Variable<int>(orderKey);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CachedPlanningMutationsCompanion toCompanion(bool nullToAbsent) {
+    return CachedPlanningMutationsCompanion(
+      userId: Value(userId),
+      organizationId: Value(organizationId),
+      aggregateType: Value(aggregateType),
+      aggregateId: Value(aggregateId),
+      mutationKind: Value(mutationKind),
+      syncStatus: Value(syncStatus),
+      planId: planId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(planId),
+      slug: slug == null && nullToAbsent ? const Value.absent() : Value(slug),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      scheduledFor: scheduledFor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scheduledFor),
+      position: position == null && nullToAbsent
+          ? const Value.absent()
+          : Value(position),
+      baseVersion: baseVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseVersion),
+      errorCode: errorCode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorCode),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
+      orderKey: Value(orderKey),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CachedPlanningMutation.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedPlanningMutation(
+      userId: serializer.fromJson<String>(json['userId']),
+      organizationId: serializer.fromJson<String>(json['organizationId']),
+      aggregateType: serializer.fromJson<String>(json['aggregateType']),
+      aggregateId: serializer.fromJson<String>(json['aggregateId']),
+      mutationKind: serializer.fromJson<String>(json['mutationKind']),
+      syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      planId: serializer.fromJson<String?>(json['planId']),
+      slug: serializer.fromJson<String?>(json['slug']),
+      name: serializer.fromJson<String?>(json['name']),
+      description: serializer.fromJson<String?>(json['description']),
+      scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
+      position: serializer.fromJson<int?>(json['position']),
+      baseVersion: serializer.fromJson<int?>(json['baseVersion']),
+      errorCode: serializer.fromJson<String?>(json['errorCode']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      orderKey: serializer.fromJson<int>(json['orderKey']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'organizationId': serializer.toJson<String>(organizationId),
+      'aggregateType': serializer.toJson<String>(aggregateType),
+      'aggregateId': serializer.toJson<String>(aggregateId),
+      'mutationKind': serializer.toJson<String>(mutationKind),
+      'syncStatus': serializer.toJson<String>(syncStatus),
+      'planId': serializer.toJson<String?>(planId),
+      'slug': serializer.toJson<String?>(slug),
+      'name': serializer.toJson<String?>(name),
+      'description': serializer.toJson<String?>(description),
+      'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
+      'position': serializer.toJson<int?>(position),
+      'baseVersion': serializer.toJson<int?>(baseVersion),
+      'errorCode': serializer.toJson<String?>(errorCode),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
+      'orderKey': serializer.toJson<int>(orderKey),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CachedPlanningMutation copyWith({
+    String? userId,
+    String? organizationId,
+    String? aggregateType,
+    String? aggregateId,
+    String? mutationKind,
+    String? syncStatus,
+    Value<String?> planId = const Value.absent(),
+    Value<String?> slug = const Value.absent(),
+    Value<String?> name = const Value.absent(),
+    Value<String?> description = const Value.absent(),
+    Value<DateTime?> scheduledFor = const Value.absent(),
+    Value<int?> position = const Value.absent(),
+    Value<int?> baseVersion = const Value.absent(),
+    Value<String?> errorCode = const Value.absent(),
+    Value<String?> errorMessage = const Value.absent(),
+    int? orderKey,
+    DateTime? updatedAt,
+  }) => CachedPlanningMutation(
+    userId: userId ?? this.userId,
+    organizationId: organizationId ?? this.organizationId,
+    aggregateType: aggregateType ?? this.aggregateType,
+    aggregateId: aggregateId ?? this.aggregateId,
+    mutationKind: mutationKind ?? this.mutationKind,
+    syncStatus: syncStatus ?? this.syncStatus,
+    planId: planId.present ? planId.value : this.planId,
+    slug: slug.present ? slug.value : this.slug,
+    name: name.present ? name.value : this.name,
+    description: description.present ? description.value : this.description,
+    scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
+    position: position.present ? position.value : this.position,
+    baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
+    errorCode: errorCode.present ? errorCode.value : this.errorCode,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
+    orderKey: orderKey ?? this.orderKey,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CachedPlanningMutation copyWithCompanion(
+    CachedPlanningMutationsCompanion data,
+  ) {
+    return CachedPlanningMutation(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      organizationId: data.organizationId.present
+          ? data.organizationId.value
+          : this.organizationId,
+      aggregateType: data.aggregateType.present
+          ? data.aggregateType.value
+          : this.aggregateType,
+      aggregateId: data.aggregateId.present
+          ? data.aggregateId.value
+          : this.aggregateId,
+      mutationKind: data.mutationKind.present
+          ? data.mutationKind.value
+          : this.mutationKind,
+      syncStatus: data.syncStatus.present
+          ? data.syncStatus.value
+          : this.syncStatus,
+      planId: data.planId.present ? data.planId.value : this.planId,
+      slug: data.slug.present ? data.slug.value : this.slug,
+      name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      scheduledFor: data.scheduledFor.present
+          ? data.scheduledFor.value
+          : this.scheduledFor,
+      position: data.position.present ? data.position.value : this.position,
+      baseVersion: data.baseVersion.present
+          ? data.baseVersion.value
+          : this.baseVersion,
+      errorCode: data.errorCode.present ? data.errorCode.value : this.errorCode,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      orderKey: data.orderKey.present ? data.orderKey.value : this.orderKey,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedPlanningMutation(')
+          ..write('userId: $userId, ')
+          ..write('organizationId: $organizationId, ')
+          ..write('aggregateType: $aggregateType, ')
+          ..write('aggregateId: $aggregateId, ')
+          ..write('mutationKind: $mutationKind, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('scheduledFor: $scheduledFor, ')
+          ..write('position: $position, ')
+          ..write('baseVersion: $baseVersion, ')
+          ..write('errorCode: $errorCode, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('orderKey: $orderKey, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    userId,
+    organizationId,
+    aggregateType,
+    aggregateId,
+    mutationKind,
+    syncStatus,
+    planId,
+    slug,
+    name,
+    description,
+    scheduledFor,
+    position,
+    baseVersion,
+    errorCode,
+    errorMessage,
+    orderKey,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedPlanningMutation &&
+          other.userId == this.userId &&
+          other.organizationId == this.organizationId &&
+          other.aggregateType == this.aggregateType &&
+          other.aggregateId == this.aggregateId &&
+          other.mutationKind == this.mutationKind &&
+          other.syncStatus == this.syncStatus &&
+          other.planId == this.planId &&
+          other.slug == this.slug &&
+          other.name == this.name &&
+          other.description == this.description &&
+          other.scheduledFor == this.scheduledFor &&
+          other.position == this.position &&
+          other.baseVersion == this.baseVersion &&
+          other.errorCode == this.errorCode &&
+          other.errorMessage == this.errorMessage &&
+          other.orderKey == this.orderKey &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CachedPlanningMutationsCompanion
+    extends UpdateCompanion<CachedPlanningMutation> {
+  final Value<String> userId;
+  final Value<String> organizationId;
+  final Value<String> aggregateType;
+  final Value<String> aggregateId;
+  final Value<String> mutationKind;
+  final Value<String> syncStatus;
+  final Value<String?> planId;
+  final Value<String?> slug;
+  final Value<String?> name;
+  final Value<String?> description;
+  final Value<DateTime?> scheduledFor;
+  final Value<int?> position;
+  final Value<int?> baseVersion;
+  final Value<String?> errorCode;
+  final Value<String?> errorMessage;
+  final Value<int> orderKey;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const CachedPlanningMutationsCompanion({
+    this.userId = const Value.absent(),
+    this.organizationId = const Value.absent(),
+    this.aggregateType = const Value.absent(),
+    this.aggregateId = const Value.absent(),
+    this.mutationKind = const Value.absent(),
+    this.syncStatus = const Value.absent(),
+    this.planId = const Value.absent(),
+    this.slug = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.scheduledFor = const Value.absent(),
+    this.position = const Value.absent(),
+    this.baseVersion = const Value.absent(),
+    this.errorCode = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.orderKey = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedPlanningMutationsCompanion.insert({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required String mutationKind,
+    required String syncStatus,
+    this.planId = const Value.absent(),
+    this.slug = const Value.absent(),
+    this.name = const Value.absent(),
+    this.description = const Value.absent(),
+    this.scheduledFor = const Value.absent(),
+    this.position = const Value.absent(),
+    this.baseVersion = const Value.absent(),
+    this.errorCode = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    required int orderKey,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId),
+       organizationId = Value(organizationId),
+       aggregateType = Value(aggregateType),
+       aggregateId = Value(aggregateId),
+       mutationKind = Value(mutationKind),
+       syncStatus = Value(syncStatus),
+       orderKey = Value(orderKey),
+       updatedAt = Value(updatedAt);
+  static Insertable<CachedPlanningMutation> custom({
+    Expression<String>? userId,
+    Expression<String>? organizationId,
+    Expression<String>? aggregateType,
+    Expression<String>? aggregateId,
+    Expression<String>? mutationKind,
+    Expression<String>? syncStatus,
+    Expression<String>? planId,
+    Expression<String>? slug,
+    Expression<String>? name,
+    Expression<String>? description,
+    Expression<DateTime>? scheduledFor,
+    Expression<int>? position,
+    Expression<int>? baseVersion,
+    Expression<String>? errorCode,
+    Expression<String>? errorMessage,
+    Expression<int>? orderKey,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (organizationId != null) 'organization_id': organizationId,
+      if (aggregateType != null) 'aggregate_type': aggregateType,
+      if (aggregateId != null) 'aggregate_id': aggregateId,
+      if (mutationKind != null) 'mutation_kind': mutationKind,
+      if (syncStatus != null) 'sync_status': syncStatus,
+      if (planId != null) 'plan_id': planId,
+      if (slug != null) 'slug': slug,
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (scheduledFor != null) 'scheduled_for': scheduledFor,
+      if (position != null) 'position': position,
+      if (baseVersion != null) 'base_version': baseVersion,
+      if (errorCode != null) 'error_code': errorCode,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (orderKey != null) 'order_key': orderKey,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedPlanningMutationsCompanion copyWith({
+    Value<String>? userId,
+    Value<String>? organizationId,
+    Value<String>? aggregateType,
+    Value<String>? aggregateId,
+    Value<String>? mutationKind,
+    Value<String>? syncStatus,
+    Value<String?>? planId,
+    Value<String?>? slug,
+    Value<String?>? name,
+    Value<String?>? description,
+    Value<DateTime?>? scheduledFor,
+    Value<int?>? position,
+    Value<int?>? baseVersion,
+    Value<String?>? errorCode,
+    Value<String?>? errorMessage,
+    Value<int>? orderKey,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return CachedPlanningMutationsCompanion(
+      userId: userId ?? this.userId,
+      organizationId: organizationId ?? this.organizationId,
+      aggregateType: aggregateType ?? this.aggregateType,
+      aggregateId: aggregateId ?? this.aggregateId,
+      mutationKind: mutationKind ?? this.mutationKind,
+      syncStatus: syncStatus ?? this.syncStatus,
+      planId: planId ?? this.planId,
+      slug: slug ?? this.slug,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      scheduledFor: scheduledFor ?? this.scheduledFor,
+      position: position ?? this.position,
+      baseVersion: baseVersion ?? this.baseVersion,
+      errorCode: errorCode ?? this.errorCode,
+      errorMessage: errorMessage ?? this.errorMessage,
+      orderKey: orderKey ?? this.orderKey,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (organizationId.present) {
+      map['organization_id'] = Variable<String>(organizationId.value);
+    }
+    if (aggregateType.present) {
+      map['aggregate_type'] = Variable<String>(aggregateType.value);
+    }
+    if (aggregateId.present) {
+      map['aggregate_id'] = Variable<String>(aggregateId.value);
+    }
+    if (mutationKind.present) {
+      map['mutation_kind'] = Variable<String>(mutationKind.value);
+    }
+    if (syncStatus.present) {
+      map['sync_status'] = Variable<String>(syncStatus.value);
+    }
+    if (planId.present) {
+      map['plan_id'] = Variable<String>(planId.value);
+    }
+    if (slug.present) {
+      map['slug'] = Variable<String>(slug.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (scheduledFor.present) {
+      map['scheduled_for'] = Variable<DateTime>(scheduledFor.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (baseVersion.present) {
+      map['base_version'] = Variable<int>(baseVersion.value);
+    }
+    if (errorCode.present) {
+      map['error_code'] = Variable<String>(errorCode.value);
+    }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (orderKey.present) {
+      map['order_key'] = Variable<int>(orderKey.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedPlanningMutationsCompanion(')
+          ..write('userId: $userId, ')
+          ..write('organizationId: $organizationId, ')
+          ..write('aggregateType: $aggregateType, ')
+          ..write('aggregateId: $aggregateId, ')
+          ..write('mutationKind: $mutationKind, ')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('planId: $planId, ')
+          ..write('slug: $slug, ')
+          ..write('name: $name, ')
+          ..write('description: $description, ')
+          ..write('scheduledFor: $scheduledFor, ')
+          ..write('position: $position, ')
+          ..write('baseVersion: $baseVersion, ')
+          ..write('errorCode: $errorCode, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('orderKey: $orderKey, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$PlanningLocalDatabase extends GeneratedDatabase {
   _$PlanningLocalDatabase(QueryExecutor e) : super(e);
   $PlanningLocalDatabaseManager get managers =>
@@ -2045,6 +3138,8 @@ abstract class _$PlanningLocalDatabase extends GeneratedDatabase {
       $CachedPlanningSessionsTable(this);
   late final $CachedPlanningSessionItemsTable cachedPlanningSessionItems =
       $CachedPlanningSessionItemsTable(this);
+  late final $CachedPlanningMutationsTable cachedPlanningMutations =
+      $CachedPlanningMutationsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2054,6 +3149,7 @@ abstract class _$PlanningLocalDatabase extends GeneratedDatabase {
     cachedPlanningPlans,
     cachedPlanningSessions,
     cachedPlanningSessionItems,
+    cachedPlanningMutations,
   ];
 }
 
@@ -2274,6 +3370,7 @@ typedef $$CachedPlanningPlansTableCreateCompanionBuilder =
       Value<String?> description,
       Value<DateTime?> scheduledFor,
       required DateTime updatedAt,
+      required int version,
       Value<int> rowid,
     });
 typedef $$CachedPlanningPlansTableUpdateCompanionBuilder =
@@ -2287,6 +3384,7 @@ typedef $$CachedPlanningPlansTableUpdateCompanionBuilder =
       Value<String?> description,
       Value<DateTime?> scheduledFor,
       Value<DateTime> updatedAt,
+      Value<int> version,
       Value<int> rowid,
     });
 
@@ -2341,6 +3439,11 @@ class $$CachedPlanningPlansTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2398,6 +3501,11 @@ class $$CachedPlanningPlansTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningPlansTableAnnotationComposer
@@ -2443,6 +3551,9 @@ class $$CachedPlanningPlansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
 }
 
 class $$CachedPlanningPlansTableTableManager
@@ -2497,6 +3608,7 @@ class $$CachedPlanningPlansTableTableManager
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningPlansCompanion(
                 userId: userId,
@@ -2508,6 +3620,7 @@ class $$CachedPlanningPlansTableTableManager
                 description: description,
                 scheduledFor: scheduledFor,
                 updatedAt: updatedAt,
+                version: version,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2521,6 +3634,7 @@ class $$CachedPlanningPlansTableTableManager
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 required DateTime updatedAt,
+                required int version,
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningPlansCompanion.insert(
                 userId: userId,
@@ -2532,6 +3646,7 @@ class $$CachedPlanningPlansTableTableManager
                 description: description,
                 scheduledFor: scheduledFor,
                 updatedAt: updatedAt,
+                version: version,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2573,6 +3688,7 @@ typedef $$CachedPlanningSessionsTableCreateCompanionBuilder =
       required String slug,
       required int position,
       required String name,
+      required int version,
       Value<int> rowid,
     });
 typedef $$CachedPlanningSessionsTableUpdateCompanionBuilder =
@@ -2585,6 +3701,7 @@ typedef $$CachedPlanningSessionsTableUpdateCompanionBuilder =
       Value<String> slug,
       Value<int> position,
       Value<String> name,
+      Value<int> version,
       Value<int> rowid,
     });
 
@@ -2634,6 +3751,11 @@ class $$CachedPlanningSessionsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2686,6 +3808,11 @@ class $$CachedPlanningSessionsTableOrderingComposer
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningSessionsTableAnnotationComposer
@@ -2724,6 +3851,9 @@ class $$CachedPlanningSessionsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
 }
 
 class $$CachedPlanningSessionsTableTableManager
@@ -2780,6 +3910,7 @@ class $$CachedPlanningSessionsTableTableManager
                 Value<String> slug = const Value.absent(),
                 Value<int> position = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<int> version = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningSessionsCompanion(
                 userId: userId,
@@ -2790,6 +3921,7 @@ class $$CachedPlanningSessionsTableTableManager
                 slug: slug,
                 position: position,
                 name: name,
+                version: version,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2802,6 +3934,7 @@ class $$CachedPlanningSessionsTableTableManager
                 required String slug,
                 required int position,
                 required String name,
+                required int version,
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningSessionsCompanion.insert(
                 userId: userId,
@@ -2812,6 +3945,7 @@ class $$CachedPlanningSessionsTableTableManager
                 slug: slug,
                 position: position,
                 name: name,
+                version: version,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -3147,6 +4281,471 @@ typedef $$CachedPlanningSessionItemsTableProcessedTableManager =
       CachedPlanningSessionItem,
       PrefetchHooks Function()
     >;
+typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
+    CachedPlanningMutationsCompanion Function({
+      required String userId,
+      required String organizationId,
+      required String aggregateType,
+      required String aggregateId,
+      required String mutationKind,
+      required String syncStatus,
+      Value<String?> planId,
+      Value<String?> slug,
+      Value<String?> name,
+      Value<String?> description,
+      Value<DateTime?> scheduledFor,
+      Value<int?> position,
+      Value<int?> baseVersion,
+      Value<String?> errorCode,
+      Value<String?> errorMessage,
+      required int orderKey,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
+    CachedPlanningMutationsCompanion Function({
+      Value<String> userId,
+      Value<String> organizationId,
+      Value<String> aggregateType,
+      Value<String> aggregateId,
+      Value<String> mutationKind,
+      Value<String> syncStatus,
+      Value<String?> planId,
+      Value<String?> slug,
+      Value<String?> name,
+      Value<String?> description,
+      Value<DateTime?> scheduledFor,
+      Value<int?> position,
+      Value<int?> baseVersion,
+      Value<String?> errorCode,
+      Value<String?> errorMessage,
+      Value<int> orderKey,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$CachedPlanningMutationsTableFilterComposer
+    extends Composer<_$PlanningLocalDatabase, $CachedPlanningMutationsTable> {
+  $$CachedPlanningMutationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get aggregateType => $composableBuilder(
+    column: $table.aggregateType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get aggregateId => $composableBuilder(
+    column: $table.aggregateId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mutationKind => $composableBuilder(
+    column: $table.mutationKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get scheduledFor => $composableBuilder(
+    column: $table.scheduledFor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorCode => $composableBuilder(
+    column: $table.errorCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get orderKey => $composableBuilder(
+    column: $table.orderKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedPlanningMutationsTableOrderingComposer
+    extends Composer<_$PlanningLocalDatabase, $CachedPlanningMutationsTable> {
+  $$CachedPlanningMutationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get aggregateType => $composableBuilder(
+    column: $table.aggregateType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get aggregateId => $composableBuilder(
+    column: $table.aggregateId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mutationKind => $composableBuilder(
+    column: $table.mutationKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get planId => $composableBuilder(
+    column: $table.planId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get slug => $composableBuilder(
+    column: $table.slug,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get scheduledFor => $composableBuilder(
+    column: $table.scheduledFor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorCode => $composableBuilder(
+    column: $table.errorCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get orderKey => $composableBuilder(
+    column: $table.orderKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedPlanningMutationsTableAnnotationComposer
+    extends Composer<_$PlanningLocalDatabase, $CachedPlanningMutationsTable> {
+  $$CachedPlanningMutationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get organizationId => $composableBuilder(
+    column: $table.organizationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get aggregateType => $composableBuilder(
+    column: $table.aggregateType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get aggregateId => $composableBuilder(
+    column: $table.aggregateId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mutationKind => $composableBuilder(
+    column: $table.mutationKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get syncStatus => $composableBuilder(
+    column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get planId =>
+      $composableBuilder(column: $table.planId, builder: (column) => column);
+
+  GeneratedColumn<String> get slug =>
+      $composableBuilder(column: $table.slug, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get scheduledFor => $composableBuilder(
+    column: $table.scheduledFor,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<int> get baseVersion => $composableBuilder(
+    column: $table.baseVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorCode =>
+      $composableBuilder(column: $table.errorCode, builder: (column) => column);
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get orderKey =>
+      $composableBuilder(column: $table.orderKey, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$CachedPlanningMutationsTableTableManager
+    extends
+        RootTableManager<
+          _$PlanningLocalDatabase,
+          $CachedPlanningMutationsTable,
+          CachedPlanningMutation,
+          $$CachedPlanningMutationsTableFilterComposer,
+          $$CachedPlanningMutationsTableOrderingComposer,
+          $$CachedPlanningMutationsTableAnnotationComposer,
+          $$CachedPlanningMutationsTableCreateCompanionBuilder,
+          $$CachedPlanningMutationsTableUpdateCompanionBuilder,
+          (
+            CachedPlanningMutation,
+            BaseReferences<
+              _$PlanningLocalDatabase,
+              $CachedPlanningMutationsTable,
+              CachedPlanningMutation
+            >,
+          ),
+          CachedPlanningMutation,
+          PrefetchHooks Function()
+        > {
+  $$CachedPlanningMutationsTableTableManager(
+    _$PlanningLocalDatabase db,
+    $CachedPlanningMutationsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedPlanningMutationsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$CachedPlanningMutationsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$CachedPlanningMutationsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> userId = const Value.absent(),
+                Value<String> organizationId = const Value.absent(),
+                Value<String> aggregateType = const Value.absent(),
+                Value<String> aggregateId = const Value.absent(),
+                Value<String> mutationKind = const Value.absent(),
+                Value<String> syncStatus = const Value.absent(),
+                Value<String?> planId = const Value.absent(),
+                Value<String?> slug = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<DateTime?> scheduledFor = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> baseVersion = const Value.absent(),
+                Value<String?> errorCode = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<int> orderKey = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedPlanningMutationsCompanion(
+                userId: userId,
+                organizationId: organizationId,
+                aggregateType: aggregateType,
+                aggregateId: aggregateId,
+                mutationKind: mutationKind,
+                syncStatus: syncStatus,
+                planId: planId,
+                slug: slug,
+                name: name,
+                description: description,
+                scheduledFor: scheduledFor,
+                position: position,
+                baseVersion: baseVersion,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                orderKey: orderKey,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String userId,
+                required String organizationId,
+                required String aggregateType,
+                required String aggregateId,
+                required String mutationKind,
+                required String syncStatus,
+                Value<String?> planId = const Value.absent(),
+                Value<String?> slug = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<DateTime?> scheduledFor = const Value.absent(),
+                Value<int?> position = const Value.absent(),
+                Value<int?> baseVersion = const Value.absent(),
+                Value<String?> errorCode = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                required int orderKey,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedPlanningMutationsCompanion.insert(
+                userId: userId,
+                organizationId: organizationId,
+                aggregateType: aggregateType,
+                aggregateId: aggregateId,
+                mutationKind: mutationKind,
+                syncStatus: syncStatus,
+                planId: planId,
+                slug: slug,
+                name: name,
+                description: description,
+                scheduledFor: scheduledFor,
+                position: position,
+                baseVersion: baseVersion,
+                errorCode: errorCode,
+                errorMessage: errorMessage,
+                orderKey: orderKey,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedPlanningMutationsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$PlanningLocalDatabase,
+      $CachedPlanningMutationsTable,
+      CachedPlanningMutation,
+      $$CachedPlanningMutationsTableFilterComposer,
+      $$CachedPlanningMutationsTableOrderingComposer,
+      $$CachedPlanningMutationsTableAnnotationComposer,
+      $$CachedPlanningMutationsTableCreateCompanionBuilder,
+      $$CachedPlanningMutationsTableUpdateCompanionBuilder,
+      (
+        CachedPlanningMutation,
+        BaseReferences<
+          _$PlanningLocalDatabase,
+          $CachedPlanningMutationsTable,
+          CachedPlanningMutation
+        >,
+      ),
+      CachedPlanningMutation,
+      PrefetchHooks Function()
+    >;
 
 class $PlanningLocalDatabaseManager {
   final _$PlanningLocalDatabase _db;
@@ -3168,5 +4767,10 @@ class $PlanningLocalDatabaseManager {
       $$CachedPlanningSessionItemsTableTableManager(
         _db,
         _db.cachedPlanningSessionItems,
+      );
+  $$CachedPlanningMutationsTableTableManager get cachedPlanningMutations =>
+      $$CachedPlanningMutationsTableTableManager(
+        _db,
+        _db.cachedPlanningMutations,
       );
 }

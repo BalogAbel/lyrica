@@ -1,6 +1,6 @@
 # Local-First Planning Create/Edit Spec
 
-> Status: Proposed
+> Status: Implemented
 
 > This spec extends the local-first planning direction established by [docs/specs/2026-04-03-local-first-planning-read.md](docs/specs/2026-04-03-local-first-planning-read.md). It adds the first local-first planning write slice for plan create/edit and session create/rename/delete while preserving the existing planning read projection and backend-owned authorization boundary.
 

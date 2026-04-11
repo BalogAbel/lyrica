@@ -11,6 +11,7 @@ part 'planning_local_database.g.dart';
     CachedPlanningPlans,
     CachedPlanningSessions,
     CachedPlanningSessionItems,
+    CachedPlanningMutations,
   ],
 )
 class PlanningLocalDatabase extends _$PlanningLocalDatabase {
@@ -29,5 +30,5 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
 }

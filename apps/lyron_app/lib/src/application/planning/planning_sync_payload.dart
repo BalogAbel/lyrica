@@ -18,6 +18,7 @@ class PlanningSyncPlan {
     required this.description,
     required this.scheduledFor,
     required this.updatedAt,
+    required this.version,
   });
 
   final String id;
@@ -26,6 +27,7 @@ class PlanningSyncPlan {
   final String? description;
   final DateTime? scheduledFor;
   final DateTime updatedAt;
+  final int version;
 }
 
 class PlanningSyncSession {
@@ -35,6 +37,7 @@ class PlanningSyncSession {
     required this.slug,
     required this.position,
     required this.name,
+    required this.version,
   });
 
   final String id;
@@ -42,6 +45,7 @@ class PlanningSyncSession {
   final String slug;
   final int position;
   final String name;
+  final int version;
 }
 
 class PlanningSyncSessionItem {
