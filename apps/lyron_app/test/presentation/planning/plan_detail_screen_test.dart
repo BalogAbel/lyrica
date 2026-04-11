@@ -421,13 +421,11 @@ void main() {
     expect(find.text(AppStrings.planDetailLoadingMessage), findsNothing);
     expect(find.text('Warm-Up'), findsOneWidget);
 
-    final addButtonFinder = find
-        .widgetWithText(
-          TextButton,
-          AppStrings.sessionItemAddSongAction,
-          skipOffstage: false,
-        )
-        .first;
+    // Find the "Add song" button specifically within the first session card
+    final addButtonFinder = find.descendant(
+      of: find.ancestor(of: find.text('Warm-Up'), matching: find.byType(Card)),
+      matching: find.byType(TextButton),
+    );
 
     expect(addButtonFinder, findsOneWidget);
 
