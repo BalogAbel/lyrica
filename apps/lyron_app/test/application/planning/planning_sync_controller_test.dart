@@ -326,6 +326,55 @@ void main() {
     );
 
     test(
+      'stale previous-boundary delete is aborted when ownership returns to that organization',
+      () async {
+        final localStore = _BlockingBoundaryDeletePlanningLocalStore(store);
+        final controller = PlanningSyncController(
+          localStore: () => localStore,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        final switchToOrg2 = controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-2',
+          ),
+          refresh: false,
+        );
+        await localStore.deleteStarted.future;
+
+        final switchBackToOrg1 = controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          refresh: false,
+        );
+        localStore.releaseDelete();
+
+        await switchToOrg2;
+        await switchBackToOrg1;
+
+        expect(controller.state.organizationId, 'org-1');
+        expect(
+          await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          hasLength(1),
+        );
+      },
+    );
+
+    test(
       'organization change while a refresh is in flight still triggers a refresh for the new generation',
       () async {
         final org1Refresh = Completer<PlanningSyncPayload>();
@@ -649,4 +698,191 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
     required CachedSessionRecord session,
     required DateTime refreshedAt,
   }) async {}
+}
+
+class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
+  _BlockingBoundaryDeletePlanningLocalStore(this._delegate);
+
+  final PlanningLocalStore _delegate;
+  final Completer<void> deleteStarted = Completer<void>();
+  final Completer<void> _deleteGate = Completer<void>();
+
+  void releaseDelete() {
+    if (!_deleteGate.isCompleted) {
+      _deleteGate.complete();
+    }
+  }
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) {
+    return _delegate.countSongReferences(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    );
+  }
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    if (!deleteStarted.isCompleted) {
+      deleteStarted.complete();
+    }
+    await _deleteGate.future;
+    await _delegate.deletePlanningData(
+      userId: userId,
+      organizationId: organizationId,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) {
+    return _delegate.deletePlanningDataForUser(
+      userId: userId,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedSession(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) {
+    return _delegate.hasProjection(
+      userId: userId,
+      organizationId: organizationId,
+    );
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) {
+    return _delegate.readPlanDetail(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+    );
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) {
+    return _delegate.readPlanDetailBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      planSlug: planSlug,
+    );
+  }
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({required String userId}) {
+    return _delegate.readLatestCachedOrganizationId(userId: userId);
+  }
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) {
+    return _delegate.readPlanSummaries(
+      userId: userId,
+      organizationId: organizationId,
+    );
+  }
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) {
+    return _delegate.readPlanSummaryBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      planSlug: planSlug,
+    );
+  }
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) {
+    return _delegate.replaceActiveProjection(
+      userId: userId,
+      organizationId: organizationId,
+      plans: plans,
+      sessions: sessions,
+      items: items,
+      refreshedAt: refreshedAt,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      plan: plan,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedSession(
+      userId: userId,
+      organizationId: organizationId,
+      session: session,
+      refreshedAt: refreshedAt,
+    );
+  }
 }
