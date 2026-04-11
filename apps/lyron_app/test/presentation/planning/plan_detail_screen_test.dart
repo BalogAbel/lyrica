@@ -422,8 +422,11 @@ void main() {
     expect(find.text('Warm-Up'), findsOneWidget);
 
     final addButtonFinder = find
-        .widgetWithText(TextButton, AppStrings.sessionItemAddSongAction,
-            skipOffstage: false)
+        .widgetWithText(
+          TextButton,
+          AppStrings.sessionItemAddSongAction,
+          skipOffstage: false,
+        )
         .first;
 
     expect(addButtonFinder, findsOneWidget);
