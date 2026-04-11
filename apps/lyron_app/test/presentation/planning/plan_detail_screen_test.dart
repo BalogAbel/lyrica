@@ -417,10 +417,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Ensure the target card is visible in the viewport (especially important for CI)
+    await tester.ensureVisible(find.text('Warm-Up', skipOffstage: false));
+
     // Find the "Add song" button specifically within the first session card
     final addButtonFinder = find.descendant(
-      of: find.ancestor(of: find.text('Warm-Up'), matching: find.byType(Card)),
-      matching: find.byType(TextButton),
+      of: find.ancestor(
+        of: find.text('Warm-Up', skipOffstage: false),
+        matching: find.byType(Card, skipOffstage: false),
+      ),
+      matching: find.byType(TextButton, skipOffstage: false),
       skipOffstage: false,
     );
 
