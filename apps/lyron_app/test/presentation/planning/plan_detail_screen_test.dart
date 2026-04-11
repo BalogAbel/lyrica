@@ -412,22 +412,18 @@ void main() {
   testWidgets('disables add-song when no cached catalog is available', (
     tester,
   ) async {
+    // Set a large viewport for CI stability
+    await tester.binding.setSurfaceSize(const Size(1440, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(
       buildApp(planDetailValue: _editablePlanDetailFixture()),
     );
     await tester.pumpAndSettle();
 
-    // Ensure the target card is visible in the viewport (especially important for CI)
-    await tester.ensureVisible(find.text('Warm-Up', skipOffstage: false));
-
-    // Find the "Add song" button specifically within the first session card
-    final addButtonFinder = find.descendant(
-      of: find.ancestor(
-        of: find.text('Warm-Up', skipOffstage: false),
-        matching: find.byType(Card, skipOffstage: false),
-      ),
-      matching: find.byType(TextButton, skipOffstage: false),
-      skipOffstage: false,
+    // Use a direct ValueKey for maximum robustness
+    final addButtonFinder = find.byKey(
+      const ValueKey('session-add-song-session-1'),
     );
 
     expect(addButtonFinder, findsOneWidget);

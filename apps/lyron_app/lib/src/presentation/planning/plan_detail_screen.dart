@@ -243,6 +243,7 @@ class _SessionCard extends ConsumerWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
+                key: ValueKey('session-add-song-${session.id}'),
                 onPressed: canAddSong
                     ? () => _addSong(context, ref, visibleSongs)
                     : null,
