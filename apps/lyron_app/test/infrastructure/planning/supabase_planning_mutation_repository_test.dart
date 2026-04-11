@@ -45,7 +45,10 @@ void main() {
   test('maps version conflicts to sync exceptions', () async {
     final repository = SupabasePlanningMutationRepository.testing(
       rpc: (name, {params}) async {
-        throw PostgrestException(message: 'plan_version_conflict', code: 'P0001');
+        throw PostgrestException(
+          message: 'plan_version_conflict',
+          code: 'P0001',
+        );
       },
     );
 

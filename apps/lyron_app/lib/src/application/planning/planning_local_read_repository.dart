@@ -116,9 +116,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
     List<PlanSummary> basePlans,
     List<PlanningMutationRecord> mutations,
   ) {
-    final plansById = {
-      for (final plan in basePlans) plan.id: plan,
-    };
+    final plansById = {for (final plan in basePlans) plan.id: plan};
 
     for (final mutation in mutations) {
       switch (mutation.kind) {

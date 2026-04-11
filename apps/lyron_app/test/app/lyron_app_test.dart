@@ -4,12 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 
 void main() {
   testWidgets(
@@ -86,6 +93,12 @@ void main() {
           catalogSessionVerifierProvider.overrideWithValue(
             () async => CatalogSessionStatus.verified,
           ),
+          planningSyncControllerProvider.overrideWith(
+            (ref) => _NoopPlanningSyncController(),
+          ),
+          hasUnsyncedPlanningMutationsProvider.overrideWith(
+            (ref) async => false,
+          ),
         ],
         child: LyronApp(),
       ),
@@ -138,6 +151,12 @@ void main() {
             ),
             catalogSessionVerifierProvider.overrideWithValue(
               () async => CatalogSessionStatus.verified,
+            ),
+            planningSyncControllerProvider.overrideWith(
+              (ref) => _NoopPlanningSyncController(),
+            ),
+            hasUnsyncedPlanningMutationsProvider.overrideWith(
+              (ref) async => false,
             ),
           ],
           child: LyronApp(),
@@ -219,6 +238,112 @@ class _SignedInAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _NoopPlanningSyncController extends PlanningSyncController {
+  _NoopPlanningSyncController()
+    : super(
+        localStore: () => _NoopPlanningLocalStore(),
+        remoteRepository: () => const _NoopPlanningRemoteRepository(),
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+      );
+
+  @override
+  Future<void> handleExplicitSignOut() async {}
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> deletePlanningDataForUser({required String userId}) async {}
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) async => false;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) async {}
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) async => null;
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  Future<List<CachedPlanRecord>> readPlans({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  Future<List<CachedSessionRecord>> readSessions({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  Future<List<CachedSessionItemRecord>> readSessionItems({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+}
+
+class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
+  const _NoopPlanningRemoteRepository();
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+  }) async {
+    return const PlanningSyncPayload(plans: [], sessions: [], items: []);
+  }
 }
 
 class _InteractiveAuthRepository implements AuthRepository {

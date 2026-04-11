@@ -224,17 +224,19 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
   }) async {
     final rows =
-        await (_database.select(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.syncStatus.equals(
-                    PlanningMutationSyncStatus.pending.value,
-                  ),
-            )..orderBy([
-              (table) => OrderingTerm.asc(table.orderKey),
-              (table) => OrderingTerm.asc(table.aggregateId),
-            ]))
+        await (_database.select(_database.cachedPlanningMutations)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.syncStatus.equals(
+                      PlanningMutationSyncStatus.pending.value,
+                    ),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(table.orderKey),
+                (table) => OrderingTerm.asc(table.aggregateId),
+              ]))
             .get();
     return rows.map(_toRecord).toList(growable: false);
   }
@@ -245,14 +247,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
   }) async {
     final rows =
-        await (_database.select(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId),
-            )..orderBy([
-              (table) => OrderingTerm.asc(table.orderKey),
-              (table) => OrderingTerm.asc(table.aggregateId),
-            ]))
+        await (_database.select(_database.cachedPlanningMutations)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(table.orderKey),
+                (table) => OrderingTerm.asc(table.aggregateId),
+              ]))
             .get();
     return rows.map(_toRecord).toList(growable: false);
   }
@@ -322,7 +326,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async {
-    final countExpression = _database.cachedPlanningMutations.aggregateId.count();
+    final countExpression = _database.cachedPlanningMutations.aggregateId
+        .count();
     final query = _database.selectOnly(_database.cachedPlanningMutations)
       ..addColumns([countExpression])
       ..where(_database.cachedPlanningMutations.userId.equals(userId));
@@ -411,27 +416,29 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required PlanningMutationRecord record,
   }) {
-    return _database.into(_database.cachedPlanningMutations).insertOnConflictUpdate(
-      CachedPlanningMutationsCompanion.insert(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateType: aggregateType,
-        aggregateId: record.aggregateId,
-        mutationKind: record.kind.value,
-        syncStatus: record.syncStatus.value,
-        planId: Value(record.planId),
-        slug: Value(record.slug),
-        name: Value(record.name),
-        description: Value(record.description),
-        scheduledFor: Value(record.scheduledFor?.toUtc()),
-        position: Value(record.position),
-        baseVersion: Value(record.baseVersion),
-        errorCode: Value(record.errorCode?.name),
-        errorMessage: Value(record.errorMessage),
-        orderKey: record.orderKey,
-        updatedAt: record.updatedAt.toUtc(),
-      ),
-    );
+    return _database
+        .into(_database.cachedPlanningMutations)
+        .insertOnConflictUpdate(
+          CachedPlanningMutationsCompanion.insert(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: aggregateType,
+            aggregateId: record.aggregateId,
+            mutationKind: record.kind.value,
+            syncStatus: record.syncStatus.value,
+            planId: Value(record.planId),
+            slug: Value(record.slug),
+            name: Value(record.name),
+            description: Value(record.description),
+            scheduledFor: Value(record.scheduledFor?.toUtc()),
+            position: Value(record.position),
+            baseVersion: Value(record.baseVersion),
+            errorCode: Value(record.errorCode?.name),
+            errorMessage: Value(record.errorMessage),
+            orderKey: record.orderKey,
+            updatedAt: record.updatedAt.toUtc(),
+          ),
+        );
   }
 
   Future<int> _nextOrderKey({
@@ -533,7 +540,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
 
   String _aggregateTypeFor(PlanningMutationRecord record) {
     return switch (record.kind) {
-      PlanningMutationKind.planCreate || PlanningMutationKind.planEdit => 'plan',
+      PlanningMutationKind.planCreate ||
+      PlanningMutationKind.planEdit => 'plan',
       PlanningMutationKind.sessionCreate ||
       PlanningMutationKind.sessionRename ||
       PlanningMutationKind.sessionDelete => 'session',

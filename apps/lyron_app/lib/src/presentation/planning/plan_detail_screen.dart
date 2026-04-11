@@ -55,11 +55,11 @@ class PlanDetailScreen extends ConsumerWidget {
                     )
                     .toList(growable: false);
                 return relevantEntries.isEmpty
-                  ? const SizedBox.shrink()
-                  : _PlanningMutationStatusSurface(
-                      entries: relevantEntries,
-                      currentPlanId: planId,
-                    );
+                    ? const SizedBox.shrink()
+                    : _PlanningMutationStatusSurface(
+                        entries: relevantEntries,
+                        currentPlanId: planId,
+                      );
               },
               error: (_, _) => const SizedBox.shrink(),
               loading: () => const SizedBox.shrink(),
@@ -71,7 +71,8 @@ class PlanDetailScreen extends ConsumerWidget {
                 ),
                 error: (error, stackTrace) => _RetryableErrorState(
                   message: AppStrings.planDetailLoadFailureMessage,
-                  onRetry: () => ref.invalidate(planningPlanDetailProvider(planId)),
+                  onRetry: () =>
+                      ref.invalidate(planningPlanDetailProvider(planId)),
                 ),
                 data: (PlanDetail detail) {
                   return ListView(
@@ -198,7 +199,8 @@ class _SessionCard extends ConsumerWidget {
                   IconButton(
                     onPressed: () => _deleteSession(context, ref),
                     icon: const Icon(Icons.delete_outline),
-                    tooltip: '${AppStrings.sessionDeleteAction}: ${session.name}',
+                    tooltip:
+                        '${AppStrings.sessionDeleteAction}: ${session.name}',
                   ),
               ],
             ),
@@ -316,7 +318,8 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
                 child: ListTile(
                   title: Text(entry.name ?? entry.slug ?? entry.aggregateId),
                   subtitle: Text(_messageFor(entry)),
-                  trailing: entry.syncStatus == PlanningMutationSyncStatus.pending
+                  trailing:
+                      entry.syncStatus == PlanningMutationSyncStatus.pending
                       ? null
                       : TextButton(
                           onPressed: () => _retryEntry(ref, entry),
@@ -412,7 +415,9 @@ class _PlanEditorDialogState extends State<_PlanEditorDialog> {
             TextField(
               key: const ValueKey('plan-editor-name'),
               controller: _nameController,
-              decoration: const InputDecoration(labelText: AppStrings.planNameLabel),
+              decoration: const InputDecoration(
+                labelText: AppStrings.planNameLabel,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -510,7 +515,9 @@ class _SessionEditorDialogState extends State<_SessionEditorDialog> {
         child: TextField(
           key: const ValueKey('session-editor-name'),
           controller: _nameController,
-          decoration: const InputDecoration(labelText: AppStrings.sessionNameLabel),
+          decoration: const InputDecoration(
+            labelText: AppStrings.sessionNameLabel,
+          ),
         ),
       ),
       actions: [
@@ -519,7 +526,8 @@ class _SessionEditorDialogState extends State<_SessionEditorDialog> {
           child: const Text(AppStrings.songCancelAction),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(_nameController.text.trim()),
+          onPressed: () =>
+              Navigator.of(context).pop(_nameController.text.trim()),
           child: const Text(AppStrings.planSaveAction),
         ),
       ],

@@ -304,26 +304,27 @@ void main() {
     expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
   });
 
-  testWidgets('shows a warning before sign out when planning mutations are unsynced', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        hasUnsyncedChanges: false,
-        hasUnsyncedPlanningMutations: true,
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'shows a warning before sign out when planning mutations are unsynced',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          songs: const [
+            SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+          ],
+          hasUnsyncedChanges: false,
+          hasUnsyncedPlanningMutations: true,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.signOutAction));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.signOutAction));
+      await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
-    expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
-  });
+      expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
+      expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+    },
+  );
 
   testWidgets('sign out clears planning state before auth sign-out', (
     tester,
@@ -350,9 +351,13 @@ void main() {
           songCatalogControllerProvider.overrideWith(
             (ref) => songCatalogController,
           ),
-          planningSyncControllerProvider.overrideWith((ref) => planningSyncController),
+          planningSyncControllerProvider.overrideWith(
+            (ref) => planningSyncController,
+          ),
           hasUnsyncedSongMutationsProvider.overrideWith((ref) async => false),
-          hasUnsyncedPlanningMutationsProvider.overrideWith((ref) async => false),
+          hasUnsyncedPlanningMutationsProvider.overrideWith(
+            (ref) async => false,
+          ),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
               context: ActiveCatalogContext(
@@ -366,7 +371,10 @@ void main() {
             ),
           ),
           activeCatalogContextProvider.overrideWithValue(
-            const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
           ),
           songLibraryListProvider.overrideWith(
             (ref) async => const [

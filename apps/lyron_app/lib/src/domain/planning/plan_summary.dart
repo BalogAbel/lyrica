@@ -31,6 +31,13 @@ class PlanSummary {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, slug, name, description, scheduledFor, updatedAt, version);
+  int get hashCode => Object.hash(
+    id,
+    slug,
+    name,
+    description,
+    scheduledFor,
+    updatedAt,
+    version,
+  );
 }
