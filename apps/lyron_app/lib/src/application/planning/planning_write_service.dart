@@ -147,10 +147,7 @@ class PlanningWriteService {
     final detail = await _repository.getPlanDetail(draft.planId);
     final nextPosition = detail.sessions.isEmpty
         ? _positionStep
-        : detail.sessions
-                  .map((session) => session.position)
-                  .reduce((left, right) => left > right ? left : right) +
-              _positionStep;
+        : detail.sessions.last.position + _positionStep;
     final sessionId = _idGenerator();
     final slug = await _mutationStore.allocateSessionSlug(
       userId: context.userId,
