@@ -118,9 +118,13 @@ abstract interface class PlanningLocalStore {
   Future<void> deletePlanningData({
     required String userId,
     required String organizationId,
+    bool Function()? shouldContinue,
   });
 
-  Future<void> deletePlanningDataForUser({required String userId});
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  });
 
   Future<void> upsertSyncedPlan({
     required String userId,
@@ -483,32 +487,38 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningData({
     required String userId,
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     await _database.transaction(() async {
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(_database.cachedPlanningMutations)..where(
             (table) =>
                 table.userId.equals(userId) &
                 table.organizationId.equals(organizationId),
           ))
           .go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(_database.cachedPlanningSessionItems)..where(
             (table) =>
                 table.userId.equals(userId) &
                 table.organizationId.equals(organizationId),
           ))
           .go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(_database.cachedPlanningSessions)..where(
             (table) =>
                 table.userId.equals(userId) &
                 table.organizationId.equals(organizationId),
           ))
           .go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(_database.cachedPlanningPlans)..where(
             (table) =>
                 table.userId.equals(userId) &
                 table.organizationId.equals(organizationId),
           ))
           .go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(_database.planningProjectionOwners)..where(
             (table) =>
                 table.userId.equals(userId) &
@@ -519,20 +529,28 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> deletePlanningDataForUser({required String userId}) async {
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) async {
     await _database.transaction(() async {
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(
         _database.cachedPlanningMutations,
       )..where((table) => table.userId.equals(userId))).go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(
         _database.cachedPlanningSessionItems,
       )..where((table) => table.userId.equals(userId))).go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(
         _database.cachedPlanningSessions,
       )..where((table) => table.userId.equals(userId))).go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(
         _database.cachedPlanningPlans,
       )..where((table) => table.userId.equals(userId))).go();
+      _ensureProjectionCurrent(shouldContinue);
       await (_database.delete(
         _database.planningProjectionOwners,
       )..where((table) => table.userId.equals(userId))).go();

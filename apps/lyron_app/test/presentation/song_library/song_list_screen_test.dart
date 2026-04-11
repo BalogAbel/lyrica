@@ -872,10 +872,14 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningData({
     required String userId,
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {}
 
   @override
-  Future<void> deletePlanningDataForUser({required String userId}) async {}
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) async {}
 
   @override
   Future<void> deleteSyncedSession({

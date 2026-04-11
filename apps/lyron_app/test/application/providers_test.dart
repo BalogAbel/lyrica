@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_contro
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -410,6 +413,82 @@ void main() {
       );
     },
   );
+
+  test(
+    'session-expired cleanup does not delete planning data restored by a newer signed-in generation',
+    () async {
+      final authRepository = _ControllableAuthRepository();
+      final authController = AppAuthController(authRepository);
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final database = PlanningLocalDatabase.inMemory();
+      final baseStore = DriftPlanningLocalStore(database);
+      final blockingStore = _BlockingDeletePlanningLocalStore(baseStore);
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalStoreProvider.overrideWithValue(blockingStore),
+          planningRemoteRefreshRepositoryProvider.overrideWithValue(
+            const _StaticPlanningRemoteRefreshRepository(),
+          ),
+          activeOrganizationReaderProvider.overrideWithValue(
+            () async => 'org-1',
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await database.close();
+      });
+
+      await container
+          .read(planningSyncControllerProvider)
+          .handleActiveContextChanged(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          );
+
+      expect(
+        await blockingStore.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        hasLength(1),
+      );
+
+      authRepository.emitSession(null);
+      await blockingStore.deleteStarted.future;
+
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      await container
+          .read(planningSyncControllerProvider)
+          .handleActiveContextChanged(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            refresh: false,
+          );
+      blockingStore.releaseDelete();
+      await container.read(planningSyncControllerProvider).refreshPlanning();
+
+      expect(
+        await blockingStore.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        hasLength(1),
+      );
+    },
+  );
 }
 
 class _SignedInAuthRepository implements AuthRepository {
@@ -427,6 +506,32 @@ class _SignedInAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _ControllableAuthRepository implements AuthRepository {
+  final StreamController<AppAuthSession?> _controller =
+      StreamController<AppAuthSession?>.broadcast();
+
+  @override
+  Future<AppAuthSession?> restoreSession() async => null;
+
+  @override
+  Stream<AppAuthSession?> watchSession() => _controller.stream;
+
+  @override
+  Future<AppAuthSession> signIn({
+    required String email,
+    required String password,
+  }) async => AppAuthSession(userId: 'user-1', email: email);
+
+  @override
+  Future<void> signOut() async {
+    _controller.add(null);
+  }
+
+  void emitSession(AppAuthSession? session) {
+    _controller.add(session);
+  }
 }
 
 class _MutablePlanningRepository implements PlanningRepository {
@@ -613,6 +718,7 @@ class _RecordingPlanningMutationSyncController
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
         refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -623,5 +729,218 @@ class _RecordingPlanningMutationSyncController
   Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
     syncCalls += 1;
     await onSync();
+  }
+}
+
+class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
+  _BlockingDeletePlanningLocalStore(this._delegate);
+
+  final PlanningLocalStore _delegate;
+  final Completer<void> deleteStarted = Completer<void>();
+  final Completer<void> _deleteGate = Completer<void>();
+
+  void releaseDelete() {
+    if (!_deleteGate.isCompleted) {
+      _deleteGate.complete();
+    }
+  }
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) {
+    return _delegate.countSongReferences(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    );
+  }
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) {
+    return _delegate.deletePlanningData(
+      userId: userId,
+      organizationId: organizationId,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) async {
+    if (!deleteStarted.isCompleted) {
+      deleteStarted.complete();
+    }
+    await _deleteGate.future;
+    await _delegate.deletePlanningDataForUser(
+      userId: userId,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedSession(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) {
+    return _delegate.hasProjection(
+      userId: userId,
+      organizationId: organizationId,
+    );
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) {
+    return _delegate.readPlanDetail(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+    );
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) {
+    return _delegate.readPlanDetailBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      planSlug: planSlug,
+    );
+  }
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({required String userId}) {
+    return _delegate.readLatestCachedOrganizationId(userId: userId);
+  }
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) {
+    return _delegate.readPlanSummaries(
+      userId: userId,
+      organizationId: organizationId,
+    );
+  }
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) {
+    return _delegate.readPlanSummaryBySlug(
+      userId: userId,
+      organizationId: organizationId,
+      planSlug: planSlug,
+    );
+  }
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) {
+    return _delegate.replaceActiveProjection(
+      userId: userId,
+      organizationId: organizationId,
+      plans: plans,
+      sessions: sessions,
+      items: items,
+      refreshedAt: refreshedAt,
+      shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      plan: plan,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedSession(
+      userId: userId,
+      organizationId: organizationId,
+      session: session,
+      refreshedAt: refreshedAt,
+    );
+  }
+}
+
+class _StaticPlanningRemoteRefreshRepository
+    implements PlanningRemoteRefreshRepository {
+  const _StaticPlanningRemoteRefreshRepository();
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+  }) async {
+    return PlanningSyncPayload(
+      plans: [
+        PlanningSyncPlan(
+          id: 'plan-1',
+          slug: 'plan-$organizationId',
+          name: 'Plan $organizationId',
+          description: 'Description $organizationId',
+          scheduledFor: DateTime.utc(2026, 4, 5, 9),
+          updatedAt: DateTime.utc(2026, 4, 3, 12),
+          version: 1,
+        ),
+      ],
+      sessions: const [],
+      items: const [],
+    );
   }
 }

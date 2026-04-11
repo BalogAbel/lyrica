@@ -33,6 +33,7 @@ class PlanningSyncController extends ChangeNotifier {
   PlanningSyncState _state;
   String? _lastAuthenticatedUserId;
   int _refreshGeneration = 0;
+  int _authGeneration = 0;
   Future<void>? _refreshFuture;
   int? _refreshFutureGeneration;
   bool _refreshQueued = false;
@@ -57,6 +58,8 @@ class PlanningSyncController extends ChangeNotifier {
       return;
     }
 
+    _advanceAuthGeneration();
+
     final previousUserId = _state.userId;
     final previousOrganizationId = _state.organizationId;
     final sameBoundary =
@@ -69,6 +72,7 @@ class PlanningSyncController extends ChangeNotifier {
         await _localStore().deletePlanningData(
           userId: previousUserId,
           organizationId: previousOrganizationId,
+          shouldContinue: () => !_disposed,
         );
       }
     }
@@ -194,6 +198,7 @@ class PlanningSyncController extends ChangeNotifier {
   }
 
   Future<void> handleExplicitSignOut() async {
+    final generation = _advanceAuthGeneration();
     final userId =
         _state.userId ??
         _authSessionReader()?.userId ??
@@ -206,12 +211,25 @@ class PlanningSyncController extends ChangeNotifier {
     );
 
     if (userId != null) {
-      await _localStore().deletePlanningDataForUser(userId: userId);
+      try {
+        await _localStore().deletePlanningDataForUser(
+          userId: userId,
+          shouldContinue: () =>
+              !_disposed &&
+              generation == _authGeneration &&
+              _state.accessStatus == PlanningAccessStatus.signedOut,
+        );
+      } on PlanningProjectionAbortedException {
+        return;
+      }
     }
-    _lastAuthenticatedUserId = null;
+    if (generation == _authGeneration) {
+      _lastAuthenticatedUserId = null;
+    }
   }
 
   Future<void> handleSessionExpired() async {
+    final generation = _advanceAuthGeneration();
     final userId =
         _state.userId ??
         _authSessionReader()?.userId ??
@@ -223,9 +241,21 @@ class PlanningSyncController extends ChangeNotifier {
       ),
     );
     if (userId != null) {
-      await _localStore().deletePlanningDataForUser(userId: userId);
+      try {
+        await _localStore().deletePlanningDataForUser(
+          userId: userId,
+          shouldContinue: () =>
+              !_disposed &&
+              generation == _authGeneration &&
+              _state.accessStatus == PlanningAccessStatus.signedOut,
+        );
+      } on PlanningProjectionAbortedException {
+        return;
+      }
     }
-    _lastAuthenticatedUserId = null;
+    if (generation == _authGeneration) {
+      _lastAuthenticatedUserId = null;
+    }
   }
 
   Future<void> _replaceProjection({
@@ -293,6 +323,11 @@ class PlanningSyncController extends ChangeNotifier {
 
   void _invalidateRefreshGeneration() {
     _refreshGeneration += 1;
+  }
+
+  int _advanceAuthGeneration() {
+    _authGeneration += 1;
+    return _authGeneration;
   }
 
   void _setState(PlanningSyncState nextState) {

@@ -10,6 +10,8 @@ typedef PlanningAcceptedMutationReconciler =
       ActivePlanningReadContext context,
       PlanningMutationRecord record,
     );
+typedef PlanningAcceptedMutationGuard =
+    Future<bool> Function(ActivePlanningReadContext context);
 
 class PlanningMutationSyncController {
   const PlanningMutationSyncController({
@@ -17,15 +19,18 @@ class PlanningMutationSyncController {
     required PlanningMutationRemoteRepositoryReader remoteRepository,
     required PlanningRefreshTrigger refreshPlanning,
     required PlanningAcceptedMutationReconciler reconcileAcceptedMutation,
+    required PlanningAcceptedMutationGuard shouldReconcileAcceptedMutation,
   }) : _mutationStore = mutationStore,
        _remoteRepository = remoteRepository,
        _refreshPlanning = refreshPlanning,
-       _reconcileAcceptedMutation = reconcileAcceptedMutation;
+       _reconcileAcceptedMutation = reconcileAcceptedMutation,
+       _shouldReconcileAcceptedMutation = shouldReconcileAcceptedMutation;
 
   final PlanningMutationStoreReader _mutationStore;
   final PlanningMutationRemoteRepositoryReader _remoteRepository;
   final PlanningRefreshTrigger _refreshPlanning;
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
+  final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
 
   Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
     final pending = await _mutationStore().readPendingMutations(
@@ -40,7 +45,7 @@ class PlanningMutationSyncController {
           record: mutation,
         );
         final refreshed = await _refreshPlanning();
-        if (!refreshed) {
+        if (!refreshed && await _shouldReconcileAcceptedMutation(context)) {
           await _reconcileAcceptedMutation(context, syncedMutation);
         }
         await _mutationStore().clearMutation(

@@ -31,6 +31,7 @@ void main() {
             refreshCalls += 1;
             return true;
           },
+          shouldReconcileAcceptedMutation: (_) async => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -71,6 +72,7 @@ void main() {
           mutationStore: () => store,
           remoteRepository: () => repository,
           refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -120,6 +122,7 @@ void main() {
         mutationStore: () => store,
         remoteRepository: () => repository,
         refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -158,6 +161,7 @@ void main() {
           mutationStore: () => store,
           remoteRepository: () => repository,
           refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -211,6 +215,7 @@ void main() {
           mutationStore: () => store,
           remoteRepository: () => repository,
           refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledRecord = record;
           },
@@ -226,6 +231,47 @@ void main() {
         expect(reconciledRecord, isNotNull);
         expect(reconciledRecord?.slug, 'canonical-slug');
         expect(reconciledRecord?.baseVersion, 3);
+        expect(store.clearedAggregateIds, ['plan-1']);
+      },
+    );
+
+    test(
+      'accepted-write fallback is skipped when the active boundary changed',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              slug: 'draft-slug',
+              name: 'Draft name',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        var reconcileCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => false,
+          reconcileAcceptedMutation: (_, _) async {
+            reconcileCalls += 1;
+          },
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(reconcileCalls, 0);
         expect(store.clearedAggregateIds, ['plan-1']);
       },
     );

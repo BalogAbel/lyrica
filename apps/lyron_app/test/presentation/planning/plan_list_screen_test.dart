@@ -360,6 +360,7 @@ class _FakePlanningMutationSyncController
         mutationStore: () => _FakePlanningMutationStore(),
         remoteRepository: () => _FakePlanningMutationRemoteRepository(),
         refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
