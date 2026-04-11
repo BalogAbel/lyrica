@@ -82,7 +82,10 @@ class SupabasePlanningMutationRepository
       };
 
       final response = await _rpc(rpcName, params: params);
-      final row = Map<String, dynamic>.from(response as Map);
+      final responseMap = response is List 
+          ? (response.isNotEmpty ? response.first as Map : <String, dynamic>{}) 
+          : response as Map;
+      final row = Map<String, dynamic>.from(responseMap);
       return _mapRow(record, row, organizationId: organizationId);
     } on Object catch (error) {
       throw _mapError(error);

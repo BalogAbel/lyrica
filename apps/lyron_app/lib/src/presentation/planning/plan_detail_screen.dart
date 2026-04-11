@@ -126,6 +126,7 @@ class PlanDetailScreen extends ConsumerWidget {
       return;
     }
 
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .editPlan(
@@ -135,6 +136,8 @@ class PlanDetailScreen extends ConsumerWidget {
           ),
           draft: draft,
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -154,6 +157,7 @@ class PlanDetailScreen extends ConsumerWidget {
       return;
     }
 
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .createSession(
@@ -163,6 +167,8 @@ class PlanDetailScreen extends ConsumerWidget {
           ),
           draft: SessionCreateDraft(planId: planId, name: draft),
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -278,6 +284,7 @@ class _SessionCard extends ConsumerWidget {
       return;
     }
 
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .renameSession(
@@ -291,6 +298,8 @@ class _SessionCard extends ConsumerWidget {
             name: draft,
           ),
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -323,6 +332,7 @@ class _SessionCard extends ConsumerWidget {
       return;
     }
 
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .deleteSession(
@@ -335,6 +345,8 @@ class _SessionCard extends ConsumerWidget {
             planId: planDetail.plan.id,
           ),
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -359,6 +371,7 @@ class _SessionCard extends ConsumerWidget {
     }
     final movedId = currentOrder.removeAt(currentIndex);
     currentOrder.insert(targetIndex, movedId);
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .reorderSessions(
@@ -371,6 +384,8 @@ class _SessionCard extends ConsumerWidget {
             orderedSessionIds: currentOrder,
           ),
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -414,6 +429,7 @@ class _SessionCard extends ConsumerWidget {
       return;
     }
 
+    if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .addSongSessionItem(
@@ -427,6 +443,8 @@ class _SessionCard extends ConsumerWidget {
             songId: selectedSong.id,
           ),
         );
+
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -457,7 +475,7 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
                       entry.syncStatus == PlanningMutationSyncStatus.pending
                       ? null
                       : TextButton(
-                          onPressed: () => _retryEntry(ref, entry),
+                          onPressed: () => _retryEntry(context, ref, entry),
                           child: const Text(AppStrings.retryAction),
                         ),
                 ),
@@ -468,7 +486,8 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
     );
   }
 
-  Future<void> _retryEntry(WidgetRef ref, PlanningMutationRecord entry) async {
+  Future<void> _retryEntry(
+      BuildContext context, WidgetRef ref, PlanningMutationRecord entry) async {
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
@@ -481,6 +500,7 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
           aggregateType: entry.kind.aggregateType,
           aggregateId: entry.aggregateId,
         );
+    if (!context.mounted) return;
     ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
@@ -790,6 +810,7 @@ class _SongItemRow extends ConsumerWidget {
             orderedSessionItemIds: currentOrder,
           ),
         );
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -813,6 +834,7 @@ class _SongItemRow extends ConsumerWidget {
             planId: planDetail.plan.id,
           ),
         );
+    if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
