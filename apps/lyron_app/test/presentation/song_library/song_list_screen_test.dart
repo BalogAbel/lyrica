@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
@@ -19,11 +22,15 @@ import 'package:lyron_app/src/application/song_library/song_library_service.dart
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -36,11 +43,13 @@ void main() {
     Completer<List<SongSummary>>? loadingCompleter,
     Future<List<SongSummary>> Function()? listSongs,
     SongCatalogController? catalogController,
+    PlanningSyncController? planningSyncController,
     SongLibraryService? songLibraryService,
     SongMutationSyncController? songMutationSyncController,
     List<SongMutationRecord>? mutationEntries,
     Future<List<SongMutationRecord>> Function()? loadMutationEntries,
     bool? hasUnsyncedChanges,
+    bool? hasUnsyncedPlanningMutations,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
       connectionStatus: CatalogConnectionStatus.online,
@@ -49,7 +58,8 @@ void main() {
       hasCachedCatalog: true,
     ),
   }) {
-    final authController = AppAuthController(_TestAuthRepository());
+    final authRepository = _TestAuthRepository();
+    final authController = AppAuthController(authRepository);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -77,6 +87,10 @@ void main() {
           songCatalogControllerProvider.overrideWith(
             (ref) => catalogController,
           ),
+        if (planningSyncController != null)
+          planningSyncControllerProvider.overrideWith(
+            (ref) => planningSyncController,
+          ),
         if (songLibraryService != null)
           songLibraryServiceProvider.overrideWithValue(songLibraryService),
         if (songMutationSyncController != null)
@@ -94,6 +108,10 @@ void main() {
         if (hasUnsyncedChanges != null)
           hasUnsyncedSongMutationsProvider.overrideWith(
             (ref) async => hasUnsyncedChanges,
+          ),
+        if (hasUnsyncedPlanningMutations != null)
+          hasUnsyncedPlanningMutationsProvider.overrideWith(
+            (ref) async => hasUnsyncedPlanningMutations,
           ),
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
@@ -284,6 +302,88 @@ void main() {
 
     expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
     expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+  });
+
+  testWidgets('shows a warning before sign out when planning mutations are unsynced', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        hasUnsyncedChanges: false,
+        hasUnsyncedPlanningMutations: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
+    expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+  });
+
+  testWidgets('sign out clears planning state before auth sign-out', (
+    tester,
+  ) async {
+    final events = <String>[];
+    final authRepository = _RecordingAuthRepository(events);
+    final authController = AppAuthController(authRepository);
+    await authController.restoreSession();
+    final songCatalogController = _NoopSongCatalogController();
+    final planningSyncController = _RecordingPlanningSyncController(events);
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthListenableProvider.overrideWithValue(authController),
+          songCatalogControllerProvider.overrideWith(
+            (ref) => songCatalogController,
+          ),
+          planningSyncControllerProvider.overrideWith((ref) => planningSyncController),
+          hasUnsyncedSongMutationsProvider.overrideWith((ref) async => false),
+          hasUnsyncedPlanningMutationsProvider.overrideWith((ref) async => false),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+          ),
+          songLibraryListProvider.overrideWith(
+            (ref) async => const [
+              SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+            ],
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(events, ['planning-sign-out', 'auth-sign-out']);
+    authController.dispose();
   });
 
   testWidgets('create action opens the song editor and saves locally', (
@@ -695,6 +795,128 @@ class _TestAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _RecordingAuthRepository extends _TestAuthRepository {
+  _RecordingAuthRepository(this.events);
+
+  final List<String> events;
+
+  @override
+  Future<void> signOut() async {
+    events.add('auth-sign-out');
+  }
+}
+
+class _RecordingPlanningSyncController extends PlanningSyncController {
+  _RecordingPlanningSyncController(this.events)
+    : super(
+        localStore: () => _NoopPlanningLocalStore(),
+        remoteRepository: () => const _NoopPlanningRemoteRepository(),
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+      );
+
+  final List<String> events;
+
+  @override
+  Future<void> handleExplicitSignOut() async {
+    events.add('planning-sign-out');
+  }
+}
+
+class _NoopSongCatalogController extends SongCatalogController {
+  _NoopSongCatalogController()
+    : super(
+        store: DriftSongCatalogStore(SongCatalogDatabase.inMemory()),
+        remoteRepository: _CountingSongRepository(),
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        foregroundState: const _StaticForegroundState(isForeground: false),
+      );
+
+  @override
+  Future<void> handleExplicitSignOut() async {}
+}
+
+class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
+  const _NoopPlanningRemoteRepository();
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+  }) async {
+    return const PlanningSyncPayload(plans: [], sessions: [], items: []);
+  }
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> deletePlanningDataForUser({required String userId}) async {}
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) async => false;
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) async => null;
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async => null;
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) async {}
 }
 
 class _RecordingSongLibraryService extends SongLibraryService {

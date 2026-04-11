@@ -62,12 +62,42 @@ class AppStrings {
       'This session-scoped reader context is unavailable.';
   static const planningEntryAction = 'Plans';
   static const planListTitle = 'Plans';
+  static const planCreateAction = 'Create plan';
+  static const planSaveAction = 'Save';
+  static const planNameLabel = 'Plan name';
+  static const planDescriptionLabel = 'Description';
+  static const planScheduledForLabel = 'Scheduled for (UTC ISO-8601)';
+  static const planScheduledForInvalidMessage =
+      'Enter a valid UTC ISO-8601 timestamp or leave the field empty.';
+  static const planEditorTitleCreate = 'Create plan';
+  static const planEditorTitleEdit = 'Edit plan';
   static const planListLoadingMessage = 'Loading plans...';
   static const planListLoadFailureMessage =
       'Unable to load plans. Please try again.';
   static const planListEmptyMessage = 'No plans available.';
   static const planListUnscheduledLabel = 'Unscheduled';
+  static const planMutationPendingMessage =
+      'Planning changes are pending sync.';
+  static const planConflictMessage =
+      'Planning changes conflict with a newer server version.';
+  static const planAuthorizationRevokedMessage =
+      'Planning sync is blocked because edit access was revoked.';
+  static const planRemoteMissingMessage =
+      'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
+  static const planEditAction = 'Edit plan';
+  static const sessionCreateAction = 'Add session';
+  static const sessionRenameAction = 'Rename session';
+  static const sessionDeleteAction = 'Delete session';
+  static const sessionDeleteConfirmTitle = 'Delete empty session?';
+  static const sessionDeleteConfirmMessage =
+      'This removes the local session immediately and syncs the delete when possible.';
+  static const sessionDeleteConfirmAction = 'Delete session';
+  static const sessionDeleteBlockedMessage =
+      'This session cannot be deleted because it is no longer empty.';
+  static const sessionNameLabel = 'Session name';
+  static const sessionEditorTitleCreate = 'Add session';
+  static const sessionEditorTitleRename = 'Rename session';
   static const planDetailLoadingMessage = 'Loading plan...';
   static const planDetailLoadFailureMessage =
       'Unable to load plan. Please try again.';

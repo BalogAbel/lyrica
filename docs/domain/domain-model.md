@@ -135,10 +135,14 @@ Slug rule:
 - `slug` is required and unique within `(organization_id, slug)`.
 - The slug is the public URL segment for plan routes; the internal plan identifier remains `id`.
 
-Read-model note:
+Local-first write note:
 
-- In the current executable planning slice, visible plans for the active organization are synchronized into a local normalized read model owned by the authenticated user plus active organization boundary.
-- Planning writes remain capability-based backend decisions; the read-side slice does not introduce a separate planning view capability.
+- Visible plans for the active organization are synchronized into a local normalized planning projection owned by the authenticated user plus active organization boundary.
+- Plan create/edit is implemented through a separate persisted planning mutation store instead of writing directly into projection rows.
+- New plan creates in the current slice are organization-scoped only and therefore persist `group_id = null`.
+- Local plan edits are limited to `name`, `description`, and `scheduled_for`.
+- Pending local plan creates and edits are merged into normal reads immediately, while failed authorization, dependency, remote-missing, and conflict states move out of the normal overlay path into explicit mutation-status UI.
+- Explicit sign-out removes both the authenticated planning projection and the authenticated planning mutation state.
 
 ### sessions
 
@@ -167,9 +171,13 @@ Slug rule:
 - `slug` is required and unique within `(plan_id, slug)`.
 - The slug is the public URL segment for session-scoped reader routes; the internal session identifier remains `id`.
 
-Read-model note:
+Local-first write note:
 
-- In the current executable planning slice, readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
+- Readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
+- Session create, rename, and delete are implemented through the persisted planning mutation store and overlaid into plan detail immediately.
+- Session create appends deterministically after the current locally visible last session for the plan.
+- Session rename is limited to `name`.
+- Session delete is allowed only for locally empty sessions, and the backend re-checks that invariant before accepting the delete.
 - Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug`; the route layer resolves the matching internal `sessionItemId` before entering the existing id-based reader context.
 
 ### session_items
@@ -238,7 +246,11 @@ Offline-synced aggregates include:
 
 The first real Drift-backed feature must persist this metadata locally together with a durable sync queue entry for each pending mutation.
 
-The currently executable slices are narrower than full sync: the app stores a read-only authenticated song-catalog cache with snapshot metadata for the current authenticated user and active organization, and it stores a read-only authenticated planning projection with ownership metadata plus normalized plan, session, and session-item rows for the active organization. The planned song CRUD slice adds write-side sync records for songs; planning writes are deferred to a later slice.
+The currently executable slices now cover both sides:
+
+- the app stores an authenticated song-catalog cache plus song write-side sync records for the active organization
+- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit and session create/rename/delete
+- planning mutation records retain aggregate ownership, provisional slugs, ordering, base-version metadata for optimistic concurrency, and sync failure classification for explicit retry/review flows
 
 ### sync_status
 

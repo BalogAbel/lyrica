@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -218,9 +219,14 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final hasUnsyncedChanges = await ref.read(
+    final hasUnsyncedSongChanges = await ref.read(
       hasUnsyncedSongMutationsProvider.future,
     );
+    final hasUnsyncedPlanningChanges = await ref.read(
+      hasUnsyncedPlanningMutationsProvider.future,
+    );
+    final hasUnsyncedChanges =
+        hasUnsyncedSongChanges || hasUnsyncedPlanningChanges;
     if (!context.mounted) {
       return;
     }
@@ -248,6 +254,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     }
 
     await ref.read(songCatalogControllerProvider).handleExplicitSignOut();
+    await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
     await ref.read(appAuthControllerProvider).signOut();
   }
 }

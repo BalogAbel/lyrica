@@ -236,6 +236,7 @@ class PlanningSyncController extends ChangeNotifier {
               description: plan.description,
               scheduledFor: plan.scheduledFor,
               updatedAt: plan.updatedAt,
+              version: plan.version,
             ),
           )
           .toList(growable: false),
@@ -247,6 +248,7 @@ class PlanningSyncController extends ChangeNotifier {
               slug: session.slug,
               position: session.position,
               name: session.name,
+              version: session.version,
             ),
           )
           .toList(growable: false),

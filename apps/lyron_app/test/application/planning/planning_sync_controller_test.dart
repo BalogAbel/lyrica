@@ -395,6 +395,7 @@ PlanningSyncPayload _payloadFor(
         description: 'Description $organizationId',
         scheduledFor: DateTime.utc(2026, 4, 5, 9),
         updatedAt: DateTime.utc(2026, 4, 3, 12),
+        version: 1,
       ),
     ],
     sessions: [
@@ -404,6 +405,7 @@ PlanningSyncPayload _payloadFor(
         slug: 'session-$organizationId',
         position: 10,
         name: 'Session $organizationId',
+        version: 1,
       ),
     ],
     items: [

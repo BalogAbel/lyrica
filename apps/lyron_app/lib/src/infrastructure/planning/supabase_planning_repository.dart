@@ -25,7 +25,7 @@ class SupabasePlanningRepository
           var query = client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
               );
           if (organizationId != null) {
             query = query.eq('organization_id', organizationId);
@@ -37,7 +37,7 @@ class SupabasePlanningRepository
           final row = await client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
               )
               .eq('id', planId)
               .maybeSingle();
@@ -47,7 +47,7 @@ class SupabasePlanningRepository
           final rows = await client
               .from('sessions')
               .select(
-                'id, slug, name, position, session_items(id, position, song:songs(id, slug, title))',
+                'id, slug, name, position, version, session_items(id, position, song:songs(id, slug, title))',
               )
               .eq('plan_id', planId)
               .order('position', ascending: true)
@@ -62,7 +62,7 @@ class SupabasePlanningRepository
           final row = await client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
               )
               .eq('slug', planSlug)
               .maybeSingle();
@@ -198,6 +198,7 @@ class SupabasePlanningRepository
             description: plan.description,
             scheduledFor: plan.scheduledFor,
             updatedAt: plan.updatedAt,
+            version: plan.version,
           ),
         )
         .toList(growable: false);
@@ -227,6 +228,7 @@ class SupabasePlanningRepository
             slug: session.slug,
             position: session.position,
             name: session.name,
+            version: session.version,
           ),
         );
 
@@ -268,6 +270,7 @@ class SupabasePlanningRepository
       description: row['description'] as String?,
       scheduledFor: _parseNullableDateTime(row['scheduled_for']),
       updatedAt: _parseDateTime(row['updated_at']),
+      version: (row['version'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -288,6 +291,7 @@ class SupabasePlanningRepository
       slug: row['slug'] as String? ?? row['id'] as String,
       name: row['name'] as String,
       position: row['position'] as int,
+      version: (row['version'] as num?)?.toInt() ?? 1,
       items: items,
     );
   }

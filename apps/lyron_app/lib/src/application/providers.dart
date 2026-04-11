@@ -7,10 +7,15 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
+import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
+import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -20,6 +25,7 @@ import 'package:lyron_app/src/application/sync/sync_overview.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
+import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
@@ -92,6 +98,13 @@ final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
   return DriftPlanningLocalStore(ref.watch(planningLocalDatabaseProvider));
 });
 
+final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
+  return DriftPlanningMutationStore(
+    database: ref.watch(planningLocalDatabaseProvider),
+    localStore: ref.watch(planningLocalStoreProvider),
+  );
+});
+
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
   return SupabaseSongRepository(ref.watch(supabaseClientProvider));
 });
@@ -100,6 +113,7 @@ final planningLocalReadRepositoryProvider =
     Provider<PlanningLocalReadRepository>((ref) {
       return PlanningLocalReadRepository(
         store: ref.watch(planningLocalStoreProvider),
+        mutationStore: ref.watch(planningMutationStoreProvider),
         contextReader: () async {
           final syncState = ref.read(planningSyncStateProvider);
           final userId = syncState.userId;
@@ -115,9 +129,46 @@ final planningLocalReadRepositoryProvider =
       );
     });
 
+final planningWriteServiceProvider = Provider<PlanningWriteService>((ref) {
+  return PlanningWriteService(
+    ref.watch(planningRepositoryProvider),
+    mutationStore: ref.watch(planningMutationStoreProvider),
+    activeContextReader: () async => ref.read(activePlanningContextProvider),
+    syncScheduler: (context) async {
+      final activeContext = ref.read(activePlanningContextProvider);
+      if (activeContext == null ||
+          activeContext.userId != context.userId ||
+          activeContext.organizationId != context.organizationId) {
+        return;
+      }
+      try {
+        await ref
+            .read(planningMutationSyncControllerProvider)
+            .syncPendingMutations(activeContext);
+      } finally {
+        ref.read(planningDataRevisionProvider.notifier).state += 1;
+      }
+    },
+  );
+});
+
 final planningRemoteRefreshRepositoryProvider =
     Provider<PlanningRemoteRefreshRepository>((ref) {
       return SupabasePlanningRepository(ref.watch(supabaseClientProvider));
+    });
+
+final planningMutationRemoteRepositoryProvider =
+    Provider<PlanningMutationRemoteRepository>((ref) {
+      return SupabasePlanningMutationRepository(ref.watch(supabaseClientProvider));
+    });
+
+final planningMutationSyncControllerProvider =
+    Provider<PlanningMutationSyncController>((ref) {
+      return PlanningMutationSyncController(
+        mutationStore: () => ref.read(planningMutationStoreProvider),
+        remoteRepository: () => ref.read(planningMutationRemoteRepositoryProvider),
+        refreshPlanning: () => ref.read(planningSyncControllerProvider).refreshPlanning(),
+      );
     });
 
 final planningRepositoryProvider = Provider<PlanningRepository>((ref) {
