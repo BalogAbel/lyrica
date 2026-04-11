@@ -91,6 +91,9 @@ void main() {
           }
           return Future.value(const <PlanningMutationRecord>[]);
         }),
+        planningMutationStoreProvider.overrideWithValue(
+          _PlanDetailTestPlanningMutationStore(),
+        ),
         songLibraryListProvider.overrideWith(
           (ref) async => visibleSongs ?? const <SongSummary>[],
         ),
@@ -608,6 +611,15 @@ void main() {
                 ],
               );
             }),
+            planningMutationEntriesProvider.overrideWith(
+              (ref) async => const <PlanningMutationRecord>[],
+            ),
+            planningMutationStoreProvider.overrideWithValue(
+              _PlanDetailTestPlanningMutationStore(),
+            ),
+            planningWriteServiceProvider.overrideWithValue(
+              _FakePlanningWriteService(),
+            ),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: null,
@@ -714,6 +726,15 @@ void main() {
                 sessionStatus: CatalogSessionStatus.verified,
                 hasCachedCatalog: true,
               ),
+            ),
+            planningMutationEntriesProvider.overrideWith(
+              (ref) async => const <PlanningMutationRecord>[],
+            ),
+            planningMutationStoreProvider.overrideWithValue(
+              _PlanDetailTestPlanningMutationStore(),
+            ),
+            planningWriteServiceProvider.overrideWithValue(
+              _FakePlanningWriteService(),
             ),
           ],
           child: MaterialApp.router(routerConfig: router),
