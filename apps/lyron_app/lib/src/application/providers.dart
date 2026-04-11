@@ -159,15 +159,19 @@ final planningRemoteRefreshRepositoryProvider =
 
 final planningMutationRemoteRepositoryProvider =
     Provider<PlanningMutationRemoteRepository>((ref) {
-      return SupabasePlanningMutationRepository(ref.watch(supabaseClientProvider));
+      return SupabasePlanningMutationRepository(
+        ref.watch(supabaseClientProvider),
+      );
     });
 
 final planningMutationSyncControllerProvider =
     Provider<PlanningMutationSyncController>((ref) {
       return PlanningMutationSyncController(
         mutationStore: () => ref.read(planningMutationStoreProvider),
-        remoteRepository: () => ref.read(planningMutationRemoteRepositoryProvider),
-        refreshPlanning: () => ref.read(planningSyncControllerProvider).refreshPlanning(),
+        remoteRepository: () =>
+            ref.read(planningMutationRemoteRepositoryProvider),
+        refreshPlanning: () =>
+            ref.read(planningSyncControllerProvider).refreshPlanning(),
       );
     });
 

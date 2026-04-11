@@ -48,7 +48,8 @@ class PlanningMutationSyncController {
           PlanningMutationSyncErrorCode.conflict =>
             PlanningMutationSyncStatus.conflict,
           PlanningMutationSyncErrorCode.connectivityFailure ||
-          PlanningMutationSyncErrorCode.unknown => PlanningMutationSyncStatus.pending,
+          PlanningMutationSyncErrorCode.unknown =>
+            PlanningMutationSyncStatus.pending,
         };
         await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,

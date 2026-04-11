@@ -49,10 +49,12 @@ final planningMutationEntriesProvider =
         return const [];
       }
 
-      final entries = await ref.watch(planningMutationStoreProvider).readAllMutations(
-        userId: context.userId,
-        organizationId: context.organizationId,
-      );
+      final entries = await ref
+          .watch(planningMutationStoreProvider)
+          .readAllMutations(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          );
 
       return [...entries]..sort((left, right) {
         final orderCompare = left.orderKey.compareTo(right.orderKey);

@@ -93,12 +93,11 @@ void main() {
         ),
       );
 
+      expect((await repository.listPlans()).single.name, 'Weekend Service');
       expect(
-        (await repository.listPlans()).single.name,
-        'Weekend Service',
-      );
-      expect(
-        (await repository.getPlanDetail(createdPlan.aggregateId)).sessions.single.name,
+        (await repository.getPlanDetail(
+          createdPlan.aggregateId,
+        )).sessions.single.name,
         'Warm-Up Updated',
       );
 
@@ -128,10 +127,8 @@ void main() {
       final refreshController = PlanningSyncController(
         localStore: () => localStore,
         remoteRepository: () => const _EmptyPlanningRemoteRepository(),
-        authSessionReader: () => AppAuthSession(
-          userId: context.userId,
-          email: 'demo@lyron.local',
-        ),
+        authSessionReader: () =>
+            AppAuthSession(userId: context.userId, email: 'demo@lyron.local'),
       );
       await refreshController.handleActiveContextChanged(context);
 
@@ -140,17 +137,17 @@ void main() {
         isTrue,
       );
       expect(
-        (await repository.getPlanDetail(createdPlan.aggregateId)).sessions.single.name,
+        (await repository.getPlanDetail(
+          createdPlan.aggregateId,
+        )).sessions.single.name,
         'Warm-Up Updated',
       );
 
       final syncController = PlanningSyncController(
         localStore: () => localStore,
         remoteRepository: () => const _EmptyPlanningRemoteRepository(),
-        authSessionReader: () => AppAuthSession(
-          userId: context.userId,
-          email: 'demo@lyron.local',
-        ),
+        authSessionReader: () =>
+            AppAuthSession(userId: context.userId, email: 'demo@lyron.local'),
       );
       await syncController.handleActiveContextChanged(context, refresh: false);
       await syncController.handleExplicitSignOut();
@@ -166,7 +163,8 @@ void main() {
   );
 }
 
-class _EmptyPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
+class _EmptyPlanningRemoteRepository
+    implements PlanningRemoteRefreshRepository {
   const _EmptyPlanningRemoteRepository();
 
   @override

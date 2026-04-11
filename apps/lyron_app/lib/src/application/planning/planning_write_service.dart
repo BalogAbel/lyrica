@@ -76,9 +76,8 @@ class PlanningWriteContextMismatchException implements Exception {
 
 typedef PlanningWriteActiveContextReader =
     Future<ActivePlanningReadContext?> Function();
-typedef PlanningWriteSyncScheduler = Future<void> Function(
-  PlanningWriteContext context,
-);
+typedef PlanningWriteSyncScheduler =
+    Future<void> Function(PlanningWriteContext context);
 
 class PlanningWriteService {
   static const _positionStep = 10;

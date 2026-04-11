@@ -6,18 +6,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabasePlanningMutationRepository
     implements PlanningMutationRemoteRepository {
-  SupabasePlanningMutationRepository(SupabaseClient client)
-    : _rpc = client.rpc;
+  SupabasePlanningMutationRepository(SupabaseClient client) : _rpc = client.rpc;
 
   const SupabasePlanningMutationRepository.testing({
-    required Future<dynamic> Function(
-      String fn, {
-      Map<String, dynamic>? params,
-    })
+    required Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
     rpc,
   }) : _rpc = rpc;
 
-  final Future<dynamic> Function(String fn, {Map<String, dynamic>? params}) _rpc;
+  final Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
+  _rpc;
 
   @override
   Future<PlanningMutationRecord> syncMutation({
@@ -76,7 +73,8 @@ class SupabasePlanningMutationRepository
       organizationId: (row['organization_id'] ?? organizationId) as String,
       planId: (row['plan_id'] ?? original.planId) as String?,
       slug: (row['slug'] ?? original.slug) as String?,
-      baseVersion: ((row['version'] ?? row['deleted_version']) as num?)?.toInt(),
+      baseVersion: ((row['version'] ?? row['deleted_version']) as num?)
+          ?.toInt(),
       clearErrorCode: true,
       clearErrorMessage: true,
       syncStatus: PlanningMutationSyncStatus.pending,

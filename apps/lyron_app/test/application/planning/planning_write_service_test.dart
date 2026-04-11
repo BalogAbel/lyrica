@@ -117,34 +117,37 @@ void main() {
       expect(syncCalls, 1);
     });
 
-    test('createPlan returns the stored local mutation even if sync clears it immediately', () async {
-      service = PlanningWriteService(
-        repository,
-        mutationStore: mutationStore,
-        activeContextReader: () async => activeContext,
-        syncScheduler: (_) async {
-          syncCalls += 1;
-          await mutationStore.clearMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            aggregateId: 'generated-id-1',
-          );
-        },
-        idGenerator: () => 'generated-id-1',
-      );
+    test(
+      'createPlan returns the stored local mutation even if sync clears it immediately',
+      () async {
+        service = PlanningWriteService(
+          repository,
+          mutationStore: mutationStore,
+          activeContextReader: () async => activeContext,
+          syncScheduler: (_) async {
+            syncCalls += 1;
+            await mutationStore.clearMutation(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              aggregateId: 'generated-id-1',
+            );
+          },
+          idGenerator: () => 'generated-id-1',
+        );
 
-      final mutation = await service.createPlan(
-        context: context,
-        draft: const PlanCreateDraft(
-          name: 'Weekend Service',
-          description: 'Local draft',
-        ),
-      );
+        final mutation = await service.createPlan(
+          context: context,
+          draft: const PlanCreateDraft(
+            name: 'Weekend Service',
+            description: 'Local draft',
+          ),
+        );
 
-      expect(mutation.aggregateId, 'generated-id-1');
-      expect(mutation.slug, 'weekend-service');
-      expect(syncCalls, 1);
-    });
+        expect(mutation.aggregateId, 'generated-id-1');
+        expect(mutation.slug, 'weekend-service');
+        expect(syncCalls, 1);
+      },
+    );
 
     test('pending plan edit updates merged list and detail fields', () async {
       await seedProjection();
@@ -217,7 +220,8 @@ void main() {
                 aggregateType: 'plan',
                 aggregateId: 'plan-1',
                 mutationKind: PlanningMutationKind.planEdit.value,
-                syncStatus: PlanningMutationSyncStatus.failedAuthorization.value,
+                syncStatus:
+                    PlanningMutationSyncStatus.failedAuthorization.value,
                 name: const Value('Blocked name'),
                 orderKey: 1,
                 updatedAt: DateTime.utc(2026, 4, 10, 9),
@@ -289,10 +293,7 @@ void main() {
 
         await service.createPlan(
           context: context,
-          draft: const PlanCreateDraft(
-            name: 'Plan C',
-            scheduledFor: null,
-          ),
+          draft: const PlanCreateDraft(name: 'Plan C', scheduledFor: null),
         );
         await service.createSession(
           context: context,
@@ -314,21 +315,23 @@ void main() {
       },
     );
 
-    test('rejects writes when supplied context diverges from active context', () async {
-      activeContext = const ActivePlanningReadContext(
-        userId: 'user-1',
-        organizationId: 'org-2',
-      );
+    test(
+      'rejects writes when supplied context diverges from active context',
+      () async {
+        activeContext = const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-2',
+        );
 
-      await expectLater(
-        () => service.createPlan(
-          context: context,
-          draft: const PlanCreateDraft(name: 'Weekend Service'),
-        ),
-        throwsA(isA<PlanningWriteContextMismatchException>()),
-      );
-      expect(syncCalls, 0);
-    });
-
+        await expectLater(
+          () => service.createPlan(
+            context: context,
+            draft: const PlanCreateDraft(name: 'Weekend Service'),
+          ),
+          throwsA(isA<PlanningWriteContextMismatchException>()),
+        );
+        expect(syncCalls, 0);
+      },
+    );
   });
 }

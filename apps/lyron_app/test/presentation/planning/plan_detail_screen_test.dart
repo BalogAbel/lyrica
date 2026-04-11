@@ -87,7 +87,10 @@ void main() {
             return loadMutationEntries();
           }),
         activePlanningContextProvider.overrideWithValue(
-          const ActivePlanningReadContext(userId: 'user-1', organizationId: 'org-1'),
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -241,7 +244,10 @@ void main() {
     final writeService = _FakePlanningWriteService();
 
     await tester.pumpWidget(
-      buildApp(planDetailValue: _editablePlanDetailFixture(), writeService: writeService),
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -264,7 +270,10 @@ void main() {
     final writeService = _FakePlanningWriteService();
 
     await tester.pumpWidget(
-      buildApp(planDetailValue: _editablePlanDetailFixture(), writeService: writeService),
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -280,7 +289,9 @@ void main() {
     expect(writeService.createdSessionDraft?.planId, 'plan-1');
     expect(writeService.createdSessionDraft?.name, 'Closing');
 
-    await tester.tap(find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'));
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'),
+    );
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('session-editor-name')),
@@ -293,15 +304,22 @@ void main() {
     expect(writeService.renamedSessionDraft?.name, 'Warm-Up Updated');
   });
 
-  testWidgets('deletes an empty session locally after confirmation', (tester) async {
+  testWidgets('deletes an empty session locally after confirmation', (
+    tester,
+  ) async {
     final writeService = _FakePlanningWriteService();
 
     await tester.pumpWidget(
-      buildApp(planDetailValue: _editablePlanDetailFixture(), writeService: writeService),
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'));
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
     await tester.pumpAndSettle();
@@ -360,7 +378,10 @@ void main() {
     final writeService = _FakePlanningWriteService();
 
     await tester.pumpWidget(
-      buildApp(planDetailValue: _editablePlanDetailFixture(), writeService: writeService),
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -373,7 +394,10 @@ void main() {
     await tester.tap(find.text(AppStrings.planSaveAction));
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planScheduledForInvalidMessage), findsOneWidget);
+    expect(
+      find.text(AppStrings.planScheduledForInvalidMessage),
+      findsOneWidget,
+    );
     expect(writeService.editedDraft, isNull);
   });
 
@@ -645,11 +669,13 @@ class _FakePlanningWriteService extends PlanningWriteService {
   }
 }
 
-class _FakePlanningMutationSyncController extends PlanningMutationSyncController {
+class _FakePlanningMutationSyncController
+    extends PlanningMutationSyncController {
   _FakePlanningMutationSyncController()
     : super(
         mutationStore: () => _PlanDetailTestPlanningMutationStore(),
-        remoteRepository: () => _PlanDetailTestPlanningMutationRemoteRepository(),
+        remoteRepository: () =>
+            _PlanDetailTestPlanningMutationRemoteRepository(),
         refreshPlanning: () async {},
       );
 
@@ -666,57 +692,104 @@ class _FakePlanningMutationSyncController extends PlanningMutationSyncController
 
 class _PlanDetailTestPlanningRepository implements PlanningRepository {
   @override
-  Future<PlanDetail> getPlanDetail(String planId) async => _editablePlanDetailFixture();
+  Future<PlanDetail> getPlanDetail(String planId) async =>
+      _editablePlanDetailFixture();
 
   @override
-  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async => _editablePlanDetailFixture();
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async =>
+      _editablePlanDetailFixture();
 
   @override
-  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async => _editablePlanDetailFixture().plan;
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async =>
+      _editablePlanDetailFixture().plan;
 
   @override
-  Future<List<PlanSummary>> listPlans() async => [_editablePlanDetailFixture().plan];
+  Future<List<PlanSummary>> listPlans() async => [
+    _editablePlanDetailFixture().plan,
+  ];
 }
 
 class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   @override
-  Future<String> allocatePlanSlug({required String userId, required String organizationId, required String name}) async => 'unused';
+  Future<String> allocatePlanSlug({
+    required String userId,
+    required String organizationId,
+    required String name,
+  }) async => 'unused';
 
   @override
-  Future<String> allocateSessionSlug({required String userId, required String organizationId, required String planId, required String name}) async => 'unused';
+  Future<String> allocateSessionSlug({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required String name,
+  }) async => 'unused';
 
   @override
-  Future<void> clearMutation({required String userId, required String organizationId, required String aggregateId}) async {}
+  Future<void> clearMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateId,
+  }) async {}
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async => false;
 
   @override
-  Future<List<PlanningMutationRecord>> readAllMutations({required String userId, required String organizationId}) async => const [];
+  Future<List<PlanningMutationRecord>> readAllMutations({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
 
   @override
-  Future<PlanningMutationRecord?> readMutation({required String userId, required String organizationId, required String aggregateId}) async => null;
+  Future<PlanningMutationRecord?> readMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateId,
+  }) async => null;
 
   @override
-  Future<List<PlanningMutationRecord>> readPendingMutations({required String userId, required String organizationId}) async => const [];
+  Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
 
   @override
-  Future<void> recordPlanCreate({required PlanningMutationContext context, required PlanningPlanCreateMutationDraft draft}) async {}
+  Future<void> recordPlanCreate({
+    required PlanningMutationContext context,
+    required PlanningPlanCreateMutationDraft draft,
+  }) async {}
 
   @override
-  Future<void> recordPlanEdit({required PlanningMutationContext context, required PlanningPlanEditMutationDraft draft}) async {}
+  Future<void> recordPlanEdit({
+    required PlanningMutationContext context,
+    required PlanningPlanEditMutationDraft draft,
+  }) async {}
 
   @override
-  Future<void> recordSessionCreate({required PlanningMutationContext context, required PlanningSessionCreateMutationDraft draft}) async {}
+  Future<void> recordSessionCreate({
+    required PlanningMutationContext context,
+    required PlanningSessionCreateMutationDraft draft,
+  }) async {}
 
   @override
-  Future<void> recordSessionDelete({required PlanningMutationContext context, required PlanningSessionDeleteMutationDraft draft}) async {}
+  Future<void> recordSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionDeleteMutationDraft draft,
+  }) async {}
 
   @override
-  Future<void> recordSessionRename({required PlanningMutationContext context, required PlanningSessionRenameMutationDraft draft}) async {}
+  Future<void> recordSessionRename({
+    required PlanningMutationContext context,
+    required PlanningSessionRenameMutationDraft draft,
+  }) async {}
 
   @override
-  Future<void> retryMutation({required String userId, required String organizationId, required String aggregateId}) async {}
+  Future<void> retryMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateId,
+  }) async {}
 
   @override
   Future<void> saveSyncAttemptResult({

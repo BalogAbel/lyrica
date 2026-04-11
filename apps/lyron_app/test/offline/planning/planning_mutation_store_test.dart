@@ -167,8 +167,16 @@ void main() {
         expect(
           beforeDelete.last,
           isA<PlanningMutationRecord>()
-              .having((record) => record.aggregateId, 'aggregateId', 'session-local-1')
-              .having((record) => record.kind, 'kind', PlanningMutationKind.sessionCreate)
+              .having(
+                (record) => record.aggregateId,
+                'aggregateId',
+                'session-local-1',
+              )
+              .having(
+                (record) => record.kind,
+                'kind',
+                PlanningMutationKind.sessionCreate,
+              )
               .having((record) => record.planId, 'planId', 'plan-local-1')
               .having((record) => record.name, 'name', 'Welcome Team'),
         );
@@ -252,56 +260,59 @@ void main() {
       },
     );
 
-    test('persists sync error details and allows retrying a failed mutation', () async {
-      const context = PlanningMutationContext(
-        userId: 'user-1',
-        organizationId: 'org-1',
-      );
+    test(
+      'persists sync error details and allows retrying a failed mutation',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
 
-      await store.recordPlanEdit(
-        context: context,
-        draft: const PlanningPlanEditMutationDraft(
-          planId: 'plan-1',
-          name: 'Updated Plan',
-          description: 'Pending locally',
-          baseVersion: 3,
-        ),
-      );
+        await store.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Updated Plan',
+            description: 'Pending locally',
+            baseVersion: 3,
+          ),
+        );
 
-      await store.saveSyncAttemptResult(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateId: 'plan-1',
-        syncStatus: PlanningMutationSyncStatus.conflict,
-        errorCode: PlanningMutationSyncErrorCode.conflict,
-        errorMessage: 'base_version_conflict',
-      );
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+          errorMessage: 'base_version_conflict',
+        );
 
-      final failedRecord = await store.readMutation(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateId: 'plan-1',
-      );
+        final failedRecord = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateId: 'plan-1',
+        );
 
-      expect(failedRecord?.syncStatus, PlanningMutationSyncStatus.conflict);
-      expect(failedRecord?.errorCode, PlanningMutationSyncErrorCode.conflict);
-      expect(failedRecord?.errorMessage, 'base_version_conflict');
+        expect(failedRecord?.syncStatus, PlanningMutationSyncStatus.conflict);
+        expect(failedRecord?.errorCode, PlanningMutationSyncErrorCode.conflict);
+        expect(failedRecord?.errorMessage, 'base_version_conflict');
 
-      await store.retryMutation(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateId: 'plan-1',
-      );
+        await store.retryMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateId: 'plan-1',
+        );
 
-      final retriedRecord = await store.readMutation(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateId: 'plan-1',
-      );
+        final retriedRecord = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateId: 'plan-1',
+        );
 
-      expect(retriedRecord?.syncStatus, PlanningMutationSyncStatus.pending);
-      expect(retriedRecord?.errorCode, isNull);
-      expect(retriedRecord?.errorMessage, isNull);
-    });
+        expect(retriedRecord?.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(retriedRecord?.errorCode, isNull);
+        expect(retriedRecord?.errorMessage, isNull);
+      },
+    );
   });
 }

@@ -172,96 +172,113 @@ void main() {
     },
   );
 
-  test('planning providers re-read after the revision signal changes', () async {
-    final authController = AppAuthController(_SignedInAuthRepository());
-    await authController.signIn(
-      email: 'demo@lyron.local',
-      password: 'secret',
-    );
-    final repository = _MutablePlanningRepository(
-      plans: [
+  test(
+    'planning providers re-read after the revision signal changes',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final repository = _MutablePlanningRepository(
+        plans: [
+          PlanSummary(
+            id: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            description: 'Draft',
+            scheduledFor: null,
+            updatedAt: DateTime(2026, 4, 10),
+          ),
+        ],
+      );
+      final mutationStore = _MutablePlanningMutationStore(
+        entries: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+        hasUnsynced: true,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningRepositoryProvider.overrideWithValue(repository),
+          planningMutationStoreProvider.overrideWithValue(mutationStore),
+          planningSyncStateProvider.overrideWithValue(
+            PlanningSyncState(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              accessStatus: PlanningAccessStatus.signedIn,
+              refreshStatus: PlanningRefreshStatus.idle,
+              hasLocalPlanningData: true,
+              lastRefreshedAt: DateTime(2026, 4, 10, 12),
+            ),
+          ),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+        ],
+      );
+      addTearDown(() {
+        container.dispose();
+        authController.dispose();
+      });
+
+      expect(
+        (await container.read(planningPlanListProvider.future)).single.slug,
+        'weekend-service',
+      );
+      expect(
+        await container.read(hasUnsyncedPlanningMutationsProvider.future),
+        isTrue,
+      );
+      expect(
+        (await container.read(
+          planningMutationEntriesProvider.future,
+        )).single.syncStatus,
+        PlanningMutationSyncStatus.pending,
+      );
+
+      repository.plans = [
         PlanSummary(
           id: 'plan-1',
-          slug: 'weekend-service',
+          slug: 'weekend-service-2',
           name: 'Weekend Service',
           description: 'Draft',
           scheduledFor: null,
-          updatedAt: DateTime(2026, 4, 10),
+          updatedAt: DateTime(2026, 4, 10, 12),
         ),
-      ],
-    );
-    final mutationStore = _MutablePlanningMutationStore(
-      entries: [
-        PlanningMutationRecord(
-          aggregateId: 'plan-1',
-          organizationId: 'org-1',
-          slug: 'weekend-service',
-          name: 'Weekend Service',
-          kind: PlanningMutationKind.planEdit,
-          syncStatus: PlanningMutationSyncStatus.pending,
-          orderKey: 1,
-          updatedAt: DateTime.utc(2026),
-        ),
-      ],
-      hasUnsynced: true,
-    );
-    final container = ProviderContainer(
-      overrides: [
-        appAuthControllerProvider.overrideWithValue(authController),
-        planningRepositoryProvider.overrideWithValue(repository),
-        planningMutationStoreProvider.overrideWithValue(mutationStore),
-        planningSyncStateProvider.overrideWithValue(
-          PlanningSyncState(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            accessStatus: PlanningAccessStatus.signedIn,
-            refreshStatus: PlanningRefreshStatus.idle,
-            hasLocalPlanningData: true,
-            lastRefreshedAt: DateTime(2026, 4, 10, 12),
-          ),
-        ),
-        activePlanningContextProvider.overrideWithValue(
-          const ActivePlanningReadContext(userId: 'user-1', organizationId: 'org-1'),
-        ),
-      ],
-    );
-    addTearDown(() {
-      container.dispose();
-      authController.dispose();
-    });
+      ];
+      mutationStore
+        ..entries = const []
+        ..hasUnsynced = false;
+      container.read(planningDataRevisionProvider.notifier).state += 1;
 
-    expect(
-      (await container.read(planningPlanListProvider.future)).single.slug,
-      'weekend-service',
-    );
-    expect(await container.read(hasUnsyncedPlanningMutationsProvider.future), isTrue);
-    expect(
-      (await container.read(planningMutationEntriesProvider.future)).single.syncStatus,
-      PlanningMutationSyncStatus.pending,
-    );
-
-    repository.plans = [
-      PlanSummary(
-        id: 'plan-1',
-        slug: 'weekend-service-2',
-        name: 'Weekend Service',
-        description: 'Draft',
-        scheduledFor: null,
-        updatedAt: DateTime(2026, 4, 10, 12),
-      ),
-    ];
-    mutationStore
-      ..entries = const []
-      ..hasUnsynced = false;
-    container.read(planningDataRevisionProvider.notifier).state += 1;
-
-    expect(
-      (await container.read(planningPlanListProvider.future)).single.slug,
-      'weekend-service-2',
-    );
-    expect(await container.read(hasUnsyncedPlanningMutationsProvider.future), isFalse);
-    expect(await container.read(planningMutationEntriesProvider.future), isEmpty);
-  });
+      expect(
+        (await container.read(planningPlanListProvider.future)).single.slug,
+        'weekend-service-2',
+      );
+      expect(
+        await container.read(hasUnsyncedPlanningMutationsProvider.future),
+        isFalse,
+      );
+      expect(
+        await container.read(planningMutationEntriesProvider.future),
+        isEmpty,
+      );
+    },
+  );
 
   test(
     'planning write service sync invalidates cached planning providers through provider wiring',
@@ -323,7 +340,9 @@ void main() {
           appAuthControllerProvider.overrideWithValue(authController),
           planningRepositoryProvider.overrideWithValue(repository),
           planningMutationStoreProvider.overrideWithValue(mutationStore),
-          planningMutationSyncControllerProvider.overrideWithValue(syncController),
+          planningMutationSyncControllerProvider.overrideWithValue(
+            syncController,
+          ),
           planningSyncStateProvider.overrideWithValue(
             PlanningSyncState(
               userId: 'user-1',
@@ -351,31 +370,44 @@ void main() {
         (await container.read(planningPlanListProvider.future)).single.slug,
         'weekend-service',
       );
-      expect(await container.read(hasUnsyncedPlanningMutationsProvider.future), isTrue);
       expect(
-        (await container.read(planningMutationEntriesProvider.future)).single.syncStatus,
+        await container.read(hasUnsyncedPlanningMutationsProvider.future),
+        isTrue,
+      );
+      expect(
+        (await container.read(
+          planningMutationEntriesProvider.future,
+        )).single.syncStatus,
         PlanningMutationSyncStatus.pending,
       );
 
-      await container.read(planningWriteServiceProvider).editPlan(
-        context: const PlanningWriteContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        draft: const PlanEditDraft(
-          planId: 'plan-1',
-          name: 'Weekend Service Revised',
-          description: 'Synced',
-        ),
-      );
+      await container
+          .read(planningWriteServiceProvider)
+          .editPlan(
+            context: const PlanningWriteContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            draft: const PlanEditDraft(
+              planId: 'plan-1',
+              name: 'Weekend Service Revised',
+              description: 'Synced',
+            ),
+          );
 
       expect(syncController.syncCalls, 1);
       expect(
         (await container.read(planningPlanListProvider.future)).single.slug,
         'weekend-service-2',
       );
-      expect(await container.read(hasUnsyncedPlanningMutationsProvider.future), isFalse);
-      expect(await container.read(planningMutationEntriesProvider.future), isEmpty);
+      expect(
+        await container.read(hasUnsyncedPlanningMutationsProvider.future),
+        isFalse,
+      );
+      expect(
+        await container.read(planningMutationEntriesProvider.future),
+        isEmpty,
+      );
     },
   );
 }
@@ -410,7 +442,9 @@ class _MutablePlanningRepository implements PlanningRepository {
 
   @override
   Future<PlanDetail?> getPlanDetailBySlug(String planSlug) {
-    final plan = plans.where((candidate) => candidate.slug == planSlug).firstOrNull;
+    final plan = plans
+        .where((candidate) => candidate.slug == planSlug)
+        .firstOrNull;
     if (plan == null) {
       return Future.value(null);
     }
@@ -463,7 +497,8 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<bool> hasUnsyncedMutations({required String userId}) async => hasUnsynced;
+  Future<bool> hasUnsyncedMutations({required String userId}) async =>
+      hasUnsynced;
 
   @override
   Future<List<PlanningMutationRecord>> readAllMutations({

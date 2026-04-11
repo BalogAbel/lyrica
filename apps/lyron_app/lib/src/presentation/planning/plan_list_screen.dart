@@ -121,7 +121,8 @@ class PlanListScreen extends ConsumerWidget {
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     final plans = await ref.read(planningPlanListProvider.future);
-    final routeSlug = plans
+    final routeSlug =
+        plans
             .where((candidate) => candidate.id == mutation.aggregateId)
             .map((candidate) => candidate.slug)
             .firstOrNull ??
@@ -150,7 +151,8 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
                 child: ListTile(
                   title: Text(entry.name ?? entry.slug ?? entry.aggregateId),
                   subtitle: Text(_messageFor(entry)),
-                  trailing: entry.syncStatus == PlanningMutationSyncStatus.pending
+                  trailing:
+                      entry.syncStatus == PlanningMutationSyncStatus.pending
                       ? null
                       : TextButton(
                           onPressed: () => _retryEntry(context, ref, entry),
@@ -235,7 +237,9 @@ class _PlanEditorDialogState extends State<_PlanEditorDialog> {
             TextField(
               key: const ValueKey('plan-editor-name'),
               controller: _nameController,
-              decoration: const InputDecoration(labelText: AppStrings.planNameLabel),
+              decoration: const InputDecoration(
+                labelText: AppStrings.planNameLabel,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
