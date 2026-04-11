@@ -677,6 +677,7 @@ class _FakePlanningMutationSyncController
         remoteRepository: () =>
             _PlanDetailTestPlanningMutationRemoteRepository(),
         refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 

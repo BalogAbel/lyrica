@@ -613,12 +613,16 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningData({
     required String userId,
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     _detailsByOrg.remove(organizationId);
   }
 
   @override
-  Future<void> deletePlanningDataForUser({required String userId}) async {
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) async {
     _detailsByOrg.clear();
   }
 

@@ -221,7 +221,7 @@ Rules:
 - locally generated plan and session slugs are provisional until the backend accepts the create
 - the app may use provisional slugs for same-device local navigation before sync succeeds
 - the app must not present provisional slugs as canonical shareable URLs
-- when the backend accepts a create and returns a different canonical slug, the local planning state must reconcile to that backend slug even if the immediate follow-up full refresh fails
+- when the backend accepts a create and returns a different canonical slug, the local planning state must reconcile to that backend slug even if the immediate follow-up full refresh fails, but only while the same authenticated planning boundary remains active
 - after reconciliation, subsequent route generation and slug lookup must use the backend-accepted canonical slug
 - if the backend rejects a create because the proposed slug cannot be accepted, the mutation must remain visible as a failed local mutation rather than silently creating a duplicate-looking second entity
 

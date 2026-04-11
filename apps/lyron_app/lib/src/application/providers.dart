@@ -172,6 +172,12 @@ final planningMutationSyncControllerProvider =
             ref.read(planningMutationRemoteRepositoryProvider),
         refreshPlanning: () =>
             ref.read(planningSyncControllerProvider).refreshPlanning(),
+        shouldReconcileAcceptedMutation: (context) async {
+          final activeContext = ref.read(activePlanningContextProvider);
+          return activeContext != null &&
+              activeContext.userId == context.userId &&
+              activeContext.organizationId == context.organizationId;
+        },
         reconcileAcceptedMutation: (context, record) async {
           final localStore = ref.read(planningLocalStoreProvider);
           final reconciledAt = DateTime.now().toUtc();
