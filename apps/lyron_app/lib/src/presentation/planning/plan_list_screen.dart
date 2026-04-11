@@ -178,7 +178,11 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
 
     await ref
         .read(planningMutationSyncControllerProvider)
-        .retryMutation(activeContext, aggregateId: entry.aggregateId);
+        .retryMutation(
+          activeContext,
+          aggregateType: entry.kind.aggregateType,
+          aggregateId: entry.aggregateId,
+        );
     ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);

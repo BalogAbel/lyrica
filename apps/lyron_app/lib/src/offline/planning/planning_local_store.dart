@@ -146,6 +146,43 @@ abstract interface class PlanningLocalStore {
     required String sessionId,
     required DateTime refreshedAt,
   });
+
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  });
+
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  });
+
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  });
+
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  });
 }
 
 class DriftPlanningLocalStore implements PlanningLocalStore {
@@ -649,6 +686,174 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                 table.sessionId.equals(sessionId),
           ))
           .go();
+    });
+  }
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      for (var index = 0; index < orderedSessionIds.length; index += 1) {
+        final position =
+            orderedSessionPositions != null &&
+                index < orderedSessionPositions.length
+            ? orderedSessionPositions[index]
+            : index + 1;
+        await (_database.update(_database.cachedPlanningSessions)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.planId.equals(planId) &
+                  table.sessionId.equals(orderedSessionIds[index]),
+            ))
+            .write(CachedPlanningSessionsCompanion(position: Value(position)));
+      }
+      await (_database.update(_database.cachedPlanningPlans)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.planId.equals(planId),
+          ))
+          .write(CachedPlanningPlansCompanion(version: Value(planVersion)));
+    });
+  }
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      await _database
+          .into(_database.cachedPlanningSessionItems)
+          .insertOnConflictUpdate(
+            CachedPlanningSessionItemsCompanion.insert(
+              userId: userId,
+              organizationId: organizationId,
+              snapshotVersion: owner.snapshotVersion,
+              sessionItemId: item.id,
+              planId: item.planId,
+              sessionId: item.sessionId,
+              position: item.position,
+              songId: item.songId,
+              songTitle: item.songTitle,
+            ),
+          );
+      await (_database.update(_database.cachedPlanningSessions)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionId.equals(item.sessionId),
+          ))
+          .write(
+            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+          );
+    });
+  }
+
+  @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      await (_database.delete(_database.cachedPlanningSessionItems)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionItemId.equals(sessionItemId),
+          ))
+          .go();
+      await (_database.update(_database.cachedPlanningSessions)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionId.equals(sessionId),
+          ))
+          .write(
+            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+          );
+    });
+  }
+
+  @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {
+    await _database.transaction(() async {
+      final owner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      for (var index = 0; index < orderedSessionItemIds.length; index += 1) {
+        final position =
+            orderedSessionItemPositions != null &&
+                index < orderedSessionItemPositions.length
+            ? orderedSessionItemPositions[index]
+            : index + 1;
+        await (_database.update(_database.cachedPlanningSessionItems)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.sessionId.equals(sessionId) &
+                  table.sessionItemId.equals(orderedSessionItemIds[index]),
+            ))
+            .write(
+              CachedPlanningSessionItemsCompanion(position: Value(position)),
+            );
+      }
+      await (_database.update(_database.cachedPlanningSessions)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.snapshotVersion.equals(owner.snapshotVersion) &
+                table.sessionId.equals(sessionId),
+          ))
+          .write(
+            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+          );
     });
   }
 

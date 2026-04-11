@@ -317,6 +317,100 @@ def delete_empty_session(
     )
 
 
+def reorder_plan_sessions(
+    *,
+    plan_id: str,
+    base_version: int,
+    session_ids: list[str],
+    user_id: str | None = None,
+) -> dict:
+    session_ids_sql = ", ".join(f"{sql_quote(session_id)}::uuid" for session_id in session_ids)
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.reorder_plan_sessions(
+              p_organization_id => {sql_quote(organization_id)},
+              p_plan_id => {sql_quote(plan_id)}::uuid,
+              p_base_version => {base_version},
+              p_session_ids => array[{session_ids_sql}]
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def create_song_session_item(
+    *,
+    session_id: str,
+    session_item_id: str,
+    song_id: str,
+    base_version: int,
+    position: int | None = None,
+    user_id: str | None = None,
+) -> dict:
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.create_song_session_item(
+              p_organization_id => {sql_quote(organization_id)},
+              p_session_id => {sql_quote(session_id)}::uuid,
+              p_session_item_id => {sql_quote(session_item_id)}::uuid,
+              p_song_id => {sql_quote(song_id)}::uuid,
+              p_base_version => {base_version},
+              p_position => {position if position is not None else 'null'}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def delete_session_item(
+    *,
+    session_id: str,
+    session_item_id: str,
+    base_version: int,
+    user_id: str | None = None,
+) -> dict:
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.delete_session_item(
+              p_organization_id => {sql_quote(organization_id)},
+              p_session_id => {sql_quote(session_id)}::uuid,
+              p_session_item_id => {sql_quote(session_item_id)}::uuid,
+              p_base_version => {base_version}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+def reorder_session_items(
+    *,
+    session_id: str,
+    base_version: int,
+    session_item_ids: list[str],
+    user_id: str | None = None,
+) -> dict:
+    item_ids_sql = ", ".join(f"{sql_quote(item_id)}::uuid" for item_id in session_item_ids)
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.reorder_session_items(
+              p_organization_id => {sql_quote(organization_id)},
+              p_session_id => {sql_quote(session_id)}::uuid,
+              p_base_version => {base_version},
+              p_session_item_ids => array[{item_ids_sql}]
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
 created_plan = create_plan(
     plan_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     slug="weekend-service",
@@ -438,6 +532,56 @@ renamed_session = rename_session(
 assert renamed_session["name"] == "Welcome Team"
 assert renamed_session["version"] == 2
 
+run_psql(
+    dedent(
+        f"""
+        update public.sessions
+        set position = case id
+          when {sql_quote(created_session["id"])}::uuid then 2400
+          when {sql_quote(duplicate_session["id"])}::uuid then 1200
+        end
+        where organization_id = {sql_quote(organization_id)}::uuid
+          and id in (
+            {sql_quote(created_session["id"])}::uuid,
+            {sql_quote(duplicate_session["id"])}::uuid
+          );
+        """
+    )
+)
+
+reordered_sessions = reorder_plan_sessions(
+    plan_id=created_plan["id"],
+    base_version=updated_plan["version"],
+    session_ids=[duplicate_session["id"], created_session["id"]],
+    user_id=demo_user_id,
+)
+assert reordered_sessions["plan_id"] == created_plan["id"]
+assert reordered_sessions["version"] == 3
+assert reordered_sessions["ordered_session_ids"] == [
+    duplicate_session["id"],
+    created_session["id"],
+]
+assert reordered_sessions["ordered_session_positions"] == [1, 2]
+
+session_reorder_duplicate = capture_error(
+    dedent(
+        f"""
+        perform public.reorder_plan_sessions(
+          p_organization_id => {sql_quote(organization_id)},
+          p_plan_id => {sql_quote(created_plan["id"])}::uuid,
+          p_base_version => {reordered_sessions["version"]},
+          p_session_ids => array[
+            {sql_quote(duplicate_session["id"])}::uuid,
+            {sql_quote(duplicate_session["id"])}::uuid
+          ]
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert session_reorder_duplicate[0] == "P0001"
+assert session_reorder_duplicate[1] == "session_reorder_blocked_invalid_permutation"
+
 session_conflict = capture_error(
     dedent(
         f"""
@@ -473,26 +617,237 @@ assert blocked_session_rename[1] == "session_not_found"
 run_psql(
     dedent(
         f"""
-        insert into public.session_items (
+        insert into public.songs (
           id,
           organization_id,
-          session_id,
-          song_id,
-          item_type,
-          position
+          slug,
+          title,
+          chordpro_source
         )
         values (
-          'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid,
+          '44444444-4444-4444-4444-444444444444'::uuid,
           {sql_quote(organization_id)}::uuid,
-          {sql_quote(created_session["id"])}::uuid,
-          '33333333-3333-3333-3333-333333333333'::uuid,
-          'song',
-          1
+          'beta',
+          'Beta',
+          '{{title: Beta}}'
+        );
+        """
+    ),
+)
+
+run_psql(
+    dedent(
+        """
+        insert into public.organizations (id, name, slug)
+        values (
+          '66666666-6666-6666-6666-666666666666'::uuid,
+          'Alternate Hidden Organization',
+          'alternate-hidden-organization'
+        );
+        insert into public.songs (
+          id,
+          organization_id,
+          slug,
+          title,
+          chordpro_source
+        )
+        values (
+          '77777777-7777-7777-7777-777777777777'::uuid,
+          '66666666-6666-6666-6666-666666666666'::uuid,
+          'hidden-song',
+          'Hidden Song',
+          '{title: Hidden Song}'
+        );
+        """
+    )
+)
+
+created_item = create_song_session_item(
+    session_id=created_session["id"],
+    session_item_id="ffffffff-ffff-ffff-ffff-ffffffffffff",
+    song_id="33333333-3333-3333-3333-333333333333",
+    base_version=renamed_session["version"],
+    position=1,
+    user_id=demo_user_id,
+)
+assert created_item["id"] == "ffffffff-ffff-ffff-ffff-ffffffffffff"
+assert created_item["session_id"] == created_session["id"]
+assert created_item["song_id"] == "33333333-3333-3333-3333-333333333333"
+assert created_item["version"] == 3
+assert created_item["ordered_session_item_ids"] == [
+    "ffffffff-ffff-ffff-ffff-ffffffffffff"
+]
+assert created_item["ordered_session_item_positions"] == [1]
+
+duplicate_song_error = capture_error(
+    dedent(
+        f"""
+        perform public.create_song_session_item(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_session_item_id => '12121212-1212-1212-1212-121212121212'::uuid,
+          p_song_id => '33333333-3333-3333-3333-333333333333'::uuid,
+          p_base_version => {created_item["version"]},
+          p_position => 2
         );
         """
     ),
     user_id=demo_user_id,
 )
+assert duplicate_song_error[0] == "P0001"
+assert duplicate_song_error[1] == "duplicate_song_in_session_blocked"
+
+song_visibility_error = capture_error(
+    dedent(
+        f"""
+        perform public.create_song_session_item(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_session_item_id => '13131313-1313-1313-1313-131313131313'::uuid,
+          p_song_id => '77777777-7777-7777-7777-777777777777'::uuid,
+          p_base_version => {created_item["version"]},
+          p_position => 2
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert song_visibility_error[0] == "P0001"
+assert song_visibility_error[1] == "song_not_visible_blocked"
+
+second_created_item = create_song_session_item(
+    session_id=created_session["id"],
+    session_item_id="abababab-abab-abab-abab-abababababab",
+    song_id="44444444-4444-4444-4444-444444444444",
+    base_version=created_item["version"],
+    position=2,
+    user_id=demo_user_id,
+)
+assert second_created_item["version"] == 4
+assert second_created_item["ordered_session_item_ids"] == [
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "abababab-abab-abab-abab-abababababab",
+]
+assert second_created_item["ordered_session_item_positions"] == [1, 2]
+
+run_psql(
+    dedent(
+        """
+        update public.session_items
+        set position = case id
+          when 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid then 3200
+          when 'abababab-abab-abab-abab-abababababab'::uuid then 1500
+        end
+        where organization_id = '11111111-1111-1111-1111-111111111111'::uuid
+          and session_id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'::uuid
+          and id in (
+            'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid,
+            'abababab-abab-abab-abab-abababababab'::uuid
+          );
+        """
+    )
+)
+
+blocked_song_add = capture_error(
+    dedent(
+        f"""
+        perform public.create_song_session_item(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_session_item_id => '14141414-1414-1414-1414-141414141414'::uuid,
+          p_song_id => '44444444-4444-4444-4444-444444444444'::uuid,
+          p_base_version => {second_created_item["version"]},
+          p_position => 3
+        );
+        """
+    ),
+    user_id=blocked_user_id,
+)
+assert blocked_song_add[0] == "P0002"
+assert blocked_song_add[1] == "session_not_found"
+
+reordered_items = reorder_session_items(
+    session_id=created_session["id"],
+    base_version=second_created_item["version"],
+    session_item_ids=[
+        "abababab-abab-abab-abab-abababababab",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    ],
+    user_id=demo_user_id,
+)
+assert reordered_items["version"] == 5
+assert reordered_items["ordered_session_item_ids"] == [
+    "abababab-abab-abab-abab-abababababab",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+]
+assert reordered_items["ordered_session_item_positions"] == [1, 2]
+
+item_reorder_duplicate = capture_error(
+    dedent(
+        f"""
+        perform public.reorder_session_items(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_base_version => {reordered_items["version"]},
+          p_session_item_ids => array[
+            'abababab-abab-abab-abab-abababababab'::uuid,
+            'abababab-abab-abab-abab-abababababab'::uuid
+          ]
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert item_reorder_duplicate[0] == "P0001"
+assert item_reorder_duplicate[1] == "session_item_reorder_blocked_invalid_permutation"
+
+item_reorder_conflict = capture_error(
+    dedent(
+        f"""
+        perform public.reorder_session_items(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_base_version => 4,
+          p_session_item_ids => array[
+            'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid,
+            'abababab-abab-abab-abab-abababababab'::uuid
+          ]
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert item_reorder_conflict[0] == "P0001"
+assert item_reorder_conflict[1] == "session_version_conflict"
+
+deleted_item = delete_session_item(
+    session_id=created_session["id"],
+    session_item_id="abababab-abab-abab-abab-abababababab",
+    base_version=reordered_items["version"],
+    user_id=demo_user_id,
+)
+assert deleted_item["id"] == "abababab-abab-abab-abab-abababababab"
+assert deleted_item["version"] == 6
+assert deleted_item["ordered_session_item_ids"] == [
+    "ffffffff-ffff-ffff-ffff-ffffffffffff"
+]
+assert deleted_item["ordered_session_item_positions"] == [2]
+
+item_delete_conflict = capture_error(
+    dedent(
+        f"""
+        perform public.delete_session_item(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_session_item_id => 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid,
+          p_base_version => 5
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert item_delete_conflict[0] == "P0001"
+assert item_delete_conflict[1] == "session_version_conflict"
 
 session_not_empty = capture_error(
     dedent(
@@ -500,7 +855,7 @@ session_not_empty = capture_error(
         perform public.delete_empty_session(
           p_organization_id => {sql_quote(organization_id)},
           p_session_id => {sql_quote(created_session["id"])}::uuid,
-          p_base_version => {renamed_session["version"]}
+          p_base_version => {deleted_item["version"]}
         );
         """
     ),

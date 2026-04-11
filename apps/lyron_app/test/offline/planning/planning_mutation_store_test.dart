@@ -281,6 +281,7 @@ void main() {
         await store.saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
           aggregateId: 'plan-1',
           syncStatus: PlanningMutationSyncStatus.conflict,
           errorCode: PlanningMutationSyncErrorCode.conflict,
@@ -290,6 +291,7 @@ void main() {
         final failedRecord = await store.readMutation(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
           aggregateId: 'plan-1',
         );
 
@@ -300,18 +302,210 @@ void main() {
         await store.retryMutation(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
           aggregateId: 'plan-1',
         );
 
         final retriedRecord = await store.readMutation(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
           aggregateId: 'plan-1',
         );
 
         expect(retriedRecord?.syncStatus, PlanningMutationSyncStatus.pending);
         expect(retriedRecord?.errorCode, isNull);
         expect(retriedRecord?.errorMessage, isNull);
+      },
+    );
+
+    test(
+      'session reorder compacts by plan and keeps the earliest base version',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionReorder(
+          context: context,
+          draft: const PlanningSessionReorderMutationDraft(
+            planId: 'plan-1',
+            orderedSessionIds: ['session-2', 'session-1', 'session-3'],
+            baseVersion: 7,
+          ),
+        );
+        await store.recordSessionReorder(
+          context: context,
+          draft: const PlanningSessionReorderMutationDraft(
+            planId: 'plan-1',
+            orderedSessionIds: ['session-3', 'session-2', 'session-1'],
+            baseVersion: 9,
+          ),
+        );
+
+        final pending = await store.readPendingMutations(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+
+        expect(pending, hasLength(1));
+        expect(pending.single.kind, PlanningMutationKind.sessionReorder);
+        expect(pending.single.aggregateId, 'plan-1');
+        expect(pending.single.baseVersion, 7);
+        expect(
+          pending.single.orderedSiblingIds,
+          orderedEquals(const ['session-3', 'session-2', 'session-1']),
+        );
+      },
+    );
+
+    test(
+      'mutation lifecycle APIs address records by aggregate type and aggregate id',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 4,
+          ),
+        );
+        await store.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-2', 'item-1'],
+            baseVersion: 7,
+          ),
+        );
+
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+          errorMessage: 'session_conflict',
+        );
+
+        final sessionDelete = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
+          aggregateId: 'session-1',
+        );
+        final itemReorder = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionItemReorder.aggregateType,
+          aggregateId: 'session-1',
+        );
+
+        expect(sessionDelete?.syncStatus, PlanningMutationSyncStatus.conflict);
+        expect(itemReorder?.syncStatus, PlanningMutationSyncStatus.pending);
+
+        await store.clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
+          aggregateId: 'session-1',
+        );
+
+        final remaining = await store.readPendingMutations(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+        expect(remaining, hasLength(1));
+        expect(remaining.single.kind, PlanningMutationKind.sessionItemReorder);
+      },
+    );
+
+    test(
+      'session item create followed by delete annihilates a locally created item mutation',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-local-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-2',
+            songTitle: 'Beta',
+            position: 20,
+            baseVersion: 3,
+          ),
+        );
+        await store.recordSessionItemDelete(
+          context: context,
+          draft: const PlanningSessionItemDeleteMutationDraft(
+            sessionItemId: 'item-local-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+          ),
+        );
+
+        final pending = await store.readPendingMutations(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+
+        expect(pending, isEmpty);
+      },
+    );
+
+    test(
+      'session item reorder drops deleted siblings and compacts by session',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-3', 'item-1', 'item-2'],
+            baseVersion: 5,
+          ),
+        );
+        await store.recordSessionItemDelete(
+          context: context,
+          draft: const PlanningSessionItemDeleteMutationDraft(
+            sessionItemId: 'item-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 5,
+          ),
+        );
+
+        final pending = await store.readPendingMutations(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+
+        expect(pending, hasLength(2));
+        final reorder = pending.firstWhere(
+          (record) => record.kind == PlanningMutationKind.sessionItemReorder,
+        );
+        expect(
+          reorder.orderedSiblingIds,
+          orderedEquals(const ['item-3', 'item-2']),
+        );
       },
     );
   });

@@ -1,6 +1,7 @@
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 
 class PlanningWriteContext {
   const PlanningWriteContext({
@@ -64,10 +65,69 @@ class SessionDeleteDraft {
   final String planId;
 }
 
+class SessionReorderDraft {
+  const SessionReorderDraft({
+    required this.planId,
+    required this.orderedSessionIds,
+  });
+
+  final String planId;
+  final List<String> orderedSessionIds;
+}
+
+class SessionItemCreateSongDraft {
+  const SessionItemCreateSongDraft({
+    required this.sessionId,
+    required this.planId,
+    required this.songId,
+  });
+
+  final String sessionId;
+  final String planId;
+  final String songId;
+}
+
+class SessionItemDeleteDraft {
+  const SessionItemDeleteDraft({
+    required this.sessionItemId,
+    required this.sessionId,
+    required this.planId,
+  });
+
+  final String sessionItemId;
+  final String sessionId;
+  final String planId;
+}
+
+class SessionItemReorderDraft {
+  const SessionItemReorderDraft({
+    required this.sessionId,
+    required this.planId,
+    required this.orderedSessionItemIds,
+  });
+
+  final String sessionId;
+  final String planId;
+  final List<String> orderedSessionItemIds;
+}
+
 class SessionDeleteBlockedException implements Exception {
   const SessionDeleteBlockedException(this.sessionId);
 
   final String sessionId;
+}
+
+class DuplicateSessionSongException implements Exception {
+  const DuplicateSessionSongException(this.sessionId, this.songId);
+
+  final String sessionId;
+  final String songId;
+}
+
+class PlanningSongUnavailableException implements Exception {
+  const PlanningSongUnavailableException(this.songId);
+
+  final String songId;
 }
 
 class PlanningWriteContextMismatchException implements Exception {
@@ -78,6 +138,11 @@ typedef PlanningWriteActiveContextReader =
     Future<ActivePlanningReadContext?> Function();
 typedef PlanningWriteSyncScheduler =
     Future<void> Function(PlanningWriteContext context);
+typedef PlanningVisibleSongReader =
+    Future<List<SongSummary>> Function({
+      required String userId,
+      required String organizationId,
+    });
 
 class PlanningWriteService {
   static const _positionStep = 1;
@@ -85,19 +150,27 @@ class PlanningWriteService {
   PlanningWriteService(
     this._repository, {
     required PlanningMutationStore mutationStore,
+    PlanningVisibleSongReader? listVisibleSongs,
     required PlanningWriteActiveContextReader activeContextReader,
     PlanningWriteSyncScheduler? syncScheduler,
     PlanningIdGenerator? idGenerator,
   }) : _mutationStore = mutationStore,
+       _listVisibleSongs = listVisibleSongs ?? _defaultVisibleSongs,
        _activeContextReader = activeContextReader,
        _syncScheduler = syncScheduler,
        _idGenerator = idGenerator ?? generatePlanningUuidV4;
 
   final PlanningRepository _repository;
   final PlanningMutationStore _mutationStore;
+  final PlanningVisibleSongReader _listVisibleSongs;
   final PlanningWriteActiveContextReader _activeContextReader;
   final PlanningWriteSyncScheduler? _syncScheduler;
   final PlanningIdGenerator _idGenerator;
+
+  static Future<List<SongSummary>> _defaultVisibleSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
 
   Future<PlanningMutationRecord> createPlan({
     required PlanningWriteContext context,
@@ -126,6 +199,7 @@ class PlanningWriteService {
     final createdRecord = await _mutationStore.readMutation(
       userId: context.userId,
       organizationId: context.organizationId,
+      aggregateType: PlanningMutationKind.planCreate.aggregateType,
       aggregateId: planId,
     );
     await _scheduleSync(context);
@@ -199,6 +273,119 @@ class PlanningWriteService {
       draft: PlanningSessionDeleteMutationDraft(
         sessionId: draft.sessionId,
         planId: draft.planId,
+        baseVersion: session.version,
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
+  Future<void> reorderSessions({
+    required PlanningWriteContext context,
+    required SessionReorderDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    await _mutationStore.recordSessionReorder(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningSessionReorderMutationDraft(
+        planId: draft.planId,
+        orderedSessionIds: draft.orderedSessionIds,
+        baseVersion: detail.plan.version,
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
+  Future<void> addSongSessionItem({
+    required PlanningWriteContext context,
+    required SessionItemCreateSongDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    final session = detail.sessions.firstWhere(
+      (candidate) => candidate.id == draft.sessionId,
+    );
+    if (session.items.any((item) => item.song.id == draft.songId)) {
+      throw DuplicateSessionSongException(draft.sessionId, draft.songId);
+    }
+
+    final visibleSongs = await _listVisibleSongs(
+      userId: context.userId,
+      organizationId: context.organizationId,
+    );
+    final song = visibleSongs.where(
+      (candidate) => candidate.id == draft.songId,
+    );
+    if (song.isEmpty) {
+      throw PlanningSongUnavailableException(draft.songId);
+    }
+
+    final nextPosition = session.items.isEmpty
+        ? _positionStep
+        : session.items.last.position + _positionStep;
+    await _mutationStore.recordSessionItemCreateSong(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningSessionItemCreateSongMutationDraft(
+        sessionItemId: _idGenerator(),
+        sessionId: draft.sessionId,
+        planId: draft.planId,
+        songId: draft.songId,
+        songTitle: song.first.title,
+        position: nextPosition,
+        baseVersion: session.version,
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
+  Future<void> deleteSessionItem({
+    required PlanningWriteContext context,
+    required SessionItemDeleteDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    final session = detail.sessions.firstWhere(
+      (candidate) => candidate.id == draft.sessionId,
+    );
+    await _mutationStore.recordSessionItemDelete(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningSessionItemDeleteMutationDraft(
+        sessionItemId: draft.sessionItemId,
+        sessionId: draft.sessionId,
+        planId: draft.planId,
+        baseVersion: session.version,
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
+  Future<void> reorderSessionItems({
+    required PlanningWriteContext context,
+    required SessionItemReorderDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    final session = detail.sessions.firstWhere(
+      (candidate) => candidate.id == draft.sessionId,
+    );
+    await _mutationStore.recordSessionItemReorder(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningSessionItemReorderMutationDraft(
+        sessionId: draft.sessionId,
+        planId: draft.planId,
+        orderedSessionItemIds: draft.orderedSessionItemIds,
         baseVersion: session.version,
       ),
     );

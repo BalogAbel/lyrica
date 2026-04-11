@@ -369,6 +369,7 @@ class _FakePlanningMutationSyncController
   @override
   Future<void> retryMutation(
     ActivePlanningReadContext context, {
+    required String aggregateType,
     required String aggregateId,
   }) async {
     retriedAggregateIds.add(aggregateId);
@@ -412,6 +413,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -428,6 +430,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async => null;
 
@@ -462,6 +465,30 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {}
+
+  @override
   Future<void> recordSessionRename({
     required PlanningMutationContext context,
     required PlanningSessionRenameMutationDraft draft,
@@ -471,6 +498,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -478,6 +506,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,

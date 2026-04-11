@@ -10,6 +10,7 @@ import 'package:lyron_app/src/application/planning/planning_sync_controller.dart
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:path/path.dart' as p;
@@ -55,6 +56,11 @@ void main() {
       var service = PlanningWriteService(
         repository,
         mutationStore: mutationStore,
+        listVisibleSongs: ({required userId, required organizationId}) async =>
+            const [
+              SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+              SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+            ],
         activeContextReader: () async => context,
       );
 
@@ -80,6 +86,20 @@ void main() {
       );
       var detail = await repository.getPlanDetail(createdPlan.aggregateId);
       final createdSessionId = detail.sessions.single.id;
+      await service.createSession(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionCreateDraft(
+          planId: createdPlan.aggregateId,
+          name: 'Message',
+        ),
+      );
+      detail = await repository.getPlanDetail(createdPlan.aggregateId);
+      final secondSessionId = detail.sessions
+          .firstWhere((session) => session.id != createdSessionId)
+          .id;
 
       await service.renameSession(
         context: PlanningWriteContext(
@@ -92,13 +112,77 @@ void main() {
           name: 'Warm-Up Updated',
         ),
       );
+      await service.reorderSessions(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionReorderDraft(
+          planId: createdPlan.aggregateId,
+          orderedSessionIds: [secondSessionId, createdSessionId],
+        ),
+      );
+      await service.addSongSessionItem(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionItemCreateSongDraft(
+          sessionId: createdSessionId,
+          planId: createdPlan.aggregateId,
+          songId: 'song-1',
+        ),
+      );
+      await service.addSongSessionItem(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionItemCreateSongDraft(
+          sessionId: createdSessionId,
+          planId: createdPlan.aggregateId,
+          songId: 'song-2',
+        ),
+      );
+      detail = await repository.getPlanDetail(createdPlan.aggregateId);
+      final itemIds = detail.sessions
+          .firstWhere((session) => session.id == createdSessionId)
+          .items
+          .map((item) => item.id)
+          .toList(growable: false);
+      await service.reorderSessionItems(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionItemReorderDraft(
+          sessionId: createdSessionId,
+          planId: createdPlan.aggregateId,
+          orderedSessionItemIds: [itemIds[1], itemIds[0]],
+        ),
+      );
+      await service.deleteSessionItem(
+        context: PlanningWriteContext(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        ),
+        draft: SessionItemDeleteDraft(
+          sessionItemId: itemIds[0],
+          sessionId: createdSessionId,
+          planId: createdPlan.aggregateId,
+        ),
+      );
 
       expect((await repository.listPlans()).single.name, 'Weekend Service');
+      detail = await repository.getPlanDetail(createdPlan.aggregateId);
       expect(
-        (await repository.getPlanDetail(
-          createdPlan.aggregateId,
-        )).sessions.single.name,
-        'Warm-Up Updated',
+        detail.sessions.map((session) => session.id),
+        orderedEquals([secondSessionId, createdSessionId]),
+      );
+      expect(detail.sessions.last.name, 'Warm-Up Updated');
+      expect(
+        detail.sessions.last.items.map((item) => item.song.title),
+        orderedEquals(const ['Beta']),
       );
 
       await database.close();
@@ -118,7 +202,15 @@ void main() {
 
       detail = await repository.getPlanDetail(createdPlan.aggregateId);
       expect(detail.plan.slug, 'weekend-service');
-      expect(detail.sessions.single.name, 'Warm-Up Updated');
+      expect(
+        detail.sessions.map((session) => session.id),
+        orderedEquals([secondSessionId, createdSessionId]),
+      );
+      expect(detail.sessions.last.name, 'Warm-Up Updated');
+      expect(
+        detail.sessions.last.items.map((item) => item.song.title),
+        orderedEquals(const ['Beta']),
+      );
       expect(
         await mutationStore.hasUnsyncedMutations(userId: context.userId),
         isTrue,
@@ -139,7 +231,7 @@ void main() {
       expect(
         (await repository.getPlanDetail(
           createdPlan.aggregateId,
-        )).sessions.single.name,
+        )).sessions.last.name,
         'Warm-Up Updated',
       );
 

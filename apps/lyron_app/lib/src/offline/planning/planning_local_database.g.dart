@@ -2208,6 +2208,17 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _slugMeta = const VerificationMeta('slug');
   @override
   late final GeneratedColumn<String> slug = GeneratedColumn<String>(
@@ -2259,6 +2270,38 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _songIdMeta = const VerificationMeta('songId');
+  @override
+  late final GeneratedColumn<String> songId = GeneratedColumn<String>(
+    'song_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _songTitleMeta = const VerificationMeta(
+    'songTitle',
+  );
+  @override
+  late final GeneratedColumn<String> songTitle = GeneratedColumn<String>(
+    'song_title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _orderedSiblingIdsMeta = const VerificationMeta(
+    'orderedSiblingIds',
+  );
+  @override
+  late final GeneratedColumn<String> orderedSiblingIds =
+      GeneratedColumn<String>(
+        'ordered_sibling_ids',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _baseVersionMeta = const VerificationMeta(
     'baseVersion',
   );
@@ -2323,11 +2366,15 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     mutationKind,
     syncStatus,
     planId,
+    sessionId,
     slug,
     name,
     description,
     scheduledFor,
     position,
+    songId,
+    songTitle,
+    orderedSiblingIds,
     baseVersion,
     errorCode,
     errorMessage,
@@ -2412,6 +2459,12 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         planId.isAcceptableOrUnknown(data['plan_id']!, _planIdMeta),
       );
     }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    }
     if (data.containsKey('slug')) {
       context.handle(
         _slugMeta,
@@ -2446,6 +2499,27 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
       context.handle(
         _positionMeta,
         position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    if (data.containsKey('song_id')) {
+      context.handle(
+        _songIdMeta,
+        songId.isAcceptableOrUnknown(data['song_id']!, _songIdMeta),
+      );
+    }
+    if (data.containsKey('song_title')) {
+      context.handle(
+        _songTitleMeta,
+        songTitle.isAcceptableOrUnknown(data['song_title']!, _songTitleMeta),
+      );
+    }
+    if (data.containsKey('ordered_sibling_ids')) {
+      context.handle(
+        _orderedSiblingIdsMeta,
+        orderedSiblingIds.isAcceptableOrUnknown(
+          data['ordered_sibling_ids']!,
+          _orderedSiblingIdsMeta,
+        ),
       );
     }
     if (data.containsKey('base_version')) {
@@ -2530,6 +2604,10 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.string,
         data['${effectivePrefix}plan_id'],
       ),
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      ),
       slug: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}slug'],
@@ -2549,6 +2627,18 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
       position: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}position'],
+      ),
+      songId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}song_id'],
+      ),
+      songTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}song_title'],
+      ),
+      orderedSiblingIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ordered_sibling_ids'],
       ),
       baseVersion: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -2588,11 +2678,15 @@ class CachedPlanningMutation extends DataClass
   final String mutationKind;
   final String syncStatus;
   final String? planId;
+  final String? sessionId;
   final String? slug;
   final String? name;
   final String? description;
   final DateTime? scheduledFor;
   final int? position;
+  final String? songId;
+  final String? songTitle;
+  final String? orderedSiblingIds;
   final int? baseVersion;
   final String? errorCode;
   final String? errorMessage;
@@ -2606,11 +2700,15 @@ class CachedPlanningMutation extends DataClass
     required this.mutationKind,
     required this.syncStatus,
     this.planId,
+    this.sessionId,
     this.slug,
     this.name,
     this.description,
     this.scheduledFor,
     this.position,
+    this.songId,
+    this.songTitle,
+    this.orderedSiblingIds,
     this.baseVersion,
     this.errorCode,
     this.errorMessage,
@@ -2629,6 +2727,9 @@ class CachedPlanningMutation extends DataClass
     if (!nullToAbsent || planId != null) {
       map['plan_id'] = Variable<String>(planId);
     }
+    if (!nullToAbsent || sessionId != null) {
+      map['session_id'] = Variable<String>(sessionId);
+    }
     if (!nullToAbsent || slug != null) {
       map['slug'] = Variable<String>(slug);
     }
@@ -2643,6 +2744,15 @@ class CachedPlanningMutation extends DataClass
     }
     if (!nullToAbsent || position != null) {
       map['position'] = Variable<int>(position);
+    }
+    if (!nullToAbsent || songId != null) {
+      map['song_id'] = Variable<String>(songId);
+    }
+    if (!nullToAbsent || songTitle != null) {
+      map['song_title'] = Variable<String>(songTitle);
+    }
+    if (!nullToAbsent || orderedSiblingIds != null) {
+      map['ordered_sibling_ids'] = Variable<String>(orderedSiblingIds);
     }
     if (!nullToAbsent || baseVersion != null) {
       map['base_version'] = Variable<int>(baseVersion);
@@ -2669,6 +2779,9 @@ class CachedPlanningMutation extends DataClass
       planId: planId == null && nullToAbsent
           ? const Value.absent()
           : Value(planId),
+      sessionId: sessionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sessionId),
       slug: slug == null && nullToAbsent ? const Value.absent() : Value(slug),
       name: name == null && nullToAbsent ? const Value.absent() : Value(name),
       description: description == null && nullToAbsent
@@ -2680,6 +2793,15 @@ class CachedPlanningMutation extends DataClass
       position: position == null && nullToAbsent
           ? const Value.absent()
           : Value(position),
+      songId: songId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(songId),
+      songTitle: songTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(songTitle),
+      orderedSiblingIds: orderedSiblingIds == null && nullToAbsent
+          ? const Value.absent()
+          : Value(orderedSiblingIds),
       baseVersion: baseVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(baseVersion),
@@ -2707,11 +2829,17 @@ class CachedPlanningMutation extends DataClass
       mutationKind: serializer.fromJson<String>(json['mutationKind']),
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
       planId: serializer.fromJson<String?>(json['planId']),
+      sessionId: serializer.fromJson<String?>(json['sessionId']),
       slug: serializer.fromJson<String?>(json['slug']),
       name: serializer.fromJson<String?>(json['name']),
       description: serializer.fromJson<String?>(json['description']),
       scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
       position: serializer.fromJson<int?>(json['position']),
+      songId: serializer.fromJson<String?>(json['songId']),
+      songTitle: serializer.fromJson<String?>(json['songTitle']),
+      orderedSiblingIds: serializer.fromJson<String?>(
+        json['orderedSiblingIds'],
+      ),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
       errorCode: serializer.fromJson<String?>(json['errorCode']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
@@ -2730,11 +2858,15 @@ class CachedPlanningMutation extends DataClass
       'mutationKind': serializer.toJson<String>(mutationKind),
       'syncStatus': serializer.toJson<String>(syncStatus),
       'planId': serializer.toJson<String?>(planId),
+      'sessionId': serializer.toJson<String?>(sessionId),
       'slug': serializer.toJson<String?>(slug),
       'name': serializer.toJson<String?>(name),
       'description': serializer.toJson<String?>(description),
       'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
       'position': serializer.toJson<int?>(position),
+      'songId': serializer.toJson<String?>(songId),
+      'songTitle': serializer.toJson<String?>(songTitle),
+      'orderedSiblingIds': serializer.toJson<String?>(orderedSiblingIds),
       'baseVersion': serializer.toJson<int?>(baseVersion),
       'errorCode': serializer.toJson<String?>(errorCode),
       'errorMessage': serializer.toJson<String?>(errorMessage),
@@ -2751,11 +2883,15 @@ class CachedPlanningMutation extends DataClass
     String? mutationKind,
     String? syncStatus,
     Value<String?> planId = const Value.absent(),
+    Value<String?> sessionId = const Value.absent(),
     Value<String?> slug = const Value.absent(),
     Value<String?> name = const Value.absent(),
     Value<String?> description = const Value.absent(),
     Value<DateTime?> scheduledFor = const Value.absent(),
     Value<int?> position = const Value.absent(),
+    Value<String?> songId = const Value.absent(),
+    Value<String?> songTitle = const Value.absent(),
+    Value<String?> orderedSiblingIds = const Value.absent(),
     Value<int?> baseVersion = const Value.absent(),
     Value<String?> errorCode = const Value.absent(),
     Value<String?> errorMessage = const Value.absent(),
@@ -2769,11 +2905,17 @@ class CachedPlanningMutation extends DataClass
     mutationKind: mutationKind ?? this.mutationKind,
     syncStatus: syncStatus ?? this.syncStatus,
     planId: planId.present ? planId.value : this.planId,
+    sessionId: sessionId.present ? sessionId.value : this.sessionId,
     slug: slug.present ? slug.value : this.slug,
     name: name.present ? name.value : this.name,
     description: description.present ? description.value : this.description,
     scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
     position: position.present ? position.value : this.position,
+    songId: songId.present ? songId.value : this.songId,
+    songTitle: songTitle.present ? songTitle.value : this.songTitle,
+    orderedSiblingIds: orderedSiblingIds.present
+        ? orderedSiblingIds.value
+        : this.orderedSiblingIds,
     baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
     errorCode: errorCode.present ? errorCode.value : this.errorCode,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
@@ -2801,6 +2943,7 @@ class CachedPlanningMutation extends DataClass
           ? data.syncStatus.value
           : this.syncStatus,
       planId: data.planId.present ? data.planId.value : this.planId,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
       slug: data.slug.present ? data.slug.value : this.slug,
       name: data.name.present ? data.name.value : this.name,
       description: data.description.present
@@ -2810,6 +2953,11 @@ class CachedPlanningMutation extends DataClass
           ? data.scheduledFor.value
           : this.scheduledFor,
       position: data.position.present ? data.position.value : this.position,
+      songId: data.songId.present ? data.songId.value : this.songId,
+      songTitle: data.songTitle.present ? data.songTitle.value : this.songTitle,
+      orderedSiblingIds: data.orderedSiblingIds.present
+          ? data.orderedSiblingIds.value
+          : this.orderedSiblingIds,
       baseVersion: data.baseVersion.present
           ? data.baseVersion.value
           : this.baseVersion,
@@ -2832,11 +2980,15 @@ class CachedPlanningMutation extends DataClass
           ..write('mutationKind: $mutationKind, ')
           ..write('syncStatus: $syncStatus, ')
           ..write('planId: $planId, ')
+          ..write('sessionId: $sessionId, ')
           ..write('slug: $slug, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
           ..write('position: $position, ')
+          ..write('songId: $songId, ')
+          ..write('songTitle: $songTitle, ')
+          ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
@@ -2847,7 +2999,7 @@ class CachedPlanningMutation extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     userId,
     organizationId,
     aggregateType,
@@ -2855,17 +3007,21 @@ class CachedPlanningMutation extends DataClass
     mutationKind,
     syncStatus,
     planId,
+    sessionId,
     slug,
     name,
     description,
     scheduledFor,
     position,
+    songId,
+    songTitle,
+    orderedSiblingIds,
     baseVersion,
     errorCode,
     errorMessage,
     orderKey,
     updatedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2877,11 +3033,15 @@ class CachedPlanningMutation extends DataClass
           other.mutationKind == this.mutationKind &&
           other.syncStatus == this.syncStatus &&
           other.planId == this.planId &&
+          other.sessionId == this.sessionId &&
           other.slug == this.slug &&
           other.name == this.name &&
           other.description == this.description &&
           other.scheduledFor == this.scheduledFor &&
           other.position == this.position &&
+          other.songId == this.songId &&
+          other.songTitle == this.songTitle &&
+          other.orderedSiblingIds == this.orderedSiblingIds &&
           other.baseVersion == this.baseVersion &&
           other.errorCode == this.errorCode &&
           other.errorMessage == this.errorMessage &&
@@ -2898,11 +3058,15 @@ class CachedPlanningMutationsCompanion
   final Value<String> mutationKind;
   final Value<String> syncStatus;
   final Value<String?> planId;
+  final Value<String?> sessionId;
   final Value<String?> slug;
   final Value<String?> name;
   final Value<String?> description;
   final Value<DateTime?> scheduledFor;
   final Value<int?> position;
+  final Value<String?> songId;
+  final Value<String?> songTitle;
+  final Value<String?> orderedSiblingIds;
   final Value<int?> baseVersion;
   final Value<String?> errorCode;
   final Value<String?> errorMessage;
@@ -2917,11 +3081,15 @@ class CachedPlanningMutationsCompanion
     this.mutationKind = const Value.absent(),
     this.syncStatus = const Value.absent(),
     this.planId = const Value.absent(),
+    this.sessionId = const Value.absent(),
     this.slug = const Value.absent(),
     this.name = const Value.absent(),
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
     this.position = const Value.absent(),
+    this.songId = const Value.absent(),
+    this.songTitle = const Value.absent(),
+    this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
@@ -2937,11 +3105,15 @@ class CachedPlanningMutationsCompanion
     required String mutationKind,
     required String syncStatus,
     this.planId = const Value.absent(),
+    this.sessionId = const Value.absent(),
     this.slug = const Value.absent(),
     this.name = const Value.absent(),
     this.description = const Value.absent(),
     this.scheduledFor = const Value.absent(),
     this.position = const Value.absent(),
+    this.songId = const Value.absent(),
+    this.songTitle = const Value.absent(),
+    this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
@@ -2964,11 +3136,15 @@ class CachedPlanningMutationsCompanion
     Expression<String>? mutationKind,
     Expression<String>? syncStatus,
     Expression<String>? planId,
+    Expression<String>? sessionId,
     Expression<String>? slug,
     Expression<String>? name,
     Expression<String>? description,
     Expression<DateTime>? scheduledFor,
     Expression<int>? position,
+    Expression<String>? songId,
+    Expression<String>? songTitle,
+    Expression<String>? orderedSiblingIds,
     Expression<int>? baseVersion,
     Expression<String>? errorCode,
     Expression<String>? errorMessage,
@@ -2984,11 +3160,15 @@ class CachedPlanningMutationsCompanion
       if (mutationKind != null) 'mutation_kind': mutationKind,
       if (syncStatus != null) 'sync_status': syncStatus,
       if (planId != null) 'plan_id': planId,
+      if (sessionId != null) 'session_id': sessionId,
       if (slug != null) 'slug': slug,
       if (name != null) 'name': name,
       if (description != null) 'description': description,
       if (scheduledFor != null) 'scheduled_for': scheduledFor,
       if (position != null) 'position': position,
+      if (songId != null) 'song_id': songId,
+      if (songTitle != null) 'song_title': songTitle,
+      if (orderedSiblingIds != null) 'ordered_sibling_ids': orderedSiblingIds,
       if (baseVersion != null) 'base_version': baseVersion,
       if (errorCode != null) 'error_code': errorCode,
       if (errorMessage != null) 'error_message': errorMessage,
@@ -3006,11 +3186,15 @@ class CachedPlanningMutationsCompanion
     Value<String>? mutationKind,
     Value<String>? syncStatus,
     Value<String?>? planId,
+    Value<String?>? sessionId,
     Value<String?>? slug,
     Value<String?>? name,
     Value<String?>? description,
     Value<DateTime?>? scheduledFor,
     Value<int?>? position,
+    Value<String?>? songId,
+    Value<String?>? songTitle,
+    Value<String?>? orderedSiblingIds,
     Value<int?>? baseVersion,
     Value<String?>? errorCode,
     Value<String?>? errorMessage,
@@ -3026,11 +3210,15 @@ class CachedPlanningMutationsCompanion
       mutationKind: mutationKind ?? this.mutationKind,
       syncStatus: syncStatus ?? this.syncStatus,
       planId: planId ?? this.planId,
+      sessionId: sessionId ?? this.sessionId,
       slug: slug ?? this.slug,
       name: name ?? this.name,
       description: description ?? this.description,
       scheduledFor: scheduledFor ?? this.scheduledFor,
       position: position ?? this.position,
+      songId: songId ?? this.songId,
+      songTitle: songTitle ?? this.songTitle,
+      orderedSiblingIds: orderedSiblingIds ?? this.orderedSiblingIds,
       baseVersion: baseVersion ?? this.baseVersion,
       errorCode: errorCode ?? this.errorCode,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -3064,6 +3252,9 @@ class CachedPlanningMutationsCompanion
     if (planId.present) {
       map['plan_id'] = Variable<String>(planId.value);
     }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
     if (slug.present) {
       map['slug'] = Variable<String>(slug.value);
     }
@@ -3078,6 +3269,15 @@ class CachedPlanningMutationsCompanion
     }
     if (position.present) {
       map['position'] = Variable<int>(position.value);
+    }
+    if (songId.present) {
+      map['song_id'] = Variable<String>(songId.value);
+    }
+    if (songTitle.present) {
+      map['song_title'] = Variable<String>(songTitle.value);
+    }
+    if (orderedSiblingIds.present) {
+      map['ordered_sibling_ids'] = Variable<String>(orderedSiblingIds.value);
     }
     if (baseVersion.present) {
       map['base_version'] = Variable<int>(baseVersion.value);
@@ -3110,11 +3310,15 @@ class CachedPlanningMutationsCompanion
           ..write('mutationKind: $mutationKind, ')
           ..write('syncStatus: $syncStatus, ')
           ..write('planId: $planId, ')
+          ..write('sessionId: $sessionId, ')
           ..write('slug: $slug, ')
           ..write('name: $name, ')
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
           ..write('position: $position, ')
+          ..write('songId: $songId, ')
+          ..write('songTitle: $songTitle, ')
+          ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
@@ -4290,11 +4494,15 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       required String mutationKind,
       required String syncStatus,
       Value<String?> planId,
+      Value<String?> sessionId,
       Value<String?> slug,
       Value<String?> name,
       Value<String?> description,
       Value<DateTime?> scheduledFor,
       Value<int?> position,
+      Value<String?> songId,
+      Value<String?> songTitle,
+      Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
       Value<String?> errorCode,
       Value<String?> errorMessage,
@@ -4311,11 +4519,15 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<String> mutationKind,
       Value<String> syncStatus,
       Value<String?> planId,
+      Value<String?> sessionId,
       Value<String?> slug,
       Value<String?> name,
       Value<String?> description,
       Value<DateTime?> scheduledFor,
       Value<int?> position,
+      Value<String?> songId,
+      Value<String?> songTitle,
+      Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
       Value<String?> errorCode,
       Value<String?> errorMessage,
@@ -4368,6 +4580,11 @@ class $$CachedPlanningMutationsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get slug => $composableBuilder(
     column: $table.slug,
     builder: (column) => ColumnFilters(column),
@@ -4390,6 +4607,21 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<int> get position => $composableBuilder(
     column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get songId => $composableBuilder(
+    column: $table.songId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get songTitle => $composableBuilder(
+    column: $table.songTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orderedSiblingIds => $composableBuilder(
+    column: $table.orderedSiblingIds,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4463,6 +4695,11 @@ class $$CachedPlanningMutationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sessionId => $composableBuilder(
+    column: $table.sessionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get slug => $composableBuilder(
     column: $table.slug,
     builder: (column) => ColumnOrderings(column),
@@ -4485,6 +4722,21 @@ class $$CachedPlanningMutationsTableOrderingComposer
 
   ColumnOrderings<int> get position => $composableBuilder(
     column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get songId => $composableBuilder(
+    column: $table.songId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get songTitle => $composableBuilder(
+    column: $table.songTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get orderedSiblingIds => $composableBuilder(
+    column: $table.orderedSiblingIds,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4554,6 +4806,9 @@ class $$CachedPlanningMutationsTableAnnotationComposer
   GeneratedColumn<String> get planId =>
       $composableBuilder(column: $table.planId, builder: (column) => column);
 
+  GeneratedColumn<String> get sessionId =>
+      $composableBuilder(column: $table.sessionId, builder: (column) => column);
+
   GeneratedColumn<String> get slug =>
       $composableBuilder(column: $table.slug, builder: (column) => column);
 
@@ -4572,6 +4827,17 @@ class $$CachedPlanningMutationsTableAnnotationComposer
 
   GeneratedColumn<int> get position =>
       $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get songId =>
+      $composableBuilder(column: $table.songId, builder: (column) => column);
+
+  GeneratedColumn<String> get songTitle =>
+      $composableBuilder(column: $table.songTitle, builder: (column) => column);
+
+  GeneratedColumn<String> get orderedSiblingIds => $composableBuilder(
+    column: $table.orderedSiblingIds,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get baseVersion => $composableBuilder(
     column: $table.baseVersion,
@@ -4646,11 +4912,15 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String> mutationKind = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
                 Value<String?> planId = const Value.absent(),
+                Value<String?> sessionId = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 Value<int?> position = const Value.absent(),
+                Value<String?> songId = const Value.absent(),
+                Value<String?> songTitle = const Value.absent(),
+                Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
@@ -4665,11 +4935,15 @@ class $$CachedPlanningMutationsTableTableManager
                 mutationKind: mutationKind,
                 syncStatus: syncStatus,
                 planId: planId,
+                sessionId: sessionId,
                 slug: slug,
                 name: name,
                 description: description,
                 scheduledFor: scheduledFor,
                 position: position,
+                songId: songId,
+                songTitle: songTitle,
+                orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -4686,11 +4960,15 @@ class $$CachedPlanningMutationsTableTableManager
                 required String mutationKind,
                 required String syncStatus,
                 Value<String?> planId = const Value.absent(),
+                Value<String?> sessionId = const Value.absent(),
                 Value<String?> slug = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> description = const Value.absent(),
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 Value<int?> position = const Value.absent(),
+                Value<String?> songId = const Value.absent(),
+                Value<String?> songTitle = const Value.absent(),
+                Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
@@ -4705,11 +4983,15 @@ class $$CachedPlanningMutationsTableTableManager
                 mutationKind: mutationKind,
                 syncStatus: syncStatus,
                 planId: planId,
+                sessionId: sessionId,
                 slug: slug,
                 name: name,
                 description: description,
                 scheduledFor: scheduledFor,
                 position: position,
+                songId: songId,
+                songTitle: songTitle,
+                orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
                 errorCode: errorCode,
                 errorMessage: errorMessage,

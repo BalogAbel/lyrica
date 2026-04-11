@@ -64,11 +64,15 @@ class CachedPlanningMutations extends Table {
   TextColumn get mutationKind => text()();
   TextColumn get syncStatus => text()();
   TextColumn get planId => text().nullable()();
+  TextColumn get sessionId => text().nullable()();
   TextColumn get slug => text().nullable()();
   TextColumn get name => text().nullable()();
   TextColumn get description => text().nullable()();
   DateTimeColumn get scheduledFor => dateTime().nullable()();
   IntColumn get position => integer().nullable()();
+  TextColumn get songId => text().nullable()();
+  TextColumn get songTitle => text().nullable()();
+  TextColumn get orderedSiblingIds => text().nullable()();
   IntColumn get baseVersion => integer().nullable()();
   TextColumn get errorCode => text().nullable()();
   TextColumn get errorMessage => text().nullable()();

@@ -2,7 +2,7 @@
 
 Lyron Chords is a multi-tenant worship and music collaboration platform with a Flutter client, a Supabase backend, and a local-first operating model for teams that must keep songs, plans, and sessions usable during poor connectivity.
 
-The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads, local-first song CRUD, and a local-first authenticated planning flow for plan create/edit plus session create/rename/delete within the active organization. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization, optimistic-concurrency, and canonical write-acceptance boundary for both song and planning flows.
+The current executable product slices are a tablet-first ChordPro song reader with authenticated local-first song reads, local-first song CRUD, and a local-first authenticated planning flow for plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder within the active organization. Flutter still parses raw ChordPro and renders the reader locally; the backend remains the authorization, optimistic-concurrency, and canonical write-acceptance boundary for both song and planning flows.
 
 This repository is the canonical source of truth for:
 
@@ -70,6 +70,8 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 - [First executable plan and session slice plan](docs/plans/2026-03-31-first-executable-plan-and-session-slice.md)
 - [Local-first planning read spec](docs/specs/2026-04-03-local-first-planning-read.md)
 - [Local-first planning read plan](docs/plans/2026-04-03-local-first-planning-read.md)
+- [Offline-first planning session and session-item edit spec](docs/specs/2026-04-11-offline-first-planning-session-and-session-item-edit.md)
+- [Local-first planning session and session-item edit plan](docs/plans/2026-04-11-local-first-planning-session-and-session-item-edit.md)
 
 ## Development Workflow
 
@@ -215,8 +217,9 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 
 - The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
 - The current authenticated slice reads the active song catalog from a local Drift-backed cache for the current authenticated user and active organization. Supabase is used to verify session state and refresh the full visible catalog.
-- The current planning slice uses a normalized Drift projection for reads plus a persisted planning mutation store for local plan create/edit and session create/rename/delete
+- The current planning slice uses a normalized Drift projection for reads plus a persisted planning mutation store for local plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
 - Planning reads and writes are synchronized for the current active organization only, while write authorization and optimistic concurrency remain backend-owned RBAC decisions
+- Session reorder uses plan-level optimistic concurrency, while song-backed session-item add/delete/reorder use session-level optimistic concurrency and backend-owned reconciliation when the immediate refresh fails
 - While the signed-in song library subtree is mounted and the app stays foregrounded, the catalog controller polls every five minutes and uses the same guarded full-refresh path as the manual song-list refresh action.
 - On web, that cache runs through Drift wasm and the repository-versioned `apps/lyron_app/web/sqlite3.wasm` runtime asset.
 - Hard offline authenticated relaunch is a native-first guarantee for this slice. The browser path keeps a best-effort local cache, but web session persistence is not treated as equivalent to native offline relaunch.

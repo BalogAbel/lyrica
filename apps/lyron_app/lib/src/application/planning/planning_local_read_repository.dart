@@ -2,7 +2,9 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
 class ActivePlanningReadContext {
@@ -147,6 +149,10 @@ class PlanningLocalReadRepository implements PlanningRepository {
         case PlanningMutationKind.sessionCreate:
         case PlanningMutationKind.sessionRename:
         case PlanningMutationKind.sessionDelete:
+        case PlanningMutationKind.sessionReorder:
+        case PlanningMutationKind.sessionItemCreateSong:
+        case PlanningMutationKind.sessionItemDelete:
+        case PlanningMutationKind.sessionItemReorder:
           break;
       }
     }
@@ -178,6 +184,10 @@ class PlanningLocalReadRepository implements PlanningRepository {
     final sessionsById = {
       for (final session in baseDetail?.sessions ?? const <SessionSummary>[])
         session.id: session,
+    };
+    final itemsBySessionId = {
+      for (final session in baseDetail?.sessions ?? const <SessionSummary>[])
+        session.id: session.items.toList(growable: true),
     };
 
     for (final mutation in mutations) {
@@ -230,6 +240,84 @@ class PlanningLocalReadRepository implements PlanningRepository {
             );
           case PlanningMutationKind.sessionDelete:
             sessionsById.remove(mutation.aggregateId);
+            itemsBySessionId.remove(mutation.aggregateId);
+          case PlanningMutationKind.sessionReorder:
+            final orderedIds = mutation.orderedSiblingIds;
+            if (orderedIds == null) {
+              continue;
+            }
+            for (var index = 0; index < orderedIds.length; index += 1) {
+              final sessionId = orderedIds[index];
+              final existing = sessionsById[sessionId];
+              if (existing == null) {
+                continue;
+              }
+              sessionsById[sessionId] = SessionSummary(
+                id: existing.id,
+                slug: existing.slug,
+                name: existing.name,
+                position: index + 1,
+                version: existing.version,
+                items: itemsBySessionId[sessionId] ?? existing.items,
+              );
+            }
+          case PlanningMutationKind.sessionItemCreateSong:
+            final sessionId = mutation.sessionId;
+            if (sessionId == null) {
+              continue;
+            }
+            final sessionItems = itemsBySessionId.putIfAbsent(
+              sessionId,
+              () => <SessionItemSummary>[],
+            );
+            sessionItems.removeWhere((item) => item.id == mutation.aggregateId);
+            sessionItems.add(
+              SessionItemSummary(
+                id: mutation.aggregateId,
+                position: mutation.position ?? (sessionItems.length + 1),
+                song: SongSummary(
+                  id: mutation.songId ?? '',
+                  title: mutation.songTitle ?? '',
+                ),
+              ),
+            );
+          case PlanningMutationKind.sessionItemDelete:
+            final sessionId = mutation.sessionId;
+            if (sessionId == null) {
+              continue;
+            }
+            final sessionItems = itemsBySessionId[sessionId];
+            sessionItems?.removeWhere(
+              (item) => item.id == mutation.aggregateId,
+            );
+          case PlanningMutationKind.sessionItemReorder:
+            final sessionId = mutation.sessionId;
+            final orderedIds = mutation.orderedSiblingIds;
+            final existingItems = sessionId == null
+                ? null
+                : itemsBySessionId[sessionId];
+            if (sessionId == null ||
+                orderedIds == null ||
+                existingItems == null) {
+              continue;
+            }
+            final itemsById = {for (final item in existingItems) item.id: item};
+            final reordered = <SessionItemSummary>[];
+            for (var index = 0; index < orderedIds.length; index += 1) {
+              final existing = itemsById[orderedIds[index]];
+              if (existing == null) {
+                continue;
+              }
+              reordered.add(
+                SessionItemSummary(
+                  id: existing.id,
+                  slug: existing.slug,
+                  position: index + 1,
+                  song: existing.song,
+                ),
+              );
+            }
+            itemsBySessionId[sessionId] = reordered;
           case PlanningMutationKind.planCreate:
           case PlanningMutationKind.planEdit:
             break;
@@ -241,7 +329,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
       return null;
     }
 
-    final sessions = sessionsById.values.toList(growable: false)
+    final orderedSessions = sessionsById.values.toList(growable: false)
       ..sort((left, right) {
         final positionComparison = left.position.compareTo(right.position);
         if (positionComparison != 0) {
@@ -249,6 +337,30 @@ class PlanningLocalReadRepository implements PlanningRepository {
         }
         return left.id.compareTo(right.id);
       });
+    final sessions = orderedSessions
+        .map((session) {
+          final sessionItems =
+              (itemsBySessionId[session.id] ?? session.items).toList(
+                growable: false,
+              )..sort((left, right) {
+                final positionComparison = left.position.compareTo(
+                  right.position,
+                );
+                if (positionComparison != 0) {
+                  return positionComparison;
+                }
+                return left.id.compareTo(right.id);
+              });
+          return SessionSummary(
+            id: session.id,
+            slug: session.slug,
+            name: session.name,
+            position: session.position,
+            version: session.version,
+            items: sessionItems,
+          );
+        })
+        .toList(growable: false);
 
     return PlanDetail(plan: plan, sessions: sessions);
   }

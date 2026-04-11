@@ -8,7 +8,7 @@ Accepted
 
 The local-first planning read slice already established a normalized Drift-backed planning projection for the active authenticated user and organization boundary.
 
-The next planning slice adds local plan create/edit and session create/rename/delete. That introduces two competing pressures:
+The next planning slices add local plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder. That introduces two competing pressures:
 
 - the UI must show the user's latest local planning intent immediately, even when offline
 - backend authorization, canonical slug acceptance, and optimistic-concurrency checks must remain backend-owned
@@ -20,10 +20,10 @@ If the planning write slice reused projection rows as the only local write carri
 Keep planning reads and planning writes as separate local data sets:
 
 - the normalized Drift planning projection remains the repository-owned read model
-- a separate persisted planning mutation store records local plan create/edit and session create/rename/delete intent
+- a separate persisted planning mutation store records local plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder intent
 - the planning repository/application layer exposes merged local-first planning views by overlaying pending mutations on top of the last synchronized projection
 - failed planning mutations move out of the normal read overlay and remain visible through explicit mutation-status UI
-- backend write RPCs remain the only authority for authorization, canonical slug acceptance, optimistic concurrency, and empty-session delete enforcement
+- backend write RPCs remain the only authority for authorization, canonical slug acceptance, optimistic concurrency, duplicate-song enforcement, song-visibility checks, and empty-session delete enforcement
 
 ## Consequences
 

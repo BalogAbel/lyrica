@@ -51,6 +51,7 @@ class PlanningMutationSyncController {
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: mutation.kind.aggregateType,
           aggregateId: mutation.aggregateId,
         );
       } on PlanningMutationSyncException catch (error) {
@@ -70,6 +71,7 @@ class PlanningMutationSyncController {
         await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
+          aggregateType: mutation.kind.aggregateType,
           aggregateId: mutation.aggregateId,
           syncStatus: syncStatus,
           errorCode: error.code,
@@ -84,11 +86,13 @@ class PlanningMutationSyncController {
 
   Future<void> retryMutation(
     ActivePlanningReadContext context, {
+    required String aggregateType,
     required String aggregateId,
   }) async {
     await _mutationStore().retryMutation(
       userId: context.userId,
       organizationId: context.organizationId,
+      aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
     await syncPendingMutations(context);
