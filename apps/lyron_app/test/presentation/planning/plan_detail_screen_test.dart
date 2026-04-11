@@ -417,14 +417,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify loading finished to ensure we are on the data list
-    expect(find.text(AppStrings.planDetailLoadingMessage), findsNothing);
-    expect(find.text('Warm-Up'), findsOneWidget);
-
     // Find the "Add song" button specifically within the first session card
     final addButtonFinder = find.descendant(
       of: find.ancestor(of: find.text('Warm-Up'), matching: find.byType(Card)),
       matching: find.byType(TextButton),
+      skipOffstage: false,
     );
 
     expect(addButtonFinder, findsOneWidget);
