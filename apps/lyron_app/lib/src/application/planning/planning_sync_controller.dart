@@ -34,6 +34,7 @@ class PlanningSyncController extends ChangeNotifier {
   String? _lastAuthenticatedUserId;
   int _refreshGeneration = 0;
   int _authGeneration = 0;
+  int _boundaryGeneration = 0;
   Future<void>? _refreshFuture;
   int? _refreshFutureGeneration;
   bool _refreshQueued = false;
@@ -45,6 +46,7 @@ class PlanningSyncController extends ChangeNotifier {
     ActivePlanningReadContext? context, {
     bool refresh = true,
   }) async {
+    final boundaryGeneration = _advanceBoundaryGeneration();
     final session = _authSessionReader();
     if (session == null || context == null) {
       _invalidateRefreshGeneration();
@@ -69,18 +71,28 @@ class PlanningSyncController extends ChangeNotifier {
     if (!sameBoundary) {
       _invalidateRefreshGeneration();
       if (previousUserId != null && previousOrganizationId != null) {
-        await _localStore().deletePlanningData(
-          userId: previousUserId,
-          organizationId: previousOrganizationId,
-          shouldContinue: () => !_disposed,
-        );
+        try {
+          await _localStore().deletePlanningData(
+            userId: previousUserId,
+            organizationId: previousOrganizationId,
+            shouldContinue: () => !_isStaleBoundary(boundaryGeneration),
+          );
+        } on PlanningProjectionAbortedException {
+          return;
+        }
       }
+    }
+    if (_isStaleBoundary(boundaryGeneration)) {
+      return;
     }
 
     final hasProjection = await _localStore().hasProjection(
       userId: context.userId,
       organizationId: context.organizationId,
     );
+    if (_isStaleBoundary(boundaryGeneration)) {
+      return;
+    }
     _lastAuthenticatedUserId = context.userId;
 
     _setState(
@@ -199,6 +211,7 @@ class PlanningSyncController extends ChangeNotifier {
 
   Future<void> handleExplicitSignOut() async {
     final generation = _advanceAuthGeneration();
+    _advanceBoundaryGeneration();
     final userId =
         _state.userId ??
         _authSessionReader()?.userId ??
@@ -230,6 +243,7 @@ class PlanningSyncController extends ChangeNotifier {
 
   Future<void> handleSessionExpired() async {
     final generation = _advanceAuthGeneration();
+    _advanceBoundaryGeneration();
     final userId =
         _state.userId ??
         _authSessionReader()?.userId ??
@@ -330,6 +344,15 @@ class PlanningSyncController extends ChangeNotifier {
     return _authGeneration;
   }
 
+  int _advanceBoundaryGeneration() {
+    _boundaryGeneration += 1;
+    return _boundaryGeneration;
+  }
+
+  bool _isStaleBoundary(int generation) {
+    return _disposed || generation != _boundaryGeneration;
+  }
+
   void _setState(PlanningSyncState nextState) {
     _state = nextState;
     notifyListeners();
@@ -339,6 +362,7 @@ class PlanningSyncController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _invalidateRefreshGeneration();
+    _advanceBoundaryGeneration();
     super.dispose();
   }
 }
