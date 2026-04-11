@@ -264,6 +264,14 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   Future<void> deletePlanningDataForUser({required String userId}) async {}
 
   @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<bool> hasProjection({
     required String userId,
     required String organizationId,
@@ -326,6 +334,22 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
     required String userId,
     required String organizationId,
   }) async => const [];
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {}
 
   @override
   Future<int> countSongReferences({

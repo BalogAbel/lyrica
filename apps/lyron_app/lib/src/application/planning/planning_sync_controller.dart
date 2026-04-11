@@ -94,19 +94,21 @@ class PlanningSyncController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshPlanning() async {
+  Future<bool> refreshPlanning() async {
     final inFlightRefresh = _refreshFuture;
     if (inFlightRefresh != null) {
       if (_refreshFutureGeneration != _refreshGeneration) {
         _refreshQueued = true;
       }
-      return inFlightRefresh;
+      await inFlightRefresh;
+      return _state.refreshStatus == PlanningRefreshStatus.idle;
     }
 
     final refreshFuture = _drainRefreshQueue();
     _refreshFuture = refreshFuture;
     try {
       await refreshFuture;
+      return _state.refreshStatus == PlanningRefreshStatus.idle;
     } finally {
       if (identical(_refreshFuture, refreshFuture)) {
         _refreshFuture = null;
@@ -209,13 +211,21 @@ class PlanningSyncController extends ChangeNotifier {
     _lastAuthenticatedUserId = null;
   }
 
-  void handleSessionExpired() {
+  Future<void> handleSessionExpired() async {
+    final userId =
+        _state.userId ??
+        _authSessionReader()?.userId ??
+        _lastAuthenticatedUserId;
     _invalidateRefreshGeneration();
     _setState(
       const PlanningSyncState.initial().copyWith(
         accessStatus: PlanningAccessStatus.signedOut,
       ),
     );
+    if (userId != null) {
+      await _localStore().deletePlanningDataForUser(userId: userId);
+    }
+    _lastAuthenticatedUserId = null;
   }
 
   Future<void> _replaceProjection({

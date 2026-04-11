@@ -612,7 +612,8 @@ class _RecordingPlanningMutationSyncController
     : super(
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
-        refreshPlanning: () async {},
+        refreshPlanning: () async => true,
+        reconcileAcceptedMutation: (_, _) async {},
       );
 
   final Future<void> Function() onSync;

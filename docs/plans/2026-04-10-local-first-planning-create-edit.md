@@ -290,11 +290,11 @@ Add coverage for:
 - automatic foreground sync after local mutation record when signed-in active context is available
 - manual retry of pending and failed mutations
 - parent-before-child create ordering and child-before-parent destructive ordering
-- slug reconciliation after backend returns canonical slug
+- slug reconciliation after backend returns canonical slug, including the fallback path where the accepted write must reconcile locally before a later full refresh succeeds
 - authorization failures moving mutations out of normal merged reads
 - remote-delete and stale-version conflicts remaining inspectable instead of disappearing
 - successful mutation reconciliation updating the projection and clearing mutation rows
-- auth-boundary cleanup for session expiry, revoked auth session, authenticated account switch, and active-organization switch
+- auth-boundary cleanup for explicit sign-out, session expiry or revoked auth session, authenticated account switch, and active-organization switch
 
 - [ ] **Step 2: Run the focused sync tests**
 
