@@ -78,16 +78,19 @@ void main() {
 
           return Future.value(planDetailValue as PlanDetail);
         }),
-        if (writeService != null)
-          planningWriteServiceProvider.overrideWithValue(writeService),
+        planningWriteServiceProvider.overrideWithValue(
+          writeService ?? _FakePlanningWriteService(),
+        ),
         if (mutationSyncController != null)
           planningMutationSyncControllerProvider.overrideWithValue(
             mutationSyncController,
           ),
-        if (loadMutationEntries != null)
-          planningMutationEntriesProvider.overrideWith((ref) {
+        planningMutationEntriesProvider.overrideWith((ref) {
+          if (loadMutationEntries != null) {
             return loadMutationEntries();
-          }),
+          }
+          return Future.value(const <PlanningMutationRecord>[]);
+        }),
         songLibraryListProvider.overrideWith(
           (ref) async => visibleSongs ?? const <SongSummary>[],
         ),
