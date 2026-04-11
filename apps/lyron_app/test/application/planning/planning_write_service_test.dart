@@ -4,6 +4,7 @@ import 'package:lyron_app/src/application/planning/drift_planning_mutation_store
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -17,6 +18,7 @@ void main() {
     late Future<void> Function() seedProjection;
     late int syncCalls;
     late ActivePlanningReadContext? activeContext;
+    late List<SongSummary> visibleSongs;
 
     const context = PlanningWriteContext(
       userId: 'user-1',
@@ -36,6 +38,10 @@ void main() {
         contextReader: () async => activeContext,
       );
       syncCalls = 0;
+      visibleSongs = const [
+        SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+        SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+      ];
       activeContext = const ActivePlanningReadContext(
         userId: 'user-1',
         organizationId: 'org-1',
@@ -43,6 +49,9 @@ void main() {
       service = PlanningWriteService(
         repository,
         mutationStore: mutationStore,
+        listVisibleSongs: ({required userId, required organizationId}) async {
+          return visibleSongs;
+        },
         activeContextReader: () async => activeContext,
         syncScheduler: (_) async {
           syncCalls += 1;
@@ -129,6 +138,7 @@ void main() {
             await mutationStore.clearMutation(
               userId: context.userId,
               organizationId: context.organizationId,
+              aggregateType: PlanningMutationKind.planCreate.aggregateType,
               aggregateId: 'generated-id-1',
             );
           },
@@ -172,6 +182,7 @@ void main() {
       final mutation = await mutationStore.readMutation(
         userId: 'user-1',
         organizationId: 'org-1',
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
         aggregateId: 'plan-1',
       );
       expect(mutation?.baseVersion, 1);
@@ -199,6 +210,7 @@ void main() {
         final mutation = await mutationStore.readMutation(
           userId: 'user-1',
           organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
           aggregateId: 'session-2',
         );
         expect(mutation?.baseVersion, 1);
@@ -335,6 +347,89 @@ void main() {
           throwsA(isA<PlanningWriteContextMismatchException>()),
         );
         expect(syncCalls, 0);
+      },
+    );
+
+    test(
+      'session reorder records the plan base version from the merged detail',
+      () async {
+        await seedProjection();
+
+        await service.reorderSessions(
+          context: context,
+          draft: const SessionReorderDraft(
+            planId: 'plan-1',
+            orderedSessionIds: ['session-2', 'session-1'],
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionReorder.aggregateType,
+          aggregateId: 'plan-1',
+        );
+        expect(mutation?.kind, PlanningMutationKind.sessionReorder);
+        expect(mutation?.baseVersion, 1);
+        expect(
+          mutation?.orderedSiblingIds,
+          orderedEquals(const ['session-2', 'session-1']),
+        );
+      },
+    );
+
+    test(
+      'song-backed session item add records the session base version and local append position',
+      () async {
+        await seedProjection();
+
+        await service.addSongSessionItem(
+          context: context,
+          draft: const SessionItemCreateSongDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-2',
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType:
+              PlanningMutationKind.sessionItemCreateSong.aggregateType,
+          aggregateId: 'generated-id-1',
+        );
+        expect(mutation?.kind, PlanningMutationKind.sessionItemCreateSong);
+        expect(mutation?.planId, 'plan-1');
+        expect(mutation?.sessionId, 'session-1');
+        expect(mutation?.songId, 'song-2');
+        expect(mutation?.position, 11);
+        expect(mutation?.baseVersion, 1);
+      },
+    );
+
+    test(
+      'duplicate song add is blocked before recording a local mutation',
+      () async {
+        await seedProjection();
+
+        await expectLater(
+          () => service.addSongSessionItem(
+            context: context,
+            draft: const SessionItemCreateSongDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              songId: 'song-1',
+            ),
+          ),
+          throwsA(isA<DuplicateSessionSongException>()),
+        );
+
+        final pending = await mutationStore.readPendingMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(pending, isEmpty);
       },
     );
   });

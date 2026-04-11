@@ -174,10 +174,11 @@ Slug rule:
 Local-first write note:
 
 - Readable sessions inherit the same organization-scoped visibility boundary as the owning plan and are persisted locally with canonical `sessionId`, parent `planId`, and deterministic ordering fields.
-- Session create, rename, and delete are implemented through the persisted planning mutation store and overlaid into plan detail immediately.
+- Session create, rename, delete, and reorder are implemented through the persisted planning mutation store and overlaid into plan detail immediately.
 - Session create appends deterministically after the current locally visible last session for the plan.
 - Session rename is limited to `name`.
 - Session delete is allowed only for locally empty sessions, and the backend re-checks that invariant before accepting the delete.
+- Session reorder is a plan-scoped collection mutation that captures the owning plan's synchronized `base_version`, compacts to the latest locally intended sibling order, and reconciles canonical accepted order back into the read projection when the immediate post-write refresh fails.
 - Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug`; the route layer resolves the matching internal `sessionItemId` before entering the existing id-based reader context.
 
 ### session_items
@@ -212,6 +213,9 @@ Invariants:
 Read-model note:
 
 - In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, even though the public scoped reader URL resolves through `songSlug` within a session.
+- Song-backed session-item add, delete, and reorder are implemented through the persisted planning mutation store rather than mutating synchronized projection rows directly.
+- Session-item add is currently limited to visible songs from the active organization's locally available song catalog and appends deterministically after the current locally visible last item for the session.
+- Session-item add, delete, and reorder capture the owning session's synchronized `base_version`, keep backend authorization and duplicate-song enforcement on the write RPC boundary, and reconcile accepted canonical order back into the read projection when the immediate refresh fails.
 
 ### attachments
 
@@ -250,7 +254,8 @@ The currently executable slices now cover both sides:
 
 - the app stores an authenticated song-catalog cache plus song write-side sync records for the active organization
 - the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit and session create/rename/delete
-- planning mutation records retain aggregate ownership, provisional slugs, ordering, base-version metadata for optimistic concurrency, and sync failure classification for explicit retry/review flows
+- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
+- planning mutation records retain aggregate ownership, provisional slugs, ordering, ordered sibling ids, base-version metadata for optimistic concurrency, and sync failure classification for explicit retry/review flows
 
 ### sync_status
 

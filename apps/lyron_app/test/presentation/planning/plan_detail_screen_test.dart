@@ -35,6 +35,8 @@ void main() {
     PlanningWriteService? writeService,
     PlanningMutationSyncController? mutationSyncController,
     Future<List<PlanningMutationRecord>> Function()? loadMutationEntries,
+    List<SongSummary>? visibleSongs,
+    CatalogSnapshotState? catalogSnapshotState,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
 
@@ -86,6 +88,19 @@ void main() {
           planningMutationEntriesProvider.overrideWith((ref) {
             return loadMutationEntries();
           }),
+        songLibraryListProvider.overrideWith(
+          (ref) async => visibleSongs ?? const <SongSummary>[],
+        ),
+        catalogSnapshotStateProvider.overrideWithValue(
+          catalogSnapshotState ??
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: false,
+              ),
+        ),
         activePlanningContextProvider.overrideWithValue(
           const ActivePlanningReadContext(
             userId: 'user-1',
@@ -237,7 +252,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    expect(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('edits a plan locally from the detail screen', (tester) async {
@@ -326,6 +344,127 @@ void main() {
 
     expect(writeService.deletedSessionDraft?.sessionId, 'session-2');
   });
+
+  testWidgets('reorders sessions locally from the detail screen', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionMoveUpAction}: Closing'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      writeService.reorderedSessionDraft?.orderedSessionIds,
+      orderedEquals(const ['session-2', 'session-1']),
+    );
+  });
+
+  testWidgets('adds a visible song locally from the session picker', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.sessionItemAddSongAction).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('session-song-option-song-3')));
+    await tester.pumpAndSettle();
+
+    expect(writeService.createdSessionItemDraft?.sessionId, 'session-1');
+    expect(writeService.createdSessionItemDraft?.songId, 'song-3');
+  });
+
+  testWidgets('disables add-song when no cached catalog is available', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _editablePlanDetailFixture()),
+    );
+    await tester.pumpAndSettle();
+
+    final addButton = tester.widget<TextButton>(
+      find
+          .widgetWithText(TextButton, AppStrings.sessionItemAddSongAction)
+          .first,
+    );
+    expect(addButton.onPressed, isNull);
+    expect(
+      find.text(AppStrings.sessionItemSongUnavailableMessage),
+      findsWidgets,
+    );
+  });
+
+  testWidgets(
+    'deletes and reorders session items locally from the detail screen',
+    (tester) async {
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _planDetailWithItemsFixture(),
+          writeService: writeService,
+          visibleSongs: const [
+            SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+            SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          ],
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(writeService.deletedSessionItemDraft?.sessionItemId, 'item-1');
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionItemMoveUpAction}: Beta'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        writeService.reorderedSessionItemDraft?.orderedSessionItemIds,
+        orderedEquals(const ['item-2', 'item-1']),
+      );
+    },
+  );
 
   testWidgets('shows failed planning mutations and retries them from detail', (
     tester,
@@ -620,6 +759,46 @@ PlanDetail _editablePlanDetailFixture() {
   );
 }
 
+PlanDetail _planDetailWithItemsFixture() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      slug: 'team-rehearsal',
+      name: 'Team Rehearsal',
+      description: 'Fixture',
+      scheduledFor: DateTime(2026, 4, 10, 18),
+      updatedAt: DateTime(2026, 3, 31, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        slug: 'warm-up',
+        name: 'Warm-Up',
+        position: 10,
+        items: [
+          SessionItemSummary(
+            id: 'item-1',
+            position: 10,
+            song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          ),
+          SessionItemSummary(
+            id: 'item-2',
+            position: 20,
+            song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          ),
+        ],
+      ),
+      SessionSummary(
+        id: 'session-2',
+        slug: 'closing',
+        name: 'Closing',
+        position: 20,
+        items: [],
+      ),
+    ],
+  );
+}
+
 class _FakePlanningWriteService extends PlanningWriteService {
   _FakePlanningWriteService()
     : super(
@@ -635,6 +814,10 @@ class _FakePlanningWriteService extends PlanningWriteService {
   SessionCreateDraft? createdSessionDraft;
   SessionRenameDraft? renamedSessionDraft;
   SessionDeleteDraft? deletedSessionDraft;
+  SessionReorderDraft? reorderedSessionDraft;
+  SessionItemCreateSongDraft? createdSessionItemDraft;
+  SessionItemDeleteDraft? deletedSessionItemDraft;
+  SessionItemReorderDraft? reorderedSessionItemDraft;
 
   @override
   Future<void> editPlan({
@@ -667,6 +850,38 @@ class _FakePlanningWriteService extends PlanningWriteService {
   }) async {
     deletedSessionDraft = draft;
   }
+
+  @override
+  Future<void> reorderSessions({
+    required PlanningWriteContext context,
+    required SessionReorderDraft draft,
+  }) async {
+    reorderedSessionDraft = draft;
+  }
+
+  @override
+  Future<void> addSongSessionItem({
+    required PlanningWriteContext context,
+    required SessionItemCreateSongDraft draft,
+  }) async {
+    createdSessionItemDraft = draft;
+  }
+
+  @override
+  Future<void> deleteSessionItem({
+    required PlanningWriteContext context,
+    required SessionItemDeleteDraft draft,
+  }) async {
+    deletedSessionItemDraft = draft;
+  }
+
+  @override
+  Future<void> reorderSessionItems({
+    required PlanningWriteContext context,
+    required SessionItemReorderDraft draft,
+  }) async {
+    reorderedSessionItemDraft = draft;
+  }
 }
 
 class _FakePlanningMutationSyncController
@@ -686,6 +901,7 @@ class _FakePlanningMutationSyncController
   @override
   Future<void> retryMutation(
     ActivePlanningReadContext context, {
+    required String aggregateType,
     required String aggregateId,
   }) async {
     retriedAggregateIds.add(aggregateId);
@@ -731,6 +947,7 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -747,6 +964,7 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async => null;
 
@@ -781,6 +999,30 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {}
+
+  @override
   Future<void> recordSessionRename({
     required PlanningMutationContext context,
     required PlanningSessionRenameMutationDraft draft,
@@ -790,6 +1032,7 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -797,6 +1040,7 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,

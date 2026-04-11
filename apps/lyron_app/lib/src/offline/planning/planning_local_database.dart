@@ -30,5 +30,5 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 }

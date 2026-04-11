@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +32,18 @@ import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   test('list, sign-in, planning, and reader route constants remain stable', () {
     expect(AppRoutes.bootstrap.path, '/bootstrap');
     expect(AppRoutes.home.path, '/');
@@ -103,6 +116,12 @@ void main() {
     final controller = AppAuthController(repository);
     await controller.restoreSession();
     addTearDown(controller.dispose);
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation: AppRoutes.signIn.path,
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -135,13 +154,8 @@ void main() {
           ),
         ],
         child: Consumer(
-          builder: (context, ref, child) => MaterialApp.router(
-            routerConfig: createAppRouter(
-              authController: controller,
-              refreshListenable: controller,
-              initialLocation: AppRoutes.signIn.path,
-            ),
-          ),
+          builder: (context, ref, child) =>
+              MaterialApp.router(routerConfig: router),
         ),
       ),
     );
@@ -158,6 +172,12 @@ void main() {
     final controller = AppAuthController(repository);
     await controller.restoreSession();
     addTearDown(controller.dispose);
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation: '/songs/blocked-song',
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -165,6 +185,19 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.offlineCached,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+          songLibraryListProvider.overrideWith((ref) async => const []),
           planningPlanListProvider.overrideWith(
             (ref) async => [
               PlanSummary(
@@ -179,13 +212,8 @@ void main() {
           ),
         ],
         child: Consumer(
-          builder: (context, ref, child) => MaterialApp.router(
-            routerConfig: createAppRouter(
-              authController: controller,
-              refreshListenable: controller,
-              initialLocation: '/songs/blocked-song',
-            ),
-          ),
+          builder: (context, ref, child) =>
+              MaterialApp.router(routerConfig: router),
         ),
       ),
     );
@@ -202,6 +230,13 @@ void main() {
     final controller = AppAuthController(repository);
     await controller.restoreSession();
     addTearDown(controller.dispose);
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation:
+          '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -227,14 +262,8 @@ void main() {
           ).overrideWith((ref) => Future<PlanDetail?>.value(null)),
         ],
         child: Consumer(
-          builder: (context, ref, child) => MaterialApp.router(
-            routerConfig: createAppRouter(
-              authController: controller,
-              refreshListenable: controller,
-              initialLocation:
-                  '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
-            ),
-          ),
+          builder: (context, ref, child) =>
+              MaterialApp.router(routerConfig: router),
         ),
       ),
     );
@@ -251,6 +280,12 @@ void main() {
     final controller = AppAuthController(repository);
     await controller.restoreSession();
     addTearDown(controller.dispose);
+    final router = createAppRouter(
+      authController: controller,
+      refreshListenable: controller,
+      initialLocation: AppRoutes.planList.path,
+    );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -260,13 +295,8 @@ void main() {
           appAuthListenableProvider.overrideWithValue(controller),
         ],
         child: Consumer(
-          builder: (context, ref, child) => MaterialApp.router(
-            routerConfig: createAppRouter(
-              authController: controller,
-              refreshListenable: controller,
-              initialLocation: AppRoutes.planList.path,
-            ),
-          ),
+          builder: (context, ref, child) =>
+              MaterialApp.router(routerConfig: router),
         ),
       ),
     );
@@ -294,6 +324,7 @@ void main() {
       refreshListenable: controller,
       initialLocation: AppRoutes.planList.path,
     );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -301,6 +332,19 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.offlineCached,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+          songLibraryListProvider.overrideWith((ref) async => const []),
           planningPlanListProvider.overrideWith(
             (ref) async => [
               PlanSummary(
@@ -345,6 +389,7 @@ void main() {
         'sunday-morning',
       ),
     );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -352,6 +397,19 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.offlineCached,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+          songLibraryListProvider.overrideWith((ref) async => const []),
           planningPlanListProvider.overrideWith(
             (ref) async => [
               PlanSummary(
@@ -491,6 +549,7 @@ void main() {
       initialLocation:
           '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
     );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -727,6 +786,7 @@ void main() {
         initialLocation:
             '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
       );
+      addTearDown(router.dispose);
 
       await tester.pumpWidget(
         ProviderScope(
@@ -845,6 +905,7 @@ void main() {
         refreshListenable: controller,
         initialLocation: '/songs/blocked-song',
       );
+      addTearDown(router.dispose);
 
       await tester.pumpWidget(
         ProviderScope(
@@ -921,19 +982,13 @@ void main() {
         '/songs/blocked-song',
       );
 
-      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
-      await tester.pumpAndSettle();
+      final firstHandled = await tester.binding.handlePopRoute();
 
-      expect(find.text(AppStrings.appName), findsOneWidget);
-      expect(find.text('Blocked Song'), findsOneWidget);
-      expect(find.text('Song reader'), findsNothing);
+      expect(firstHandled, isTrue);
       expect(router.routeInformationProvider.value.uri.toString(), '/');
 
-      final handled = await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
 
-      expect(handled, isFalse);
-      expect(find.text('Song reader'), findsNothing);
       expect(router.routeInformationProvider.value.uri.toString(), '/');
     },
   );

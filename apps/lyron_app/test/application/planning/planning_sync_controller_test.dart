@@ -684,6 +684,16 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,
@@ -696,6 +706,37 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
     required String userId,
     required String organizationId,
     required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
     required DateTime refreshedAt,
   }) async {}
 }
@@ -765,6 +806,25 @@ class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
       userId: userId,
       organizationId: organizationId,
       sessionId: sessionId,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedSessionItem(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      sessionItemId: sessionItemId,
+      sessionVersion: sessionVersion,
       refreshedAt: refreshedAt,
     );
   }
@@ -857,6 +917,48 @@ class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.replaceSyncedSessionItemOrder(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      orderedSessionItemIds: orderedSessionItemIds,
+      orderedSessionItemPositions: orderedSessionItemPositions,
+      sessionVersion: sessionVersion,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.replaceSyncedSessionOrder(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      orderedSessionIds: orderedSessionIds,
+      orderedSessionPositions: orderedSessionPositions,
+      planVersion: planVersion,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,
@@ -882,6 +984,23 @@ class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
       userId: userId,
       organizationId: organizationId,
       session: session,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedSessionItem(
+      userId: userId,
+      organizationId: organizationId,
+      item: item,
+      sessionVersion: sessionVersion,
       refreshedAt: refreshedAt,
     );
   }

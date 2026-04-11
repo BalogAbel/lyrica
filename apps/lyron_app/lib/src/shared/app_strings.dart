@@ -87,8 +87,17 @@ class AppStrings {
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
   static const sessionCreateAction = 'Add session';
+  static const sessionMoveUpAction = 'Move session up';
+  static const sessionMoveDownAction = 'Move session down';
   static const sessionRenameAction = 'Rename session';
   static const sessionDeleteAction = 'Delete session';
+  static const sessionItemAddSongAction = 'Add song';
+  static const sessionItemMoveUpAction = 'Move item up';
+  static const sessionItemMoveDownAction = 'Move item down';
+  static const sessionItemDeleteAction = 'Delete item';
+  static const sessionItemSongPickerTitle = 'Add song to session';
+  static const sessionItemSongUnavailableMessage =
+      'Offline song add is unavailable until a local song catalog is available.';
   static const sessionDeleteConfirmTitle = 'Delete empty session?';
   static const sessionDeleteConfirmMessage =
       'This removes the local session immediately and syncs the delete when possible.';

@@ -27,6 +27,7 @@ import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
+import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -133,6 +134,11 @@ final planningWriteServiceProvider = Provider<PlanningWriteService>((ref) {
   return PlanningWriteService(
     ref.watch(planningRepositoryProvider),
     mutationStore: ref.watch(planningMutationStoreProvider),
+    listVisibleSongs: ({required userId, required organizationId}) {
+      return LocalFirstSongRepository(
+        ref.read(songCatalogStoreProvider),
+      ).listSongs(userId: userId, organizationId: organizationId);
+    },
     activeContextReader: () async => ref.read(activePlanningContextProvider),
     syncScheduler: (context) async {
       final activeContext = ref.read(activePlanningContextProvider);
@@ -221,6 +227,76 @@ final planningMutationSyncControllerProvider =
                 userId: context.userId,
                 organizationId: context.organizationId,
                 sessionId: record.aggregateId,
+                refreshedAt: reconciledAt,
+              );
+              return;
+            case PlanningMutationKind.sessionReorder:
+              await localStore.replaceSyncedSessionOrder(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                planId: record.planId ?? record.aggregateId,
+                orderedSessionIds: record.orderedSiblingIds ?? const [],
+                orderedSessionPositions: record.orderedSiblingPositions,
+                planVersion: record.baseVersion ?? 1,
+                refreshedAt: reconciledAt,
+              );
+              return;
+            case PlanningMutationKind.sessionItemCreateSong:
+              await localStore.upsertSyncedSessionItem(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                refreshedAt: reconciledAt,
+                sessionVersion: record.baseVersion ?? 1,
+                item: CachedSessionItemRecord(
+                  id: record.aggregateId,
+                  planId: record.planId ?? '',
+                  sessionId: record.sessionId ?? '',
+                  position: record.position ?? 0,
+                  songId: record.songId ?? '',
+                  songTitle: record.songTitle ?? '',
+                ),
+              );
+              if (record.orderedSiblingIds != null) {
+                await localStore.replaceSyncedSessionItemOrder(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                  sessionId: record.sessionId ?? '',
+                  orderedSessionItemIds: record.orderedSiblingIds!,
+                  orderedSessionItemPositions: record.orderedSiblingPositions,
+                  sessionVersion: record.baseVersion ?? 1,
+                  refreshedAt: reconciledAt,
+                );
+              }
+              return;
+            case PlanningMutationKind.sessionItemDelete:
+              await localStore.deleteSyncedSessionItem(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                sessionId: record.sessionId ?? '',
+                sessionItemId: record.aggregateId,
+                sessionVersion: record.baseVersion ?? 1,
+                refreshedAt: reconciledAt,
+              );
+              if (record.orderedSiblingIds != null) {
+                await localStore.replaceSyncedSessionItemOrder(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                  sessionId: record.sessionId ?? '',
+                  orderedSessionItemIds: record.orderedSiblingIds!,
+                  orderedSessionItemPositions: record.orderedSiblingPositions,
+                  sessionVersion: record.baseVersion ?? 1,
+                  refreshedAt: reconciledAt,
+                );
+              }
+              return;
+            case PlanningMutationKind.sessionItemReorder:
+              await localStore.replaceSyncedSessionItemOrder(
+                userId: context.userId,
+                organizationId: context.organizationId,
+                sessionId: record.sessionId ?? '',
+                orderedSessionItemIds: record.orderedSiblingIds ?? const [],
+                orderedSessionItemPositions: record.orderedSiblingPositions,
+                sessionVersion: record.baseVersion ?? 1,
                 refreshedAt: reconciledAt,
               );
               return;

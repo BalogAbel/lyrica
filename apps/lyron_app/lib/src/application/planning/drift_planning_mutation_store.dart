@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -59,6 +61,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       final existing = await readMutation(
         userId: context.userId,
         organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
         aggregateId: draft.planId,
       );
       if (existing?.kind == PlanningMutationKind.planCreate) {
@@ -146,6 +149,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       final existing = await readMutation(
         userId: context.userId,
         organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.sessionRename.aggregateType,
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
@@ -192,6 +196,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       final existing = await readMutation(
         userId: context.userId,
         organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
@@ -203,6 +208,11 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   table.aggregateId.equals(draft.sessionId),
             ))
             .go();
+        await _removeSessionFromPendingReorder(
+          context: context,
+          planId: draft.planId,
+          sessionId: draft.sessionId,
+        );
         return;
       }
 
@@ -223,6 +233,169 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+      await _removeSessionFromPendingReorder(
+        context: context,
+        planId: draft.planId,
+        sessionId: draft.sessionId,
+      );
+    });
+  }
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_order',
+        aggregateId: draft.planId,
+      );
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session_order',
+        record: PlanningMutationRecord(
+          aggregateId: draft.planId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
+          kind: PlanningMutationKind.sessionReorder,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+          updatedAt: DateTime.now().toUtc(),
+          orderedSiblingIds: draft.orderedSessionIds,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session_item',
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionItemId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
+          sessionId: draft.sessionId,
+          songId: draft.songId,
+          songTitle: draft.songTitle,
+          position: draft.position,
+          kind: PlanningMutationKind.sessionItemCreateSong,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
+          updatedAt: DateTime.now().toUtc(),
+          baseVersion: draft.baseVersion,
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_item',
+        aggregateId: draft.sessionItemId,
+      );
+      if (existing?.kind == PlanningMutationKind.sessionItemCreateSong) {
+        await (_database.delete(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(context.userId) &
+                  table.organizationId.equals(context.organizationId) &
+                  table.aggregateType.equals('session_item') &
+                  table.aggregateId.equals(draft.sessionItemId),
+            ))
+            .go();
+        await _removeSessionItemFromPendingReorder(
+          context: context,
+          sessionId: draft.sessionId,
+          sessionItemId: draft.sessionItemId,
+        );
+        return;
+      }
+
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session_item',
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionItemId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
+          sessionId: draft.sessionId,
+          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          kind: PlanningMutationKind.sessionItemDelete,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+          updatedAt: DateTime.now().toUtc(),
+        ),
+      );
+      await _removeSessionItemFromPendingReorder(
+        context: context,
+        sessionId: draft.sessionId,
+        sessionItemId: draft.sessionItemId,
+      );
+    });
+  }
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_item_order',
+        aggregateId: draft.sessionId,
+      );
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session_item_order',
+        record: PlanningMutationRecord(
+          aggregateId: draft.sessionId,
+          organizationId: context.organizationId,
+          planId: draft.planId,
+          sessionId: draft.sessionId,
+          kind: PlanningMutationKind.sessionItemReorder,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey:
+              existing?.orderKey ??
+              await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+          updatedAt: DateTime.now().toUtc(),
+          orderedSiblingIds: draft.orderedSessionItemIds,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
         ),
       );
     });
@@ -275,6 +448,19 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => _readMutationByKey(
+    userId: userId,
+    organizationId: organizationId,
+    aggregateType: aggregateType,
+    aggregateId: aggregateId,
+  );
+
+  Future<PlanningMutationRecord?> _readMutationByKey({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     final row =
@@ -282,6 +468,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               (table) =>
                   table.userId.equals(userId) &
                   table.organizationId.equals(organizationId) &
+                  table.aggregateType.equals(aggregateType) &
                   table.aggregateId.equals(aggregateId),
             ))
             .getSingleOrNull();
@@ -349,6 +536,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
@@ -357,6 +545,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     final existing = await readMutation(
       userId: userId,
       organizationId: organizationId,
+      aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
     if (existing == null) {
@@ -367,7 +556,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         userId: userId,
         organizationId: organizationId,
       ),
-      aggregateType: _aggregateTypeFor(existing),
+      aggregateType: aggregateType,
       record: existing.copyWith(
         syncStatus: syncStatus,
         errorCode: errorCode,
@@ -380,11 +569,13 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     final existing = await readMutation(
       userId: userId,
       organizationId: organizationId,
+      aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
     if (existing == null) {
@@ -396,7 +587,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         userId: userId,
         organizationId: organizationId,
       ),
-      aggregateType: _aggregateTypeFor(existing),
+      aggregateType: aggregateType,
       record: existing.copyWith(
         syncStatus: PlanningMutationSyncStatus.pending,
         clearErrorCode: true,
@@ -410,12 +601,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) {
     return (_database.delete(_database.cachedPlanningMutations)..where(
           (table) =>
               table.userId.equals(userId) &
               table.organizationId.equals(organizationId) &
+              table.aggregateType.equals(aggregateType) &
               table.aggregateId.equals(aggregateId),
         ))
         .go();
@@ -437,11 +630,19 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             mutationKind: record.kind.value,
             syncStatus: record.syncStatus.value,
             planId: Value(record.planId),
+            sessionId: Value(record.sessionId),
             slug: Value(record.slug),
             name: Value(record.name),
             description: Value(record.description),
             scheduledFor: Value(record.scheduledFor?.toUtc()),
             position: Value(record.position),
+            songId: Value(record.songId),
+            songTitle: Value(record.songTitle),
+            orderedSiblingIds: Value(
+              record.orderedSiblingIds == null
+                  ? null
+                  : jsonEncode(record.orderedSiblingIds),
+            ),
             baseVersion: Value(record.baseVersion),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
@@ -533,11 +734,15 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       aggregateId: row.aggregateId,
       organizationId: row.organizationId,
       planId: row.planId,
+      sessionId: row.sessionId,
       slug: row.slug,
       name: row.name,
       description: row.description,
       scheduledFor: row.scheduledFor?.toUtc(),
       position: row.position,
+      songId: row.songId,
+      songTitle: row.songTitle,
+      orderedSiblingIds: _orderedSiblingIdsFromValue(row.orderedSiblingIds),
       baseVersion: row.baseVersion,
       errorCode: _errorCodeFromValue(row.errorCode),
       errorMessage: row.errorMessage,
@@ -546,16 +751,6 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       orderKey: row.orderKey,
       updatedAt: row.updatedAt.toUtc(),
     );
-  }
-
-  String _aggregateTypeFor(PlanningMutationRecord record) {
-    return switch (record.kind) {
-      PlanningMutationKind.planCreate ||
-      PlanningMutationKind.planEdit => 'plan',
-      PlanningMutationKind.sessionCreate ||
-      PlanningMutationKind.sessionRename ||
-      PlanningMutationKind.sessionDelete => 'session',
-    };
   }
 
   PlanningMutationSyncErrorCode? _errorCodeFromValue(String? value) {
@@ -573,5 +768,100 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         .replaceAll(RegExp(r'^-+|-+$'), '')
         .replaceAll(RegExp(r'-{2,}'), '-');
     return normalized.isEmpty ? fallback : normalized;
+  }
+
+  List<String>? _orderedSiblingIdsFromValue(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final decoded = jsonDecode(value);
+    if (decoded is! List) {
+      return null;
+    }
+    return decoded.map((entry) => entry.toString()).toList(growable: false);
+  }
+
+  Future<void> _removeSessionFromPendingReorder({
+    required PlanningMutationContext context,
+    required String planId,
+    required String sessionId,
+  }) async {
+    final existing = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'session_order',
+      aggregateId: planId,
+    );
+    final orderedSiblingIds = existing?.orderedSiblingIds;
+    if (existing == null || orderedSiblingIds == null) {
+      return;
+    }
+    final nextIds = orderedSiblingIds
+        .where((candidate) => candidate != sessionId)
+        .toList(growable: false);
+    if (nextIds.length == orderedSiblingIds.length) {
+      return;
+    }
+    if (nextIds.isEmpty) {
+      await (_database.delete(_database.cachedPlanningMutations)..where(
+            (table) =>
+                table.userId.equals(context.userId) &
+                table.organizationId.equals(context.organizationId) &
+                table.aggregateType.equals('session_order') &
+                table.aggregateId.equals(planId),
+          ))
+          .go();
+      return;
+    }
+    await _upsertRecord(
+      context: context,
+      aggregateType: 'session_order',
+      record: existing.copyWith(
+        orderedSiblingIds: nextIds,
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
+  }
+
+  Future<void> _removeSessionItemFromPendingReorder({
+    required PlanningMutationContext context,
+    required String sessionId,
+    required String sessionItemId,
+  }) async {
+    final existing = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'session_item_order',
+      aggregateId: sessionId,
+    );
+    final orderedSiblingIds = existing?.orderedSiblingIds;
+    if (existing == null || orderedSiblingIds == null) {
+      return;
+    }
+    final nextIds = orderedSiblingIds
+        .where((candidate) => candidate != sessionItemId)
+        .toList(growable: false);
+    if (nextIds.length == orderedSiblingIds.length) {
+      return;
+    }
+    if (nextIds.isEmpty) {
+      await (_database.delete(_database.cachedPlanningMutations)..where(
+            (table) =>
+                table.userId.equals(context.userId) &
+                table.organizationId.equals(context.organizationId) &
+                table.aggregateType.equals('session_item_order') &
+                table.aggregateId.equals(sessionId),
+          ))
+          .go();
+      return;
+    }
+    await _upsertRecord(
+      context: context,
+      aggregateType: 'session_item_order',
+      record: existing.copyWith(
+        orderedSiblingIds: nextIds,
+        updatedAt: DateTime.now().toUtc(),
+      ),
+    );
   }
 }

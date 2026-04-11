@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -176,6 +177,17 @@ class _SessionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final sessionIndex = planDetail.sessions.indexWhere(
+      (candidate) => candidate.id == session.id,
+    );
+    final canMoveUp = sessionIndex > 0;
+    final canMoveDown =
+        sessionIndex >= 0 && sessionIndex < planDetail.sessions.length - 1;
+    final catalogState = ref.watch(catalogSnapshotStateProvider);
+    final visibleSongs =
+        ref.watch(songLibraryListProvider).valueOrNull ?? const <SongSummary>[];
+    final canAddSong = catalogState.hasCachedCatalog && visibleSongs.isNotEmpty;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -189,6 +201,21 @@ class _SessionCard extends ConsumerWidget {
                     session.name,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                ),
+                IconButton(
+                  onPressed: canMoveUp
+                      ? () => _reorderSession(context, ref, -1)
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_up),
+                  tooltip: '${AppStrings.sessionMoveUpAction}: ${session.name}',
+                ),
+                IconButton(
+                  onPressed: canMoveDown
+                      ? () => _reorderSession(context, ref, 1)
+                      : null,
+                  icon: const Icon(Icons.keyboard_arrow_down),
+                  tooltip:
+                      '${AppStrings.sessionMoveDownAction}: ${session.name}',
                 ),
                 IconButton(
                   onPressed: () => _renameSession(context, ref),
@@ -207,11 +234,27 @@ class _SessionCard extends ConsumerWidget {
             const SizedBox(height: 8),
             Text('${AppStrings.sessionLabel} ${session.position}'),
             const SizedBox(height: 12),
-            for (final item in session.items) ...[
-              _SongItemButton(
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: canAddSong
+                    ? () => _addSong(context, ref, visibleSongs)
+                    : null,
+                icon: const Icon(Icons.add),
+                label: const Text(AppStrings.sessionItemAddSongAction),
+              ),
+            ),
+            if (!canAddSong)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(AppStrings.sessionItemSongUnavailableMessage),
+              ),
+            for (var index = 0; index < session.items.length; index += 1) ...[
+              _SongItemRow(
                 planDetail: planDetail,
                 session: session,
-                item: item,
+                item: session.items[index],
+                itemIndex: index,
               ),
               const SizedBox(height: 8),
             ],
@@ -296,6 +339,98 @@ class _SessionCard extends ConsumerWidget {
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
+
+  Future<void> _reorderSession(
+    BuildContext context,
+    WidgetRef ref,
+    int delta,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final currentOrder = planDetail.sessions.map((value) => value.id).toList();
+    final currentIndex = currentOrder.indexOf(session.id);
+    final targetIndex = currentIndex + delta;
+    if (currentIndex < 0 ||
+        targetIndex < 0 ||
+        targetIndex >= currentOrder.length) {
+      return;
+    }
+    final movedId = currentOrder.removeAt(currentIndex);
+    currentOrder.insert(targetIndex, movedId);
+    await ref
+        .read(planningWriteServiceProvider)
+        .reorderSessions(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionReorderDraft(
+            planId: planDetail.plan.id,
+            orderedSessionIds: currentOrder,
+          ),
+        );
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+  }
+
+  Future<void> _addSong(
+    BuildContext context,
+    WidgetRef ref,
+    List<SongSummary> visibleSongs,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final existingSongIds = session.items.map((item) => item.song.id).toSet();
+    final selectableSongs = visibleSongs
+        .where((candidate) => !existingSongIds.contains(candidate.id))
+        .toList(growable: false);
+    final selectedSong = await showDialog<SongSummary>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.sessionItemSongPickerTitle),
+        content: SizedBox(
+          width: 420,
+          child: ListView(
+            shrinkWrap: true,
+            children: selectableSongs
+                .map(
+                  (song) => ListTile(
+                    key: ValueKey('session-song-option-${song.id}'),
+                    title: Text(song.title),
+                    onTap: () => Navigator.of(context).pop(song),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ),
+      ),
+    );
+    if (selectedSong == null) {
+      return;
+    }
+
+    await ref
+        .read(planningWriteServiceProvider)
+        .addSongSessionItem(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionItemCreateSongDraft(
+            sessionId: session.id,
+            planId: planDetail.plan.id,
+            songId: selectedSong.id,
+          ),
+        );
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+  }
 }
 
 class _PlanningMutationStatusSurface extends ConsumerWidget {
@@ -341,7 +476,11 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
 
     await ref
         .read(planningMutationSyncControllerProvider)
-        .retryMutation(activeContext, aggregateId: entry.aggregateId);
+        .retryMutation(
+          activeContext,
+          aggregateType: entry.kind.aggregateType,
+          aggregateId: entry.aggregateId,
+        );
     ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
@@ -549,16 +688,18 @@ DateTime? _parseOptionalDateTime(String value) {
   return DateTime.parse(normalized).toUtc();
 }
 
-class _SongItemButton extends ConsumerWidget {
-  const _SongItemButton({
+class _SongItemRow extends ConsumerWidget {
+  const _SongItemRow({
     required this.planDetail,
     required this.session,
     required this.item,
+    required this.itemIndex,
   });
 
   final PlanDetail planDetail;
   final SessionSummary session;
   final SessionItemSummary item;
+  final int itemIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -566,31 +707,115 @@ class _SongItemButton extends ConsumerWidget {
         .watch(songLibrarySongByIdProvider(item.song.id))
         .valueOrNull
         ?.slug;
-    return InkWell(
-      key: ValueKey('plan-session-item-${item.id}'),
-      onTap: resolvedSongSlug == null
-          ? null
-          : () {
-              context.push(
-                PlanningRoutes.planSessionSongReaderLocation(
-                  planSlug: planDetail.plan.slug,
-                  sessionSlug: session.slug,
-                  songSlug: resolvedSongSlug,
-                ),
-                extra: planDetail,
-              );
-            },
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(child: Text('${item.position}. ${item.song.title}')),
-            const Icon(Icons.chevron_right),
-          ],
+    final canMoveUp = itemIndex > 0;
+    final canMoveDown = itemIndex < session.items.length - 1;
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            key: ValueKey('plan-session-item-${item.id}'),
+            onTap: resolvedSongSlug == null
+                ? null
+                : () {
+                    context.push(
+                      PlanningRoutes.planSessionSongReaderLocation(
+                        planSlug: planDetail.plan.slug,
+                        sessionSlug: session.slug,
+                        songSlug: resolvedSongSlug,
+                      ),
+                      extra: planDetail,
+                    );
+                  },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Text('${item.position}. ${item.song.title}')),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+        IconButton(
+          onPressed: canMoveUp ? () => _reorderItem(context, ref, -1) : null,
+          icon: const Icon(Icons.keyboard_arrow_up),
+          tooltip: '${AppStrings.sessionItemMoveUpAction}: ${item.song.title}',
+        ),
+        IconButton(
+          onPressed: canMoveDown ? () => _reorderItem(context, ref, 1) : null,
+          icon: const Icon(Icons.keyboard_arrow_down),
+          tooltip:
+              '${AppStrings.sessionItemMoveDownAction}: ${item.song.title}',
+        ),
+        IconButton(
+          onPressed: () => _deleteItem(context, ref),
+          icon: const Icon(Icons.delete_outline),
+          tooltip: '${AppStrings.sessionItemDeleteAction}: ${item.song.title}',
+        ),
+      ],
     );
+  }
+
+  Future<void> _reorderItem(
+    BuildContext context,
+    WidgetRef ref,
+    int delta,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final currentOrder = session.items.map((value) => value.id).toList();
+    final currentIndex = currentOrder.indexOf(item.id);
+    final targetIndex = currentIndex + delta;
+    if (currentIndex < 0 ||
+        targetIndex < 0 ||
+        targetIndex >= currentOrder.length) {
+      return;
+    }
+    final movedId = currentOrder.removeAt(currentIndex);
+    currentOrder.insert(targetIndex, movedId);
+    await ref
+        .read(planningWriteServiceProvider)
+        .reorderSessionItems(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionItemReorderDraft(
+            sessionId: session.id,
+            planId: planDetail.plan.id,
+            orderedSessionItemIds: currentOrder,
+          ),
+        );
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+  }
+
+  Future<void> _deleteItem(BuildContext context, WidgetRef ref) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    await ref
+        .read(planningWriteServiceProvider)
+        .deleteSessionItem(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionItemDeleteDraft(
+            sessionItemId: item.id,
+            sessionId: session.id,
+            planId: planDetail.plan.id,
+          ),
+        );
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
 }
 

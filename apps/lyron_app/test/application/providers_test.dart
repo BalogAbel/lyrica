@@ -598,6 +598,7 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -615,10 +616,12 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     for (final entry in entries) {
-      if (entry.aggregateId == aggregateId) {
+      if (entry.kind.aggregateType == aggregateType &&
+          entry.aggregateId == aggregateId) {
         return entry;
       }
     }
@@ -688,6 +691,30 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {}
+
+  @override
   Future<void> recordSessionRename({
     required PlanningMutationContext context,
     required PlanningSessionRenameMutationDraft draft,
@@ -697,6 +724,7 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {}
 
@@ -704,6 +732,7 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
@@ -802,6 +831,25 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedSessionItem(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      sessionItemId: sessionItemId,
+      sessionVersion: sessionVersion,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
   Future<bool> hasProjection({
     required String userId,
     required String organizationId,
@@ -889,6 +937,48 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.replaceSyncedSessionItemOrder(
+      userId: userId,
+      organizationId: organizationId,
+      sessionId: sessionId,
+      orderedSessionItemIds: orderedSessionItemIds,
+      orderedSessionItemPositions: orderedSessionItemPositions,
+      sessionVersion: sessionVersion,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.replaceSyncedSessionOrder(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      orderedSessionIds: orderedSessionIds,
+      orderedSessionPositions: orderedSessionPositions,
+      planVersion: planVersion,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,
@@ -914,6 +1004,23 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
       userId: userId,
       organizationId: organizationId,
       session: session,
+      refreshedAt: refreshedAt,
+    );
+  }
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.upsertSyncedSessionItem(
+      userId: userId,
+      organizationId: organizationId,
+      item: item,
+      sessionVersion: sessionVersion,
       refreshedAt: refreshedAt,
     );
   }

@@ -6,6 +6,10 @@ enum PlanningMutationKind {
   sessionCreate,
   sessionRename,
   sessionDelete,
+  sessionReorder,
+  sessionItemCreateSong,
+  sessionItemDelete,
+  sessionItemReorder,
 }
 
 enum PlanningMutationSyncStatus {
@@ -32,6 +36,21 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionCreate => 'session_create',
     PlanningMutationKind.sessionRename => 'session_rename',
     PlanningMutationKind.sessionDelete => 'session_delete',
+    PlanningMutationKind.sessionReorder => 'session_reorder',
+    PlanningMutationKind.sessionItemCreateSong => 'session_item_create_song',
+    PlanningMutationKind.sessionItemDelete => 'session_item_delete',
+    PlanningMutationKind.sessionItemReorder => 'session_item_reorder',
+  };
+
+  String get aggregateType => switch (this) {
+    PlanningMutationKind.planCreate || PlanningMutationKind.planEdit => 'plan',
+    PlanningMutationKind.sessionCreate ||
+    PlanningMutationKind.sessionRename ||
+    PlanningMutationKind.sessionDelete => 'session',
+    PlanningMutationKind.sessionReorder => 'session_order',
+    PlanningMutationKind.sessionItemCreateSong ||
+    PlanningMutationKind.sessionItemDelete => 'session_item',
+    PlanningMutationKind.sessionItemReorder => 'session_item_order',
   };
 }
 
@@ -52,6 +71,10 @@ PlanningMutationKind planningMutationKindFromValue(String value) {
     'session_create' => PlanningMutationKind.sessionCreate,
     'session_rename' => PlanningMutationKind.sessionRename,
     'session_delete' => PlanningMutationKind.sessionDelete,
+    'session_reorder' => PlanningMutationKind.sessionReorder,
+    'session_item_create_song' => PlanningMutationKind.sessionItemCreateSong,
+    'session_item_delete' => PlanningMutationKind.sessionItemDelete,
+    'session_item_reorder' => PlanningMutationKind.sessionItemReorder,
     _ => throw ArgumentError.value(
       value,
       'value',
@@ -108,11 +131,16 @@ class PlanningMutationRecord {
     required this.orderKey,
     required this.updatedAt,
     this.planId,
+    this.sessionId,
     this.slug,
     this.name,
     this.description,
     this.scheduledFor,
     this.position,
+    this.songId,
+    this.songTitle,
+    this.orderedSiblingIds,
+    this.orderedSiblingPositions,
     this.baseVersion,
     this.errorCode,
     this.errorMessage,
@@ -121,11 +149,16 @@ class PlanningMutationRecord {
   final String aggregateId;
   final String organizationId;
   final String? planId;
+  final String? sessionId;
   final String? slug;
   final String? name;
   final String? description;
   final DateTime? scheduledFor;
   final int? position;
+  final String? songId;
+  final String? songTitle;
+  final List<String>? orderedSiblingIds;
+  final List<int>? orderedSiblingPositions;
   final int? baseVersion;
   final PlanningMutationSyncErrorCode? errorCode;
   final String? errorMessage;
@@ -139,6 +172,8 @@ class PlanningMutationRecord {
     String? organizationId,
     String? planId,
     bool clearPlanId = false,
+    String? sessionId,
+    bool clearSessionId = false,
     String? slug,
     bool clearSlug = false,
     String? name,
@@ -149,6 +184,14 @@ class PlanningMutationRecord {
     bool clearScheduledFor = false,
     int? position,
     bool clearPosition = false,
+    String? songId,
+    bool clearSongId = false,
+    String? songTitle,
+    bool clearSongTitle = false,
+    List<String>? orderedSiblingIds,
+    bool clearOrderedSiblingIds = false,
+    List<int>? orderedSiblingPositions,
+    bool clearOrderedSiblingPositions = false,
     int? baseVersion,
     bool clearBaseVersion = false,
     PlanningMutationSyncErrorCode? errorCode,
@@ -164,6 +207,7 @@ class PlanningMutationRecord {
       aggregateId: aggregateId ?? this.aggregateId,
       organizationId: organizationId ?? this.organizationId,
       planId: clearPlanId ? null : (planId ?? this.planId),
+      sessionId: clearSessionId ? null : (sessionId ?? this.sessionId),
       slug: clearSlug ? null : (slug ?? this.slug),
       name: clearName ? null : (name ?? this.name),
       description: clearDescription ? null : (description ?? this.description),
@@ -171,6 +215,14 @@ class PlanningMutationRecord {
           ? null
           : (scheduledFor ?? this.scheduledFor),
       position: clearPosition ? null : (position ?? this.position),
+      songId: clearSongId ? null : (songId ?? this.songId),
+      songTitle: clearSongTitle ? null : (songTitle ?? this.songTitle),
+      orderedSiblingIds: clearOrderedSiblingIds
+          ? null
+          : (orderedSiblingIds ?? this.orderedSiblingIds),
+      orderedSiblingPositions: clearOrderedSiblingPositions
+          ? null
+          : (orderedSiblingPositions ?? this.orderedSiblingPositions),
       baseVersion: clearBaseVersion ? null : (baseVersion ?? this.baseVersion),
       errorCode: clearErrorCode ? null : (errorCode ?? this.errorCode),
       errorMessage: clearErrorMessage
@@ -258,6 +310,66 @@ class PlanningSessionDeleteMutationDraft {
   final int? baseVersion;
 }
 
+class PlanningSessionReorderMutationDraft {
+  const PlanningSessionReorderMutationDraft({
+    required this.planId,
+    required this.orderedSessionIds,
+    this.baseVersion,
+  });
+
+  final String planId;
+  final List<String> orderedSessionIds;
+  final int? baseVersion;
+}
+
+class PlanningSessionItemCreateSongMutationDraft {
+  const PlanningSessionItemCreateSongMutationDraft({
+    required this.sessionItemId,
+    required this.sessionId,
+    required this.planId,
+    required this.songId,
+    required this.songTitle,
+    required this.position,
+    this.baseVersion,
+  });
+
+  final String sessionItemId;
+  final String sessionId;
+  final String planId;
+  final String songId;
+  final String songTitle;
+  final int position;
+  final int? baseVersion;
+}
+
+class PlanningSessionItemDeleteMutationDraft {
+  const PlanningSessionItemDeleteMutationDraft({
+    required this.sessionItemId,
+    required this.sessionId,
+    required this.planId,
+    this.baseVersion,
+  });
+
+  final String sessionItemId;
+  final String sessionId;
+  final String planId;
+  final int? baseVersion;
+}
+
+class PlanningSessionItemReorderMutationDraft {
+  const PlanningSessionItemReorderMutationDraft({
+    required this.sessionId,
+    required this.planId,
+    required this.orderedSessionItemIds,
+    this.baseVersion,
+  });
+
+  final String sessionId;
+  final String planId;
+  final List<String> orderedSessionItemIds;
+  final int? baseVersion;
+}
+
 abstract interface class PlanningMutationStore {
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
@@ -284,6 +396,26 @@ abstract interface class PlanningMutationStore {
     required PlanningSessionDeleteMutationDraft draft,
   });
 
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  });
+
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  });
+
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  });
+
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  });
+
   Future<List<PlanningMutationRecord>> readPendingMutations({
     required String userId,
     required String organizationId,
@@ -297,6 +429,7 @@ abstract interface class PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   });
 
@@ -318,6 +451,7 @@ abstract interface class PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
@@ -327,12 +461,14 @@ abstract interface class PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   });
 
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   });
 }

@@ -170,6 +170,7 @@ void main() {
             userId: 'user-1',
             organizationId: 'org-1',
           ),
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
           aggregateId: 'plan-1',
         );
 
@@ -236,6 +237,73 @@ void main() {
     );
 
     test(
+      'successful session item sync reconciles locally when refresh fails',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'item-local-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-2',
+              songTitle: 'Beta',
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final syncedRecord = PlanningMutationRecord(
+          aggregateId: 'item-9',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+          sessionId: 'session-1',
+          songId: 'song-2',
+          songTitle: 'Beta',
+          orderedSiblingIds: const ['item-1', 'item-9'],
+          kind: PlanningMutationKind.sessionItemCreateSong,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          baseVersion: 5,
+          updatedAt: DateTime.utc(2026),
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          result: syncedRecord,
+        );
+        PlanningMutationRecord? reconciledRecord;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, record) async {
+            reconciledRecord = record;
+          },
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(
+          reconciledRecord?.kind,
+          PlanningMutationKind.sessionItemCreateSong,
+        );
+        expect(reconciledRecord?.aggregateId, 'item-9');
+        expect(
+          reconciledRecord?.orderedSiblingIds,
+          orderedEquals(const ['item-1', 'item-9']),
+        );
+        expect(store.clearedAggregateIds, ['item-local-1']);
+      },
+    );
+
+    test(
       'accepted-write fallback is skipped when the active boundary changed',
       () async {
         final store = _FakePlanningMutationStore(
@@ -294,6 +362,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> clearMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     clearedAggregateIds.add(aggregateId);
@@ -328,10 +397,14 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<PlanningMutationRecord?> readMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     for (final record in pending) {
-      if (record.aggregateId == aggregateId) return record;
+      if (record.kind.aggregateType == aggregateType &&
+          record.aggregateId == aggregateId) {
+        return record;
+      }
     }
     return null;
   }
@@ -346,10 +419,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> retryMutation({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
   }) async {
     retriedAggregateIds.add(aggregateId);
-    final match = all.firstWhere((record) => record.aggregateId == aggregateId);
+    final match = all.firstWhere(
+      (record) =>
+          record.kind.aggregateType == aggregateType &&
+          record.aggregateId == aggregateId,
+    );
     pending.add(
       match.copyWith(
         syncStatus: PlanningMutationSyncStatus.pending,
@@ -380,6 +458,26 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionDeleteMutationDraft draft,
   }) async {}
   @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {}
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {}
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {}
+  @override
   Future<void> recordSessionRename({
     required PlanningMutationContext context,
     required PlanningSessionRenameMutationDraft draft,
@@ -389,6 +487,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<void> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
+    required String aggregateType,
     required String aggregateId,
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,

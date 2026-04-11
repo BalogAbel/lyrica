@@ -28,6 +28,11 @@ class SupabasePlanningMutationRepository
         PlanningMutationKind.sessionCreate => 'create_session',
         PlanningMutationKind.sessionRename => 'rename_session',
         PlanningMutationKind.sessionDelete => 'delete_empty_session',
+        PlanningMutationKind.sessionReorder => 'reorder_plan_sessions',
+        PlanningMutationKind.sessionItemCreateSong =>
+          'create_song_session_item',
+        PlanningMutationKind.sessionItemDelete => 'delete_session_item',
+        PlanningMutationKind.sessionItemReorder => 'reorder_session_items',
       };
 
       final params = <String, dynamic>{
@@ -37,11 +42,32 @@ class SupabasePlanningMutationRepository
           'p_plan_id': record.aggregateId,
         if (record.kind == PlanningMutationKind.sessionCreate)
           'p_plan_id': record.planId,
+        if (record.kind == PlanningMutationKind.sessionReorder)
+          'p_plan_id': record.planId ?? record.aggregateId,
         if (record.kind == PlanningMutationKind.sessionRename ||
-            record.kind == PlanningMutationKind.sessionDelete)
+            record.kind == PlanningMutationKind.sessionDelete ||
+            record.kind == PlanningMutationKind.sessionItemCreateSong ||
+            record.kind == PlanningMutationKind.sessionItemDelete ||
+            record.kind == PlanningMutationKind.sessionItemReorder)
           'p_session_id': record.aggregateId,
+        if (record.kind == PlanningMutationKind.sessionItemCreateSong ||
+            record.kind == PlanningMutationKind.sessionItemDelete ||
+            record.kind == PlanningMutationKind.sessionItemReorder)
+          'p_session_id': record.sessionId,
         if (record.kind == PlanningMutationKind.sessionCreate)
           'p_session_id': record.aggregateId,
+        if (record.kind == PlanningMutationKind.sessionReorder)
+          'p_session_ids': record.orderedSiblingIds,
+        if (record.kind == PlanningMutationKind.sessionItemReorder)
+          'p_session_item_ids': record.orderedSiblingIds,
+        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
+          'p_session_item_id': record.aggregateId,
+        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
+          'p_song_id': record.songId,
+        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
+          'p_position': record.position,
+        if (record.kind == PlanningMutationKind.sessionItemDelete)
+          'p_session_item_id': record.aggregateId,
         if (record.slug != null) 'p_slug': record.slug,
         if (record.name != null) 'p_name': record.name,
         if (record.description != null ||
@@ -68,11 +94,30 @@ class SupabasePlanningMutationRepository
     Map<String, dynamic> row, {
     required String organizationId,
   }) {
+    final orderedSiblingIdsValue =
+        row['ordered_session_ids'] ?? row['ordered_session_item_ids'];
+    final orderedSiblingPositionsValue =
+        row['ordered_session_positions'] ??
+        row['ordered_session_item_positions'];
     return original.copyWith(
       aggregateId: (row['id'] ?? original.aggregateId) as String,
       organizationId: (row['organization_id'] ?? organizationId) as String,
       planId: (row['plan_id'] ?? original.planId) as String?,
+      sessionId: (row['session_id'] ?? original.sessionId) as String?,
       slug: (row['slug'] ?? original.slug) as String?,
+      position: ((row['position'] ?? original.position) as num?)?.toInt(),
+      songId: (row['song_id'] ?? original.songId) as String?,
+      songTitle: (row['song_title'] ?? original.songTitle) as String?,
+      orderedSiblingIds: orderedSiblingIdsValue is List
+          ? orderedSiblingIdsValue
+                .map((value) => value.toString())
+                .toList(growable: false)
+          : original.orderedSiblingIds,
+      orderedSiblingPositions: orderedSiblingPositionsValue is List
+          ? orderedSiblingPositionsValue
+                .map((value) => (value as num).toInt())
+                .toList(growable: false)
+          : original.orderedSiblingPositions,
       baseVersion: ((row['version'] ?? row['deleted_version']) as num?)
           ?.toInt(),
       clearErrorCode: true,
@@ -111,6 +156,13 @@ class SupabasePlanningMutationRepository
         );
       }
       if (error.code == 'P0001' && message.contains('blocked')) {
+        return PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.dependencyBlocked,
+          message: error.message,
+        );
+      }
+      if (error.code == 'P0001' &&
+          (message.contains('duplicate') || message.contains('out_of_scope'))) {
         return PlanningMutationSyncException(
           PlanningMutationSyncErrorCode.dependencyBlocked,
           message: error.message,

@@ -890,6 +890,16 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<bool> hasProjection({
     required String userId,
     required String organizationId,
@@ -913,6 +923,28 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   Future<String?> readLatestCachedOrganizationId({
     required String userId,
   }) async => null;
+
+  @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) async {}
 
   @override
   Future<PlanSummary?> readPlanSummaryBySlug({
@@ -951,6 +983,15 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
     required String userId,
     required String organizationId,
     required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
     required DateTime refreshedAt,
   }) async {}
 }
