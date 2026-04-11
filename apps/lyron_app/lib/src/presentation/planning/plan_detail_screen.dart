@@ -487,7 +487,10 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
   }
 
   Future<void> _retryEntry(
-      BuildContext context, WidgetRef ref, PlanningMutationRecord entry) async {
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
