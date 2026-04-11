@@ -48,6 +48,7 @@ Cover:
 - Planning create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder flows, including failed-mutation review surfaces and sign-out warnings when planning mutations remain unsynced
 - Test environment stability via mandatory persistence stubbing in all `ProviderScope` overrides to prevent real Drift database instantiation and associated CI race conditions.
 - Async safety verification via post-await `context.mounted` checks in all repository-interacting widgets.
+- Robust widget finding in lazy-loaded views (e.g. `ListView`) by using `skipOffstage: false` in finders and ensuring screen-size or scrolling is accounted for in CI.
 - Route-level slug resolution behavior for songs, plans, and session-scoped reader entry, including canonical slug URLs and explicit not-found behavior
 
 ### Integration Tests

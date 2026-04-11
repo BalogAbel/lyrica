@@ -95,7 +95,7 @@ void main() {
           _PlanDetailTestPlanningMutationStore(),
         ),
         songLibraryListProvider.overrideWith(
-          (ref) async => visibleSongs ?? const <SongSummary>[],
+          (ref) => Future.value(visibleSongs ?? const <SongSummary>[]),
         ),
         catalogSnapshotStateProvider.overrideWithValue(
           catalogSnapshotState ??
@@ -417,11 +417,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final addButton = tester.widget<TextButton>(
-      find
-          .widgetWithText(TextButton, AppStrings.sessionItemAddSongAction)
-          .first,
-    );
+    // Verify loading finished to ensure we are on the data list
+    expect(find.text(AppStrings.planDetailLoadingMessage), findsNothing);
+    expect(find.text('Warm-Up'), findsOneWidget);
+
+    final addButtonFinder = find
+        .widgetWithText(TextButton, AppStrings.sessionItemAddSongAction,
+            skipOffstage: false)
+        .first;
+
+    expect(addButtonFinder, findsOneWidget);
+
+    final addButton = tester.widget<TextButton>(addButtonFinder);
     expect(addButton.onPressed, isNull);
     expect(
       find.text(AppStrings.sessionItemSongUnavailableMessage),
