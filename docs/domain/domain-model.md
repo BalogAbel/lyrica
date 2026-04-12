@@ -180,7 +180,6 @@ Local-first write note:
 - Session delete is allowed only for locally empty sessions, and the backend re-checks that invariant before accepting the delete.
 - Session reorder is a plan-scoped collection mutation that captures the owning plan's synchronized `base_version`, compacts to the latest locally intended sibling order, and reconciles canonical accepted order back into the read projection when the immediate post-write refresh fails.
 - Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug`; the route layer resolves the matching internal `sessionItemId` before entering the existing id-based reader context.
-- Async widget lifecycles in the planning UI now use `context.mounted` guards to prevent runtime crashes during background synchronization and state invalidation.
 
 ### session_items
 

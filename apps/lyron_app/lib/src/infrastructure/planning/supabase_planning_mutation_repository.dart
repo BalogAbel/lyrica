@@ -82,9 +82,15 @@ class SupabasePlanningMutationRepository
       };
 
       final response = await _rpc(rpcName, params: params);
-      final responseMap = response is List
-          ? (response.isNotEmpty ? response.first as Map : <String, dynamic>{})
-          : response as Map;
+      final responseMap = switch (response) {
+        List() when response.isEmpty =>
+          throw const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.unknown,
+            message: 'Planning mutation RPC returned an empty result set.',
+          ),
+        List() => response.first as Map,
+        _ => response as Map,
+      };
       final row = Map<String, dynamic>.from(responseMap);
       return _mapRow(record, row, organizationId: organizationId);
     } on Object catch (error) {
