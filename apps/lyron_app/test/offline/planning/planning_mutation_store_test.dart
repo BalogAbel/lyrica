@@ -202,7 +202,7 @@ void main() {
         );
       """);
         rawDb.execute('pragma user_version = 3;');
-        rawDb.dispose();
+        rawDb.close();
 
         final migratedDatabase = PlanningLocalDatabase.connect(
           NativeDatabase.createInBackground(dbFile),
