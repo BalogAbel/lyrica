@@ -202,6 +202,7 @@ void main() {
       );
 
       expect(rpcName, 'create_song_session_item');
+      expect(rpcParams.containsKey('p_plan_id'), isFalse);
       expect(rpcParams['p_session_id'], 'session-1');
       expect(rpcParams['p_song_id'], 'song-2');
       expect(rpcParams['p_position'], 30);
@@ -222,6 +223,41 @@ void main() {
       rpc: (name, {params}) async {
         throw PostgrestException(
           message: 'duplicate_song_in_session_blocked',
+          code: 'P0001',
+        );
+      },
+    );
+
+    await expectLater(
+      () => repository.syncMutation(
+        organizationId: 'org-1',
+        record: PlanningMutationRecord(
+          aggregateId: 'item-local-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+          sessionId: 'session-1',
+          songId: 'song-2',
+          kind: PlanningMutationKind.sessionItemCreateSong,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+        ),
+      ),
+      throwsA(
+        isA<PlanningMutationSyncException>().having(
+          (error) => error.code,
+          'code',
+          PlanningMutationSyncErrorCode.dependencyBlocked,
+        ),
+      ),
+    );
+  });
+
+  test('maps song visibility dependency errors to failed dependency', () async {
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async {
+        throw PostgrestException(
+          message: 'song_not_visible_blocked',
           code: 'P0001',
         );
       },
