@@ -288,6 +288,42 @@ void main() {
     expect(writeService.editedDraft?.name, 'Updated Team Rehearsal');
   });
 
+  testWidgets(
+    'async plan edit completion after dispose does not raise invalidation errors',
+    (tester) async {
+      final completer = Completer<void>();
+      final writeService = _DelayedPlanningWriteService(
+        onEditPlan: () => completer.future,
+      );
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.planEditAction));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('plan-editor-name')),
+        'Updated Team Rehearsal',
+      );
+      await tester.tap(find.text(AppStrings.planSaveAction));
+      await tester.pump();
+
+      await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+      await tester.pump();
+
+      completer.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(writeService.editedDraft?.name, 'Updated Team Rehearsal');
+    },
+  );
+
   testWidgets('creates and renames sessions locally from the detail screen', (
     tester,
   ) async {
@@ -912,6 +948,21 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required SessionItemReorderDraft draft,
   }) async {
     reorderedSessionItemDraft = draft;
+  }
+}
+
+class _DelayedPlanningWriteService extends _FakePlanningWriteService {
+  _DelayedPlanningWriteService({required this.onEditPlan});
+
+  final Future<void> Function() onEditPlan;
+
+  @override
+  Future<void> editPlan({
+    required PlanningWriteContext context,
+    required PlanEditDraft draft,
+  }) async {
+    editedDraft = draft;
+    await onEditPlan();
   }
 }
 

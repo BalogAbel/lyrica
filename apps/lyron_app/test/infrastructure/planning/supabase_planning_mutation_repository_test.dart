@@ -123,6 +123,42 @@ void main() {
     expect(result.orderedSiblingPositions, orderedEquals(const [10, 20, 30]));
   });
 
+  test('maps a table-style list rpc response using the first row', () async {
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async => [
+        {
+          'plan_id': 'plan-1',
+          'organization_id': 'org-1',
+          'version': 4,
+          'ordered_session_ids': ['session-3', 'session-1', 'session-2'],
+          'ordered_session_positions': [10, 20, 30],
+        },
+      ],
+    );
+
+    final result = await repository.syncMutation(
+      organizationId: 'org-1',
+      record: PlanningMutationRecord(
+        aggregateId: 'plan-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        orderedSiblingIds: const ['session-3', 'session-1', 'session-2'],
+        baseVersion: 3,
+        kind: PlanningMutationKind.sessionReorder,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+
+    expect(result.baseVersion, 4);
+    expect(
+      result.orderedSiblingIds,
+      orderedEquals(const ['session-3', 'session-1', 'session-2']),
+    );
+    expect(result.orderedSiblingPositions, orderedEquals(const [10, 20, 30]));
+  });
+
   test(
     'maps session item create to the song-backed session item rpc',
     () async {
