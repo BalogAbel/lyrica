@@ -30,5 +30,30 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
   }
 
   @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 4) {
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.sessionId,
+        );
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.songId,
+        );
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.songTitle,
+        );
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.orderedSiblingIds,
+        );
+      }
+    },
+  );
+
+  @override
   int get schemaVersion => 4;
 }

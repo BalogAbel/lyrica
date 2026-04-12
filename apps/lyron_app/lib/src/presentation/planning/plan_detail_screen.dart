@@ -411,17 +411,20 @@ class _SessionCard extends ConsumerWidget {
         title: const Text(AppStrings.sessionItemSongPickerTitle),
         content: SizedBox(
           width: 420,
-          child: ListView(
-            shrinkWrap: true,
-            children: selectableSongs
-                .map(
-                  (song) => ListTile(
-                    key: ValueKey('session-song-option-${song.id}'),
-                    title: Text(song.title),
-                    onTap: () => Navigator.of(context).pop(song),
-                  ),
-                )
-                .toList(growable: false),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 400),
+            child: ListView(
+              shrinkWrap: true,
+              children: selectableSongs
+                  .map(
+                    (song) => ListTile(
+                      key: ValueKey('session-song-option-${song.id}'),
+                      title: Text(song.title),
+                      onTap: () => Navigator.of(context).pop(song),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
           ),
         ),
       ),

@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   group('PlanningMutationStore', () {
@@ -84,6 +85,147 @@ void main() {
       expect(pending.single.kind, PlanningMutationKind.planCreate);
       expect(pending.single.slug, 'weekend-service');
     });
+
+    test(
+      'migrates a version 3 planning database without losing mutations',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'planning-mutation-migration-test',
+        );
+        addTearDown(() async {
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+
+        final rawDb = sqlite3.open(dbFile.path);
+        rawDb.execute('''
+        create table planning_projection_owners (
+          user_id text not null,
+          organization_id text not null,
+          snapshot_version integer not null,
+          refreshed_at integer not null,
+          primary key (user_id, organization_id)
+        );
+      ''');
+        rawDb.execute('''
+        create table cached_planning_plans (
+          user_id text not null,
+          organization_id text not null,
+          snapshot_version integer not null,
+          plan_id text not null,
+          slug text not null,
+          name text not null,
+          description text,
+          scheduled_for integer,
+          updated_at integer not null,
+          version integer not null,
+          primary key (user_id, organization_id, plan_id)
+        );
+      ''');
+        rawDb.execute('''
+        create table cached_planning_sessions (
+          user_id text not null,
+          organization_id text not null,
+          snapshot_version integer not null,
+          session_id text not null,
+          plan_id text not null,
+          slug text not null,
+          position integer not null,
+          name text not null,
+          version integer not null,
+          primary key (user_id, organization_id, session_id)
+        );
+      ''');
+        rawDb.execute('''
+        create table cached_planning_session_items (
+          user_id text not null,
+          organization_id text not null,
+          snapshot_version integer not null,
+          session_item_id text not null,
+          plan_id text not null,
+          session_id text not null,
+          position integer not null,
+          song_id text not null,
+          song_title text not null,
+          primary key (user_id, organization_id, session_item_id)
+        );
+      ''');
+        rawDb.execute('''
+        create table cached_planning_mutations (
+          user_id text not null,
+          organization_id text not null,
+          aggregate_type text not null,
+          aggregate_id text not null,
+          mutation_kind text not null,
+          sync_status text not null,
+          plan_id text,
+          slug text,
+          name text,
+          description text,
+          scheduled_for integer,
+          position integer,
+          base_version integer,
+          error_code text,
+          error_message text,
+          order_key integer not null,
+          updated_at integer not null,
+          primary key (user_id, organization_id, aggregate_type, aggregate_id)
+        );
+      ''');
+        rawDb.execute("""
+        insert into cached_planning_mutations (
+          user_id,
+          organization_id,
+          aggregate_type,
+          aggregate_id,
+          mutation_kind,
+          sync_status,
+          plan_id,
+          name,
+          base_version,
+          order_key,
+          updated_at
+        ) values (
+          'user-1',
+          'org-1',
+          'session_order',
+          'plan-1',
+          'session_reorder',
+          'pending',
+          'plan-1',
+          'Imported reorder',
+          3,
+          1,
+          1712793600000
+        );
+      """);
+        rawDb.execute('pragma user_version = 3;');
+        rawDb.dispose();
+
+        final migratedDatabase = PlanningLocalDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(migratedDatabase.close);
+        final migratedStore = DriftPlanningMutationStore(
+          database: migratedDatabase,
+          localStore: DriftPlanningLocalStore(migratedDatabase),
+        );
+
+        final pending = await migratedStore.readPendingMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        expect(pending, hasLength(1));
+        expect(pending.single.aggregateId, 'plan-1');
+        expect(pending.single.kind, PlanningMutationKind.sessionReorder);
+        expect(pending.single.sessionId, isNull);
+        expect(pending.single.songId, isNull);
+        expect(pending.single.orderedSiblingIds, isNull);
+      },
+    );
 
     test('create then edit collapses into one pending plan create', () async {
       const context = PlanningMutationContext(

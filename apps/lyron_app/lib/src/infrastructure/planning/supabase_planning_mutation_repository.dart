@@ -45,10 +45,7 @@ class SupabasePlanningMutationRepository
         if (record.kind == PlanningMutationKind.sessionReorder)
           'p_plan_id': record.planId ?? record.aggregateId,
         if (record.kind == PlanningMutationKind.sessionRename ||
-            record.kind == PlanningMutationKind.sessionDelete ||
-            record.kind == PlanningMutationKind.sessionItemCreateSong ||
-            record.kind == PlanningMutationKind.sessionItemDelete ||
-            record.kind == PlanningMutationKind.sessionItemReorder)
+            record.kind == PlanningMutationKind.sessionDelete)
           'p_session_id': record.aggregateId,
         if (record.kind == PlanningMutationKind.sessionItemCreateSong ||
             record.kind == PlanningMutationKind.sessionItemDelete ||
