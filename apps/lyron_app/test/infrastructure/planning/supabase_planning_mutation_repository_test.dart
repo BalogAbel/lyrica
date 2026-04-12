@@ -215,4 +215,43 @@ void main() {
       ),
     );
   });
+
+  test(
+    'treats an empty table RPC response as an explicit sync failure',
+    () async {
+      final repository = SupabasePlanningMutationRepository.testing(
+        rpc: (name, {params}) async => <Map<String, dynamic>>[],
+      );
+
+      await expectLater(
+        () => repository.syncMutation(
+          organizationId: 'org-1',
+          record: PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            orderedSiblingIds: const ['session-1'],
+            baseVersion: 3,
+            kind: PlanningMutationKind.sessionReorder,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ),
+        throwsA(
+          isA<PlanningMutationSyncException>()
+              .having(
+                (error) => error.code,
+                'code',
+                PlanningMutationSyncErrorCode.unknown,
+              )
+              .having(
+                (error) => error.message,
+                'message',
+                'Planning mutation RPC returned an empty result set.',
+              ),
+        ),
+      );
+    },
+  );
 }

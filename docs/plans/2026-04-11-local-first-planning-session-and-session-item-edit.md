@@ -224,15 +224,37 @@ Expected: PASS.
 - Modify: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
 - Modify: `apps/lyron_app/test/router/app_router_test.dart`
 
-- [x] **Step 1: Fix asynchronous widget disposal errors**
-  - Add `if (!context.mounted) return;` checks after all `await` calls in `PlanDetailScreen` to prevent "ref used after disposed" crashes.
-- [x] **Step 2: Fix Supabase RPC response parsing**
-  - Handle `List` vs `Map` responses in `syncMutation` to accommodate `returns table` RPC functions.
-- [x] **Step 3: Stabilize test environment**
-  - Harden `ProviderScope` overrides in `plan_detail_screen_test.dart` to prevent real Drift database instantiation during tests, avoiding race conditions and lock errors on CI.
-  - Ensure all manual `ProviderScope` usages in the file use the same safe stubs.
+- [x] **Step 1: Write the failing widget tests**
+
+Add coverage for:
+- minimal session reorder affordance in plan detail
+- minimal add-song flow that selects from the locally visible song catalog
+- add-song affordance remaining unavailable when the active organization has no locally available song catalog
+- item delete affordance
+- item reorder affordance
+- immediate local update after each action
+- failure-status surface for non-overlaying planning mutations from this slice
+
+- [x] **Step 2: Run the focused widget tests**
+
+Run:
+- `cd apps/lyron_app && flutter test test/presentation/planning/plan_detail_screen_test.dart`
+- `cd apps/lyron_app && flutter test test/router/app_router_test.dart`
+
+Expected: FAIL because the UI does not expose the new slice yet.
+
+- [x] **Step 3: Implement the minimal UI**
+
+Update the planning detail flow so it:
+- exposes session reorder without requiring final drag-and-drop polish
+- exposes song add from the local catalog already available to the active organization
+- gates song add when the local catalog for the active organization is unavailable instead of pretending offline add can proceed
+- exposes item delete and item reorder
+- keeps status and retry surfaces aligned with the existing planning write architecture
 
 - [x] **Step 4: Re-run the focused widget tests**
+
+Run the same two commands again.
 
 Expected: PASS.
 
@@ -248,7 +270,7 @@ Expected: PASS.
 - Reference: `docs/specs/2026-04-11-offline-first-planning-session-and-session-item-edit.md`
 - Reference: `docs/plans/2026-04-11-local-first-planning-session-and-session-item-edit.md`
 
-- [ ] **Step 1: Write the failing integration tests**
+- [x] **Step 1: Write the failing integration tests**
 
 Add coverage for:
 - offline session reorder followed by successful sync
@@ -258,7 +280,7 @@ Add coverage for:
 - app restart preserving the pending collection mutations and merged plan detail
 - auth-boundary cleanup removing pending collection mutations and projection data together
 
-- [ ] **Step 2: Run the focused integration suite**
+- [x] **Step 2: Run the focused integration suite**
 
 Run:
 - `cd apps/lyron_app && flutter test test/integration/local_first_planning_read_flow_test.dart`
@@ -266,15 +288,21 @@ Run:
 
 Expected: FAIL until Tasks 1-5 are complete.
 
-- [x] **Step 1: Write the failing integration tests**
-- [x] **Step 2: Run the focused integration suite**
 - [x] **Step 3: Re-run after implementation**
-- [x] **Step 4: Update durable repository docs**
-- [x] **Step 5: Run final verification**
+
+Run the same two integration commands again.
 
 Expected: PASS.
 
-- [ ] **Step 5: Run final verification**
+- [x] **Step 4: Update durable repository docs**
+
+Update:
+- `README.md` with the expanded planning write scope and verification wording
+- `docs/domain/domain-model.md` with session reorder and song-backed session-item mutation invariants
+- `docs/architecture/architecture.md` with the collection-mutation sync and reconciliation boundary
+- `docs/testing/testing-strategy.md` with standing verification expectations for the new slice
+
+- [x] **Step 5: Run final verification**
 
 Run:
 - `cd apps/lyron_app && flutter test`
