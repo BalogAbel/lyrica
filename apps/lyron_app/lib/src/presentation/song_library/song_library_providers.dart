@@ -7,7 +7,7 @@ import 'package:lyron_app/src/application/song_library/song_library_service.dart
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chord_transposer.dart';
@@ -175,7 +175,32 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
         context: context,
         songId: songId,
       );
-      final song = parser.parse(source.source);
+      final parsedSong = parser.parse(source.source);
+      final songTitle = parsedSong.title.trim();
+      ParsedSong song = parsedSong;
+      if (songTitle.isEmpty) {
+        try {
+          SongSummary? summary;
+          final summaries = await service.listSongs(context: context);
+          for (final item in summaries) {
+            if (item.id == songId) {
+              summary = item;
+              break;
+            }
+          }
+          if (summary != null) {
+            song = ParsedSong(
+              title: summary.title,
+              subtitle: parsedSong.subtitle,
+              sourceKey: parsedSong.sourceKey,
+              sections: parsedSong.sections,
+              diagnostics: parsedSong.diagnostics,
+            );
+          }
+        } on Object {
+          // Fallback title resolution is best-effort and must not break reader loads.
+        }
+      }
       for (final diagnostic in song.diagnostics) {
         logDiagnostic(diagnostic);
       }

@@ -136,6 +136,52 @@ void main() {
     expect(loggedDiagnostics.single.context, '{unknown:test}');
   });
 
+  test('falls back to catalog title when parsed song title is empty', () async {
+    final container = ProviderContainer(
+      overrides: [
+        songLibraryRepositoryProvider.overrideWithValue(
+          _ReaderFallbackSongRepository(),
+        ),
+        activeCatalogContextProvider.overrideWithValue(
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final result = await container.read(
+      songLibraryReaderProvider('song-1').future,
+    );
+
+    expect(result.song.title, 'Catalog Title');
+  });
+
+  test(
+    'does not query catalog titles when parsed title is already present',
+    () async {
+      final repository = _NonEmptyTitleReaderRepository();
+      final container = ProviderContainer(
+        overrides: [
+          songLibraryRepositoryProvider.overrideWithValue(repository),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container.read(
+        songLibraryReaderProvider('song-1').future,
+      );
+
+      expect(result.song.title, 'Reader Song');
+      expect(repository.listSongsCalls, 0);
+    },
+  );
+
   test(
     'keeps the authenticated slice on the cached read path while Supabase remains the refresh boundary',
     () async {
@@ -459,6 +505,66 @@ class _StubChordproParser extends ChordproParser {
 
   @override
   ParsedSong parse(String source) => _result;
+}
+
+class _ReaderFallbackSongRepository implements SongCatalogReadRepository {
+  @override
+  Future<List<SongSummary>> listSongs({
+    required String userId,
+    required String organizationId,
+  }) async => const [SongSummary(id: 'song-1', title: 'Catalog Title')];
+
+  @override
+  Future<SongSource> getSongSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return const SongSource(
+      id: 'song-1',
+      source: '{subtitle:From source without title}\nLine',
+    );
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    return null;
+  }
+}
+
+class _NonEmptyTitleReaderRepository implements SongCatalogReadRepository {
+  int listSongsCalls = 0;
+
+  @override
+  Future<List<SongSummary>> listSongs({
+    required String userId,
+    required String organizationId,
+  }) async {
+    listSongsCalls += 1;
+    return const [SongSummary(id: 'song-1', title: 'Catalog Title')];
+  }
+
+  @override
+  Future<SongSource> getSongSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return const SongSource(id: 'song-1', source: '{title:Reader Song}\nLine');
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) async {
+    return null;
+  }
 }
 
 class _RecordingSongLibraryService extends SongLibraryService {

@@ -18,12 +18,12 @@ class SongSectionView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final label = _sectionLabel(section);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(_sectionLabel(section), style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
+        if (label != null) ...[Text(label, style: theme.textTheme.titleLarge)],
         for (final line in section.lines) ...[
           SongLineView(
             line: line,
@@ -36,7 +36,12 @@ class SongSectionView extends StatelessWidget {
     );
   }
 
-  String _sectionLabel(SongReaderSectionProjection section) {
+  String? _sectionLabel(SongReaderSectionProjection section) {
+    final isUnlabeled = section.label == 'Unlabeled' && section.number == null;
+    if (isUnlabeled) {
+      return null;
+    }
+
     if (section.number == null) {
       return section.label;
     }

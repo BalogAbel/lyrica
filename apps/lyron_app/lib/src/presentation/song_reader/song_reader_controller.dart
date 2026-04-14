@@ -27,4 +27,34 @@ class SongReaderController {
   void setSharedFontScale(double scale) {
     _state = _state.copyWith(sharedFontScale: scale);
   }
+
+  void showCompactControls() {
+    _state = _state.copyWith(areCompactControlsVisible: true);
+  }
+
+  void hideCompactControls() {
+    _state = _state.copyWith(areCompactControlsVisible: false);
+  }
+
+  void toggleCompactControls() {
+    _state = _state.copyWith(
+      areCompactControlsVisible: !_state.areCompactControlsVisible,
+    );
+  }
+
+  void setControlPresentationMode(SongReaderControlPresentationMode mode) {
+    _state = _state.copyWith(controlPresentationMode: mode);
+  }
+
+  void enableAutoFit() {
+    _state = _state.copyWith(isAutoFitEnabled: true);
+  }
+
+  void disableAutoFit() {
+    _state = _state.copyWith(isAutoFitEnabled: false);
+  }
+
+  void toggleAutoFit() {
+    _state = _state.copyWith(isAutoFitEnabled: !_state.isAutoFitEnabled);
+  }
 }

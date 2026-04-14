@@ -18,7 +18,7 @@ void main() {
     expect(controller.state.songId, 'song-1');
   });
 
-  test('updates view mode, transpose, and font scale', () {
+  test('updates shared reader state parity controls', () {
     final controller = SessionScopedReaderRuntimeController();
     controller.startSession(
       planId: 'plan-1',
@@ -29,6 +29,11 @@ void main() {
     controller.toggleViewMode();
     controller.transposeUp();
     controller.setSharedFontScale(1.25);
+    controller.showCompactControls();
+    controller.setControlPresentationMode(
+      SongReaderControlPresentationMode.pinned,
+    );
+    controller.disableAutoFit();
 
     expect(
       controller.state.readerState.viewMode,
@@ -36,6 +41,28 @@ void main() {
     );
     expect(controller.state.readerState.transposeOffset, 1);
     expect(controller.state.readerState.sharedFontScale, 1.25);
+    expect(controller.state.readerState.areCompactControlsVisible, true);
+    expect(
+      controller.state.readerState.controlPresentationMode,
+      SongReaderControlPresentationMode.pinned,
+    );
+    expect(controller.state.readerState.isAutoFitEnabled, false);
+  });
+
+  test('toggles compact controls without disturbing other reader state', () {
+    final controller = SessionScopedReaderRuntimeController();
+    controller.startSession(
+      planId: 'plan-1',
+      sessionId: 'session-1',
+      songId: 'song-1',
+    );
+
+    controller.toggleCompactControls();
+    expect(controller.state.readerState.areCompactControlsVisible, true);
+
+    controller.toggleCompactControls();
+    expect(controller.state.readerState.areCompactControlsVisible, false);
+    expect(controller.state.readerState, SongReaderState());
   });
 
   test('preserves settings when selected song changes in the same session', () {
@@ -48,6 +75,8 @@ void main() {
     controller.toggleViewMode();
     controller.transposeUp();
     controller.setSharedFontScale(1.25);
+    controller.showCompactControls();
+    controller.disableAutoFit();
 
     controller.startSession(
       planId: 'plan-1',
@@ -62,6 +91,8 @@ void main() {
     );
     expect(controller.state.readerState.transposeOffset, 1);
     expect(controller.state.readerState.sharedFontScale, 1.25);
+    expect(controller.state.readerState.areCompactControlsVisible, true);
+    expect(controller.state.readerState.isAutoFitEnabled, false);
   });
 
   test('resets when a different scoped reader session starts', () {

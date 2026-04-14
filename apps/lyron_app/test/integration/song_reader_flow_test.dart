@@ -84,6 +84,9 @@ void main() {
 
       expect(find.text('Song reader'), findsOneWidget);
       expect(find.text('Egy út'), findsWidgets);
+      await tester.tap(find.textContaining('Leteszem'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
       expect(find.text('One Way'), findsOneWidget);
       expect(find.text('Key: B'), findsOneWidget);
       expect(find.text('Verse 1'), findsOneWidget);
@@ -177,6 +180,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Song reader'), findsOneWidget);
+      await tester.tap(find.textContaining('Leteszem'));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
       expect(find.text('One Way'), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));

@@ -52,6 +52,31 @@ Documented demo credentials:
 - `lib/src/infrastructure/planning/`: Supabase-backed planning repository
 - `lib/src/router/`: centralized route definitions
 
+## Reader UI Behavior
+
+Current reader behavior uses one shared reader core with presentation shells:
+
+- compact shell for touch-first viewports
+- expanded shell for large viewports
+
+Compact shell behavior:
+
+- persistent title bar above the song content
+- persistent bottom context bar
+- temporary control overlay revealed by single tap
+- double-tap toggles auto-fit state
+- control overlay auto-hides after inactivity
+
+Expanded shell behavior:
+
+- persistent title bar above the song content
+- left context panel
+- center song surface
+- right tools panel
+- no compact overlay
+
+Edit and delete actions stay in the stable top action area and are intentionally outside compact overlay and expanded side panels.
+
 ## Verification
 
 Run from the repository root:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,9 +19,11 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_con
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_header.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_section_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -45,9 +49,15 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
+  static const _expandedContentWidth = 1440.0;
+  static const _expandedContextPanelWidth = 240.0;
+  static const _expandedToolsPanelWidth = 320.0;
+  static const _expandedPanelGap = 24.0;
   static const _contentPadding = EdgeInsets.all(24);
+  static const _compactOverlayInactivity = Duration(seconds: 3);
 
   late final SongReaderController _controller = SongReaderController();
+  Timer? _compactOverlayHideTimer;
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -72,9 +82,122 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _compactOverlayHideTimer?.cancel();
+    super.dispose();
+  }
+
   void _updateState(void Function(SongReaderController controller) update) {
     setState(() {
       update(_controller);
+    });
+  }
+
+  void _toggleViewMode() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .toggleViewMode();
+      return;
+    }
+
+    _updateState((controller) => controller.toggleViewMode());
+  }
+
+  void _transposeDown() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .transposeDown();
+      return;
+    }
+
+    _updateState((controller) => controller.transposeDown());
+  }
+
+  void _transposeUp() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .transposeUp();
+      return;
+    }
+
+    _updateState((controller) => controller.transposeUp());
+  }
+
+  void _adjustSharedFontScale(double delta) {
+    if (_isScopedMode) {
+      final runtimeController = ref.read(
+        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
+      );
+      runtimeController.setSharedFontScale(
+        runtimeController.state.readerState.sharedFontScale + delta,
+      );
+      return;
+    }
+
+    _updateState((controller) {
+      controller.setSharedFontScale(controller.state.sharedFontScale + delta);
+    });
+  }
+
+  void _toggleCompactControls() {
+    if (_isScopedMode) {
+      final runtimeController = ref.read(
+        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
+      );
+      runtimeController.toggleCompactControls();
+      _handleCompactOverlayVisibilityChanged(
+        runtimeController.state.readerState.areCompactControlsVisible,
+      );
+      return;
+    }
+
+    _updateState((controller) => controller.toggleCompactControls());
+    _handleCompactOverlayVisibilityChanged(
+      _controller.state.areCompactControlsVisible,
+    );
+  }
+
+  void _toggleAutoFit() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .toggleAutoFit();
+      return;
+    }
+
+    _updateState((controller) => controller.toggleAutoFit());
+  }
+
+  void _handleCompactOverlayVisibilityChanged(bool isVisible) {
+    _compactOverlayHideTimer?.cancel();
+    if (!isVisible) {
+      return;
+    }
+
+    _compactOverlayHideTimer = Timer(_compactOverlayInactivity, () {
+      if (!mounted) {
+        return;
+      }
+
+      if (_isScopedMode) {
+        final runtimeController = ref.read(
+          sessionScopedReaderRuntimeControllerProvider(_sessionKey),
+        );
+        if (runtimeController.state.readerState.areCompactControlsVisible) {
+          runtimeController.hideCompactControls();
+        }
+        return;
+      }
+
+      if (_controller.state.areCompactControlsVisible) {
+        setState(() {
+          _controller.hideCompactControls();
+        });
+      }
     });
   }
 
@@ -111,6 +234,25 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
             songId: widget.songId,
           );
     });
+  }
+
+  String _resolveCurrentTitle({
+    required SessionScopedReaderContext? scopedContext,
+    required SongReaderProjection projection,
+  }) {
+    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
+    if (scopedTitle.isNotEmpty) {
+      return scopedTitle;
+    }
+    return projection.title;
+  }
+
+  String? _resolveNeighborTitle(String? title) {
+    final trimmed = title?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
   }
 
   Future<void> _editSong(BuildContext context, SongReaderResult result) async {
@@ -351,146 +493,139 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                         )
                         .length;
 
-                    return Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: _contentWidth,
-                        ),
-                        child: ListView(
-                          padding: _contentPadding,
-                          children: [
-                            _CatalogStatusSurface(state: catalogState),
-                            if (_hasVisibleStatus(catalogState))
-                              const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                FilledButton.tonal(
-                                  onPressed: () => _editSong(context, result),
-                                  child: const Text(AppStrings.songEditAction),
-                                ),
-                                const SizedBox(width: 12),
-                                FilledButton.tonal(
-                                  onPressed: () => _deleteSong(context),
-                                  child: const Text(
-                                    AppStrings.songDeleteAction,
+                    final resolvedScopedContext =
+                        scopedContextAsync?.valueOrNull
+                            is ResolvedSessionScopedReaderContextResult
+                        ? (scopedContextAsync!.valueOrNull
+                                  as ResolvedSessionScopedReaderContextResult)
+                              .context
+                        : null;
+                    final currentTitle = _resolveCurrentTitle(
+                      scopedContext: resolvedScopedContext,
+                      projection: projection,
+                    );
+                    final previousTitle = _resolveNeighborTitle(
+                      resolvedScopedContext?.previousItem?.title,
+                    );
+                    final nextTitle = _resolveNeighborTitle(
+                      resolvedScopedContext?.nextItem?.title,
+                    );
+
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        final layout = resolveSongReaderLayout(
+                          viewportWidth: constraints.maxWidth,
+                          sharedFontScale: projection.sharedFontScale,
+                          isAutoFitEnabled: readerState.isAutoFitEnabled,
+                        );
+
+                        final readerSurface =
+                            layout.shell == SongReaderShell.expanded
+                            ? SongReaderExpandedSurface(
+                                projection: projection,
+                                previousTitle: previousTitle,
+                                nextTitle: nextTitle,
+                                hasRecoverableWarnings:
+                                    result.hasRecoverableWarnings,
+                                warningCount: recoverableWarningCount,
+                                contentColumnCount: layout.contentColumnCount,
+                                onToggleViewMode: _toggleViewMode,
+                                onTransposeDown: _transposeDown,
+                                onTransposeUp: _transposeUp,
+                                onDecreaseFontScale: () =>
+                                    _adjustSharedFontScale(-0.1),
+                                onIncreaseFontScale: () =>
+                                    _adjustSharedFontScale(0.1),
+                              )
+                            : SongReaderCompactSurface(
+                                projection: projection,
+                                areControlsVisible:
+                                    readerState.areCompactControlsVisible,
+                                currentTitle: currentTitle,
+                                previousTitle: previousTitle,
+                                nextTitle: nextTitle,
+                                onSurfaceTap: _toggleCompactControls,
+                                onSurfaceDoubleTap: _toggleAutoFit,
+                                hasRecoverableWarnings:
+                                    result.hasRecoverableWarnings,
+                                warningCount: recoverableWarningCount,
+                                contentColumnCount: layout.contentColumnCount,
+                                onToggleViewMode: _toggleViewMode,
+                                onTransposeDown: _transposeDown,
+                                onTransposeUp: _transposeUp,
+                                onDecreaseFontScale: () =>
+                                    _adjustSharedFontScale(-0.1),
+                                onIncreaseFontScale: () =>
+                                    _adjustSharedFontScale(0.1),
+                              );
+
+                        return Center(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: layout.shell == SongReaderShell.expanded
+                                  ? _expandedContentWidth
+                                  : _contentWidth,
+                            ),
+                            child: Padding(
+                              padding: _contentPadding,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _CatalogStatusSurface(state: catalogState),
+                                  if (_hasVisibleStatus(catalogState))
+                                    const SizedBox(height: 24),
+                                  Row(
+                                    children: [
+                                      FilledButton.tonal(
+                                        onPressed: () =>
+                                            _editSong(context, result),
+                                        child: const Text(
+                                          AppStrings.songEditAction,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton.tonal(
+                                        onPressed: () => _deleteSong(context),
+                                        child: const Text(
+                                          AppStrings.songDeleteAction,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            if (_isScopedMode)
-                              _ScopedNavigationSurface(
-                                scopedContextAsync: scopedContextAsync!,
-                                currentWarmPlanDetail: widget.warmPlanDetail,
-                              ),
-                            if (_isScopedMode) const SizedBox(height: 24),
-                            SongReaderHeader(
-                              projection: projection,
-                              hasRecoverableWarnings:
-                                  result.hasRecoverableWarnings,
-                              warningCount: recoverableWarningCount,
-                              onToggleViewMode: () {
-                                if (_isScopedMode) {
-                                  ref
-                                      .read(
-                                        sessionScopedReaderRuntimeControllerProvider(
-                                          _sessionKey,
-                                        ),
-                                      )
-                                      .toggleViewMode();
-                                  return;
-                                }
-                                _updateState(
-                                  (controller) => controller.toggleViewMode(),
-                                );
-                              },
-                              onTransposeDown: () {
-                                if (_isScopedMode) {
-                                  ref
-                                      .read(
-                                        sessionScopedReaderRuntimeControllerProvider(
-                                          _sessionKey,
-                                        ),
-                                      )
-                                      .transposeDown();
-                                  return;
-                                }
-                                _updateState(
-                                  (controller) => controller.transposeDown(),
-                                );
-                              },
-                              onTransposeUp: () {
-                                if (_isScopedMode) {
-                                  ref
-                                      .read(
-                                        sessionScopedReaderRuntimeControllerProvider(
-                                          _sessionKey,
-                                        ),
-                                      )
-                                      .transposeUp();
-                                  return;
-                                }
-                                _updateState(
-                                  (controller) => controller.transposeUp(),
-                                );
-                              },
-                              onDecreaseFontScale: () {
-                                if (_isScopedMode) {
-                                  final runtimeController = ref.read(
-                                    sessionScopedReaderRuntimeControllerProvider(
-                                      _sessionKey,
+                                  const SizedBox(height: 24),
+                                  if (_isScopedMode)
+                                    _ScopedNavigationSurface(
+                                      scopedContextAsync: scopedContextAsync!,
+                                      currentWarmPlanDetail:
+                                          widget.warmPlanDetail,
                                     ),
-                                  );
-                                  runtimeController.setSharedFontScale(
-                                    runtimeController
-                                            .state
-                                            .readerState
-                                            .sharedFontScale -
-                                        0.1,
-                                  );
-                                  return;
-                                }
-                                _updateState((controller) {
-                                  controller.setSharedFontScale(
-                                    controller.state.sharedFontScale - 0.1,
-                                  );
-                                });
-                              },
-                              onIncreaseFontScale: () {
-                                if (_isScopedMode) {
-                                  final runtimeController = ref.read(
-                                    sessionScopedReaderRuntimeControllerProvider(
-                                      _sessionKey,
+                                  if (_isScopedMode) const SizedBox(height: 24),
+                                  Padding(
+                                    padding:
+                                        layout.shell == SongReaderShell.expanded
+                                        ? const EdgeInsets.symmetric(
+                                            horizontal:
+                                                _expandedPanelGap +
+                                                _expandedContextPanelWidth,
+                                          ).copyWith(
+                                            right:
+                                                _expandedPanelGap +
+                                                _expandedToolsPanelWidth,
+                                          )
+                                        : EdgeInsets.zero,
+                                    child: SongReaderTitleBar(
+                                      title: currentTitle,
+                                      subtitle: projection.subtitle,
                                     ),
-                                  );
-                                  runtimeController.setSharedFontScale(
-                                    runtimeController
-                                            .state
-                                            .readerState
-                                            .sharedFontScale +
-                                        0.1,
-                                  );
-                                  return;
-                                }
-                                _updateState((controller) {
-                                  controller.setSharedFontScale(
-                                    controller.state.sharedFontScale + 0.1,
-                                  );
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 24),
-                            for (final section in projection.sections) ...[
-                              SongSectionView(
-                                section: section,
-                                viewMode: projection.viewMode,
-                                sharedFontScale: projection.sharedFontScale,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Expanded(child: readerSurface),
+                                ],
                               ),
-                              const SizedBox(height: 20),
-                            ],
-                          ],
-                        ),
-                      ),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

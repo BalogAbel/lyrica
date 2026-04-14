@@ -26,6 +26,13 @@ import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -91,6 +98,36 @@ void main() {
               ),
             ],
           ),
+        ],
+        diagnostics: const [],
+      ),
+    );
+  }
+
+  SongReaderResult buildTallResult() {
+    return SongReaderResult(
+      song: ParsedSong(
+        title: 'Tall Reader Song',
+        sourceKey: 'G',
+        sections: [
+          for (var sectionIndex = 1; sectionIndex <= 8; sectionIndex += 1)
+            SongSection(
+              kind: SongSectionKind.verse,
+              label: 'Verse',
+              number: sectionIndex,
+              lines: [
+                for (var lineIndex = 0; lineIndex < 4; lineIndex += 1)
+                  SongLine(
+                    segments: [
+                      const LyricSegment(leadingChord: 'G', text: 'Line '),
+                      LyricSegment(
+                        text:
+                            '$sectionIndex-$lineIndex long lyric long lyric long lyric',
+                      ),
+                    ],
+                  ),
+              ],
+            ),
         ],
         diagnostics: const [],
       ),
@@ -269,19 +306,211 @@ void main() {
     );
   }
 
+  Future<void> pumpWithViewport(
+    WidgetTester tester, {
+    required Size size,
+    required Widget child,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = size;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(child);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows metadata, sections, and controls by default', (
     tester,
   ) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
 
     expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
-    expect(find.text('Reader Song'), findsOneWidget);
+    expect(find.text('Reader Song'), findsWidgets);
     expect(find.text('Live version'), findsOneWidget);
     expect(find.text('Key: G'), findsOneWidget);
     expect(find.text('Verse 1'), findsOneWidget);
     expect(find.text('Chorus 2'), findsOneWidget);
     expect(find.text('F#m'), findsOneWidget);
+  });
+
+  testWidgets(
+    'compact reader shows bottom context and hides overlay by default',
+    (tester) async {
+      await pumpWithViewport(
+        tester,
+        size: const Size(800, 1200),
+        child: buildApp(result: buildResult()),
+      );
+
+      expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
+      expect(find.byType(SongReaderTitleBar), findsOneWidget);
+      expect(find.byType(SongReaderCompactOverlay), findsOneWidget);
+      expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
+      expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
+      expect(find.text('Lyrics only'), findsNothing);
+      expect(find.text('Reader Song'), findsWidgets);
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-1')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('compact reader reveals overlay through direct interaction', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(800, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
+    final compactSurface = find.byType(SongReaderCompactSurface);
+    final compactSurfaceCenter = tester.getCenter(compactSurface);
+
+    await tester.tapAt(compactSurfaceCenter);
+    await tester.pump();
+
+    expect(find.text('Lyrics only'), findsOneWidget);
+    expect(find.text('+1'), findsOneWidget);
+
+    await tester.tapAt(compactSurfaceCenter);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lyrics only'), findsNothing);
+    expect(find.text('+1'), findsNothing);
+  });
+
+  testWidgets('expanded reader shows side panels and no compact overlay', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
+    expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
+    expect(find.byType(SongReaderTitleBar), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(SongReaderExpandedSurface)).width,
+      greaterThan(960),
+    );
+    expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
+    expect(find.byType(SongReaderCompactOverlay), findsNothing);
+    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.text('Lyrics only'), findsOneWidget);
+    final titleRect = tester.getRect(find.byType(SongReaderTitleBar));
+    final expandedRect = tester.getRect(find.byType(SongReaderExpandedSurface));
+    expect(titleRect.left, greaterThan(expandedRect.left + 200));
+    expect(titleRect.right, lessThan(expandedRect.right - 280));
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'expanded reader switches to two columns when one-column content overflows',
+    (tester) async {
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildApp(result: buildTallResult()),
+      );
+
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-2')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('switches shell when viewport width changes at runtime', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
+    expect(find.byType(SongReaderExpandedSurface), findsNothing);
+
+    tester.view.physicalSize = const Size(1440, 1200);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
+    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+  });
+
+  testWidgets('double tap in compact mode toggles auto-fit used after resize', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(buildApp(result: buildTallResult()));
+    await tester.pumpAndSettle();
+
+    tester.view.physicalSize = const Size(1440, 1200);
+    await tester.pumpAndSettle();
+    expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-2')),
+      findsOneWidget,
+    );
+
+    tester.view.physicalSize = const Size(800, 1200);
+    await tester.pumpAndSettle();
+
+    final center = tester.getCenter(find.byType(SongReaderCompactSurface));
+    final firstTap = await tester.startGesture(center);
+    await firstTap.up();
+    await tester.pump(const Duration(milliseconds: 40));
+    final secondTap = await tester.startGesture(center);
+    await secondTap.up();
+    await tester.pumpAndSettle();
+
+    tester.view.physicalSize = const Size(1440, 1200);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-2')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('compact overlay hides after inactivity timeout', (tester) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(800, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
+    await tester.tapAt(tester.getCenter(find.byType(SongReaderCompactSurface)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Lyrics only'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.text('Lyrics only'), findsNothing);
   });
 
   testWidgets(
@@ -388,8 +617,11 @@ void main() {
   );
 
   testWidgets('hides chords in lyrics only mode', (tester) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
 
     await tester.tap(find.text('Lyrics only'));
     await tester.pumpAndSettle();
@@ -401,8 +633,11 @@ void main() {
   testWidgets('transposes rendered chords when controls change', (
     tester,
   ) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
 
     await tester.tap(find.text('+1'));
     await tester.pumpAndSettle();
@@ -412,8 +647,11 @@ void main() {
   });
 
   testWidgets('updates shared font size when controls change', (tester) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
 
     final initialText = tester.widget<Text>(find.text('Hello'));
     final initialSize = initialText.style!.fontSize!;
@@ -430,8 +668,10 @@ void main() {
   testWidgets(
     'shows a non-blocking warning surface for recoverable diagnostics',
     (tester) async {
-      await tester.pumpWidget(
-        buildApp(
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildApp(
           result: buildResult(
             diagnostics: [
               ParseDiagnostic(
@@ -444,7 +684,6 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
 
       expect(find.textContaining('warning'), findsWidgets);
     },
@@ -453,8 +692,10 @@ void main() {
   testWidgets('counts only warning diagnostics in the warning surface', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      buildApp(
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(
         result: buildResult(
           diagnostics: [
             ParseDiagnostic(
@@ -477,7 +718,6 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
 
     expect(
       find.text('1 recoverable warning while reading this song.'),
@@ -590,7 +830,8 @@ void main() {
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Reader Song'), findsOneWidget);
+    expect(find.byType(SongReaderTitleBar), findsOneWidget);
+    expect(find.byKey(SongReaderTitleBar.titleKey), findsOneWidget);
     expect(attempts, 2);
   });
 
@@ -629,6 +870,28 @@ void main() {
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
+
+  testWidgets(
+    'scoped compact mode falls back to parsed title when selected item title is empty',
+    (tester) async {
+      await tester.pumpWidget(
+        buildScopedReaderApp(
+          planDetail: _multiItemPlanDetailWithSongTwoTitle(''),
+          resultsBySongId: {
+            'song-1': buildScopedResult('Song One'),
+            'song-2': buildScopedResult('Reader Song'),
+            'song-3': buildScopedResult('Song Three'),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.widgetWithText(SongReaderBottomContextBar, 'Reader Song'),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('standard reader entry hides scoped navigation controls', (
     tester,
@@ -777,8 +1040,10 @@ void main() {
   testWidgets(
     'scoped navigation preserves view mode, transpose, and shared font scale',
     (tester) async {
-      await tester.pumpWidget(
-        buildScopedReaderApp(
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
             'song-1': buildScopedResult('Song One'),
@@ -787,7 +1052,6 @@ void main() {
           },
         ),
       );
-      await tester.pumpAndSettle();
 
       await tester.tap(find.text('Lyrics only'));
       await tester.pumpAndSettle();
@@ -1056,6 +1320,56 @@ PlanDetail _multiItemPlanDetail() {
             ),
           ),
           SessionItemSummary(
+            id: 'item-30',
+            position: 30,
+            song: SongSummary(
+              id: 'song-3',
+              slug: 'song-three',
+              title: 'Song Three',
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+PlanDetail _multiItemPlanDetailWithSongTwoTitle(String songTwoTitle) {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      slug: 'plan-fixture',
+      name: 'Plan Fixture',
+      description: 'Scoped reader test fixture',
+      scheduledFor: null,
+      updatedAt: DateTime(2026, 4, 1, 9),
+    ),
+    sessions: [
+      SessionSummary(
+        id: 'session-1',
+        slug: 'main-set',
+        name: 'Main Set',
+        position: 10,
+        items: [
+          const SessionItemSummary(
+            id: 'item-10',
+            position: 10,
+            song: SongSummary(
+              id: 'song-1',
+              slug: 'song-one',
+              title: 'Song One',
+            ),
+          ),
+          SessionItemSummary(
+            id: 'item-20',
+            position: 20,
+            song: SongSummary(
+              id: 'song-2',
+              slug: 'song-two',
+              title: songTwoTitle,
+            ),
+          ),
+          const SessionItemSummary(
             id: 'item-30',
             position: 30,
             song: SongSummary(
