@@ -65,6 +65,11 @@ class _SongLineSegmentView extends StatelessWidget {
     final showChord =
         viewMode == SongReaderViewMode.chordsAndLyrics &&
         segment.displayChord != null;
+    final showLyric = segment.text.isNotEmpty;
+
+    if (!showChord && !showLyric) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -72,9 +77,9 @@ class _SongLineSegmentView extends StatelessWidget {
       children: [
         if (showChord) ...[
           Text(segment.displayChord!, style: chordStyle),
-          const SizedBox(height: 2),
+          if (showLyric) const SizedBox(height: 2),
         ],
-        Text(segment.text, style: lyricStyle),
+        if (showLyric) Text(segment.text, style: lyricStyle),
       ],
     );
   }

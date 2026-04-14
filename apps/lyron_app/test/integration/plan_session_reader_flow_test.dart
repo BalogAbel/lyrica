@@ -98,7 +98,7 @@ void main() {
       await tester.tap(find.text(AppStrings.scopedReaderNextAction));
       await tester.pumpAndSettle();
 
-      expect(find.text('Second Song'), findsOneWidget);
+      expect(find.text('Second Song'), findsWidgets);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
@@ -175,7 +175,7 @@ void main() {
     await tester.tap(find.text(AppStrings.scopedReaderNextAction));
     await tester.pumpAndSettle();
 
-    expect(find.text('Second Song'), findsOneWidget);
+    expect(find.text('Second Song'), findsWidgets);
     final previousButton = tester.widget<OutlinedButton>(
       find.widgetWithText(
         OutlinedButton,

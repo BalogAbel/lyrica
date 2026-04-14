@@ -8,6 +8,13 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
 
   SessionScopedReaderRuntimeState get state => _state;
 
+  void _updateReaderState(
+    SongReaderState Function(SongReaderState state) update,
+  ) {
+    _state = _state.copyWith(readerState: update(_state.readerState));
+    notifyListeners();
+  }
+
   void startSession({
     required String planId,
     required String sessionId,
@@ -26,40 +33,69 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
   }
 
   void toggleViewMode() {
-    _state = _state.copyWith(
-      readerState: _state.readerState.copyWith(
-        viewMode:
-            _state.readerState.viewMode == SongReaderViewMode.chordsAndLyrics
+    _updateReaderState(
+      (state) => state.copyWith(
+        viewMode: state.viewMode == SongReaderViewMode.chordsAndLyrics
             ? SongReaderViewMode.lyricsOnly
             : SongReaderViewMode.chordsAndLyrics,
       ),
     );
-    notifyListeners();
   }
 
   void transposeUp() {
-    _state = _state.copyWith(
-      readerState: _state.readerState.copyWith(
-        transposeOffset: _state.readerState.transposeOffset + 1,
-      ),
+    _updateReaderState(
+      (state) => state.copyWith(transposeOffset: state.transposeOffset + 1),
     );
-    notifyListeners();
   }
 
   void transposeDown() {
-    _state = _state.copyWith(
-      readerState: _state.readerState.copyWith(
-        transposeOffset: _state.readerState.transposeOffset - 1,
-      ),
+    _updateReaderState(
+      (state) => state.copyWith(transposeOffset: state.transposeOffset - 1),
     );
-    notifyListeners();
   }
 
   void setSharedFontScale(double scale) {
-    _state = _state.copyWith(
-      readerState: _state.readerState.copyWith(sharedFontScale: scale),
+    _updateReaderState((state) => state.copyWith(sharedFontScale: scale));
+  }
+
+  void showCompactControls() {
+    _updateReaderState(
+      (state) => state.copyWith(areCompactControlsVisible: true),
     );
-    notifyListeners();
+  }
+
+  void hideCompactControls() {
+    _updateReaderState(
+      (state) => state.copyWith(areCompactControlsVisible: false),
+    );
+  }
+
+  void toggleCompactControls() {
+    _updateReaderState(
+      (state) => state.copyWith(
+        areCompactControlsVisible: !state.areCompactControlsVisible,
+      ),
+    );
+  }
+
+  void setControlPresentationMode(SongReaderControlPresentationMode mode) {
+    _updateReaderState(
+      (state) => state.copyWith(controlPresentationMode: mode),
+    );
+  }
+
+  void enableAutoFit() {
+    _updateReaderState((state) => state.copyWith(isAutoFitEnabled: true));
+  }
+
+  void disableAutoFit() {
+    _updateReaderState((state) => state.copyWith(isAutoFitEnabled: false));
+  }
+
+  void toggleAutoFit() {
+    _updateReaderState(
+      (state) => state.copyWith(isAutoFitEnabled: !state.isAutoFitEnabled),
+    );
   }
 }
 

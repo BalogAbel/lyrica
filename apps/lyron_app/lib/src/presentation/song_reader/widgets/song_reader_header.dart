@@ -26,25 +26,15 @@ class SongReaderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final subtitleStyle = theme.textTheme.titleMedium?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-
     return Card(
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(projection.title, style: theme.textTheme.headlineSmall),
-            if (projection.subtitle != null) ...[
-              const SizedBox(height: 6),
-              Text(projection.subtitle!, style: subtitleStyle),
-            ],
             if (projection.sourceKey != null) ...[
-              const SizedBox(height: 10),
               _MetadataChip(label: 'Key', value: projection.sourceKey!),
             ],
             if (hasRecoverableWarnings) ...[
