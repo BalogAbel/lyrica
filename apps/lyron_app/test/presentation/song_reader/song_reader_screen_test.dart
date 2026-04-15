@@ -110,13 +110,13 @@ void main() {
         title: 'Tall Reader Song',
         sourceKey: 'G',
         sections: [
-          for (var sectionIndex = 1; sectionIndex <= 8; sectionIndex += 1)
+          for (var sectionIndex = 1; sectionIndex <= 6; sectionIndex += 1)
             SongSection(
               kind: SongSectionKind.verse,
               label: 'Verse',
               number: sectionIndex,
               lines: [
-                for (var lineIndex = 0; lineIndex < 4; lineIndex += 1)
+                for (var lineIndex = 0; lineIndex < 3; lineIndex += 1)
                   SongLine(
                     segments: [
                       const LyricSegment(leadingChord: 'G', text: 'Line '),
@@ -510,6 +510,31 @@ void main() {
     expect(find.text('Lyrics only'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 4));
+    expect(find.text('Lyrics only'), findsNothing);
+  });
+
+  testWidgets('compact overlay timeout resets after control interaction', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(800, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
+    await tester.tapAt(tester.getCenter(find.byType(SongReaderCompactSurface)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Lyrics only'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.tap(find.text('+1'));
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Lyrics only'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
     expect(find.text('Lyrics only'), findsNothing);
   });
 

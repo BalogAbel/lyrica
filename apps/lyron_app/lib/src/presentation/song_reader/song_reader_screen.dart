@@ -99,10 +99,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .toggleViewMode();
+      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.toggleViewMode());
+    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeDown() {
@@ -110,10 +112,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeDown();
+      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeDown());
+    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeUp() {
@@ -121,10 +125,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeUp();
+      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeUp());
+    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _adjustSharedFontScale(double delta) {
@@ -135,12 +141,14 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       runtimeController.setSharedFontScale(
         runtimeController.state.readerState.sharedFontScale + delta,
       );
+      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) {
       controller.setSharedFontScale(controller.state.sharedFontScale + delta);
     });
+    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _toggleCompactControls() {
@@ -166,10 +174,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .toggleAutoFit();
+      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.toggleAutoFit());
+    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _handleCompactOverlayVisibilityChanged(bool isVisible) {
@@ -199,6 +209,20 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         });
       }
     });
+  }
+
+  void _bumpCompactOverlayInactivityIfVisible() {
+    final isVisible = _isScopedMode
+        ? ref
+              .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+              .state
+              .readerState
+              .areCompactControlsVisible
+        : _controller.state.areCompactControlsVisible;
+    if (!isVisible) {
+      return;
+    }
+    _handleCompactOverlayVisibilityChanged(true);
   }
 
   void _handleBack(BuildContext context) {

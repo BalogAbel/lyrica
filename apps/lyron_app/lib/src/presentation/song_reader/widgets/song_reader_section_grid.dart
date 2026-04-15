@@ -18,6 +18,14 @@ class SongReaderSectionGrid extends StatelessWidget {
   final double sharedFontScale;
   final int columnCount;
   final double availableHeight;
+  static const _sectionGap = 20.0;
+  static const _headerHeight = 40.0;
+  static const _lineGap = 10.0;
+  static const _linePadding = 24.0;
+  static const _characterWidthEstimate = 10.0;
+  static const _chordRowHeight = 20.0;
+  static const _lyricRowHeight = 24.0;
+  static const _columnHeightToleranceFactor = 1.15;
 
   @override
   Widget build(BuildContext context) {
@@ -39,9 +47,7 @@ class SongReaderSectionGrid extends StatelessWidget {
                   maxColumnWidth: availableWidth,
                 ) >
                 effectiveHeight;
-        final effectiveColumns = shouldUseMultipleColumns
-            ? normalizedColumns
-            : 1;
+        var effectiveColumns = shouldUseMultipleColumns ? normalizedColumns : 1;
 
         if (effectiveColumns == 1) {
           return Column(
@@ -54,13 +60,13 @@ class SongReaderSectionGrid extends StatelessWidget {
                   viewMode: viewMode,
                   sharedFontScale: sharedFontScale,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: _sectionGap),
               ],
             ],
           );
         }
 
-        const spacing = 20.0;
+        const spacing = _sectionGap;
         final tileWidth =
             (availableWidth - (effectiveColumns - 1) * spacing) /
             effectiveColumns;
@@ -69,6 +75,30 @@ class SongReaderSectionGrid extends StatelessWidget {
           columnCount: effectiveColumns,
           maxColumnWidth: tileWidth,
         );
+        final estimatedColumnHeights = columns
+            .map((column) => _columnHeightEstimate(column, tileWidth))
+            .toList(growable: false);
+        final tallestColumn = estimatedColumnHeights.fold<double>(
+          0,
+          (maxHeight, height) => height > maxHeight ? height : maxHeight,
+        );
+        if (tallestColumn > effectiveHeight * _columnHeightToleranceFactor) {
+          effectiveColumns = 1;
+          return Column(
+            key: const Key('song-reader-section-grid-columns-1'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final section in normalizedSections) ...[
+                SongSectionView(
+                  section: section,
+                  viewMode: viewMode,
+                  sharedFontScale: sharedFontScale,
+                ),
+                const SizedBox(height: _sectionGap),
+              ],
+            ],
+          );
+        }
 
         return Row(
           key: Key('song-reader-section-grid-columns-$effectiveColumns'),
@@ -103,11 +133,17 @@ class SongReaderSectionGrid extends StatelessWidget {
     required List<SongReaderSectionProjection> sourceSections,
     required double maxColumnWidth,
   }) {
-    var total = 0.0;
-    for (final section in sourceSections) {
-      total += _estimatedSectionHeight(section, maxColumnWidth);
-    }
-    return total;
+    return _columnHeightEstimate(sourceSections, maxColumnWidth);
+  }
+
+  double _columnHeightEstimate(
+    List<SongReaderSectionProjection> sections,
+    double maxColumnWidth,
+  ) {
+    return sections.fold<double>(
+      0,
+      (sum, section) => sum + _estimatedSectionHeight(section, maxColumnWidth),
+    );
   }
 
   List<List<SongReaderSectionProjection>> _buildColumnMajorSections({
@@ -186,11 +222,12 @@ class SongReaderSectionGrid extends StatelessWidget {
     double maxWidth,
   ) {
     final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
-    final headerHeight = hasHeader ? 40.0 : 0.0;
-    final effectiveLineWidth = (maxWidth - 24).clamp(120.0, 1200.0);
-    final charsPerLine = (effectiveLineWidth / (10.0 * sharedFontScale))
-        .floor()
-        .clamp(12, 140);
+    final headerHeight = hasHeader ? _headerHeight : 0.0;
+    final effectiveLineWidth = (maxWidth - _linePadding).clamp(120.0, 1200.0);
+    final charsPerLine =
+        (effectiveLineWidth / (_characterWidthEstimate * sharedFontScale))
+            .floor()
+            .clamp(12, 140);
     var linesHeight = 0.0;
     for (final line in section.lines) {
       final text = line.segments.map((segment) => segment.text).join();
@@ -201,10 +238,10 @@ class SongReaderSectionGrid extends StatelessWidget {
       final wrapCount = lyricLength == 0
           ? 1
           : (lyricLength / charsPerLine).ceil().clamp(1, 14);
-      final chordRowHeight = hasChord ? (20 * sharedFontScale) : 0.0;
-      final lyricRowsHeight = wrapCount * (24 * sharedFontScale);
-      linesHeight += chordRowHeight + lyricRowsHeight + 10;
+      final chordRowHeight = hasChord ? (_chordRowHeight * sharedFontScale) : 0;
+      final lyricRowsHeight = wrapCount * (_lyricRowHeight * sharedFontScale);
+      linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
     }
-    return headerHeight + linesHeight + 20;
+    return headerHeight + linesHeight + _sectionGap;
   }
 }
