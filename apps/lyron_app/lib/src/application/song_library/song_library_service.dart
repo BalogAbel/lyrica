@@ -36,6 +36,17 @@ class SongLibraryService {
     );
   }
 
+  Future<SongSummary?> getSongSummaryById({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) {
+    return _repository.getSongSummaryById(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      songId: songId,
+    );
+  }
+
   Future<SongSummary?> getSongSummaryBySlug({
     required ActiveCatalogContext context,
     required String songSlug,

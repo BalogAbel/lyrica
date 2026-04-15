@@ -50,20 +50,7 @@ class SongReaderSectionGrid extends StatelessWidget {
         var effectiveColumns = shouldUseMultipleColumns ? normalizedColumns : 1;
 
         if (effectiveColumns == 1) {
-          return Column(
-            key: const Key('song-reader-section-grid-columns-1'),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final section in normalizedSections) ...[
-                SongSectionView(
-                  section: section,
-                  viewMode: viewMode,
-                  sharedFontScale: sharedFontScale,
-                ),
-                const SizedBox(height: _sectionGap),
-              ],
-            ],
-          );
+          return _buildSingleColumn(normalizedSections);
         }
 
         const spacing = _sectionGap;
@@ -84,20 +71,7 @@ class SongReaderSectionGrid extends StatelessWidget {
         );
         if (tallestColumn > effectiveHeight * _columnHeightToleranceFactor) {
           effectiveColumns = 1;
-          return Column(
-            key: const Key('song-reader-section-grid-columns-1'),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final section in normalizedSections) ...[
-                SongSectionView(
-                  section: section,
-                  viewMode: viewMode,
-                  sharedFontScale: sharedFontScale,
-                ),
-                const SizedBox(height: _sectionGap),
-              ],
-            ],
-          );
+          return _buildSingleColumn(normalizedSections);
         }
 
         return Row(
@@ -134,6 +108,23 @@ class SongReaderSectionGrid extends StatelessWidget {
     required double maxColumnWidth,
   }) {
     return _columnHeightEstimate(sourceSections, maxColumnWidth);
+  }
+
+  Widget _buildSingleColumn(List<SongReaderSectionProjection> sections) {
+    return Column(
+      key: const Key('song-reader-section-grid-columns-1'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final section in sections) ...[
+          SongSectionView(
+            section: section,
+            viewMode: viewMode,
+            sharedFontScale: sharedFontScale,
+          ),
+          const SizedBox(height: _sectionGap),
+        ],
+      ],
+    );
   }
 
   double _columnHeightEstimate(

@@ -266,6 +266,15 @@ class _FakeSongRepository
   }
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return const SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út');
+  }
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

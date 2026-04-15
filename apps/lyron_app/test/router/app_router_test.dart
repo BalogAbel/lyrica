@@ -1065,6 +1065,15 @@ class _NoopSongRepository implements SongCatalogReadRepository {
   }
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

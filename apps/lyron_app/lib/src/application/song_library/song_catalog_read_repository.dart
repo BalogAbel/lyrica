@@ -13,6 +13,12 @@ abstract interface class SongCatalogReadRepository {
     required String songId,
   });
 
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  });
+
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

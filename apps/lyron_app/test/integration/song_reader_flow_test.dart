@@ -254,6 +254,20 @@ class _StaticSongRepository implements SongCatalogReadRepository {
   }) async => sources[songId]!;
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    for (final song in summaries) {
+      if (song.id == songId) {
+        return song;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

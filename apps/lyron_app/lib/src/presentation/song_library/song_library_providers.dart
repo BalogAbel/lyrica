@@ -180,14 +180,10 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
       ParsedSong song = parsedSong;
       if (songTitle.isEmpty) {
         try {
-          SongSummary? summary;
-          final summaries = await service.listSongs(context: context);
-          for (final item in summaries) {
-            if (item.id == songId) {
-              summary = item;
-              break;
-            }
-          }
+          final summary = await service.getSongSummaryById(
+            context: context,
+            songId: songId,
+          );
           if (summary != null) {
             song = ParsedSong(
               title: summary.title,
@@ -197,8 +193,12 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
               diagnostics: parsedSong.diagnostics,
             );
           }
-        } on Object {
+        } on Object catch (error, stackTrace) {
           // Fallback title resolution is best-effort and must not break reader loads.
+          debugPrint(
+            'Fallback title resolution failed for song $songId: $error\n'
+            '$stackTrace',
+          );
         }
       }
       for (final diagnostic in song.diagnostics) {
