@@ -23,7 +23,10 @@ class SongSectionView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (label != null) ...[Text(label, style: theme.textTheme.titleLarge)],
+        if (label != null) ...[
+          Text(label, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+        ],
         for (final line in section.lines) ...[
           SongLineView(
             line: line,

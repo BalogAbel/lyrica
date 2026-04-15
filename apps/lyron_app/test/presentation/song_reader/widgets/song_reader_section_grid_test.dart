@@ -137,7 +137,7 @@ void main() {
                 viewMode: SongReaderViewMode.chordsAndLyrics,
                 sharedFontScale: 1,
                 columnCount: 2,
-                availableHeight: 220,
+                availableHeight: 340,
               ),
             ),
           ),
@@ -147,6 +147,59 @@ void main() {
       expect(
         find.byKey(const Key('song-reader-section-grid-columns-2')),
         findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'falls back to one column when two-column split would still exceed height',
+    (tester) async {
+      SongReaderSectionProjection section(String label) {
+        return SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: label,
+          number: null,
+          lines: [
+            for (var index = 0; index < 4; index += 1)
+              SongReaderLineProjection(
+                segments: const [
+                  SongReaderSegmentProjection(
+                    displayChord: 'E',
+                    text:
+                        'Very long wrapped lyric line that keeps taking vertical space even in split layout.',
+                  ),
+                ],
+              ),
+          ],
+        );
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SizedBox(
+                width: 760,
+                child: SongReaderSectionGrid(
+                  sections: [section('A'), section('B')],
+                  viewMode: SongReaderViewMode.chordsAndLyrics,
+                  sharedFontScale: 1,
+                  columnCount: 2,
+                  availableHeight: 120,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-2')),
+        findsNothing,
       );
     },
   );
@@ -250,7 +303,7 @@ void main() {
               viewMode: SongReaderViewMode.chordsAndLyrics,
               sharedFontScale: 1,
               columnCount: 2,
-              availableHeight: 120,
+              availableHeight: 420,
             ),
           ),
         ),
