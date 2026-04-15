@@ -1079,6 +1079,13 @@ class _SongMutationTestRepository
   }) async => const SongSource(id: 'song-1', source: '{title: Song}');
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => const SongSummary(id: 'song-1', title: 'Song');
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

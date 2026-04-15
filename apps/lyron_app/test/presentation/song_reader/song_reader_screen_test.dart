@@ -1545,6 +1545,13 @@ class _ReaderFakeSongRepository
       const SongSource(id: 'reader_song', source: '{title: Reader Song}');
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => const SongSummary(id: 'reader_song', title: 'Reader Song');
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,

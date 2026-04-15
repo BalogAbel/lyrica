@@ -518,12 +518,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                         .length;
 
                     final resolvedScopedContext =
-                        scopedContextAsync?.valueOrNull
-                            is ResolvedSessionScopedReaderContextResult
-                        ? (scopedContextAsync!.valueOrNull
-                                  as ResolvedSessionScopedReaderContextResult)
-                              .context
-                        : null;
+                        (scopedContextAsync?.valueOrNull
+                                as ResolvedSessionScopedReaderContextResult?)
+                            ?.context;
                     final currentTitle = _resolveCurrentTitle(
                       scopedContext: resolvedScopedContext,
                       projection: projection,

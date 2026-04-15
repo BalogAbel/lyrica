@@ -178,7 +178,7 @@ void main() {
       );
 
       expect(result.song.title, 'Reader Song');
-      expect(repository.listSongsCalls, 0);
+      expect(repository.getSongSummaryByIdCalls, 0);
     },
   );
 
@@ -489,6 +489,15 @@ class _StubSongRepository implements SongCatalogReadRepository {
   }
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return null;
+  }
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,
@@ -512,7 +521,7 @@ class _ReaderFallbackSongRepository implements SongCatalogReadRepository {
   Future<List<SongSummary>> listSongs({
     required String userId,
     required String organizationId,
-  }) async => const [SongSummary(id: 'song-1', title: 'Catalog Title')];
+  }) async => const [];
 
   @override
   Future<SongSource> getSongSource({
@@ -527,6 +536,15 @@ class _ReaderFallbackSongRepository implements SongCatalogReadRepository {
   }
 
   @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    return const SongSummary(id: 'song-1', title: 'Catalog Title');
+  }
+
+  @override
   Future<SongSummary?> getSongSummaryBySlug({
     required String userId,
     required String organizationId,
@@ -537,16 +555,13 @@ class _ReaderFallbackSongRepository implements SongCatalogReadRepository {
 }
 
 class _NonEmptyTitleReaderRepository implements SongCatalogReadRepository {
-  int listSongsCalls = 0;
+  int getSongSummaryByIdCalls = 0;
 
   @override
   Future<List<SongSummary>> listSongs({
     required String userId,
     required String organizationId,
-  }) async {
-    listSongsCalls += 1;
-    return const [SongSummary(id: 'song-1', title: 'Catalog Title')];
-  }
+  }) async => const [];
 
   @override
   Future<SongSource> getSongSource({
@@ -555,6 +570,16 @@ class _NonEmptyTitleReaderRepository implements SongCatalogReadRepository {
     required String songId,
   }) async {
     return const SongSource(id: 'song-1', source: '{title:Reader Song}\nLine');
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async {
+    getSongSummaryByIdCalls += 1;
+    return const SongSummary(id: 'song-1', title: 'Catalog Title');
   }
 
   @override
@@ -617,6 +642,15 @@ class _NoopSongRepository implements SongCatalogReadRepository {
   Future<List<SongSummary>> listSongs({
     required String userId,
     required String organizationId,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SongSummary?> getSongSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
   }) {
     throw UnimplementedError();
   }
