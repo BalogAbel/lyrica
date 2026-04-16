@@ -1,6 +1,6 @@
 # Session-Scoped Plan Reader Navigation Spec
 
-> Status: Implemented on branch `feat/session-scoped-plan-reader-navigation`; the later slug-routing slice superseded the public route shape with `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug` while preserving the same internal reader-context behavior.
+> Status: Implemented; partially superseded by `docs/specs/2026-04-03-slug-based-routing-for-songs-plans-sessions.md`
 
 ## Goal
 

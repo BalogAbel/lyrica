@@ -1,6 +1,6 @@
 # Offline-First Planning Session And Session Item Edit Spec
 
-> Status: Proposed
+> Status: Implemented
 
 > This spec extends [docs/specs/2026-04-10-offline-first-planning-create-edit.md](docs/specs/2026-04-10-offline-first-planning-create-edit.md) and depends on the local-first planning read and planning create/edit slices that already established the normalized planning projection, the separate planning mutation store, foreground mutation sync, backend-enforced authorization, and provisional-to-canonical reconciliation for plan and session writes.
 

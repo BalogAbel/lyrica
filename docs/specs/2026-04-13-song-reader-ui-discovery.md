@@ -1,6 +1,6 @@
 # Song Reader UI Discovery Spec
 
-> Status: Proposed
+> Status: Implemented
 
 ## Goal
 
