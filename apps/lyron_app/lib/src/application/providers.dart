@@ -80,6 +80,7 @@ final appAuthListenableProvider = Provider<Listenable>((ref) {
 });
 
 SongCatalogDatabase? _sharedSongCatalogDatabase;
+PlanningLocalDatabase? _sharedPlanningLocalDatabase;
 
 final songCatalogDatabaseProvider = Provider<SongCatalogDatabase>((ref) {
   // Drift expects a singleton database per app lifecycle to avoid
@@ -89,10 +90,15 @@ final songCatalogDatabaseProvider = Provider<SongCatalogDatabase>((ref) {
 
 Future<void> closeSharedDatabases() async {
   final songCatalogDatabase = _sharedSongCatalogDatabase;
+  final planningLocalDatabase = _sharedPlanningLocalDatabase;
   _sharedSongCatalogDatabase = null;
+  _sharedPlanningLocalDatabase = null;
 
   if (songCatalogDatabase != null) {
     await songCatalogDatabase.close();
+  }
+  if (planningLocalDatabase != null) {
+    await planningLocalDatabase.close();
   }
 }
 
@@ -101,9 +107,9 @@ final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
 });
 
 final planningLocalDatabaseProvider = Provider<PlanningLocalDatabase>((ref) {
-  final database = PlanningLocalDatabase.local();
-  ref.onDispose(database.close);
-  return database;
+  // Match the song catalog lifecycle so provider/container churn does not
+  // create overlapping Drift database instances in tests.
+  return _sharedPlanningLocalDatabase ??= PlanningLocalDatabase.local();
 });
 
 final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {

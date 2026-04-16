@@ -8,9 +8,10 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 void suppressDriftMultipleDatabaseWarnings() {
-  final originalDontWarn = driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+  late bool originalDontWarn;
 
   setUpAll(() {
+    originalDontWarn = driftRuntimeOptions.dontWarnAboutMultipleDatabases;
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
   });
 
