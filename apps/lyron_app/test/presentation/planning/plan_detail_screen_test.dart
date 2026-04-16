@@ -700,7 +700,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plan-session-item-item-1')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('A forrasnal'), findsWidgets);
       expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));

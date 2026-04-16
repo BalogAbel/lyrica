@@ -5,9 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
-import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
@@ -26,6 +24,8 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expan
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+enum _SongReaderOverflowAction { edit, delete }
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -260,6 +260,21 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     });
   }
 
+  void _navigateToScopedSong(
+    BuildContext context, {
+    required SessionScopedReaderContext scopedContext,
+    required String songSlug,
+  }) {
+    context.replace(
+      PlanningRoutes.planSessionSongReaderLocation(
+        planSlug: scopedContext.planSlug,
+        sessionSlug: scopedContext.sessionSlug,
+        songSlug: songSlug,
+      ),
+      extra: widget.warmPlanDetail,
+    );
+  }
+
   String _resolveCurrentTitle({
     required SessionScopedReaderContext? scopedContext,
     required SongReaderProjection projection,
@@ -409,6 +424,28 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final readerState = _isScopedMode
         ? scopedRuntimeController!.state.readerState
         : _controller.state;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final layout = resolveSongReaderLayout(
+      viewportWidth: viewportWidth,
+      sharedFontScale: readerState.sharedFontScale,
+      isAutoFitEnabled: readerState.isAutoFitEnabled,
+    );
+    final isCompactShell = layout.shell == SongReaderShell.compact;
+    final readerResult = readerAsync.valueOrNull;
+    final scopedContextResult = scopedContextAsync?.valueOrNull;
+    final resolvedScopedContext =
+        scopedContextResult is ResolvedSessionScopedReaderContextResult
+        ? scopedContextResult.context
+        : null;
+    final projection = readerResult == null
+        ? null
+        : SongReaderProjection(song: readerResult.song, state: readerState);
+    final currentTitle = projection == null
+        ? 'Song reader'
+        : _resolveCurrentTitle(
+            scopedContext: resolvedScopedContext,
+            projection: projection,
+          );
 
     if (_isScopedMode && scopedContextAsync != null) {
       final scopedValue = scopedContextAsync.valueOrNull;
@@ -443,7 +480,31 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           onPressed: () => _handleBack(context),
           icon: const BackButtonIcon(),
         ),
-        title: const Text('Song reader'),
+        title: Text(isCompactShell ? currentTitle : 'Song reader'),
+        actions: [
+          if (isCompactShell && readerResult != null)
+            PopupMenuButton<_SongReaderOverflowAction>(
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (action) {
+                switch (action) {
+                  case _SongReaderOverflowAction.edit:
+                    unawaited(_editSong(context, readerResult));
+                  case _SongReaderOverflowAction.delete:
+                    unawaited(_deleteSong(context));
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.edit,
+                  child: Text(AppStrings.songEditAction),
+                ),
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.delete,
+                  child: Text(AppStrings.songDeleteAction),
+                ),
+              ],
+            ),
+        ],
       ),
       body: PopScope<void>(
         canPop: false,
@@ -517,10 +578,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                         )
                         .length;
 
-                    final resolvedScopedContext =
-                        (scopedContextAsync?.valueOrNull
-                                as ResolvedSessionScopedReaderContextResult?)
-                            ?.context;
                     final currentTitle = _resolveCurrentTitle(
                       scopedContext: resolvedScopedContext,
                       projection: projection,
@@ -539,6 +596,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                           sharedFontScale: projection.sharedFontScale,
                           isAutoFitEnabled: readerState.isAutoFitEnabled,
                         );
+                        final showCompactBottomContextBar =
+                            resolvedScopedContext != null;
 
                         final readerSurface =
                             layout.shell == SongReaderShell.expanded
@@ -571,6 +630,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     result.hasRecoverableWarnings,
                                 warningCount: recoverableWarningCount,
                                 contentColumnCount: layout.contentColumnCount,
+                                showBottomContextBar:
+                                    showCompactBottomContextBar,
                                 onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
@@ -578,6 +639,26 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onPreviousTap:
+                                    resolvedScopedContext?.previousItem == null
+                                    ? null
+                                    : () => _navigateToScopedSong(
+                                        context,
+                                        scopedContext: resolvedScopedContext!,
+                                        songSlug: resolvedScopedContext
+                                            .previousItem!
+                                            .songSlug,
+                                      ),
+                                onNextTap:
+                                    resolvedScopedContext?.nextItem == null
+                                    ? null
+                                    : () => _navigateToScopedSong(
+                                        context,
+                                        scopedContext: resolvedScopedContext!,
+                                        songSlug: resolvedScopedContext
+                                            .nextItem!
+                                            .songSlug,
+                                      ),
                               );
 
                         return Center(
@@ -592,39 +673,41 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _CatalogStatusSurface(state: catalogState),
-                                  if (_hasVisibleStatus(catalogState))
+                                  if (layout.shell == SongReaderShell.expanded)
+                                    Row(
+                                      children: [
+                                        FilledButton.tonal(
+                                          onPressed: () =>
+                                              _editSong(context, result),
+                                          child: const Text(
+                                            AppStrings.songEditAction,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        FilledButton.tonal(
+                                          onPressed: () => _deleteSong(context),
+                                          child: const Text(
+                                            AppStrings.songDeleteAction,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  if (layout.shell == SongReaderShell.expanded)
                                     const SizedBox(height: 24),
-                                  Row(
-                                    children: [
-                                      FilledButton.tonal(
-                                        onPressed: () =>
-                                            _editSong(context, result),
-                                        child: const Text(
-                                          AppStrings.songEditAction,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      FilledButton.tonal(
-                                        onPressed: () => _deleteSong(context),
-                                        child: const Text(
-                                          AppStrings.songDeleteAction,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 24),
-                                  if (_isScopedMode)
+                                  if (_isScopedMode &&
+                                      layout.shell == SongReaderShell.expanded)
                                     _ScopedNavigationSurface(
                                       scopedContextAsync: scopedContextAsync!,
                                       currentWarmPlanDetail:
                                           widget.warmPlanDetail,
                                     ),
-                                  if (_isScopedMode) const SizedBox(height: 24),
-                                  Padding(
-                                    padding:
-                                        layout.shell == SongReaderShell.expanded
-                                        ? const EdgeInsets.symmetric(
+                                  if (_isScopedMode &&
+                                      layout.shell == SongReaderShell.expanded)
+                                    const SizedBox(height: 24),
+                                  if (layout.shell == SongReaderShell.expanded)
+                                    Padding(
+                                      padding:
+                                          const EdgeInsets.symmetric(
                                             horizontal:
                                                 _expandedPanelGap +
                                                 _expandedContextPanelWidth,
@@ -632,14 +715,14 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                             right:
                                                 _expandedPanelGap +
                                                 _expandedToolsPanelWidth,
-                                          )
-                                        : EdgeInsets.zero,
-                                    child: SongReaderTitleBar(
-                                      title: currentTitle,
-                                      subtitle: projection.subtitle,
+                                          ),
+                                      child: SongReaderTitleBar(
+                                        title: currentTitle,
+                                        subtitle: projection.subtitle,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 16),
+                                  if (layout.shell == SongReaderShell.expanded)
+                                    const SizedBox(height: 16),
                                   Expanded(child: readerSurface),
                                 ],
                               ),
@@ -796,53 +879,4 @@ String _sessionSlugFor(PlanDetail? planDetail, String sessionId) {
       .where((candidate) => candidate.id == sessionId)
       .firstOrNull;
   return session?.slug ?? sessionId;
-}
-
-bool _hasVisibleStatus(CatalogSnapshotState state) {
-  return state.connectionStatus == CatalogConnectionStatus.online ||
-      state.connectionStatus == CatalogConnectionStatus.offlineCached ||
-      state.refreshStatus == CatalogRefreshStatus.refreshing ||
-      (state.refreshStatus == CatalogRefreshStatus.failed &&
-          state.hasCachedCatalog);
-}
-
-class _CatalogStatusSurface extends StatelessWidget {
-  const _CatalogStatusSurface({required this.state});
-
-  final CatalogSnapshotState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final messages = <String>[
-      if (state.connectionStatus == CatalogConnectionStatus.online)
-        AppStrings.songCatalogOnlineStatus,
-      if (state.connectionStatus == CatalogConnectionStatus.offlineCached)
-        AppStrings.songCatalogOfflineStatus,
-      if (state.refreshStatus == CatalogRefreshStatus.refreshing)
-        AppStrings.songCatalogRefreshingStatus,
-      if (state.refreshStatus == CatalogRefreshStatus.failed &&
-          state.hasCachedCatalog)
-        AppStrings.songCatalogRefreshFailedStatus,
-    ];
-
-    if (messages.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: messages
-              .map((message) => Text(message))
-              .toList(growable: false),
-        ),
-      ),
-    );
-  }
 }

@@ -629,7 +629,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Song reader'), findsOneWidget);
+    expect(find.text('Egy út'), findsWidgets);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
     expect(
@@ -870,7 +870,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Egy út'), findsWidgets);
       expect(
         router.routerDelegate.currentConfiguration.uri.toString(),
         '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
@@ -967,7 +967,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Blocked Song'), findsWidgets);
       expect(
         router.routeInformationProvider.value.uri.toString(),
         '/songs/blocked-song',

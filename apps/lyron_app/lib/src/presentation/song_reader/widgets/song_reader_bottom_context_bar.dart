@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class SongReaderBottomContextBar extends StatelessWidget {
   const SongReaderBottomContextBar({
@@ -6,11 +7,20 @@ class SongReaderBottomContextBar extends StatelessWidget {
     required this.currentTitle,
     this.previousTitle,
     this.nextTitle,
+    this.onPreviousTap,
+    this.onNextTap,
   });
+
+  static const previousSegmentKey = Key(
+    'song-reader-bottom-context-previous-segment',
+  );
+  static const nextSegmentKey = Key('song-reader-bottom-context-next-segment');
 
   final String currentTitle;
   final String? previousTitle;
   final String? nextTitle;
+  final VoidCallback? onPreviousTap;
+  final VoidCallback? onNextTap;
 
   @override
   Widget build(BuildContext context) {
@@ -24,10 +34,12 @@ class SongReaderBottomContextBar extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: _NeighborLabel(
+              child: _NeighborSegment(
+                key: previousSegmentKey,
                 alignment: CrossAxisAlignment.start,
-                label: 'Previous',
+                label: AppStrings.scopedReaderPreviousAction,
                 title: previousTitle,
+                onTap: onPreviousTap,
               ),
             ),
             Expanded(
@@ -36,7 +48,7 @@ class SongReaderBottomContextBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Current',
+                    'Current song',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -53,10 +65,12 @@ class SongReaderBottomContextBar extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: _NeighborLabel(
+              child: _NeighborSegment(
+                key: nextSegmentKey,
                 alignment: CrossAxisAlignment.end,
-                label: 'Next',
+                label: AppStrings.scopedReaderNextAction,
                 title: nextTitle,
+                onTap: onNextTap,
               ),
             ),
           ],
@@ -66,43 +80,57 @@ class SongReaderBottomContextBar extends StatelessWidget {
   }
 }
 
-class _NeighborLabel extends StatelessWidget {
-  const _NeighborLabel({
+class _NeighborSegment extends StatelessWidget {
+  const _NeighborSegment({
+    super.key,
     required this.alignment,
     required this.label,
     required this.title,
+    required this.onTap,
   });
 
   final CrossAxisAlignment alignment;
   final String label;
   final String? title;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final displayTitle = title ?? ' ';
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: alignment,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: alignment,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          displayTitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: alignment == CrossAxisAlignment.end
-              ? TextAlign.end
-              : TextAlign.start,
-          style: theme.textTheme.bodyMedium,
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            displayTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: alignment == CrossAxisAlignment.end
+                ? TextAlign.end
+                : TextAlign.start,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: content,
+      ),
     );
   }
 }

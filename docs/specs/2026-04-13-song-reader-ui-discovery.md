@@ -1,6 +1,6 @@
 # Song Reader UI Discovery Spec
 
-> Status: Implemented
+> Status: Implemented; partially superseded by `docs/specs/2026-04-16-song-reader-tablet-immersive-shell.md`
 
 ## Goal
 

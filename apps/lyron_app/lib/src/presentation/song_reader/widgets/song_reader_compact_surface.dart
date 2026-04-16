@@ -21,8 +21,11 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.onTransposeUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
+    required this.showBottomContextBar,
     this.previousTitle,
     this.nextTitle,
+    this.onPreviousTap,
+    this.onNextTap,
   });
 
   final SongReaderProjection projection;
@@ -30,11 +33,14 @@ class SongReaderCompactSurface extends StatefulWidget {
   final String currentTitle;
   final String? previousTitle;
   final String? nextTitle;
+  final VoidCallback? onPreviousTap;
+  final VoidCallback? onNextTap;
   final VoidCallback onSurfaceTap;
   final VoidCallback onSurfaceDoubleTap;
   final bool hasRecoverableWarnings;
   final int warningCount;
   final int contentColumnCount;
+  final bool showBottomContextBar;
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
@@ -120,12 +126,16 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                     },
                   ),
                 ),
-                const SizedBox(height: 16),
-                SongReaderBottomContextBar(
-                  currentTitle: widget.currentTitle,
-                  previousTitle: widget.previousTitle,
-                  nextTitle: widget.nextTitle,
-                ),
+                if (widget.showBottomContextBar) ...[
+                  const SizedBox(height: 16),
+                  SongReaderBottomContextBar(
+                    currentTitle: widget.currentTitle,
+                    previousTitle: widget.previousTitle,
+                    nextTitle: widget.nextTitle,
+                    onPreviousTap: widget.onPreviousTap,
+                    onNextTap: widget.onNextTap,
+                  ),
+                ],
               ],
             ),
             SongReaderCompactOverlay(

@@ -86,15 +86,12 @@ void main() {
       await tester.tap(find.text('Egy út'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
       expect(find.text('Egy út'), findsWidgets);
       await tester.tap(find.textContaining('Leteszem'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(find.text('One Way'), findsOneWidget);
-      expect(find.text('Key: B'), findsOneWidget);
-      expect(find.text('Verse 1'), findsOneWidget);
       expect(find.textContaining('Leteszem'), findsWidgets);
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
@@ -183,11 +180,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Egy út'), findsWidgets);
       await tester.tap(find.textContaining('Leteszem'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      expect(find.text('One Way'), findsOneWidget);
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
@@ -200,7 +197,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(handled, isFalse);
-      expect(find.text('Song reader'), findsNothing);
+      expect(find.text('One Way'), findsNothing);
       expect(find.text('Egy út'), findsOneWidget);
     },
   );

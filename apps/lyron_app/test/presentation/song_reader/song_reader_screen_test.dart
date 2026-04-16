@@ -329,7 +329,6 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
     expect(find.text('Reader Song'), findsWidgets);
     expect(find.text('Live version'), findsOneWidget);
     expect(find.text('Key: G'), findsOneWidget);
@@ -339,7 +338,7 @@ void main() {
   });
 
   testWidgets(
-    'compact reader shows bottom context and hides overlay by default',
+    'compact reader uses immersive header and hides overlay by default',
     (tester) async {
       await pumpWithViewport(
         tester,
@@ -347,11 +346,14 @@ void main() {
         child: buildApp(result: buildResult()),
       );
 
-      expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
-      expect(find.byType(SongReaderTitleBar), findsOneWidget);
+      expect(find.byType(SongReaderBottomContextBar), findsNothing);
+      expect(find.byType(SongReaderTitleBar), findsNothing);
       expect(find.byType(SongReaderCompactOverlay), findsOneWidget);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
       expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      expect(find.text('Song reader'), findsNothing);
       expect(find.text('Lyrics only'), findsNothing);
       expect(find.text('Reader Song'), findsWidgets);
       expect(
@@ -443,7 +445,7 @@ void main() {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
+    expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
     tester.view.physicalSize = const Size(1440, 1200);
@@ -538,18 +540,22 @@ void main() {
     expect(find.text('Lyrics only'), findsNothing);
   });
 
-  testWidgets(
-    'shows a visible back affordance while keeping catalog status visible',
-    (tester) async {
-      await tester.pumpWidget(buildApp(result: buildResult()));
-      await tester.pumpAndSettle();
+  testWidgets('compact reader moves edit and delete into overflow menu', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
 
-      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-      expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
-      expect(find.text(AppStrings.songEditAction), findsOneWidget);
-      expect(find.text(AppStrings.songDeleteAction), findsOneWidget);
-    },
-  );
+    expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+    expect(find.text(AppStrings.songEditAction), findsNothing);
+    expect(find.text(AppStrings.songDeleteAction), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songEditAction), findsOneWidget);
+    expect(find.text(AppStrings.songDeleteAction), findsOneWidget);
+  });
 
   testWidgets('delete blocked locally shows an explicit dialog', (
     tester,
@@ -572,6 +578,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songDeleteAction));
     await tester.pumpAndSettle();
 
@@ -599,6 +607,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songEditAction));
     await tester.pumpAndSettle();
 
@@ -633,6 +643,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(AppStrings.songDeleteAction));
       await tester.pumpAndSettle();
 
@@ -769,7 +781,7 @@ void main() {
   });
 
   testWidgets(
-    'shows offline and refresh-failed catalog status while reading from cache',
+    'reader success shell hides catalog connectivity status surfaces',
     (tester) async {
       await tester.pumpWidget(
         buildApp(
@@ -785,10 +797,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text(AppStrings.songCatalogOfflineStatus), findsOneWidget);
+      expect(find.text(AppStrings.songCatalogOnlineStatus), findsNothing);
+      expect(find.text(AppStrings.songCatalogOfflineStatus), findsNothing);
+      expect(find.text(AppStrings.songCatalogRefreshingStatus), findsNothing);
       expect(
         find.text(AppStrings.songCatalogRefreshFailedStatus),
-        findsOneWidget,
+        findsNothing,
       );
     },
   );
@@ -855,8 +869,8 @@ void main() {
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderTitleBar), findsOneWidget);
-    expect(find.byKey(SongReaderTitleBar.titleKey), findsOneWidget);
+    expect(find.byType(SongReaderTitleBar), findsNothing);
+    expect(find.text('Reader Song'), findsWidgets);
     expect(attempts, 2);
   });
 
@@ -866,7 +880,7 @@ void main() {
       await tester.pumpWidget(buildRoutedApp(result: buildResult()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Reader Song'), findsWidgets);
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -877,7 +891,7 @@ void main() {
     },
   );
 
-  testWidgets('scoped reader entry shows previous and next controls', (
+  testWidgets('scoped compact reader shows bottom context bar only', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -892,6 +906,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
@@ -924,6 +939,7 @@ void main() {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
 
+    expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
   });
@@ -945,34 +961,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final previousAtStart = tester.widget<OutlinedButton>(
-      find.widgetWithText(
-        OutlinedButton,
-        AppStrings.scopedReaderPreviousAction,
-      ),
-    );
-    final nextAtStart = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
-    );
-    expect(previousAtStart.onPressed, isNull);
-    expect(nextAtStart.onPressed, isNotNull);
+    expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
-    await tester.pumpAndSettle();
+    expect(find.text('Song One'), findsWidgets);
 
-    final previousAtEnd = tester.widget<OutlinedButton>(
-      find.widgetWithText(
-        OutlinedButton,
-        AppStrings.scopedReaderPreviousAction,
-      ),
-    );
-    final nextAtEnd = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
-    );
-    expect(previousAtEnd.onPressed, isNotNull);
-    expect(nextAtEnd.onPressed, isNull);
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Song Two'), findsWidgets);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Song Three'), findsWidgets);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Song Three'), findsWidgets);
   });
 
   testWidgets('single-item session disables both previous and next', (
@@ -1018,17 +1023,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final previous = tester.widget<OutlinedButton>(
-      find.widgetWithText(
-        OutlinedButton,
-        AppStrings.scopedReaderPreviousAction,
-      ),
-    );
-    final next = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
-    );
-    expect(previous.onPressed, isNull);
-    expect(next.onPressed, isNull);
+    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Song One'), findsWidgets);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Song One'), findsWidgets);
   });
 
   testWidgets(
