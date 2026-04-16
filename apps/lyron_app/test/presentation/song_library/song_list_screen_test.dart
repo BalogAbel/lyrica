@@ -39,6 +39,9 @@ import '../../support/drift_test_setup.dart';
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
+  setUp(() async {
+    await closeSharedDatabases();
+  });
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
