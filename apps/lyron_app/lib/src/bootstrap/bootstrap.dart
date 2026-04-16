@@ -26,7 +26,18 @@ class _BootstrapScope extends StatefulWidget {
 class _BootstrapScopeState extends State<_BootstrapScope> {
   @override
   void dispose() {
-    unawaited(closeSharedDatabases());
+    unawaited(
+      closeSharedDatabases().catchError((Object error, StackTrace stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'bootstrap',
+            context: ErrorDescription('while closing shared drift databases'),
+          ),
+        );
+      }),
+    );
     super.dispose();
   }
 
