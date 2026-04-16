@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:collection/collection.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
@@ -29,6 +30,18 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   test('allows overriding the shared Supabase client provider', () {
     final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
     final container = ProviderContainer(

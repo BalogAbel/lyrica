@@ -130,6 +130,11 @@ begin
         candidate_slug := public.song_next_slug(p_organization_id, candidate_slug);
     end;
   end loop;
+
+  raise exception using
+    errcode = 'P0001',
+    message = 'song_slug_generation_failed',
+    detail = 'create_song loop terminated unexpectedly without returning a row';
 end;
 $$;
 

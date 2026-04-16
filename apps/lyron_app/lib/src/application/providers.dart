@@ -79,10 +79,12 @@ final appAuthListenableProvider = Provider<Listenable>((ref) {
   return ref.read(appAuthControllerProvider);
 });
 
+SongCatalogDatabase? _sharedSongCatalogDatabase;
+
 final songCatalogDatabaseProvider = Provider<SongCatalogDatabase>((ref) {
-  final database = SongCatalogDatabase.local();
-  ref.onDispose(database.close);
-  return database;
+  // Drift expects a singleton database per app lifecycle to avoid
+  // multi-instance races during rapid provider/container churn in tests.
+  return _sharedSongCatalogDatabase ??= SongCatalogDatabase.local();
 });
 
 final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
