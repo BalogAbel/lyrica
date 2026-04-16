@@ -24,7 +24,6 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
-import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -53,7 +52,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      _testProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(_TestAuthRepository()),
         ],
@@ -76,7 +75,7 @@ void main() {
       final repository = _DelayedAuthRepository(completer.future);
 
       await tester.pumpWidget(
-        _testProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [authRepositoryProvider.overrideWithValue(repository)],
           child: Consumer(
             builder: (context, ref, child) =>
@@ -116,7 +115,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      _testProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -1073,21 +1072,6 @@ class _NoopSongRepository implements SongCatalogReadRepository {
   }) {
     throw UnimplementedError();
   }
-}
-
-ProviderScope _testProviderScope({
-  required Widget child,
-  List<Override> overrides = const [],
-}) {
-  final database = SongCatalogDatabase.inMemory();
-  addTearDown(database.close);
-  return ProviderScope(
-    overrides: [
-      songCatalogDatabaseProvider.overrideWithValue(database),
-      ...overrides,
-    ],
-    child: child,
-  );
 }
 
 class _TestAuthRepository implements AuthRepository {
