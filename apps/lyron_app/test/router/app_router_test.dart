@@ -171,7 +171,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -230,7 +230,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -279,7 +279,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -318,7 +318,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -383,7 +383,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -448,7 +448,7 @@ void main() {
       addTearDown(controller.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
@@ -483,7 +483,7 @@ void main() {
       addTearDown(controller.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
@@ -543,7 +543,7 @@ void main() {
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
@@ -652,7 +652,7 @@ void main() {
       addTearDown(controller.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
@@ -719,7 +719,7 @@ void main() {
       addTearDown(controller.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
@@ -780,7 +780,7 @@ void main() {
       addTearDown(router.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
@@ -899,7 +899,7 @@ void main() {
       addTearDown(router.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
+        isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
