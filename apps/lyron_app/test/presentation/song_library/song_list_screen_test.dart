@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
@@ -67,6 +66,7 @@ void main() {
   }) {
     final authRepository = _TestAuthRepository();
     final authController = AppAuthController(authRepository);
+    addTearDown(authController.dispose);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -85,8 +85,9 @@ void main() {
         ),
       ],
     );
+    addTearDown(router.dispose);
 
-    return ProviderScope(
+    return isolatedSongCatalogProviderScope(
       overrides: [
         appAuthControllerProvider.overrideWithValue(authController),
         appAuthListenableProvider.overrideWithValue(authController),
@@ -339,6 +340,7 @@ void main() {
     final events = <String>[];
     final authRepository = _RecordingAuthRepository(events);
     final authController = AppAuthController(authRepository);
+    addTearDown(authController.dispose);
     await authController.restoreSession();
     final songCatalogController = _NoopSongCatalogController();
     final planningSyncController = _RecordingPlanningSyncController(events);
@@ -349,9 +351,10 @@ void main() {
         GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
       ],
     );
+    addTearDown(router.dispose);
 
     await tester.pumpWidget(
-      ProviderScope(
+      isolatedSongCatalogProviderScope(
         overrides: [
           appAuthControllerProvider.overrideWithValue(authController),
           appAuthListenableProvider.overrideWithValue(authController),
@@ -398,7 +401,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(events, ['planning-sign-out', 'auth-sign-out']);
-    authController.dispose();
   });
 
   testWidgets('create action opens the song editor and saves locally', (
