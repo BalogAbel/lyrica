@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,18 +26,10 @@ import 'package:lyron_app/src/infrastructure/song_library/supabase_song_reposito
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
+import '../../support/drift_test_setup.dart';
+
 void main() {
-  final originalDontWarnAboutMultipleDatabases =
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
-
-  setUpAll(() {
-    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-  });
-
-  tearDownAll(() {
-    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
-        originalDontWarnAboutMultipleDatabases;
-  });
+  suppressDriftMultipleDatabaseWarnings();
 
   TestWidgetsFlutterBinding.ensureInitialized();
 
