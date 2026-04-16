@@ -1,5 +1,7 @@
 # Song Reader UI Implementation Plan
 
+> Status: Implemented
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement the approved song reader UI direction in Flutter, starting from the current full-screen reader and evolving it into a compact touch-first reader plus an expanded large-viewport reader shell.

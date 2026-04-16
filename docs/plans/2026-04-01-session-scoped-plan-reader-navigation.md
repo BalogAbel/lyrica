@@ -1,6 +1,6 @@
 # Session-Scoped Plan Reader Navigation Implementation Plan
 
-> Status: Implemented — later partially superseded by the slug-routing slice, which changed the public scoped reader URL to `/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug` while keeping the same internal reader-context contract.
+> Status: Implemented; partially superseded by `docs/plans/2026-04-03-slug-based-routing-for-songs-plans-sessions.md`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

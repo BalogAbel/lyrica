@@ -1,6 +1,6 @@
 # Slug-Based Routing For Songs, Plans, And Sessions
 
-> Status: Proposed
+> Status: Implemented
 
 ## Goal
 

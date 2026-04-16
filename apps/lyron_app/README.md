@@ -12,10 +12,12 @@ This app currently provides:
 - offline policy vocabulary shared with the domain and application layers
 - a tablet-first song library and reader slice backed by a song repository boundary
 - an authenticated local-first song catalog that reads from a Drift-backed active cache and refreshes that cache from Supabase without falling back to bundled assets for this slice
-- a signed-in read-only planning slice that lists visible plans and opens ordered plan detail directly from Supabase
+- local-first song create, edit, delete, conflict, and explicit manual sync behavior for the active organization
+- a local-first planning slice that reads visible plans from a normalized local projection and records local plan, session, and song-backed session-item writes through a persisted mutation layer
+- a session-scoped reader flow that opens songs from planning context and preserves previous/next navigation within the current session
 - a web runtime cache path that uses Drift wasm with the versioned `web/sqlite3.wasm` asset
 
-It does not yet implement sync execution, song editing, or reader preference persistence.
+It does not yet implement background sync while the app is suspended or terminated, multi-organization UX, or reader preference persistence.
 
 For the authenticated song-reading slice, local Supabase development must provide:
 
@@ -36,20 +38,21 @@ For ADB-managed Android devices, including wireless targets whose Flutter id loo
 Documented demo credentials:
 
 - email: `demo@lyron.local`
-- password: `LyronDemo123!`
+- password: `Lyron ChordsDemo123!`
 
 ## Structure
 
 - `lib/src/domain/`: core vocabulary such as tenant scope and capability codes
 - `lib/src/application/`: app-level orchestration and summary models
-- `lib/src/application/song_library/`: local-first catalog controller, active context, and reader result orchestration
+- `lib/src/application/song_library/`: local-first catalog controller, active context, reader orchestration, and song mutation sync coordination
 - `lib/src/domain/planning/`: read-side planning entities and repository contract
-- `lib/src/offline/`: local-store and sync-policy contracts plus authenticated catalog cache storage
+- `lib/src/offline/`: local-store and sync-policy contracts plus authenticated catalog and planning storage
 - `lib/src/presentation/`: route-level widgets
-- `lib/src/presentation/planning/`: plan list/detail routes and providers
-- `lib/src/presentation/song_library/`: song list providers, persistent catalog status, and sign-out wiring
+- `lib/src/presentation/planning/`: plan list/detail routes, mutation surfaces, and planning providers
+- `lib/src/presentation/song_library/`: song list providers, persistent catalog status, song create flow, and sign-out wiring
 - `lib/src/presentation/song_reader/`: reader projection, controls, and widgets
-- `lib/src/infrastructure/planning/`: Supabase-backed planning repository
+- `lib/src/infrastructure/planning/`: Supabase-backed planning read and write repositories
+- `lib/src/infrastructure/song_library/`: local-first and Supabase-backed song repositories plus mutation contract adapters
 - `lib/src/router/`: centralized route definitions
 
 ## Reader UI Behavior
@@ -76,6 +79,12 @@ Expanded shell behavior:
 - no compact overlay
 
 Edit and delete actions stay in the stable top action area and are intentionally outside compact overlay and expanded side panels.
+
+## Current Behavior Notes
+
+- Song writes and planning writes are local-first and persisted across restart for the active authenticated user and active organization boundary.
+- Song and planning mutations synchronize in the foreground through explicit or repository-owned sync paths rather than through background execution while the app is suspended.
+- Explicit sign-out clears authenticated cached song and planning data instead of leaving a device-global archive behind.
 
 ## Verification
 
