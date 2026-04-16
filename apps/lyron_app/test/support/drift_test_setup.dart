@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 void suppressDriftMultipleDatabaseWarnings() {
@@ -36,11 +37,18 @@ ProviderScope isolatedSongCatalogProviderScope({
   required Widget child,
   List<Override> overrides = const [],
 }) {
-  final database = SongCatalogDatabase.inMemory();
-  addTearDown(database.close);
+  final songCatalogDatabase = SongCatalogDatabase.inMemory();
+  final planningLocalDatabase = PlanningLocalDatabase.inMemory();
+  addTearDown(() async {
+    await Future.wait([
+      songCatalogDatabase.close(),
+      planningLocalDatabase.close(),
+    ]);
+  });
   return ProviderScope(
     overrides: [
-      songCatalogDatabaseProvider.overrideWithValue(database),
+      songCatalogDatabaseProvider.overrideWithValue(songCatalogDatabase),
+      planningLocalDatabaseProvider.overrideWithValue(planningLocalDatabase),
       ...overrides,
     ],
     child: child,

@@ -94,12 +94,10 @@ Future<void> closeSharedDatabases() async {
   _sharedSongCatalogDatabase = null;
   _sharedPlanningLocalDatabase = null;
 
-  if (songCatalogDatabase != null) {
-    await songCatalogDatabase.close();
-  }
-  if (planningLocalDatabase != null) {
-    await planningLocalDatabase.close();
-  }
+  await Future.wait([
+    if (songCatalogDatabase != null) songCatalogDatabase.close(),
+    if (planningLocalDatabase != null) planningLocalDatabase.close(),
+  ]);
 }
 
 final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
