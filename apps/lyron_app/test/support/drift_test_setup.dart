@@ -36,19 +36,26 @@ Future<T> runWithSuppressedDriftMultipleDatabaseWarnings<T>(
 ProviderScope isolatedSongCatalogProviderScope({
   required Widget child,
   List<Override> overrides = const [],
+  SongCatalogDatabase? songCatalogDatabase,
+  PlanningLocalDatabase? planningLocalDatabase,
 }) {
-  final songCatalogDatabase = SongCatalogDatabase.inMemory();
-  final planningLocalDatabase = PlanningLocalDatabase.inMemory();
+  final effectiveSongCatalogDatabase =
+      songCatalogDatabase ?? SongCatalogDatabase.inMemory();
+  final effectivePlanningLocalDatabase =
+      planningLocalDatabase ?? PlanningLocalDatabase.inMemory();
   addTearDown(() async {
     await Future.wait([
-      songCatalogDatabase.close(),
-      planningLocalDatabase.close(),
+      if (songCatalogDatabase == null) effectiveSongCatalogDatabase.close(),
+      if (planningLocalDatabase == null)
+        effectivePlanningLocalDatabase.close(),
     ]);
   });
   return ProviderScope(
     overrides: [
-      songCatalogDatabaseProvider.overrideWithValue(songCatalogDatabase),
-      planningLocalDatabaseProvider.overrideWithValue(planningLocalDatabase),
+      songCatalogDatabaseProvider.overrideWithValue(effectiveSongCatalogDatabase),
+      planningLocalDatabaseProvider.overrideWithValue(
+        effectivePlanningLocalDatabase,
+      ),
       ...overrides,
     ],
     child: child,

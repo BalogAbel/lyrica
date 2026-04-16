@@ -359,6 +359,7 @@ void main() {
 
     await tester.pumpWidget(
       isolatedSongCatalogProviderScope(
+        songCatalogDatabase: songCatalogDatabase,
         overrides: [
           appAuthControllerProvider.overrideWithValue(authController),
           appAuthListenableProvider.overrideWithValue(authController),
