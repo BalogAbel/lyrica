@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
@@ -21,6 +20,8 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../support/drift_test_setup.dart';
+
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
@@ -39,100 +40,94 @@ void main() {
   test(
     'keeps the cached catalog readable after the persistent cache is reopened offline',
     () async {
-      final previousDontWarn =
-          driftRuntimeOptions.dontWarnAboutMultipleDatabases;
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-      addTearDown(() {
-        driftRuntimeOptions.dontWarnAboutMultipleDatabases = previousDontWarn;
-      });
+      await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
+        final config = SupabaseConfig.fromEnvironment();
+        final client = SupabaseClient(config.url, config.anonKey);
+        final tempDir = await Directory.systemTemp.createTemp(
+          'local-first-song-reader-flow',
+        );
+        final dbFile = File(p.join(tempDir.path, 'song_catalog.sqlite'));
+        var database = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        var store = DriftSongCatalogStore(database);
+        var localRepository = LocalFirstSongRepository(store);
 
-      final config = SupabaseConfig.fromEnvironment();
-      final client = SupabaseClient(config.url, config.anonKey);
-      final tempDir = await Directory.systemTemp.createTemp(
-        'local-first-song-reader-flow',
-      );
-      final dbFile = File(p.join(tempDir.path, 'song_catalog.sqlite'));
-      var database = SongCatalogDatabase.connect(
-        NativeDatabase.createInBackground(dbFile),
-      );
-      var store = DriftSongCatalogStore(database);
-      var localRepository = LocalFirstSongRepository(store);
+        addTearDown(() async {
+          await client.auth.signOut();
+          await client.dispose();
+          await database.close();
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
 
-      addTearDown(() async {
         await client.auth.signOut();
-        await client.dispose();
+        await client.auth.signInWithPassword(
+          email: 'demo@lyron.local',
+          password: 'LyronDemo123!',
+        );
+        final userId = client.auth.currentSession!.user.id;
+        final onlineController = SongCatalogController(
+          store: store,
+          remoteRepository: SupabaseSongRepository(client),
+          authSessionReader: _currentSessionReader(client),
+          organizationReader: _organizationReader(client),
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await onlineController.refreshCatalog();
+
         await database.close();
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
+        database = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        store = DriftSongCatalogStore(database);
+        localRepository = LocalFirstSongRepository(store);
+
+        final cachedSongs = await localRepository.listSongs(
+          userId: userId,
+          organizationId: '11111111-1111-1111-1111-111111111111',
+        );
+        expect(
+          cachedSongs.map((song) => song.title).toList(growable: false),
+          unorderedEquals(const [
+            'A forrásnál',
+            'A mi Istenünk (Leborulok előtted)',
+            'Egy út',
+          ]),
+        );
+
+        final offlineController = SongCatalogController(
+          store: store,
+          remoteRepository: _ThrowingSongRepository(
+            const SocketException('offline'),
+          ),
+          authSessionReader: _currentSessionReader(client),
+          organizationReader: () async =>
+              throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+        );
+        await offlineController.refreshCatalog();
+
+        expect(
+          offlineController.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(
+          offlineController.state.refreshStatus,
+          CatalogRefreshStatus.failed,
+        );
+        expect(offlineController.state.hasCachedCatalog, isTrue);
+
+        final cachedSource = await localRepository.getSongSource(
+          userId: userId,
+          organizationId: '11111111-1111-1111-1111-111111111111',
+          songId: '33333333-3333-3333-3333-333333333335',
+        );
+        expect(cachedSource.source, contains('{title:Egy út}'));
       });
-
-      await client.auth.signOut();
-      await client.auth.signInWithPassword(
-        email: 'demo@lyron.local',
-        password: 'LyronDemo123!',
-      );
-      final userId = client.auth.currentSession!.user.id;
-
-      final onlineController = SongCatalogController(
-        store: store,
-        remoteRepository: SupabaseSongRepository(client),
-        authSessionReader: _currentSessionReader(client),
-        organizationReader: _organizationReader(client),
-        sessionVerifier: () async => CatalogSessionStatus.verified,
-      );
-
-      await onlineController.refreshCatalog();
-
-      await database.close();
-      database = SongCatalogDatabase.connect(
-        NativeDatabase.createInBackground(dbFile),
-      );
-      store = DriftSongCatalogStore(database);
-      localRepository = LocalFirstSongRepository(store);
-
-      final cachedSongs = await localRepository.listSongs(
-        userId: userId,
-        organizationId: '11111111-1111-1111-1111-111111111111',
-      );
-      expect(
-        cachedSongs.map((song) => song.title).toList(growable: false),
-        unorderedEquals(const [
-          'A forrásnál',
-          'A mi Istenünk (Leborulok előtted)',
-          'Egy út',
-        ]),
-      );
-
-      final offlineController = SongCatalogController(
-        store: store,
-        remoteRepository: _ThrowingSongRepository(
-          const SocketException('offline'),
-        ),
-        authSessionReader: _currentSessionReader(client),
-        organizationReader: () async => throw const SocketException('offline'),
-        sessionVerifier: () async =>
-            CatalogSessionStatus.unverifiableDueToConnectivity,
-      );
-
-      await offlineController.refreshCatalog();
-
-      expect(
-        offlineController.state.connectionStatus,
-        CatalogConnectionStatus.offlineCached,
-      );
-      expect(
-        offlineController.state.refreshStatus,
-        CatalogRefreshStatus.failed,
-      );
-      expect(offlineController.state.hasCachedCatalog, isTrue);
-
-      final cachedSource = await localRepository.getSongSource(
-        userId: userId,
-        organizationId: '11111111-1111-1111-1111-111111111111',
-        songId: '33333333-3333-3333-3333-333333333335',
-      );
-      expect(cachedSource.source, contains('{title:Egy út}'));
     },
     skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
   );

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
@@ -13,18 +12,10 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
+import '../../support/drift_test_setup.dart';
+
 void main() {
-  final originalDontWarnAboutMultipleDatabases =
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
-
-  setUpAll(() {
-    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-  });
-
-  tearDownAll(() {
-    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
-        originalDontWarnAboutMultipleDatabases;
-  });
+  suppressDriftMultipleDatabaseWarnings();
 
   group('PlanningSyncController', () {
     late PlanningLocalDatabase database;

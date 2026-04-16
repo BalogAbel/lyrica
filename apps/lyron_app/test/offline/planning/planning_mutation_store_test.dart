@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
@@ -10,14 +9,17 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../support/drift_test_setup.dart';
+
 void main() {
+  suppressDriftMultipleDatabaseWarnings();
+
   group('PlanningMutationStore', () {
     late PlanningLocalDatabase database;
     late DriftPlanningLocalStore localStore;
     late DriftPlanningMutationStore store;
 
     setUp(() {
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       database = PlanningLocalDatabase.inMemory();
       localStore = DriftPlanningLocalStore(database);
       store = DriftPlanningMutationStore(
@@ -27,7 +29,6 @@ void main() {
     });
 
     tearDown(() async {
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
       await database.close();
     });
 
