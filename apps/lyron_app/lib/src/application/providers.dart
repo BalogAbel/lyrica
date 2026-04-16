@@ -87,6 +87,15 @@ final songCatalogDatabaseProvider = Provider<SongCatalogDatabase>((ref) {
   return _sharedSongCatalogDatabase ??= SongCatalogDatabase.local();
 });
 
+Future<void> closeSharedDatabases() async {
+  final songCatalogDatabase = _sharedSongCatalogDatabase;
+  _sharedSongCatalogDatabase = null;
+
+  if (songCatalogDatabase != null) {
+    await songCatalogDatabase.close();
+  }
+}
+
 final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
   return DriftSongCatalogStore(ref.watch(songCatalogDatabaseProvider));
 });
