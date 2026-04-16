@@ -23,6 +23,35 @@ void main() {
     expect(find.text('After'), findsOneWidget);
   });
 
+  testWidgets('previous and next segments use full hit targets', (
+    tester,
+  ) async {
+    var previousTapCount = 0;
+    var nextTapCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderBottomContextBar(
+            currentTitle: 'Current Song',
+            previousTitle: 'Before',
+            nextTitle: 'After',
+            onPreviousTap: () => previousTapCount += 1,
+            onNextTap: () => nextTapCount += 1,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.pump();
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pump();
+
+    expect(previousTapCount, 1);
+    expect(nextTapCount, 1);
+  });
+
   testWidgets('stays renderable with only the current song title', (
     tester,
   ) async {

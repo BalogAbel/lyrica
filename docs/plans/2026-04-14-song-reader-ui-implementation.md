@@ -1,6 +1,6 @@
 # Song Reader UI Implementation Plan
 
-> Status: Implemented
+> Status: Implemented; partially superseded by `docs/plans/2026-04-16-song-reader-tablet-immersive-shell.md`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

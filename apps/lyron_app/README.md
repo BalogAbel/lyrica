@@ -64,8 +64,8 @@ Current reader behavior uses one shared reader core with presentation shells:
 
 Compact shell behavior:
 
-- persistent title bar above the song content
-- persistent bottom context bar
+- app bar shows only back, current song title, and overflow menu while a song is loaded
+- bottom context bar appears only for scoped session/list reader entry
 - temporary control overlay revealed by single tap
 - double-tap toggles auto-fit state
 - control overlay auto-hides after inactivity
@@ -78,7 +78,7 @@ Expanded shell behavior:
 - right tools panel
 - no compact overlay
 
-Edit and delete actions stay in the stable top action area and are intentionally outside compact overlay and expanded side panels.
+Compact edit and delete actions live in the header overflow menu. Expanded shell keeps the stable top action area outside side panels.
 
 ## Current Behavior Notes
 

@@ -18,6 +18,7 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -96,19 +97,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plan-session-item-item-1')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Repeated Song'), findsWidgets);
       expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
 
-      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+      await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
       await tester.pumpAndSettle();
 
       expect(find.text('Second Song'), findsWidgets);
-
-      await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
-      await tester.pumpAndSettle();
-
-      expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
-      expect(find.text('Sunday Morning'), findsOneWidget);
     },
   );
 
@@ -176,21 +171,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+    expect(find.text('Repeated Song'), findsWidgets);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
     await tester.pumpAndSettle();
 
     expect(find.text('Second Song'), findsWidgets);
-    final previousButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(
-        OutlinedButton,
-        AppStrings.scopedReaderPreviousAction,
-      ),
-    );
-    final nextButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, AppStrings.scopedReaderNextAction),
-    );
-    expect(previousButton.onPressed, isNotNull);
-    expect(nextButton.onPressed, isNull);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Second Song'), findsWidgets);
+
+    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Repeated Song'), findsWidgets);
   });
 
   testWidgets(
@@ -259,7 +253,7 @@ void main() {
       await tester.tap(item25, warnIfMissed: false);
       await tester.pumpAndSettle();
 
-      expect(find.text('Song reader'), findsOneWidget);
+      expect(find.text('Repeated Song 25'), findsWidgets);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
