@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/lyron_app.dart';
@@ -28,7 +29,7 @@ void main() {
     (tester) async {
       final completer = Completer<AppAuthSession?>();
       await tester.pumpWidget(
-        ProviderScope(
+        _testProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(
               _DelayedAuthRepository(completer.future),
@@ -51,7 +52,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      ProviderScope(
+      _testProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(_TestAuthRepository()),
         ],
@@ -184,6 +185,21 @@ void main() {
 
       expect(find.text('Egy út'), findsOneWidget);
     },
+  );
+}
+
+ProviderScope _testProviderScope({
+  required Widget child,
+  List<Override> overrides = const [],
+}) {
+  final database = SongCatalogDatabase.inMemory();
+  addTearDown(database.close);
+  return ProviderScope(
+    overrides: [
+      songCatalogDatabaseProvider.overrideWithValue(database),
+      ...overrides,
+    ],
+    child: child,
   );
 }
 
