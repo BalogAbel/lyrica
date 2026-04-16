@@ -32,6 +32,9 @@ import '../support/drift_test_setup.dart';
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
+  setUp(() async {
+    await closeSharedDatabases();
+  });
 
   test('allows overriding the shared Supabase client provider', () {
     final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
