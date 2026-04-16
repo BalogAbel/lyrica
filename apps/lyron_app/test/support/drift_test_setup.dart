@@ -46,13 +46,14 @@ ProviderScope isolatedSongCatalogProviderScope({
   addTearDown(() async {
     await Future.wait([
       if (songCatalogDatabase == null) effectiveSongCatalogDatabase.close(),
-      if (planningLocalDatabase == null)
-        effectivePlanningLocalDatabase.close(),
+      if (planningLocalDatabase == null) effectivePlanningLocalDatabase.close(),
     ]);
   });
   return ProviderScope(
     overrides: [
-      songCatalogDatabaseProvider.overrideWithValue(effectiveSongCatalogDatabase),
+      songCatalogDatabaseProvider.overrideWithValue(
+        effectiveSongCatalogDatabase,
+      ),
       planningLocalDatabaseProvider.overrideWithValue(
         effectivePlanningLocalDatabase,
       ),
