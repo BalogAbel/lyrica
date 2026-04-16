@@ -342,7 +342,11 @@ void main() {
     final authController = AppAuthController(authRepository);
     addTearDown(authController.dispose);
     await authController.restoreSession();
-    final songCatalogController = _NoopSongCatalogController();
+    final songCatalogDatabase = SongCatalogDatabase.inMemory();
+    addTearDown(() => songCatalogDatabase.close());
+    final songCatalogController = _NoopSongCatalogController(
+      songCatalogDatabase,
+    );
     final planningSyncController = _RecordingPlanningSyncController(events);
 
     final router = GoRouter(
@@ -843,9 +847,9 @@ class _RecordingPlanningSyncController extends PlanningSyncController {
 }
 
 class _NoopSongCatalogController extends SongCatalogController {
-  _NoopSongCatalogController._(this._database)
+  _NoopSongCatalogController(SongCatalogDatabase database)
     : super(
-        store: DriftSongCatalogStore(_database),
+        store: DriftSongCatalogStore(database),
         remoteRepository: _CountingSongRepository(),
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -854,21 +858,8 @@ class _NoopSongCatalogController extends SongCatalogController {
         foregroundState: const _StaticForegroundState(isForeground: false),
       );
 
-  factory _NoopSongCatalogController() {
-    final database = SongCatalogDatabase.inMemory();
-    return _NoopSongCatalogController._(database);
-  }
-
-  final SongCatalogDatabase _database;
-
   @override
   Future<void> handleExplicitSignOut() async {}
-
-  @override
-  void dispose() {
-    unawaited(_database.close());
-    super.dispose();
-  }
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
