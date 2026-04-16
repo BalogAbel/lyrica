@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +23,18 @@ import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(

@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
@@ -9,6 +10,18 @@ import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   group('PlanningWriteService', () {
     late PlanningLocalDatabase database;
     late DriftPlanningLocalStore localStore;

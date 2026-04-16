@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/lyron_app.dart';
@@ -19,6 +20,18 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   testWidgets(
     'shows auth bootstrap loading before session restoration completes',
     (tester) async {

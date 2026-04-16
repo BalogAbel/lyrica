@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,18 @@ import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
+  final originalDontWarnAboutMultipleDatabases =
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  });
+
+  tearDownAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases =
+        originalDontWarnAboutMultipleDatabases;
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Widget buildApp({
@@ -834,9 +847,9 @@ class _RecordingPlanningSyncController extends PlanningSyncController {
 }
 
 class _NoopSongCatalogController extends SongCatalogController {
-  _NoopSongCatalogController()
+  _NoopSongCatalogController._(this._database)
     : super(
-        store: DriftSongCatalogStore(SongCatalogDatabase.inMemory()),
+        store: DriftSongCatalogStore(_database),
         remoteRepository: _CountingSongRepository(),
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -845,8 +858,21 @@ class _NoopSongCatalogController extends SongCatalogController {
         foregroundState: const _StaticForegroundState(isForeground: false),
       );
 
+  factory _NoopSongCatalogController() {
+    final database = SongCatalogDatabase.inMemory();
+    return _NoopSongCatalogController._(database);
+  }
+
+  final SongCatalogDatabase _database;
+
   @override
   Future<void> handleExplicitSignOut() async {}
+
+  @override
+  void dispose() {
+    unawaited(_database.close());
+    super.dispose();
+  }
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
