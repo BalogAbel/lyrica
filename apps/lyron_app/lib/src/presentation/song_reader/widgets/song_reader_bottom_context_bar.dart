@@ -15,6 +15,7 @@ class SongReaderBottomContextBar extends StatelessWidget {
     'song-reader-bottom-context-previous-segment',
   );
   static const nextSegmentKey = Key('song-reader-bottom-context-next-segment');
+  static const disabledSegmentOpacity = 0.5;
 
   final String currentTitle;
   final String? previousTitle;
@@ -129,7 +130,12 @@ class _NeighborSegment extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
-        child: content,
+        child: Opacity(
+          opacity: onTap == null
+              ? SongReaderBottomContextBar.disabledSegmentOpacity
+              : 1,
+          child: content,
+        ),
       ),
     );
   }

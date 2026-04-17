@@ -66,4 +66,37 @@ void main() {
     expect(find.text('Current Song'), findsOneWidget);
     expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
   });
+
+  testWidgets('disabled neighbor segments render with reduced opacity', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SongReaderBottomContextBar(currentTitle: 'Current Song'),
+        ),
+      ),
+    );
+
+    final opacityWidgets = tester
+        .widgetList<Opacity>(
+          find.descendant(
+            of: find.byType(SongReaderBottomContextBar),
+            matching: find.byType(Opacity),
+          ),
+        )
+        .toList();
+
+    expect(opacityWidgets, isNotEmpty);
+    expect(
+      opacityWidgets
+          .where(
+            (widget) =>
+                widget.opacity ==
+                SongReaderBottomContextBar.disabledSegmentOpacity,
+          )
+          .length,
+      2,
+    );
+  });
 }
