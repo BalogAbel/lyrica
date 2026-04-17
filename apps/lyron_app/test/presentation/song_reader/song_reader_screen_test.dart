@@ -961,6 +961,46 @@ void main() {
   });
 
   testWidgets(
+    'expanded reader preserves left rail spacing when context panel is hidden',
+    (tester) async {
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildApp(result: buildResult()),
+      );
+
+      final unscopedGridLeft = tester
+          .getRect(find.byKey(const Key('song-reader-section-grid-columns-1')))
+          .left;
+
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: const SizedBox.shrink(),
+      );
+
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildScopedReaderApp(
+          planDetail: _multiItemPlanDetail(),
+          resultsBySongId: {
+            'song-1': buildScopedResult('Song One'),
+            'song-2': buildScopedResult('Song Two'),
+            'song-3': buildScopedResult('Song Three'),
+          },
+        ),
+      );
+
+      final scopedGridLeft = tester
+          .getRect(find.byKey(const Key('song-reader-section-grid-columns-1')))
+          .left;
+
+      expect(scopedGridLeft, moreOrLessEquals(unscopedGridLeft, epsilon: 1));
+    },
+  );
+
+  testWidgets(
     'scoped compact mode falls back to parsed title when selected item title is empty',
     (tester) async {
       await tester.pumpWidget(

@@ -76,6 +76,8 @@ It is hidden when:
 - scoped context cannot resolve to a usable sequence
 - no current song projection is available
 
+When hidden, the expanded shell still keeps the left rail width reserved so scoped and unscoped landscape layouts do not shift horizontally.
+
 ### 5) Shared Shell Consistency
 
 Compact and landscape shells must keep the same product rules for:
@@ -103,10 +105,11 @@ Differences between compact and landscape remain presentation-shell only:
 2. `Edit song` and `Delete song` appear only in the overflow menu for landscape/expanded reader success state.
 3. The expanded `Set context` panel is hidden in unscoped reader entry.
 4. The expanded `Set context` panel is visible in scoped reader entry.
-5. Expanded previous/next context segments are directly tappable hit targets.
-6. Tapping expanded previous/next context performs the same scoped navigation as before.
-7. Expanded shell removes the duplicate title bar while keeping subtitle metadata visible when present.
-8. Shared reader runtime controls remain available in expanded mode and preserve current behavior.
+5. Expanded content keeps the same left-rail spacing whether the `Set context` panel is visible or hidden.
+6. Expanded previous/next context segments are directly tappable hit targets.
+7. Tapping expanded previous/next context performs the same scoped navigation as before.
+8. Expanded shell removes the duplicate title bar while keeping subtitle metadata visible when present.
+9. Shared reader runtime controls remain available in expanded mode and preserve current behavior.
 
 ## Validation Notes
 
