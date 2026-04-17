@@ -19,7 +19,6 @@
 - Test: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 - Test: `apps/lyron_app/test/router/app_router_test.dart`
 
-- [ ] **Step 1: Add failing tests for expanded app-bar title**
 - [x] **Step 1: Add failing tests for expanded app-bar title**
 
 Cover:
@@ -52,7 +51,6 @@ Expected: PASS.
 - Modify: `apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart`
 - Test: `apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart`
 
-- [ ] **Step 1: Add failing tests for expanded action placement**
 - [x] **Step 1: Add failing tests for expanded action placement**
 
 Cover:
