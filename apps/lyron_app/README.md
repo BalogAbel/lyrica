@@ -72,13 +72,14 @@ Compact shell behavior:
 
 Expanded shell behavior:
 
-- persistent title bar above the song content
+- app bar shows current song title while song content is loaded
+- song subtitle stays above the content surface when present
 - left context panel
 - center song surface
 - right tools panel
 - no compact overlay
 
-Compact edit and delete actions live in the header overflow menu. Expanded shell keeps the stable top action area outside side panels.
+Compact and expanded edit/delete actions both live in the header overflow menu. Scoped navigation chrome stays shell-specific: compact uses the bottom context bar, expanded uses the left context panel.
 
 ## Current Behavior Notes
 

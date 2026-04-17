@@ -398,8 +398,8 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
-    expect(find.byType(SongReaderTitleBar), findsOneWidget);
+    expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
+    expect(find.byType(SongReaderTitleBar), findsNothing);
     expect(
       tester.getSize(find.byType(SongReaderExpandedSurface)).width,
       greaterThan(960),
@@ -408,10 +408,11 @@ void main() {
     expect(find.byType(SongReaderCompactOverlay), findsNothing);
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.text('Lyrics only'), findsOneWidget);
-    final titleRect = tester.getRect(find.byType(SongReaderTitleBar));
-    final expandedRect = tester.getRect(find.byType(SongReaderExpandedSurface));
-    expect(titleRect.left, greaterThan(expandedRect.left + 200));
-    expect(titleRect.right, lessThan(expandedRect.right - 280));
+    expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
+    expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+    expect(find.text(AppStrings.songEditAction), findsNothing);
+    expect(find.text(AppStrings.songDeleteAction), findsNothing);
     expect(
       find.byKey(const Key('song-reader-section-grid-columns-1')),
       findsOneWidget,
@@ -547,6 +548,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+    expect(find.text(AppStrings.songEditAction), findsNothing);
+    expect(find.text(AppStrings.songDeleteAction), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songEditAction), findsOneWidget);
+    expect(find.text(AppStrings.songDeleteAction), findsOneWidget);
+  });
+
+  testWidgets('expanded reader moves edit and delete into overflow menu', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
     expect(find.text(AppStrings.songEditAction), findsNothing);
     expect(find.text(AppStrings.songDeleteAction), findsNothing);
 
@@ -911,6 +931,35 @@ void main() {
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
 
+  testWidgets('scoped expanded reader shows interactive set context panel', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+
+    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
+    expect(find.text('Song One'), findsOneWidget);
+    expect(find.text('Song Three'), findsOneWidget);
+
+    await tester.tap(find.byKey(SongReaderExpandedContextPanel.nextSegmentKey));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Song Three'), findsOneWidget);
+  });
+
   testWidgets(
     'scoped compact mode falls back to parsed title when selected item title is empty',
     (tester) async {
@@ -936,10 +985,14 @@ void main() {
   testWidgets('standard reader entry hides scoped navigation controls', (
     tester,
   ) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
 
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
   });
