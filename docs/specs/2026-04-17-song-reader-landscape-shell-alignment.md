@@ -26,7 +26,7 @@ This makes the landscape shell feel like a separate product surface instead of a
 - Move landscape edit/delete actions into the overflow menu.
 - Make the landscape set-context surface directly tappable for sequence navigation.
 - Hide the landscape set-context surface when no scoped list/session context exists.
-- Preserve the existing shared reader runtime controls and expanded content/tools structure outside these shell changes, while still keeping subtitle metadata visible above content when present.
+- Preserve the existing shared reader runtime controls and expanded content/tools structure outside these shell changes.
 
 ## Non-Goals
 
@@ -43,7 +43,7 @@ This makes the landscape shell feel like a separate product surface instead of a
 
 When the landscape/expanded reader has a loaded song, the app bar must show the current song title instead of the generic `Song reader` label.
 
-The previous expanded in-content title bar is removed so the title is not duplicated. If subtitle metadata exists, it remains visible in the expanded content chrome below scoped navigation and above the reader surface.
+The previous expanded in-content title bar is removed so the title is not duplicated. Expanded shell does not surface subtitle metadata separately.
 
 Fallback title behavior may still use `Song reader` for loading, missing-content, or explicit error states.
 
@@ -108,7 +108,7 @@ Differences between compact and landscape remain presentation-shell only:
 5. Expanded content keeps the same left-rail spacing whether the `Set context` panel is visible or hidden.
 6. Expanded previous/next context segments are directly tappable hit targets.
 7. Tapping expanded previous/next context performs the same scoped navigation as before.
-8. Expanded shell removes the duplicate title bar while keeping subtitle metadata visible when present.
+8. Expanded shell removes the duplicate title bar and does not render a separate subtitle surface.
 9. Shared reader runtime controls remain available in expanded mode and preserve current behavior.
 
 ## Validation Notes

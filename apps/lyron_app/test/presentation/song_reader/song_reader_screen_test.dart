@@ -330,7 +330,7 @@ void main() {
     );
 
     expect(find.text('Reader Song'), findsWidgets);
-    expect(find.text('Live version'), findsOneWidget);
+    expect(find.text('Live version'), findsNothing);
     expect(find.text('Key: G'), findsOneWidget);
     expect(find.text('Verse 1'), findsOneWidget);
     expect(find.text('Chorus 2'), findsOneWidget);

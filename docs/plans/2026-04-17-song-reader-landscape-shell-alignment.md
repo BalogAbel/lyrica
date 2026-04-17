@@ -27,11 +27,12 @@ Cover:
 - expanded success state app bar shows current song title
 - expanded success state no longer shows generic `Song reader`
 - expanded success state no longer duplicates the title inside content chrome
+- expanded success state does not render subtitle metadata separately
 - loading and error states still allow safe fallback title behavior where required
 
 - [x] **Step 2: Implement expanded title ownership**
 
-Use the same current-title resolution path already used for compact shell and apply it to expanded success state app-bar title behavior. Remove the duplicate expanded title bar, but keep subtitle metadata visible above content when present.
+Use the same current-title resolution path already used for compact shell and apply it to expanded success state app-bar title behavior. Remove the duplicate expanded title bar and do not render subtitle metadata as separate expanded chrome.
 
 - [x] **Step 3: Re-run affected tests**
 

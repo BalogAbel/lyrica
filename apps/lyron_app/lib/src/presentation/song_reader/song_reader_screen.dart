@@ -695,18 +695,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   if (_isScopedMode &&
                                       layout.shell == SongReaderShell.expanded)
                                     const SizedBox(height: 24),
-                                  if (layout.shell ==
-                                          SongReaderShell.expanded &&
-                                      projection.subtitle != null &&
-                                      projection.subtitle!.trim().isNotEmpty)
-                                    _ExpandedSubtitleSurface(
-                                      subtitle: projection.subtitle!,
-                                    ),
-                                  if (layout.shell ==
-                                          SongReaderShell.expanded &&
-                                      projection.subtitle != null &&
-                                      projection.subtitle!.trim().isNotEmpty)
-                                    const SizedBox(height: 16),
                                   Expanded(child: readerSurface),
                                 ],
                               ),
@@ -717,33 +705,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     );
                   },
                 ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpandedSubtitleSurface extends StatelessWidget {
-  const _ExpandedSubtitleSurface({required this.subtitle});
-
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Text(
-          subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
         ),
       ),
     );

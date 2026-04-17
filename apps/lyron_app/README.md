@@ -73,7 +73,6 @@ Compact shell behavior:
 Expanded shell behavior:
 
 - app bar shows current song title while song content is loaded
-- song subtitle stays above the content surface when present
 - left context panel
 - center song surface
 - right tools panel
