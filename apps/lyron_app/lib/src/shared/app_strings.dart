@@ -51,13 +51,19 @@ class AppStrings {
   static const songReaderUnavailableMessage = 'This song is unavailable.';
   static const songReaderAccessDeniedMessage =
       'You do not have access to this song.';
+  static const songReaderTitle = 'Song reader';
   static const routeNotFoundMessage = 'The requested page was not found.';
   static const songReaderBackAction = 'Back to song list';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
       'This session-scoped reader route is unavailable.';
+  static const scopedReaderSetContextTitle = 'Set context';
+  static const scopedReaderCurrentSongLabel = 'Current song';
+  static const scopedReaderPreviousLabel = 'Previous';
   static const scopedReaderPreviousAction = 'Previous song';
+  static const scopedReaderNextLabel = 'Next';
   static const scopedReaderNextAction = 'Next song';
+  static const scopedReaderNoNeighborLabel = 'None';
   static const scopedReaderContextUnavailableMessage =
       'This session-scoped reader context is unavailable.';
   static const planningEntryAction = 'Plans';

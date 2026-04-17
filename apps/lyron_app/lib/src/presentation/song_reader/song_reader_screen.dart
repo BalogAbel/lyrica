@@ -446,7 +446,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         ? null
         : SongReaderProjection(song: readerResult.song, state: readerState);
     final currentTitle = projection == null
-        ? 'Song reader'
+        ? AppStrings.songReaderTitle
         : _resolveCurrentTitle(
             scopedContext: resolvedScopedContext,
             projection: projection,
@@ -463,7 +463,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
               onPressed: () => _handleBack(context),
               icon: const BackButtonIcon(),
             ),
-            title: const Text('Song reader'),
+            title: const Text(AppStrings.songReaderTitle),
           ),
           body: SafeArea(
             child: Center(

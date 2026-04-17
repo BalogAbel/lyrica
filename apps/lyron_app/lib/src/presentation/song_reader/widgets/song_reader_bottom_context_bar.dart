@@ -49,7 +49,7 @@ class SongReaderBottomContextBar extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Current song',
+                    AppStrings.scopedReaderCurrentSongLabel,
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
