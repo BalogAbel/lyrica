@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
   testWidgets('shows current title with optional previous and next labels', (
@@ -21,6 +22,7 @@ void main() {
     expect(find.text('Current Song'), findsOneWidget);
     expect(find.text('Before'), findsOneWidget);
     expect(find.text('After'), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderCurrentSongLabel), findsOneWidget);
   });
 
   testWidgets('previous and next segments use full hit targets', (

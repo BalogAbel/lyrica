@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class SongReaderExpandedContextPanel extends StatelessWidget {
   const SongReaderExpandedContextPanel({
@@ -33,19 +34,22 @@ class SongReaderExpandedContextPanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Set context', style: theme.textTheme.titleMedium),
+            Text(
+              AppStrings.scopedReaderSetContextTitle,
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 16),
             _PanelRow(
               key: previousSegmentKey,
-              label: 'Previous',
-              value: previousTitle ?? 'None',
+              label: AppStrings.scopedReaderPreviousLabel,
+              value: previousTitle ?? AppStrings.scopedReaderNoNeighborLabel,
               onTap: onPreviousTap,
             ),
             const SizedBox(height: 12),
             _PanelRow(
               key: nextSegmentKey,
-              label: 'Next',
-              value: nextTitle ?? 'None',
+              label: AppStrings.scopedReaderNextLabel,
+              value: nextTitle ?? AppStrings.scopedReaderNoNeighborLabel,
               onTap: onNextTap,
             ),
           ],
