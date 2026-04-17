@@ -949,6 +949,8 @@ void main() {
 
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
     expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
     expect(find.text('Song One'), findsOneWidget);
@@ -1128,8 +1130,10 @@ void main() {
   testWidgets(
     'repeated next actions keep a single reader stack entry before returning to plan detail',
     (tester) async {
-      await tester.pumpWidget(
-        buildScopedReaderApp(
+      await pumpWithViewport(
+        tester,
+        size: const Size(1440, 1200),
+        child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
             'song-1': buildScopedResult('Song One'),
@@ -1139,13 +1143,16 @@ void main() {
           initialLocation: '/plans/plan-fixture',
         ),
       );
-      await tester.pumpAndSettle();
 
       await tester.tap(find.text('20. Song Two'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+      await tester.tap(
+        find.byKey(SongReaderExpandedContextPanel.nextSegmentKey),
+      );
       await tester.pumpAndSettle();
-      await tester.tap(find.text(AppStrings.scopedReaderPreviousAction));
+      await tester.tap(
+        find.byKey(SongReaderExpandedContextPanel.previousSegmentKey),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
@@ -1182,7 +1189,9 @@ void main() {
       final resizedBeforeNavigation = tester.widget<Text>(find.text('Hello'));
       final fontSizeBeforeNavigation = resizedBeforeNavigation.style!.fontSize!;
 
-      await tester.tap(find.text(AppStrings.scopedReaderNextAction));
+      await tester.tap(
+        find.byKey(SongReaderExpandedContextPanel.nextSegmentKey),
+      );
       await tester.pumpAndSettle();
 
       final resizedAfterNavigation = tester.widget<Text>(find.text('Hello'));
