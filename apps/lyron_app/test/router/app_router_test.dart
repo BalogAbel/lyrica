@@ -636,8 +636,8 @@ void main() {
 
     expect(find.widgetWithText(AppBar, 'Egy út'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
-    expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
-    expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+    expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
+    expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
     expect(
       router.routerDelegate.currentConfiguration.uri.toString(),
       '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',

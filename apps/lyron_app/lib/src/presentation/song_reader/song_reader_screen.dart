@@ -684,19 +684,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                               padding: _contentPadding,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  if (_isScopedMode &&
-                                      layout.shell == SongReaderShell.expanded)
-                                    _ScopedNavigationSurface(
-                                      scopedContextAsync: scopedContextAsync!,
-                                      currentWarmPlanDetail:
-                                          widget.warmPlanDetail,
-                                    ),
-                                  if (_isScopedMode &&
-                                      layout.shell == SongReaderShell.expanded)
-                                    const SizedBox(height: 24),
-                                  Expanded(child: readerSurface),
-                                ],
+                                children: [Expanded(child: readerSurface)],
                               ),
                             ),
                           ),
@@ -781,67 +769,6 @@ class _SongEditDialogState extends State<_SongEditDialog> {
           child: const Text(AppStrings.songSaveAction),
         ),
       ],
-    );
-  }
-}
-
-class _ScopedNavigationSurface extends StatelessWidget {
-  const _ScopedNavigationSurface({
-    required this.scopedContextAsync,
-    required this.currentWarmPlanDetail,
-  });
-
-  final AsyncValue<SessionScopedReaderContextResult> scopedContextAsync;
-  final PlanDetail? currentWarmPlanDetail;
-
-  @override
-  Widget build(BuildContext context) {
-    return scopedContextAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (error, stackTrace) => const SizedBox.shrink(),
-      data: (result) {
-        if (result is! ResolvedSessionScopedReaderContextResult) {
-          return const SizedBox.shrink();
-        }
-
-        final scopedContext = result.context;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            OutlinedButton(
-              onPressed: scopedContext.previousItem == null
-                  ? null
-                  : () {
-                      context.replace(
-                        PlanningRoutes.planSessionSongReaderLocation(
-                          planSlug: scopedContext.planSlug,
-                          sessionSlug: scopedContext.sessionSlug,
-                          songSlug: scopedContext.previousItem!.songSlug,
-                        ),
-                        extra: currentWarmPlanDetail,
-                      );
-                    },
-              child: const Text(AppStrings.scopedReaderPreviousAction),
-            ),
-            OutlinedButton(
-              onPressed: scopedContext.nextItem == null
-                  ? null
-                  : () {
-                      context.replace(
-                        PlanningRoutes.planSessionSongReaderLocation(
-                          planSlug: scopedContext.planSlug,
-                          sessionSlug: scopedContext.sessionSlug,
-                          songSlug: scopedContext.nextItem!.songSlug,
-                        ),
-                        extra: currentWarmPlanDetail,
-                      );
-                    },
-              child: const Text(AppStrings.scopedReaderNextAction),
-            ),
-          ],
-        );
-      },
     );
   }
 }
