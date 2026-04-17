@@ -21,7 +21,6 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -50,9 +49,6 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
   static const _expandedContentWidth = 1440.0;
-  static const _expandedContextPanelWidth = 240.0;
-  static const _expandedToolsPanelWidth = 320.0;
-  static const _expandedPanelGap = 24.0;
   static const _contentPadding = EdgeInsets.all(24);
   static const _compactOverlayInactivity = Duration(seconds: 3);
 
@@ -424,13 +420,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final readerState = _isScopedMode
         ? scopedRuntimeController!.state.readerState
         : _controller.state;
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    final layout = resolveSongReaderLayout(
-      viewportWidth: viewportWidth,
-      sharedFontScale: readerState.sharedFontScale,
-      isAutoFitEnabled: readerState.isAutoFitEnabled,
-    );
-    final isCompactShell = layout.shell == SongReaderShell.compact;
     final readerResult = readerAsync.valueOrNull;
     final scopedContextResult = scopedContextAsync?.valueOrNull;
     final resolvedScopedContext =
@@ -480,9 +469,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           onPressed: () => _handleBack(context),
           icon: const BackButtonIcon(),
         ),
-        title: Text(isCompactShell ? currentTitle : 'Song reader'),
+        title: Text(currentTitle),
         actions: [
-          if (isCompactShell && readerResult != null)
+          if (readerResult != null)
             PopupMenuButton<_SongReaderOverflowAction>(
               icon: const Icon(Icons.more_horiz),
               onSelected: (action) {
@@ -588,6 +577,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     final nextTitle = _resolveNeighborTitle(
                       resolvedScopedContext?.nextItem?.title,
                     );
+                    final showExpandedContextPanel =
+                        resolvedScopedContext != null;
 
                     return LayoutBuilder(
                       builder: (context, constraints) {
@@ -603,6 +594,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                             layout.shell == SongReaderShell.expanded
                             ? SongReaderExpandedSurface(
                                 projection: projection,
+                                showContextPanel: showExpandedContextPanel,
                                 previousTitle: previousTitle,
                                 nextTitle: nextTitle,
                                 hasRecoverableWarnings:
@@ -616,6 +608,26 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onPreviousTap:
+                                    resolvedScopedContext?.previousItem == null
+                                    ? null
+                                    : () => _navigateToScopedSong(
+                                        context,
+                                        scopedContext: resolvedScopedContext!,
+                                        songSlug: resolvedScopedContext
+                                            .previousItem!
+                                            .songSlug,
+                                      ),
+                                onNextTap:
+                                    resolvedScopedContext?.nextItem == null
+                                    ? null
+                                    : () => _navigateToScopedSong(
+                                        context,
+                                        scopedContext: resolvedScopedContext!,
+                                        songSlug: resolvedScopedContext
+                                            .nextItem!
+                                            .songSlug,
+                                      ),
                               )
                             : SongReaderCompactSurface(
                                 projection: projection,
@@ -673,27 +685,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  if (layout.shell == SongReaderShell.expanded)
-                                    Row(
-                                      children: [
-                                        FilledButton.tonal(
-                                          onPressed: () =>
-                                              _editSong(context, result),
-                                          child: const Text(
-                                            AppStrings.songEditAction,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        FilledButton.tonal(
-                                          onPressed: () => _deleteSong(context),
-                                          child: const Text(
-                                            AppStrings.songDeleteAction,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  if (layout.shell == SongReaderShell.expanded)
-                                    const SizedBox(height: 24),
                                   if (_isScopedMode &&
                                       layout.shell == SongReaderShell.expanded)
                                     _ScopedNavigationSurface(
@@ -704,24 +695,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   if (_isScopedMode &&
                                       layout.shell == SongReaderShell.expanded)
                                     const SizedBox(height: 24),
-                                  if (layout.shell == SongReaderShell.expanded)
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal:
-                                                _expandedPanelGap +
-                                                _expandedContextPanelWidth,
-                                          ).copyWith(
-                                            right:
-                                                _expandedPanelGap +
-                                                _expandedToolsPanelWidth,
-                                          ),
-                                      child: SongReaderTitleBar(
-                                        title: currentTitle,
-                                        subtitle: projection.subtitle,
-                                      ),
+                                  if (layout.shell ==
+                                          SongReaderShell.expanded &&
+                                      projection.subtitle != null &&
+                                      projection.subtitle!.trim().isNotEmpty)
+                                    _ExpandedSubtitleSurface(
+                                      subtitle: projection.subtitle!,
                                     ),
-                                  if (layout.shell == SongReaderShell.expanded)
+                                  if (layout.shell ==
+                                          SongReaderShell.expanded &&
+                                      projection.subtitle != null &&
+                                      projection.subtitle!.trim().isNotEmpty)
                                     const SizedBox(height: 16),
                                   Expanded(child: readerSurface),
                                 ],
@@ -733,6 +717,33 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     );
                   },
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpandedSubtitleSurface extends StatelessWidget {
+  const _ExpandedSubtitleSurface({required this.subtitle});
+
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

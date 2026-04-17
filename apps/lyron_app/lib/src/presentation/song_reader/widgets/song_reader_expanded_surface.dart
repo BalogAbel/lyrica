@@ -8,6 +8,7 @@ class SongReaderExpandedSurface extends StatelessWidget {
   const SongReaderExpandedSurface({
     super.key,
     required this.projection,
+    required this.showContextPanel,
     required this.hasRecoverableWarnings,
     required this.warningCount,
     required this.contentColumnCount,
@@ -18,11 +19,16 @@ class SongReaderExpandedSurface extends StatelessWidget {
     required this.onIncreaseFontScale,
     this.previousTitle,
     this.nextTitle,
+    this.onPreviousTap,
+    this.onNextTap,
   });
 
   final SongReaderProjection projection;
+  final bool showContextPanel;
   final String? previousTitle;
   final String? nextTitle;
+  final VoidCallback? onPreviousTap;
+  final VoidCallback? onNextTap;
   final bool hasRecoverableWarnings;
   final int warningCount;
   final int contentColumnCount;
@@ -37,17 +43,20 @@ class SongReaderExpandedSurface extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 240,
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: SongReaderExpandedContextPanel(
-              previousTitle: previousTitle,
-              nextTitle: nextTitle,
+        if (showContextPanel)
+          SizedBox(
+            width: 240,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SongReaderExpandedContextPanel(
+                previousTitle: previousTitle,
+                nextTitle: nextTitle,
+                onPreviousTap: onPreviousTap,
+                onNextTap: onNextTap,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 24),
+        if (showContextPanel) const SizedBox(width: 24),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {

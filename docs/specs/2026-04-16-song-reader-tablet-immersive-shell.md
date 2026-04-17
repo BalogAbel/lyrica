@@ -1,8 +1,8 @@
 # Song Reader Tablet Immersive Shell Spec
 
-> Status: Implemented
+> Status: Implemented; partially superseded by `docs/specs/2026-04-17-song-reader-landscape-shell-alignment.md`
 
-> This spec partially supersedes `docs/specs/2026-04-13-song-reader-ui-discovery.md` and the shipped behavior from `docs/plans/2026-04-14-song-reader-ui-implementation.md` specifically for compact/tablet shell chrome, scoped navigation placement, and catalog-status visibility inside the reader screen.
+> This spec partially supersedes `docs/specs/2026-04-13-song-reader-ui-discovery.md` and the shipped behavior from `docs/plans/2026-04-14-song-reader-ui-implementation.md` specifically for compact/tablet shell chrome, scoped navigation placement, and catalog-status visibility inside the reader screen. Landscape/expanded follow-up refinements now live in `docs/specs/2026-04-17-song-reader-landscape-shell-alignment.md`.
 
 ## Goal
 

@@ -524,6 +524,11 @@ void main() {
   testWidgets('signed-in users can land on the scoped reader route directly', (
     WidgetTester tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final repository = _TestAuthRepository(
       restoredSession: const AppAuthSession(
         userId: 'user-1',
@@ -629,7 +634,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Egy út'), findsWidgets);
+    expect(find.widgetWithText(AppBar, 'Egy út'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
     expect(
