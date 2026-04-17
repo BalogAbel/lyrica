@@ -271,6 +271,22 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
+  VoidCallback? _buildScopedNeighborNavigationTap(
+    BuildContext context, {
+    required SessionScopedReaderContext? scopedContext,
+    required SessionScopedReaderNeighbor? neighbor,
+  }) {
+    if (scopedContext == null || neighbor == null) {
+      return null;
+    }
+
+    return () => _navigateToScopedSong(
+      context,
+      scopedContext: scopedContext,
+      songSlug: neighbor.songSlug,
+    );
+  }
+
   String _resolveCurrentTitle({
     required SessionScopedReaderContext? scopedContext,
     required SongReaderProjection projection,
@@ -609,25 +625,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
                                 onPreviousTap:
-                                    resolvedScopedContext?.previousItem == null
-                                    ? null
-                                    : () => _navigateToScopedSong(
-                                        context,
-                                        scopedContext: resolvedScopedContext!,
-                                        songSlug: resolvedScopedContext
-                                            .previousItem!
-                                            .songSlug,
-                                      ),
-                                onNextTap:
-                                    resolvedScopedContext?.nextItem == null
-                                    ? null
-                                    : () => _navigateToScopedSong(
-                                        context,
-                                        scopedContext: resolvedScopedContext!,
-                                        songSlug: resolvedScopedContext
-                                            .nextItem!
-                                            .songSlug,
-                                      ),
+                                    _buildScopedNeighborNavigationTap(
+                                      context,
+                                      scopedContext: resolvedScopedContext,
+                                      neighbor:
+                                          resolvedScopedContext?.previousItem,
+                                    ),
+                                onNextTap: _buildScopedNeighborNavigationTap(
+                                  context,
+                                  scopedContext: resolvedScopedContext,
+                                  neighbor: resolvedScopedContext?.nextItem,
+                                ),
                               )
                             : SongReaderCompactSurface(
                                 projection: projection,
@@ -652,25 +660,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
                                 onPreviousTap:
-                                    resolvedScopedContext?.previousItem == null
-                                    ? null
-                                    : () => _navigateToScopedSong(
-                                        context,
-                                        scopedContext: resolvedScopedContext!,
-                                        songSlug: resolvedScopedContext
-                                            .previousItem!
-                                            .songSlug,
-                                      ),
-                                onNextTap:
-                                    resolvedScopedContext?.nextItem == null
-                                    ? null
-                                    : () => _navigateToScopedSong(
-                                        context,
-                                        scopedContext: resolvedScopedContext!,
-                                        songSlug: resolvedScopedContext
-                                            .nextItem!
-                                            .songSlug,
-                                      ),
+                                    _buildScopedNeighborNavigationTap(
+                                      context,
+                                      scopedContext: resolvedScopedContext,
+                                      neighbor:
+                                          resolvedScopedContext?.previousItem,
+                                    ),
+                                onNextTap: _buildScopedNeighborNavigationTap(
+                                  context,
+                                  scopedContext: resolvedScopedContext,
+                                  neighbor: resolvedScopedContext?.nextItem,
+                                ),
                               );
 
                         return Center(
