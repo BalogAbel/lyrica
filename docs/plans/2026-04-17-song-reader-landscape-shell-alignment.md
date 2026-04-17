@@ -89,6 +89,7 @@ Cover:
 
 - expanded `Set context` panel hidden for unscoped reader
 - expanded `Set context` panel visible for scoped reader
+- expanded left rail spacing stays stable even when the panel is hidden
 - previous/next context areas are full tappable segments
 - expanded previous/next interaction performs existing scoped navigation
 
@@ -98,6 +99,8 @@ Use existing scoped navigation availability and route replacement behavior as so
 
 - compact: bottom context bar
 - expanded: left set-context panel
+
+Keep the expanded left rail width reserved even when the panel content is hidden so scoped and unscoped layouts stay horizontally aligned.
 
 - [x] **Step 3: Re-run focused tests**
 

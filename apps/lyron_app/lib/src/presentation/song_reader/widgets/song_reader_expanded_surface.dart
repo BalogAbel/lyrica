@@ -43,20 +43,21 @@ class SongReaderExpandedSurface extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showContextPanel)
-          SizedBox(
-            width: 240,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: SongReaderExpandedContextPanel(
-                previousTitle: previousTitle,
-                nextTitle: nextTitle,
-                onPreviousTap: onPreviousTap,
-                onNextTap: onNextTap,
-              ),
-            ),
+        SizedBox(
+          width: 240,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: showContextPanel
+                ? SongReaderExpandedContextPanel(
+                    previousTitle: previousTitle,
+                    nextTitle: nextTitle,
+                    onPreviousTap: onPreviousTap,
+                    onNextTap: onNextTap,
+                  )
+                : const SizedBox.shrink(),
           ),
-        if (showContextPanel) const SizedBox(width: 24),
+        ),
+        const SizedBox(width: 24),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
