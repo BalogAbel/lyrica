@@ -117,11 +117,13 @@ final songMutationRecordByIdProvider = FutureProvider.autoDispose
         return null;
       }
 
-      return ref.watch(songMutationStoreProvider).readById(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        songId: songId,
-      );
+      return ref
+          .watch(songMutationStoreProvider)
+          .readById(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: songId,
+          );
     });
 
 final hasUnsyncedSongMutationsProvider = FutureProvider.autoDispose<bool>((

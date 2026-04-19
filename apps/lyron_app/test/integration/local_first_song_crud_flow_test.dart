@@ -349,9 +349,10 @@ void main() {
         final syncController = SongMutationSyncController(
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
-            syncHandler: (record) async => throw const SongMutationSyncException(
-              SongMutationSyncErrorCode.remoteDeleted,
-            ),
+            syncHandler: (record) async =>
+                throw const SongMutationSyncException(
+                  SongMutationSyncErrorCode.remoteDeleted,
+                ),
             overwriteHandler: (record) async => record.copyWith(
               slug: 'amazing-grace-2',
               version: 1,
@@ -375,7 +376,10 @@ void main() {
           userId: context.userId,
           organizationId: context.organizationId,
         );
-        expect(conflicts.single.errorCode, SongMutationSyncErrorCode.remoteDeleted);
+        expect(
+          conflicts.single.errorCode,
+          SongMutationSyncErrorCode.remoteDeleted,
+        );
 
         await syncController.keepMine(
           const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
@@ -422,9 +426,10 @@ void main() {
         final syncController = SongMutationSyncController(
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
-            syncHandler: (record) async => throw const SongMutationSyncException(
-              SongMutationSyncErrorCode.remoteDeleted,
-            ),
+            syncHandler: (record) async =>
+                throw const SongMutationSyncException(
+                  SongMutationSyncErrorCode.remoteDeleted,
+                ),
           ),
         );
 
@@ -475,9 +480,10 @@ void main() {
         final syncController = SongMutationSyncController(
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
-            syncHandler: (record) async => throw const SongMutationSyncException(
-              SongMutationSyncErrorCode.remoteDeleted,
-            ),
+            syncHandler: (record) async =>
+                throw const SongMutationSyncException(
+                  SongMutationSyncErrorCode.remoteDeleted,
+                ),
           ),
         );
 

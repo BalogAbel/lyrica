@@ -1412,7 +1412,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text(AppStrings.songReaderDeletedConflictMessage), findsOneWidget);
+      expect(
+        find.text(AppStrings.songReaderDeletedConflictMessage),
+        findsOneWidget,
+      );
       expect(find.text('Local Draft Title'), findsNothing);
     },
   );

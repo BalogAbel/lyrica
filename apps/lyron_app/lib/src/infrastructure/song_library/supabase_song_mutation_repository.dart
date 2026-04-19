@@ -11,7 +11,9 @@ class SupabaseSongMutationRemoteRepository
       _fetchSongRow = ((organizationId, songId) async {
         final row = await client
             .from('songs')
-            .select('id, organization_id, slug, title, chordpro_source, version')
+            .select(
+              'id, organization_id, slug, title, chordpro_source, version',
+            )
             .eq('organization_id', organizationId)
             .eq('id', songId)
             .maybeSingle();
@@ -29,8 +31,12 @@ class SupabaseSongMutationRemoteRepository
   }) : _rpc = rpc,
        _fetchSongRow = fetchSongRow;
 
-  final Future<dynamic> Function(String fn, {Map<String, dynamic>? params}) _rpc;
-  final Future<Map<String, dynamic>?> Function(String organizationId, String songId)
+  final Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
+  _rpc;
+  final Future<Map<String, dynamic>?> Function(
+    String organizationId,
+    String songId,
+  )
   _fetchSongRow;
 
   @override
@@ -158,8 +164,8 @@ class SupabaseSongMutationRemoteRepository
         SongMutationSyncErrorCode.connectivityFailure,
       );
     }
-      if (error is PostgrestException) {
-        final message = error.message.toLowerCase();
+    if (error is PostgrestException) {
+      final message = error.message.toLowerCase();
       if (error.code == '42501' ||
           message.contains('song_write_not_authorized')) {
         return SongMutationSyncException(

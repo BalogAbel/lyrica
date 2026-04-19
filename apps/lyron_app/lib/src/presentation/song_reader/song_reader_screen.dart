@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
@@ -299,7 +299,9 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return projection.title;
   }
 
-  String _resolvePreservedScopedTitle(SessionScopedReaderContext? scopedContext) {
+  String _resolvePreservedScopedTitle(
+    SessionScopedReaderContext? scopedContext,
+  ) {
     final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
     if (scopedTitle.isNotEmpty) {
       return scopedTitle;
