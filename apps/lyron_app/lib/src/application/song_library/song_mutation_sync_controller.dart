@@ -29,8 +29,7 @@ class SongMutationSyncController {
         );
         await _applySuccessfulSync(context, syncedRecord, original: record);
       } on SongMutationSyncException catch (error) {
-        final effectiveSyncStatus =
-            record.conflictSourceSyncStatus ?? record.syncStatus;
+        final effectiveSyncStatus = record.effectiveSyncStatus;
         if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
             effectiveSyncStatus == SongSyncStatus.pendingDelete) {
           await _store.deleteSong(
