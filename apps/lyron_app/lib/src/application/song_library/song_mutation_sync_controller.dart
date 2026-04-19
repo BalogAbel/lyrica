@@ -1,14 +1,19 @@
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 
+typedef SongCatalogRefresh = Future<void> Function(SongMutationContext context);
+
 class SongMutationSyncController {
   const SongMutationSyncController({
     required SongMutationStore store,
     required SongMutationRemoteRepository remoteRepository,
+    SongCatalogRefresh? refreshCatalog,
   }) : _store = store,
-       _remoteRepository = remoteRepository;
+       _remoteRepository = remoteRepository,
+       _refreshCatalog = refreshCatalog;
 
   final SongMutationStore _store;
   final SongMutationRemoteRepository _remoteRepository;
+  final SongCatalogRefresh? _refreshCatalog;
 
   Future<void> syncPendingSongs(SongMutationContext context) async {
     final pendingSongs = await _store.readPendingSongs(
@@ -135,11 +140,21 @@ class SongMutationSyncController {
     } on SongMutationSyncException catch (error) {
       if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
           record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
-        await _store.deleteSong(
-          userId: context.userId,
-          organizationId: context.organizationId,
-          songId: songId,
-        );
+        final refreshCatalog = _refreshCatalog;
+        if (refreshCatalog != null) {
+          await refreshCatalog(context);
+          await _store.clearSongMutation(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: songId,
+          );
+        } else {
+          await _store.deleteSong(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: songId,
+          );
+        }
         return;
       }
       await _store.saveSyncAttemptResult(

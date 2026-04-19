@@ -369,9 +369,13 @@ void main() {
             SongMutationSyncErrorCode.remoteDeleted,
           ),
         );
+        var refreshCalls = 0;
         final controller = SongMutationSyncController(
           store: store,
           remoteRepository: repository,
+          refreshCatalog: (_) async {
+            refreshCalls += 1;
+          },
         );
 
         await controller.discardMine(
@@ -379,7 +383,9 @@ void main() {
           songId: 'song-1',
         );
 
-        expect(store.deletedSongId, 'song-1');
+        expect(refreshCalls, 1);
+        expect(store.clearedSongMutationId, 'song-1');
+        expect(store.deletedSongId, isNull);
       },
     );
 
@@ -554,6 +560,7 @@ class _FakeSongMutationStore implements SongMutationStore {
   SongSyncStatus? lastSavedStatus;
   SongMutationRecord? lastUpsertedRecord;
   String? deletedSongId;
+  String? clearedSongMutationId;
 
   @override
   Future<SongMutationRecord?> readById({
@@ -649,7 +656,10 @@ class _FakeSongMutationStore implements SongMutationStore {
     required String userId,
     required String organizationId,
     required String songId,
-  }) async {}
+  }) async {
+    clearedSongMutationId = songId;
+    _records.remove(songId);
+  }
 
   @override
   Future<bool> hasUnsyncedChanges({required String userId}) async => false;
