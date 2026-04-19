@@ -506,6 +506,68 @@ void main() {
         );
       },
     );
+
+    test(
+      'discard mine refreshes catalog before clearing a delete conflict that became remotely deleted',
+      () async {
+        await _seedSong(
+          songStore,
+          summary: const SongSummary(
+            id: 'song-1',
+            slug: 'delete-me',
+            title: 'Delete Me',
+            version: 2,
+          ),
+          source: const SongSource(id: 'song-1', source: '{title: Delete Me}'),
+        );
+
+        final syncController = SongMutationSyncController(
+          store: mutationStore,
+          remoteRepository: _FakeSongMutationRemoteRepository(
+            syncHandler: (record) async =>
+                throw const SongMutationSyncException(
+                  SongMutationSyncErrorCode.conflict,
+                ),
+            fetchHandler: (songId) async =>
+                throw const SongMutationSyncException(
+                  SongMutationSyncErrorCode.remoteDeleted,
+                ),
+          ),
+          refreshCatalog: (_) async {
+            await songStore.replaceActiveSnapshot(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              summaries: const [],
+              sources: const [],
+              refreshedAt: DateTime.now().toUtc(),
+            );
+          },
+        );
+
+        await service.deleteSong(context: context, songId: 'song-1');
+        await syncController.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await syncController.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(
+          await localRepository.getSongSummaryBySlug(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songSlug: 'delete-me',
+          ),
+          isNull,
+        );
+        expect(
+          await mutationStore.hasUnsyncedChanges(userId: context.userId),
+          isFalse,
+        );
+      },
+    );
   });
 }
 
@@ -528,19 +590,25 @@ class _FakeSongMutationRemoteRepository
   _FakeSongMutationRemoteRepository({
     required this.syncHandler,
     this.overwriteHandler,
+    this.fetchHandler,
   });
 
   final Future<SongMutationRecord> Function(SongMutationRecord record)
   syncHandler;
   final Future<SongMutationRecord> Function(SongMutationRecord record)?
   overwriteHandler;
+  final Future<SongMutationRecord> Function(String songId)? fetchHandler;
 
   @override
   Future<SongMutationRecord> fetchSong({
     required String organizationId,
     required String songId,
   }) async {
-    throw StateError('fetchSong handler was not configured.');
+    final handler = fetchHandler;
+    if (handler == null) {
+      throw StateError('fetchSong handler was not configured.');
+    }
+    return handler(songId);
   }
 
   @override

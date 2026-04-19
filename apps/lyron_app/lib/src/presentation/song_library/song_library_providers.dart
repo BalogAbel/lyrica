@@ -80,6 +80,15 @@ final songMutationSyncControllerProvider = Provider<SongMutationSyncController>(
     return SongMutationSyncController(
       store: ref.watch(songMutationStoreProvider),
       remoteRepository: ref.watch(songMutationRemoteRepositoryProvider),
+      refreshCatalog: (context) async {
+        final activeContext = ref.read(activeCatalogContextProvider);
+        if (activeContext == null ||
+            activeContext.userId != context.userId ||
+            activeContext.organizationId != context.organizationId) {
+          return;
+        }
+        await ref.read(songCatalogControllerProvider).refreshCatalog();
+      },
     );
   },
 );
