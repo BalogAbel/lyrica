@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lyron Song List + Plan Picker Mockup</title>
+    <link rel="stylesheet" href="./song-list-plan-picker-mockup.css" />
+  </head>
+  <body data-theme="standard" data-layout="wide" data-screen="song-list">
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Lyron Chords</p>
+          <h1>Song List + Plan Song Pick Mockup</h1>
+          <p class="topbar-note">
+            Discovery companion for browse and picker UX decisions.
+          </p>
+        </div>
+        <div class="toolbar" aria-label="Reviewer controls">
+          <label>
+            Screen
+            <select id="screen-select">
+              <option value="song-list">Song Library</option>
+              <option value="picker">Plan Song Picker</option>
+            </select>
+          </label>
+          <label>
+            Layout
+            <select id="layout-select">
+              <option value="wide">Wide</option>
+              <option value="narrow">Narrow</option>
+            </select>
+          </label>
+          <label>
+            Theme
+            <select id="theme-select">
+              <option value="standard">Standard</option>
+              <option value="high-contrast">High Contrast</option>
+              <option value="black">Black</option>
+            </select>
+          </label>
+          <label>
+            State
+            <select id="state-select">
+              <option value="default">Default</option>
+              <option value="loading">Loading</option>
+              <option value="unavailable">Unavailable</option>
+              <option value="empty">Empty</option>
+              <option value="no-results">No Results</option>
+              <option value="offline">Offline Cached</option>
+              <option value="failed">Refresh Failed</option>
+              <option value="error">Retryable Error</option>
+              <option value="eligible-empty">No Eligible Songs</option>
+              <option value="add-in-progress">Add In Progress</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main class="mockup">
+        <section class="surface" id="song-list-screen">
+          <header class="surface-header">
+            <h2>Lyron Chords</h2>
+            <div class="actions">
+              <button type="button">Refresh</button>
+              <button type="button">Add song</button>
+              <button type="button">Plans</button>
+              <button type="button">Sign out</button>
+            </div>
+          </header>
+
+          <div class="status-bar" id="song-status">
+            <span class="badge ok">Online. Songs are up to date.</span>
+          </div>
+
+          <div class="controls">
+            <label class="search">
+              Search songs
+              <input
+                id="song-search"
+                type="search"
+                placeholder="Type title..."
+                value="grace"
+              />
+            </label>
+            <div class="chips" aria-label="Filter">
+              <button type="button" class="chip active" data-filter="all" aria-pressed="true">
+                All
+              </button>
+              <button type="button" class="chip" data-filter="pending" aria-pressed="false">
+                Pending sync
+              </button>
+              <button type="button" class="chip" data-filter="conflict" aria-pressed="false">
+                Conflicts
+              </button>
+              <span class="badge">Sort: Title (A-Z)</span>
+            </div>
+          </div>
+
+          <section class="list" id="song-list">
+            <article
+              class="row"
+              data-song-title="Amazing Grace"
+              data-song-status="synced"
+              tabindex="0"
+              role="button"
+              aria-label="Open song: Amazing Grace"
+            >
+              <div>
+                <p class="row-title">Amazing Grace</p>
+                <p class="row-subtle">Slug: amazing-grace</p>
+              </div>
+              <span class="chevron">›</span>
+            </article>
+            <article
+              class="row"
+              data-song-title="Grace Flows Down"
+              data-song-status="pending"
+              tabindex="0"
+              role="button"
+              aria-label="Open song: Grace Flows Down"
+            >
+              <div>
+                <p class="row-title">Grace Flows Down</p>
+                <p class="row-subtle">Pending sync</p>
+              </div>
+              <span class="chevron">›</span>
+            </article>
+            <article
+              class="row"
+              data-song-title="Your Grace Is Enough"
+              data-song-status="conflict"
+              tabindex="0"
+              role="button"
+              aria-label="Open song: Your Grace Is Enough"
+            >
+              <div>
+                <p class="row-title">Your Grace Is Enough</p>
+                <p class="row-subtle">Conflict</p>
+              </div>
+              <span class="chevron">›</span>
+            </article>
+          </section>
+
+          <section class="state-card" id="song-state-card" hidden>
+            <p class="state-title" id="song-state-title">State</p>
+            <p class="state-copy" id="song-state-copy">State message</p>
+            <button id="song-retry-button" type="button" hidden>Try again</button>
+          </section>
+        </section>
+
+        <section class="surface" id="picker-screen" hidden>
+          <header class="surface-header">
+            <h2>Add song to session</h2>
+            <div class="actions">
+              <button id="picker-close-button" type="button">Cancel</button>
+            </div>
+          </header>
+
+          <div class="status-bar" id="picker-status">
+            <span class="badge">Session: Response Set</span>
+            <span class="badge">Eligible songs only</span>
+            <span class="badge">Sort: Title (A-Z)</span>
+          </div>
+
+          <div class="controls">
+            <label class="search">
+              Search songs
+              <input
+                id="picker-search"
+                type="search"
+                placeholder="Find by title..."
+                value="holy"
+              />
+            </label>
+          </div>
+
+          <section class="list" id="picker-list">
+            <article
+              class="row"
+              data-picker-title="Holy Forever"
+              tabindex="0"
+              role="button"
+              aria-label="Add song: Holy Forever"
+            >
+              <div>
+                <p class="row-title">Holy Forever</p>
+                <p class="row-subtle">Eligible</p>
+              </div>
+              <button type="button">Add</button>
+            </article>
+            <article
+              class="row"
+              data-picker-title="Holy Spirit"
+              tabindex="0"
+              role="button"
+              aria-label="Add song: Holy Spirit"
+            >
+              <div>
+                <p class="row-title">Holy Spirit</p>
+                <p class="row-subtle">Eligible</p>
+              </div>
+              <button type="button">Add</button>
+            </article>
+            <article
+              class="row"
+              data-picker-title="Only Holy"
+              tabindex="0"
+              role="button"
+              aria-label="Add song: Only Holy"
+            >
+              <div>
+                <p class="row-title">Only Holy</p>
+                <p class="row-subtle">Eligible</p>
+              </div>
+              <button type="button">Add</button>
+            </article>
+          </section>
+
+          <section class="state-card" id="picker-state-card" hidden>
+            <p class="state-title" id="picker-state-title">State</p>
+            <p class="state-copy" id="picker-state-copy">State message</p>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./song-list-plan-picker-mockup.js"></script>
+  </body>
+</html>
