@@ -24,11 +24,24 @@ class SongMutationSyncController {
         );
         await _applySuccessfulSync(context, syncedRecord, original: record);
       } on SongMutationSyncException catch (error) {
+        final effectiveSyncStatus =
+            record.conflictSourceSyncStatus ?? record.syncStatus;
+        if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
+            effectiveSyncStatus == SongSyncStatus.pendingDelete) {
+          await _store.deleteSong(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: record.id,
+          );
+          continue;
+        }
         await _store.saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
           songId: record.id,
-          syncStatus: error.code == SongMutationSyncErrorCode.conflict
+          syncStatus:
+              error.code == SongMutationSyncErrorCode.conflict ||
+                  error.code == SongMutationSyncErrorCode.remoteDeleted
               ? SongSyncStatus.conflict
               : record.syncStatus,
           errorCode: error.code,
@@ -50,6 +63,15 @@ class SongMutationSyncController {
       songId: songId,
       includeConflicts: true,
     );
+    if (record.isRemoteDeletedConflict &&
+        record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
+      await _store.deleteSong(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+      );
+      return;
+    }
     try {
       final syncedRecord = await _remoteRepository.overwriteSong(
         organizationId: context.organizationId,
@@ -57,6 +79,15 @@ class SongMutationSyncController {
       );
       await _applySuccessfulSync(context, syncedRecord, original: record);
     } on SongMutationSyncException catch (error) {
+      if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
+          record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
+        await _store.deleteSong(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          songId: songId,
+        );
+        return;
+      }
       await _store.saveSyncAttemptResult(
         userId: context.userId,
         organizationId: context.organizationId,
@@ -73,6 +104,19 @@ class SongMutationSyncController {
     SongMutationContext context, {
     required String songId,
   }) async {
+    final record = await _requireSong(
+      context,
+      songId: songId,
+      includeConflicts: true,
+    );
+    if (record.isRemoteDeletedConflict) {
+      await _store.deleteSong(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+      );
+      return;
+    }
     try {
       final serverRecord = await _remoteRepository.fetchSong(
         organizationId: context.organizationId,
@@ -89,6 +133,15 @@ class SongMutationSyncController {
         ),
       );
     } on SongMutationSyncException catch (error) {
+      if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
+          record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
+        await _store.deleteSong(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          songId: songId,
+        );
+        return;
+      }
       await _store.saveSyncAttemptResult(
         userId: context.userId,
         organizationId: context.organizationId,

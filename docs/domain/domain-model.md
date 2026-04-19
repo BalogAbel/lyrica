@@ -256,6 +256,7 @@ The currently executable slices now cover both sides:
 - the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit and session create/rename/delete
 - the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
 - planning mutation records retain aggregate ownership, provisional slugs, ordering, ordered sibling ids, base-version metadata for optimistic concurrency, and sync failure classification for explicit retry/review flows
+- song mutation records retain durable sync failure metadata, including remote-deletion classification and original conflict intent, so restart/retry/recovery flows do not lose convergence semantics
 
 ### sync_status
 
@@ -266,6 +267,15 @@ Expected values:
 - `pending_delete`
 - `synced`
 - `conflict`
+
+### Song Remote-Deletion Convergence
+
+- `song_not_found` during sync is classified as explicit remote deletion, not as an unknown failure.
+- Update-sourced remote deletion persists as `sync_status = conflict` plus durable error metadata so the user can explicitly choose `keep mine` or `discard mine`.
+- Update-sourced `keep mine` recreates the canonical song through the backend using the same song id and the current local slug/title/source, then reconciles to the canonical row returned by the backend.
+- Update-sourced `discard mine` accepts deletion as canonical truth and removes the local song row without fetching a non-existent server row.
+- Delete-sourced remote deletion is accepted convergence: the local pending delete is cleared because both sides already agree on deletion.
+- Planning-owned preserved titles remain the source of truth for tombstone copy until a later planning refresh replaces them with a new canonical row.
 
 ## Relationships
 
@@ -293,6 +303,7 @@ Roles map to capabilities in backend-owned policy logic.
 Song mutation note:
 
 - `canEditSongs` gates song create, update, delete, and explicit conflict-overwrite actions at the backend boundary.
+- Same-id recreation after update-sourced remote deletion is also backend-authorized through `canEditSongs`; Flutter only initiates the recovery action.
 
 Membership administration is also capability-based:
 

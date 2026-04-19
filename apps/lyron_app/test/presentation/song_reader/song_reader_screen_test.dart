@@ -1226,18 +1226,27 @@ void main() {
   });
 
   testWidgets(
-    'scoped song-load failure shows the explicit scoped error instead of standard reader errors',
+    'scoped missing canonical song shows preserved-title tombstone instead of generic scoped error',
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
-                context: null,
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
                 connectionStatus: CatalogConnectionStatus.online,
                 refreshStatus: CatalogRefreshStatus.idle,
                 sessionStatus: CatalogSessionStatus.verified,
                 hasCachedCatalog: true,
+              ),
+            ),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
               ),
             ),
             planningPlanDetailProvider(
@@ -1294,14 +1303,117 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('Song Two'), findsWidgets);
+      expect(find.text(AppStrings.songReaderDeletedTitle), findsOneWidget);
+      expect(find.text(AppStrings.songReaderDeletedMessage), findsOneWidget);
       expect(
         find.text(AppStrings.scopedReaderContextUnavailableMessage),
-        findsOneWidget,
+        findsNothing,
       );
       expect(find.text(AppStrings.songReaderUnavailableMessage), findsNothing);
       expect(find.text(AppStrings.songReaderAccessDeniedMessage), findsNothing);
       expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
       expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
+      expect(find.text(AppStrings.songEditAction), findsNothing);
+      expect(find.text(AppStrings.songDeleteAction), findsNothing);
+      expect(find.text('song-2'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'scoped unresolved remote-delete conflict shows conflict tombstone copy',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _multiItemPlanDetail()),
+            songMutationRecordByIdProvider('song-2').overrideWith(
+              (ref) async => const SongMutationRecord(
+                id: 'song-2',
+                organizationId: 'org-1',
+                slug: 'song-two',
+                title: 'Local Draft Title',
+                chordproSource: '{title: Local Draft Title}',
+                version: 2,
+                baseVersion: 2,
+                syncStatus: SongSyncStatus.conflict,
+                errorCode: SongMutationSyncErrorCode.remoteDeleted,
+                conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+              ),
+            ),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => throw const SongNotFoundException('song-2'),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation:
+                  '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
+              routes: [
+                GoRoute(
+                  path: AppRoutes.planDetail.path,
+                  builder: (context, state) => PlanDetailScreen(
+                    planId: _planIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['planSlug']!,
+                    ),
+                  ),
+                ),
+                GoRoute(
+                  path: AppRoutes.planSessionSongReader.path,
+                  builder: (context, state) => SongReaderScreen(
+                    songId: _songIdForScopedRoute(
+                      _multiItemPlanDetail(),
+                      sessionSlug: state.pathParameters['sessionSlug']!,
+                      songSlug: state.pathParameters['songSlug']!,
+                    ),
+                    sessionItemId: _sessionItemIdForScopedRoute(
+                      _multiItemPlanDetail(),
+                      sessionSlug: state.pathParameters['sessionSlug']!,
+                      songSlug: state.pathParameters['songSlug']!,
+                    ),
+                    planId: _planIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['planSlug']!,
+                    ),
+                    sessionId: _sessionIdForSlug(
+                      _multiItemPlanDetail(),
+                      state.pathParameters['sessionSlug']!,
+                    ),
+                    warmPlanDetail: _multiItemPlanDetail(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.songReaderDeletedConflictMessage), findsOneWidget);
+      expect(find.text('Local Draft Title'), findsNothing);
     },
   );
 

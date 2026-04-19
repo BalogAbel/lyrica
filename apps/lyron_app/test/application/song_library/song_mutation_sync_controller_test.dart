@@ -78,6 +78,79 @@ void main() {
       );
     });
 
+    test(
+      'classifies update-sourced remote delete as conflict with durable metadata',
+      () async {
+        final store = _FakeSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          syncHandler: (record) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.remoteDeleted,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        expect(store.lastSavedStatus, SongSyncStatus.conflict);
+        expect(store.lastSavedErrorCode, SongMutationSyncErrorCode.remoteDeleted);
+        expect(
+          store.lastUpsertedRecord?.conflictSourceSyncStatus,
+          SongSyncStatus.pendingUpdate,
+        );
+      },
+    );
+
+    test('accepts delete-sourced remote delete as converged deletion', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingDelete,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.remoteDeleted,
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(store.deletedSongId, 'song-1');
+      expect(store.lastSavedStatus, isNull);
+    });
+
     test('uses the dedicated overwrite path for keep mine', () async {
       final store = _FakeSongMutationStore(
         conflictSongs: const [
@@ -156,6 +229,153 @@ void main() {
       expect(store.lastUpsertedRecord?.slug, 'alpha');
       expect(store.lastUpsertedRecord?.syncStatus, SongSyncStatus.synced);
     });
+
+    test(
+      'discard mine accepts remote deletion for update-sourced remote-delete conflicts',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha-local',
+              title: 'Alpha local',
+              chordproSource: '{title: Alpha local}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.remoteDeleted,
+              conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository();
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+        expect(repository.fetchCalls, 0);
+      },
+    );
+
+    test(
+      'keep mine accepts deletion when remote-delete conflict came from pending delete',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.remoteDeleted,
+              conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository();
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.keepMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+        expect(repository.overwriteCalls, 0);
+      },
+    );
+
+    test(
+      'keep mine accepts deletion when delete conflict later becomes remote deleted during overwrite',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.conflict,
+              conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          overwriteHandler: (record) async =>
+              throw const SongMutationSyncException(
+                SongMutationSyncErrorCode.remoteDeleted,
+              ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.keepMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+      },
+    );
+
+    test(
+      'discard mine accepts deletion when delete conflict later becomes remote deleted during fetch',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.conflict,
+              conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          fetchHandler: (songId) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.remoteDeleted,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+      },
+    );
 
     test(
       'keep mine persists the failure on the conflict row before rethrowing',
@@ -461,6 +681,7 @@ class _FakeSongMutationRemoteRepository
   final Future<SongMutationRecord> Function(String songId)? _fetchHandler;
 
   int overwriteCalls = 0;
+  int fetchCalls = 0;
   SongSyncStatus? lastOverwriteRpcType;
   final List<String> syncedSongIds = [];
 
@@ -469,6 +690,7 @@ class _FakeSongMutationRemoteRepository
     required String organizationId,
     required String songId,
   }) {
+    fetchCalls += 1;
     final handler = _fetchHandler;
     if (handler == null) {
       throw UnimplementedError();

@@ -110,6 +110,20 @@ final songMutationEntriesProvider =
       });
     });
 
+final songMutationRecordByIdProvider = FutureProvider.autoDispose
+    .family<SongMutationRecord?, String>((ref, songId) async {
+      final context = ref.watch(activeCatalogContextProvider);
+      if (context == null) {
+        return null;
+      }
+
+      return ref.watch(songMutationStoreProvider).readById(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+      );
+    });
+
 final hasUnsyncedSongMutationsProvider = FutureProvider.autoDispose<bool>((
   ref,
 ) {

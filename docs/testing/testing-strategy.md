@@ -21,6 +21,7 @@ Cover:
 - ChordPro parsing and metadata mapping rules
 - Song repository boundary behavior and backend summary/source mapping
 - Song CRUD orchestration behavior, including authorization-failure handling, OCC conflict branching, slug reconciliation, and `pending_delete` filtering
+- Song CRUD remote-delete convergence behavior, including persisted remote-deletion classification, same-id recreate routing, delete-sourced accepted convergence, and no-fetch discard when the canonical row is gone
 - Planning repository boundary behavior, including plan ordering and plan-detail mapping
 - Planning write orchestration behavior, including optimistic-concurrency base-version capture, provisional slug allocation, retryable failed mutations, empty-session delete enforcement, and session/session-item collection-edit compaction
 - Slug-routing boundary behavior for route resolution, including explicit not-found surfaces for missing song, plan, and session slugs
@@ -49,6 +50,7 @@ Cover:
 - Test environment stability via mandatory persistence stubbing in all `ProviderScope` overrides to prevent real Drift database instantiation and associated CI race conditions.
 - Async safety verification via post-await `context.mounted` checks in all repository-interacting widgets.
 - Route-level slug resolution behavior for songs, plans, and session-scoped reader entry, including canonical slug URLs and explicit not-found behavior
+- Session-scoped reader tombstone behavior, including preserved planning title precedence and deleted-song copy when the canonical song row is gone
 
 ### Integration Tests
 
@@ -58,6 +60,7 @@ Cover:
 - Local-first flows
 - Sync queue lifecycle
 - Offline song create, update, delete, sync, and conflict-resolution flows
+- Remote delete versus local pending update/delete convergence flows plus session-scoped reader tombstone behavior after canonical song removal
 - Auth session bootstrap against test doubles or integration backends
 - Authenticated backend song reads against the local Supabase stack, including organization-scope isolation
 - Authenticated backend planning reads against the local Supabase stack, including ordered plan/session expansion and hidden-organization isolation
@@ -80,6 +83,7 @@ Cover:
 - Planning empty-session delete rejection when `session_items` still exist
 - Planning duplicate-song rejection for session-item add and active-organization song-visibility enforcement for song-backed session-item creation
 - Delete rejection while `session_items` still reference the song, plus attachment cleanup after accepted song deletion
+- Song remote-delete backend behavior, including same-id recreate authorization/output and accepted delete convergence when the target row is already gone
 - Seed script idempotency where applicable
 - Local demo auth provisioning through `./scripts/provision-local-demo-user.sh`
 - Regression coverage for repeated local demo auth provisioning where workflow scripts depend on idempotency

@@ -6,9 +6,32 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseSongMutationRemoteRepository
     implements SongMutationRemoteRepository {
-  const SupabaseSongMutationRemoteRepository(this._client);
+  SupabaseSongMutationRemoteRepository(SupabaseClient client)
+    : _rpc = client.rpc,
+      _fetchSongRow = ((organizationId, songId) async {
+        final row = await client
+            .from('songs')
+            .select('id, organization_id, slug, title, chordpro_source, version')
+            .eq('organization_id', organizationId)
+            .eq('id', songId)
+            .maybeSingle();
+        return row == null ? null : Map<String, dynamic>.from(row);
+      });
 
-  final SupabaseClient _client;
+  const SupabaseSongMutationRemoteRepository.testing({
+    required Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
+    rpc,
+    required Future<Map<String, dynamic>?> Function(
+      String organizationId,
+      String songId,
+    )
+    fetchSongRow,
+  }) : _rpc = rpc,
+       _fetchSongRow = fetchSongRow;
+
+  final Future<dynamic> Function(String fn, {Map<String, dynamic>? params}) _rpc;
+  final Future<Map<String, dynamic>?> Function(String organizationId, String songId)
+  _fetchSongRow;
 
   @override
   Future<SongMutationRecord> fetchSong({
@@ -16,15 +39,10 @@ class SupabaseSongMutationRemoteRepository
     required String songId,
   }) async {
     try {
-      final row = await _client
-          .from('songs')
-          .select('id, organization_id, slug, title, chordpro_source, version')
-          .eq('organization_id', organizationId)
-          .eq('id', songId)
-          .maybeSingle();
+      final row = await _fetchSongRow(organizationId, songId);
       if (row == null) {
         throw const SongMutationSyncException(
-          SongMutationSyncErrorCode.unknown,
+          SongMutationSyncErrorCode.remoteDeleted,
         );
       }
 
@@ -67,6 +85,10 @@ class SupabaseSongMutationRemoteRepository
       final effectiveSyncStatus = record.syncStatus == SongSyncStatus.conflict
           ? (record.conflictSourceSyncStatus ?? SongSyncStatus.pendingUpdate)
           : record.syncStatus;
+      final recreateRemoteDeletedUpdate =
+          overwrite &&
+          effectiveSyncStatus == SongSyncStatus.pendingUpdate &&
+          record.errorCode == SongMutationSyncErrorCode.remoteDeleted;
       final rpcName = switch (record.syncStatus) {
         SongSyncStatus.pendingCreate => 'create_song',
         SongSyncStatus.pendingUpdate =>
@@ -74,7 +96,9 @@ class SupabaseSongMutationRemoteRepository
         SongSyncStatus.pendingDelete =>
           overwrite ? 'overwrite_song_delete' : 'delete_song',
         SongSyncStatus.conflict =>
-          overwrite
+          recreateRemoteDeletedUpdate
+              ? 'create_song'
+              : overwrite
               ? (effectiveSyncStatus == SongSyncStatus.pendingDelete
                     ? 'overwrite_song_delete'
                     : 'overwrite_song_update')
@@ -88,7 +112,8 @@ class SupabaseSongMutationRemoteRepository
 
       final params = <String, dynamic>{
         'p_organization_id': organizationId,
-        if (effectiveSyncStatus == SongSyncStatus.pendingCreate) ...{
+        if (effectiveSyncStatus == SongSyncStatus.pendingCreate ||
+            recreateRemoteDeletedUpdate) ...{
           'p_song_id': record.id,
           'p_title': record.title,
           'p_chordpro_source': record.chordproSource,
@@ -104,7 +129,7 @@ class SupabaseSongMutationRemoteRepository
         },
       };
 
-      final response = await _client.rpc(rpcName, params: params);
+      final response = await _rpc(rpcName, params: params);
       return _mapRow(Map<String, dynamic>.from(response as Map));
     } on Object catch (error) {
       throw _mapError(error);
@@ -133,8 +158,8 @@ class SupabaseSongMutationRemoteRepository
         SongMutationSyncErrorCode.connectivityFailure,
       );
     }
-    if (error is PostgrestException) {
-      final message = error.message.toLowerCase();
+      if (error is PostgrestException) {
+        final message = error.message.toLowerCase();
       if (error.code == '42501' ||
           message.contains('song_write_not_authorized')) {
         return SongMutationSyncException(
@@ -152,6 +177,12 @@ class SupabaseSongMutationRemoteRepository
       if (error.code == 'P0001' || message.contains('song_version_conflict')) {
         return SongMutationSyncException(
           SongMutationSyncErrorCode.conflict,
+          message: error.message,
+        );
+      }
+      if (error.code == 'P0002' || message.contains('song_not_found')) {
+        return SongMutationSyncException(
+          SongMutationSyncErrorCode.remoteDeleted,
           message: error.message,
         );
       }

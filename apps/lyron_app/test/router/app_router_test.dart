@@ -22,6 +22,7 @@ import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
@@ -645,6 +646,105 @@ void main() {
   });
 
   testWidgets(
+    'scoped reader route resolves from preserved planning slug when canonical song is missing',
+    (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1440, 1200);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = _TestAuthRepository(
+        restoredSession: const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        ),
+      );
+      final controller = AppAuthController(repository);
+      await controller.restoreSession();
+      addTearDown(controller.dispose);
+
+      final router = createAppRouter(
+        authController: controller,
+        refreshListenable: controller,
+        initialLocation:
+            '/plans/sunday-morning/sessions/main-set/items/songs/egy-ut',
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        isolatedSongCatalogProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [
+                PlanSummary(
+                  id: 'plan-1',
+                  slug: 'sunday-morning',
+                  name: 'Sunday Morning',
+                  description: 'Single-session Sunday fixture',
+                  scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                  updatedAt: DateTime(2026, 3, 31, 8),
+                ),
+              ],
+            ),
+            songLibraryListProvider.overrideWith((ref) async => const []),
+            planningRepositoryProvider.overrideWithValue(
+              _FakePlanningRepository(planDetail: _planDetailFixture()),
+            ),
+            planningSyncStateProvider.overrideWithValue(
+              const PlanningSyncState(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                accessStatus: PlanningAccessStatus.signedIn,
+                refreshStatus: PlanningRefreshStatus.idle,
+                hasLocalPlanningData: true,
+                lastRefreshedAt: null,
+              ),
+            ),
+            planningPlanDetailBySlugProvider(
+              'sunday-morning',
+            ).overrideWith((ref) async => _planDetailFixture()),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _planDetailFixture()),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => throw const SongNotFoundException('song-1'),
+              ),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Egy út'), findsWidgets);
+      expect(find.text(AppStrings.songReaderDeletedTitle), findsOneWidget);
+      expect(find.text(AppStrings.routeNotFoundMessage), findsNothing);
+    },
+  );
+
+  testWidgets(
     'signed-in users see a not-found surface for an invalid session slug',
     (WidgetTester tester) async {
       final repository = _TestAuthRepository(
@@ -712,7 +812,7 @@ void main() {
   );
 
   testWidgets(
-    'scoped reader route stays loading while catalog context is refreshing',
+    'scoped reader route still resolves while catalog context is refreshing',
     (WidgetTester tester) async {
       final repository = _TestAuthRepository(
         restoredSession: const AppAuthSession(
@@ -751,7 +851,9 @@ void main() {
                 hasCachedCatalog: true,
               ),
             ),
-            songLibraryListProvider.overrideWith((ref) async => const []),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _planDetailFixture()),
           ],
           child: const MaterialApp(
             home: PlanSessionSongSlugRouteResolver(
@@ -764,7 +866,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text(AppStrings.songReaderLoadingMessage), findsOneWidget);
+      expect(find.text(AppStrings.planDetailLoadFailureMessage), findsNothing);
       expect(find.text(AppStrings.routeNotFoundMessage), findsNothing);
     },
   );

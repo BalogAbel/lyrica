@@ -730,10 +730,6 @@ class _SongItemRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final resolvedSongSlug = ref
-        .watch(songLibrarySongByIdProvider(item.song.id))
-        .valueOrNull
-        ?.slug;
     final canMoveUp = itemIndex > 0;
     final canMoveDown = itemIndex < session.items.length - 1;
     return Row(
@@ -741,18 +737,16 @@ class _SongItemRow extends ConsumerWidget {
         Expanded(
           child: InkWell(
             key: ValueKey('plan-session-item-${item.id}'),
-            onTap: resolvedSongSlug == null
-                ? null
-                : () {
-                    context.push(
-                      PlanningRoutes.planSessionSongReaderLocation(
-                        planSlug: planDetail.plan.slug,
-                        sessionSlug: session.slug,
-                        songSlug: resolvedSongSlug,
-                      ),
-                      extra: planDetail,
-                    );
-                  },
+            onTap: () {
+              context.push(
+                PlanningRoutes.planSessionSongReaderLocation(
+                  planSlug: planDetail.plan.slug,
+                  sessionSlug: session.slug,
+                  songSlug: item.song.slug,
+                ),
+                extra: planDetail,
+              );
+            },
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),

@@ -645,6 +645,55 @@ void main() {
       },
     );
 
+    test(
+      'drift mutation store preserves remote-delete metadata in sync error context',
+      () async {
+        final mutationStore = DriftSongMutationStore(
+          songCatalogStore: store,
+          planningLocalStore: const _NoopPlanningLocalStore(),
+        );
+
+        await mutationStore.upsertSong(
+          userId: 'user-1',
+          record: const SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.conflict,
+            errorCode: SongMutationSyncErrorCode.remoteDeleted,
+            errorMessage: 'song_not_found',
+            conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        );
+
+        final stored = await store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        final reread = await mutationStore.readById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+
+        expect(
+          stored?.syncErrorContext,
+          contains('"code":"remoteDeleted"'),
+        );
+        expect(
+          stored?.syncErrorContext,
+          contains('"conflictSourceSyncStatus":"pending_update"'),
+        );
+        expect(reread?.errorCode, SongMutationSyncErrorCode.remoteDeleted);
+        expect(reread?.conflictSourceSyncStatus, SongSyncStatus.pendingUpdate);
+      },
+    );
+
     test('reconciles the canonical slug after a successful sync', () async {
       await store.saveSongMutation(
         const SongCatalogMutationDraft(

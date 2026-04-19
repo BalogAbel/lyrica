@@ -4,31 +4,27 @@ Originating slice:
 - `docs/specs/2026-04-05-song-crud.md`
 - `docs/plans/2026-04-08-offline-first-song-crud.md`
 
-## Priority
+## Status
 
-High. This deferred work should be closed in the next slice that touches song mutation sync or conflict resolution.
+Resolved by `docs/specs/2026-04-19-song-sync-convergence-hardening.md` and its implementation slice.
 
 ## Deferred Item
 
 ### Handle songs that disappear on the server while a local mutation still exists
 
-The current song mutation sync flow does not model the case where the server-side song is deleted after the client created a local pending update, pending delete, or conflict row.
+Closed.
 
-Today:
+The repository now defines and verifies:
 
-- ordinary update/delete can receive `song_not_found` from the backend write contract
-- the Supabase mutation repository does not map that outcome into an explicit domain-level sync state
-- `discard mine` cannot cleanly converge when the server no longer has a row to fetch
+- durable remote-deletion classification for update-sourced sync failures
+- same-id backend recreation for update-sourced `keep mine`
+- accepted convergence for delete-sourced remote deletion
+- no-fetch `discard mine` when the canonical row is already gone
+- preserved planning-title tombstones for session-scoped reader flows after canonical song removal
 
-This leaves an avoidable sync-consistency gap. The client can keep a local record whose server counterpart no longer exists, without a clean discard or convergence path.
+## Follow-up Note
 
-## Expected Follow-up Scope
-
-- Define the domain behavior for "server deleted the song" during sync.
-- Decide whether this becomes a dedicated sync error state, a conflict subtype, or a convergence path that removes the local row.
-- Define explicit `discard mine` semantics when the server row is already gone.
-- If a future slice allows server-side disappearance to surface in planning or reader flows, do not degrade to a bare "song not found" placeholder. Preserve at least a human-readable song title or tombstone-style label so historical session items remain understandable.
-- Add application tests and backend-backed integration coverage for this case.
+Future song-sync slices must preserve these convergence guarantees. If remote deletion gains richer UX later, build on the current persisted metadata and tombstone contract instead of reintroducing generic not-found behavior.
 
 ### Extract a shared song editor dialog if create/edit surfaces keep growing
 
@@ -51,4 +47,4 @@ Expected follow-up scope:
 
 ## Planning Note
 
-Any future slice that changes song mutation sync, conflict handling, overwrite/discard flows, or delete semantics must review this deferred item first and treat it as priority work rather than optional cleanup.
+Any future slice that changes song mutation sync, conflict handling, overwrite/discard flows, or delete semantics must treat the convergence-hardening rules as established repository behavior.
