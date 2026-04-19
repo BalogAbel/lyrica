@@ -110,7 +110,10 @@ void main() {
         );
 
         expect(store.lastSavedStatus, SongSyncStatus.conflict);
-        expect(store.lastSavedErrorCode, SongMutationSyncErrorCode.remoteDeleted);
+        expect(
+          store.lastSavedErrorCode,
+          SongMutationSyncErrorCode.remoteDeleted,
+        );
         expect(
           store.lastUpsertedRecord?.conflictSourceSyncStatus,
           SongSyncStatus.pendingUpdate,
@@ -118,38 +121,41 @@ void main() {
       },
     );
 
-    test('accepts delete-sourced remote delete as converged deletion', () async {
-      final store = _FakeSongMutationStore(
-        pendingSongs: const [
-          SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'alpha',
-            title: 'Alpha',
-            chordproSource: '{title: Alpha}',
-            version: 3,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.pendingDelete,
+    test(
+      'accepts delete-sourced remote delete as converged deletion',
+      () async {
+        final store = _FakeSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingDelete,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          syncHandler: (record) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.remoteDeleted,
           ),
-        ],
-      );
-      final repository = _FakeSongMutationRemoteRepository(
-        syncHandler: (record) async => throw const SongMutationSyncException(
-          SongMutationSyncErrorCode.remoteDeleted,
-        ),
-      );
-      final controller = SongMutationSyncController(
-        store: store,
-        remoteRepository: repository,
-      );
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
 
-      await controller.syncPendingSongs(
-        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
-      );
+        await controller.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
 
-      expect(store.deletedSongId, 'song-1');
-      expect(store.lastSavedStatus, isNull);
-    });
+        expect(store.deletedSongId, 'song-1');
+        expect(store.lastSavedStatus, isNull);
+      },
+    );
 
     test('uses the dedicated overwrite path for keep mine', () async {
       final store = _FakeSongMutationStore(

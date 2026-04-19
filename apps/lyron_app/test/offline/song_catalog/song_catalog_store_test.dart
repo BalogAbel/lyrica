@@ -681,10 +681,7 @@ void main() {
           songId: 'song-1',
         );
 
-        expect(
-          stored?.syncErrorContext,
-          contains('"code":"remoteDeleted"'),
-        );
+        expect(stored?.syncErrorContext, contains('"code":"remoteDeleted"'));
         expect(
           stored?.syncErrorContext,
           contains('"conflictSourceSyncStatus":"pending_update"'),
