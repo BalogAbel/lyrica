@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
@@ -298,6 +299,69 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return projection.title;
   }
 
+  String _resolvePreservedScopedTitle(SessionScopedReaderContext? scopedContext) {
+    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
+    if (scopedTitle.isNotEmpty) {
+      return scopedTitle;
+    }
+    final warmPlanDetail = widget.warmPlanDetail;
+    final sessionItemId = widget.sessionItemId;
+    if (warmPlanDetail != null && sessionItemId != null) {
+      for (final session in warmPlanDetail.sessions) {
+        for (final item in session.items) {
+          if (item.id == sessionItemId && item.song.id == widget.songId) {
+            final preservedTitle = item.song.title.trim();
+            if (preservedTitle.isNotEmpty) {
+              return preservedTitle;
+            }
+          }
+        }
+      }
+    }
+    return AppStrings.songReaderTitle;
+  }
+
+  Widget _buildScopedDeletedTombstone({
+    required SessionScopedReaderContext? scopedContext,
+    required SongMutationRecord? mutationRecord,
+  }) {
+    final message =
+        mutationRecord?.isRemoteDeletedConflict == true &&
+            mutationRecord?.effectiveSyncStatus == SongSyncStatus.pendingUpdate
+        ? AppStrings.songReaderDeletedConflictMessage
+        : AppStrings.songReaderDeletedMessage;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _resolvePreservedScopedTitle(scopedContext),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              AppStrings.songReaderDeletedTitle,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(message, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _canShowScopedDeletedTombstone({
+    required CatalogSnapshotState catalogState,
+    required SongMutationRecord? mutationRecord,
+  }) {
+    return mutationRecord?.isRemoteDeletedConflict == true ||
+        catalogState.context != null;
+  }
+
   String? _resolveNeighborTitle(String? title) {
     final trimmed = title?.trim();
     if (trimmed == null || trimmed.isEmpty) {
@@ -436,17 +500,21 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final readerState = _isScopedMode
         ? scopedRuntimeController!.state.readerState
         : _controller.state;
+    final mutationRecordAsync = _isScopedMode
+        ? ref.watch(songMutationRecordByIdProvider(widget.songId))
+        : null;
     final readerResult = readerAsync.valueOrNull;
     final scopedContextResult = scopedContextAsync?.valueOrNull;
     final resolvedScopedContext =
         scopedContextResult is ResolvedSessionScopedReaderContextResult
         ? scopedContextResult.context
         : null;
+    final mutationRecord = mutationRecordAsync?.valueOrNull;
     final projection = readerResult == null
         ? null
         : SongReaderProjection(song: readerResult.song, state: readerState);
     final currentTitle = projection == null
-        ? AppStrings.songReaderTitle
+        ? _resolvePreservedScopedTitle(resolvedScopedContext)
         : _resolveCurrentTitle(
             scopedContext: resolvedScopedContext,
             projection: projection,
@@ -529,6 +597,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                   ),
                   error: (error, stackTrace) {
                     if (_isScopedMode) {
+                      if (error is SongNotFoundException) {
+                        if (_canShowScopedDeletedTombstone(
+                          catalogState: catalogState,
+                          mutationRecord: mutationRecord,
+                        )) {
+                          return _buildScopedDeletedTombstone(
+                            scopedContext: resolvedScopedContext,
+                            mutationRecord: mutationRecord,
+                          );
+                        }
+                      }
                       return const Center(
                         child: Text(
                           AppStrings.scopedReaderContextUnavailableMessage,

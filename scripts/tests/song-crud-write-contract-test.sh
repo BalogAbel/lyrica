@@ -255,10 +255,16 @@ def update_song(
     song_id: str,
     base_version: int,
     title: str,
+    requested_slug: str | None = None,
     overwrite: bool = False,
     user_id: str | None = None,
 ) -> dict:
     function_name = "public.overwrite_song_update" if overwrite else "public.update_song"
+    slug_arg = (
+        f", p_requested_slug => {sql_quote(requested_slug)}"
+        if requested_slug is not None and overwrite
+        else ""
+    )
     return fetch_json(
         dedent(
             f"""
@@ -267,7 +273,7 @@ def update_song(
               p_song_id => {sql_quote(song_id)},
               p_base_version => {base_version},
               p_title => {sql_quote(title)},
-              p_chordpro_source => {song_source(title)}
+              p_chordpro_source => {song_source(title)}{slug_arg}
             ));
             """
         ),
@@ -550,6 +556,116 @@ stale_delete_sql, stale_delete_message, stale_delete_detail = capture_error(
 assert_equal(stale_delete_sql, "P0001", "stale delete sqlstate")
 assert_equal(stale_delete_message, "song_version_conflict", "stale delete message")
 assert "current version 2" in stale_delete_detail, stale_delete_detail
+
+remote_deleted_update_target = create_song(
+    "Remote Deleted Update Target",
+    "write-contract-remote-delete-update",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        delete from public.songs
+        where organization_id = {sql_quote(organization_id)}
+          and id = {sql_quote(remote_deleted_update_target['id'])};
+        """
+    ),
+    user_id=demo_user_id,
+)
+remote_deleted_update_sql, remote_deleted_update_message, remote_deleted_update_detail = capture_error(
+    dedent(
+        f"""
+        perform public.update_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(remote_deleted_update_target['id'])},
+          p_base_version => 1,
+          p_title => 'Remote Deleted Update Target Revised',
+          p_chordpro_source => {song_source('Remote Deleted Update Target Revised')}
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert_equal(remote_deleted_update_sql, "P0002", "remote deleted update sqlstate")
+assert_equal(remote_deleted_update_message, "song_not_found", "remote deleted update message")
+assert_contains(remote_deleted_update_detail, "does not exist", "remote deleted update detail")
+
+remote_deleted_delete_target = create_song(
+    "Remote Deleted Delete Target",
+    "write-contract-remote-delete-delete",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        delete from public.songs
+        where organization_id = {sql_quote(organization_id)}
+          and id = {sql_quote(remote_deleted_delete_target['id'])};
+        """
+    ),
+    user_id=demo_user_id,
+)
+accepted_remote_delete = delete_song(
+    remote_deleted_delete_target["id"],
+    1,
+    user_id=demo_user_id,
+)
+assert_equal(accepted_remote_delete["id"], remote_deleted_delete_target["id"], "remote deleted delete accepted id")
+assert_equal(accepted_remote_delete["organization_id"], organization_id, "remote deleted delete organization")
+
+remote_deleted_recreate_target = create_song(
+    "Remote Deleted Recreate Target",
+    "write-contract-remote-delete-recreate",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        delete from public.songs
+        where organization_id = {sql_quote(organization_id)}
+          and id = {sql_quote(remote_deleted_recreate_target['id'])};
+        """
+    ),
+    user_id=demo_user_id,
+)
+recreate_denied_sql, recreate_denied_message, recreate_denied_detail = capture_error(
+    dedent(
+        f"""
+        perform public.overwrite_song_update(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(remote_deleted_recreate_target['id'])},
+          p_base_version => 1,
+          p_title => 'Remote Deleted Recreate Target Blocked',
+          p_chordpro_source => {song_source('Remote Deleted Recreate Target Blocked')}
+        );
+        """
+    ),
+    user_id=blocked_user_id,
+)
+assert_equal(recreate_denied_sql, "42501", "remote deleted recreate authorization sqlstate")
+assert_equal(recreate_denied_message, "song_write_not_authorized", "remote deleted recreate authorization message")
+assert_contains(recreate_denied_detail, "canEditSongs", "remote deleted recreate authorization detail")
+
+slug_claimant = create_song(
+    "Slug Claimant",
+    "write-contract-remote-delete-recreate",
+    user_id=demo_user_id,
+)
+assert_equal(slug_claimant["slug"], "write-contract-remote-delete-recreate", "slug claimant slug")
+
+recreated_song = update_song(
+    remote_deleted_recreate_target["id"],
+    1,
+    "Remote Deleted Recreate Target Revived",
+    requested_slug="write-contract-remote-delete-recreate",
+    overwrite=True,
+    user_id=demo_user_id,
+)
+assert_equal(recreated_song["id"], remote_deleted_recreate_target["id"], "remote deleted recreate id")
+assert_equal(recreated_song["organization_id"], organization_id, "remote deleted recreate organization")
+assert_equal(recreated_song["title"], "Remote Deleted Recreate Target Revived", "remote deleted recreate title")
+assert_equal(recreated_song["version"], 1, "remote deleted recreate version")
+assert_equal(recreated_song["slug"], "write-contract-remote-delete-recreate-2", "remote deleted recreate canonical slug")
 
 atomic_delete_target = create_song(
     "Atomic Delete Target",

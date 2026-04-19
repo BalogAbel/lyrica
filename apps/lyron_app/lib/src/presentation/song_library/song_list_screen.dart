@@ -392,6 +392,8 @@ class _MutationStatusSurface extends ConsumerWidget {
         'Song sync is blocked because edit access was revoked.',
       SongMutationSyncErrorCode.dependencyBlocked =>
         AppStrings.songDeleteBlockedMessage,
+      SongMutationSyncErrorCode.remoteDeleted =>
+        'This song was removed on another device. Resolve the conflict to keep your version or accept the deletion.',
       SongMutationSyncErrorCode.connectivityFailure =>
         'Song changes are pending until connectivity returns.',
       SongMutationSyncErrorCode.unknown =>

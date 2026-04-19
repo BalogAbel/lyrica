@@ -258,6 +258,7 @@ create or replace function public.overwrite_song_update(
   p_song_id uuid,
   p_base_version bigint,
   p_title text,
+  p_requested_slug text default null,
   p_artist text default null,
   p_key_signature text default null,
   p_tempo_bpm integer default null,
@@ -271,6 +272,26 @@ security definer
 set search_path = public
 as $$
 begin
+  if not exists (
+    select 1
+    from public.songs as song
+    where song.organization_id = p_organization_id
+      and song.id = p_song_id
+  ) then
+    return public.create_song(
+      p_organization_id => p_organization_id,
+      p_title => p_title,
+      p_artist => p_artist,
+      p_key_signature => p_key_signature,
+      p_tempo_bpm => p_tempo_bpm,
+      p_tags => p_tags,
+      p_chordpro_source => p_chordpro_source,
+      p_metadata_json => p_metadata_json,
+      p_requested_slug => p_requested_slug,
+      p_song_id => p_song_id
+    );
+  end if;
+
   return public.song_write_update_common(
     p_organization_id,
     p_song_id,
@@ -338,10 +359,15 @@ begin
     and song.id = p_song_id;
 
   if not found then
-    raise exception using
-      errcode = 'P0002',
-      message = 'song_not_found',
-      detail = 'The target song does not exist in the requested organization';
+    deleted_song.id := p_song_id;
+    deleted_song.organization_id := p_organization_id;
+    deleted_song.slug := p_song_id::text;
+    deleted_song.title := '';
+    deleted_song.chordpro_source := '';
+    deleted_song.version := coalesce(p_base_version, 0);
+    deleted_song.base_version := p_base_version;
+    deleted_song.sync_status := 'synced';
+    return deleted_song;
   end if;
 
   if exists (

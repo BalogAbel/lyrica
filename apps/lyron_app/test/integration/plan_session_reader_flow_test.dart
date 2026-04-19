@@ -5,6 +5,7 @@ import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -16,6 +17,7 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
@@ -56,11 +58,20 @@ void main() {
             appAuthListenableProvider.overrideWithValue(controller),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
-                context: null,
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
                 connectionStatus: CatalogConnectionStatus.online,
                 refreshStatus: CatalogRefreshStatus.idle,
                 sessionStatus: CatalogSessionStatus.verified,
                 hasCachedCatalog: true,
+              ),
+            ),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
               ),
             ),
             planningPlanListProvider.overrideWith(
@@ -261,6 +272,64 @@ void main() {
       expect(find.text('25. Repeated Song 25'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'session-scoped direct entry shows a tombstone when the canonical song is gone',
+    (tester) async {
+      final repository = _StaticAuthRepository(
+        restoredSession: const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        ),
+      );
+      final controller = AppAuthController(repository);
+      await controller.restoreSession();
+      addTearDown(controller.dispose);
+
+      final router = createAppRouter(
+        authController: controller,
+        refreshListenable: controller,
+        initialLocation:
+            '/plans/plan-1/sessions/session-1/items/songs/repeated-song',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+            ),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [_planSummaryFixture()],
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) async => _planDetailFixture()),
+            songLibraryListProvider.overrideWith((ref) async => const []),
+            songLibraryReaderProvider.overrideWithProvider(
+              (songId) => FutureProvider.autoDispose(
+                (ref) async => throw const SongNotFoundException('song-1'),
+              ),
+            ),
+          ],
+          child: LyronApp(router: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Repeated Song'), findsWidgets);
+      expect(find.text(AppStrings.routeNotFoundMessage), findsNothing);
+    },
+  );
 }
 
 class _StaticAuthRepository implements AuthRepository {
@@ -306,12 +375,20 @@ PlanDetail _planDetailFixture() {
           SessionItemSummary(
             id: 'item-1',
             position: 10,
-            song: SongSummary(id: 'song-1', title: 'Repeated Song'),
+            song: SongSummary(
+              id: 'song-1',
+              slug: 'repeated-song',
+              title: 'Repeated Song',
+            ),
           ),
           SessionItemSummary(
             id: 'item-2',
             position: 20,
-            song: SongSummary(id: 'song-2', title: 'Second Song'),
+            song: SongSummary(
+              id: 'song-2',
+              slug: 'second-song',
+              title: 'Second Song',
+            ),
           ),
         ],
       ),
@@ -361,6 +438,9 @@ PlanDetail _longPlanDetailFixture() {
             position: index + 1,
             song: SongSummary(
               id: 'song-${index + 1}',
+              slug: index + 1 == 25
+                  ? 'repeated-song-25'
+                  : 'repeated-song-${index + 1}',
               title: 'Repeated Song ${index + 1}',
             ),
           ),

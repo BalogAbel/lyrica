@@ -106,6 +106,35 @@ void main() {
       ),
     );
   });
+
+  test('preserves planning title when canonical song is missing', () async {
+    final repository = _FakePlanningRepository(planDetail: _planDetail());
+    final container = ProviderContainer(
+      overrides: [
+        planningRepositoryProvider.overrideWithValue(repository),
+        planningSyncStateProvider.overrideWithValue(_signedInPlanningState),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final result = await container.read(
+      sessionScopedReaderContextProvider(
+        const SessionScopedReaderContextRequest(
+          planId: 'plan-1',
+          planSlug: 'team-rehearsal',
+          sessionId: 'session-1',
+          sessionSlug: 'main',
+          sessionItemId: 'item-20',
+          songId: 'song-2',
+        ),
+      ).future,
+    );
+
+    expect(result, isA<ResolvedSessionScopedReaderContextResult>());
+    final resolved = result as ResolvedSessionScopedReaderContextResult;
+    expect(resolved.context.selectedItem.title, 'Masodik');
+    expect(resolved.context.selectedItem.songSlug, 'masodik');
+  });
 }
 
 const _signedInPlanningState = PlanningSyncState(

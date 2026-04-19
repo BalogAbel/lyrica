@@ -10,6 +10,7 @@ enum SongMutationSyncErrorCode {
   authorizationDenied,
   conflict,
   dependencyBlocked,
+  remoteDeleted,
   connectivityFailure,
   unknown,
 }
@@ -76,6 +77,13 @@ class SongMutationRecord {
   final SongMutationSyncErrorCode? errorCode;
   final String? errorMessage;
   final SongSyncStatus? conflictSourceSyncStatus;
+
+  SongSyncStatus get effectiveSyncStatus =>
+      conflictSourceSyncStatus ?? syncStatus;
+
+  bool get isRemoteDeletedConflict =>
+      syncStatus == SongSyncStatus.conflict &&
+      errorCode == SongMutationSyncErrorCode.remoteDeleted;
 
   SongMutationRecord copyWith({
     String? id,

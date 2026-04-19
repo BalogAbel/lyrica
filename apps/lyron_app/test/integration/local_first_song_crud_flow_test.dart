@@ -328,6 +328,178 @@ void main() {
         );
       },
     );
+
+    test(
+      'remote delete versus local pending update can recreate same id on keep mine',
+      () async {
+        await _seedSong(
+          songStore,
+          summary: const SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+            version: 3,
+          ),
+          source: const SongSource(
+            id: 'song-1',
+            source: '{title: Amazing Grace}',
+          ),
+        );
+
+        final syncController = SongMutationSyncController(
+          store: mutationStore,
+          remoteRepository: _FakeSongMutationRemoteRepository(
+            syncHandler: (record) async => throw const SongMutationSyncException(
+              SongMutationSyncErrorCode.remoteDeleted,
+            ),
+            overwriteHandler: (record) async => record.copyWith(
+              slug: 'amazing-grace-2',
+              version: 1,
+              baseVersion: 1,
+              syncStatus: SongSyncStatus.synced,
+            ),
+          ),
+        );
+
+        await service.updateSong(
+          context: context,
+          songId: 'song-1',
+          title: 'Amazing Grace (Offline)',
+          chordproSource: '{title: Amazing Grace (Offline)}',
+        );
+        await syncController.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        final conflicts = await mutationStore.readConflictSongs(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+        expect(conflicts.single.errorCode, SongMutationSyncErrorCode.remoteDeleted);
+
+        await syncController.keepMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(
+          await localRepository.getSongSummaryBySlug(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songSlug: 'amazing-grace-2',
+          ),
+          const SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace-2',
+            title: 'Amazing Grace (Offline)',
+            version: 1,
+          ),
+        );
+        expect(
+          await mutationStore.hasUnsyncedChanges(userId: context.userId),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'remote delete versus local pending update can discard mine without fetching a canonical row',
+      () async {
+        await _seedSong(
+          songStore,
+          summary: const SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+            version: 3,
+          ),
+          source: const SongSource(
+            id: 'song-1',
+            source: '{title: Amazing Grace}',
+          ),
+        );
+
+        final syncController = SongMutationSyncController(
+          store: mutationStore,
+          remoteRepository: _FakeSongMutationRemoteRepository(
+            syncHandler: (record) async => throw const SongMutationSyncException(
+              SongMutationSyncErrorCode.remoteDeleted,
+            ),
+          ),
+        );
+
+        await service.updateSong(
+          context: context,
+          songId: 'song-1',
+          title: 'Amazing Grace (Offline)',
+          chordproSource: '{title: Amazing Grace (Offline)}',
+        );
+        await syncController.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await syncController.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(
+          await localRepository.getSongSummaryBySlug(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songSlug: 'amazing-grace',
+          ),
+          isNull,
+        );
+        expect(
+          await mutationStore.hasUnsyncedChanges(userId: context.userId),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'remote delete versus local pending delete converges as accepted deletion',
+      () async {
+        await _seedSong(
+          songStore,
+          summary: const SongSummary(
+            id: 'song-1',
+            slug: 'delete-me',
+            title: 'Delete Me',
+            version: 2,
+          ),
+          source: const SongSource(id: 'song-1', source: '{title: Delete Me}'),
+        );
+
+        final syncController = SongMutationSyncController(
+          store: mutationStore,
+          remoteRepository: _FakeSongMutationRemoteRepository(
+            syncHandler: (record) async => throw const SongMutationSyncException(
+              SongMutationSyncErrorCode.remoteDeleted,
+            ),
+          ),
+        );
+
+        await service.deleteSong(context: context, songId: 'song-1');
+        await syncController.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        expect(
+          await localRepository.getSongSummaryBySlug(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songSlug: 'delete-me',
+          ),
+          isNull,
+        );
+        expect(
+          await mutationStore.hasUnsyncedChanges(userId: context.userId),
+          isFalse,
+        );
+      },
+    );
   });
 }
 

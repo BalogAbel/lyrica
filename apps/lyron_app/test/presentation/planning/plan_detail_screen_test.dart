@@ -715,7 +715,7 @@ void main() {
   );
 
   testWidgets(
-    'session items stay disabled until a canonical song slug is available',
+    'session items stay tappable from preserved planning song slug when canonical song is missing',
     (tester) async {
       final router = GoRouter(
         initialLocation: AppRoutes.planDetail.path.replaceFirst(
@@ -727,6 +727,10 @@ void main() {
             path: AppRoutes.planDetail.path,
             builder: (context, state) =>
                 const PlanDetailScreen(planId: 'plan-1'),
+          ),
+          GoRoute(
+            path: AppRoutes.planSessionSongReader.path,
+            builder: (context, state) => const Scaffold(body: Text('Reader')),
           ),
         ],
       );
@@ -788,11 +792,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plan-session-item-item-1')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Team Rehearsal'), findsOneWidget);
-      expect(
-        router.routerDelegate.currentConfiguration.uri.toString(),
-        '/plans/team-rehearsal',
-      );
+      expect(find.text('Reader'), findsOneWidget);
     },
   );
 }

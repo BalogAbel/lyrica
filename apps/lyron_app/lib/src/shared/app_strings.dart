@@ -49,6 +49,11 @@ class AppStrings {
   static const songReaderLoadFailureMessage =
       'Unable to load song. Please try again.';
   static const songReaderUnavailableMessage = 'This song is unavailable.';
+  static const songReaderDeletedTitle = 'Deleted song';
+  static const songReaderDeletedMessage =
+      'This song was removed from the canonical library. Planning still keeps the preserved reference title.';
+  static const songReaderDeletedConflictMessage =
+      'This song was removed from the canonical library while your local changes were still unresolved.';
   static const songReaderAccessDeniedMessage =
       'You do not have access to this song.';
   static const songReaderTitle = 'Song reader';

@@ -102,8 +102,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
 
     final plansAsync = ref.watch(planningPlanListProvider);
     final songsAsync = ref.watch(songLibraryListProvider);
-
-    if (plansAsync.isLoading || songsAsync.isLoading) {
+    if (plansAsync.isLoading) {
       return const _RouteStateScaffold(
         message: AppStrings.songReaderLoadingMessage,
       );
@@ -114,8 +113,12 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
         message: AppStrings.planDetailLoadFailureMessage,
       );
     }
-
-    if (songsAsync.hasError) {
+    if (catalogState.context != null && songsAsync.isLoading) {
+      return const _RouteStateScaffold(
+        message: AppStrings.songReaderLoadingMessage,
+      );
+    }
+    if (catalogState.context != null && songsAsync.hasError) {
       return const _RouteStateScaffold(
         message: AppStrings.songReaderLoadFailureMessage,
       );
@@ -125,15 +128,6 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
       (candidate) => candidate.slug == planSlug,
     );
     if (plan == null) {
-      return const _RouteStateScaffold(
-        message: AppStrings.routeNotFoundMessage,
-      );
-    }
-
-    final song = songsAsync.valueOrNull?.firstWhereOrNull(
-      (candidate) => candidate.slug == songSlug,
-    );
-    if (song == null) {
       return const _RouteStateScaffold(
         message: AppStrings.routeNotFoundMessage,
       );
@@ -158,7 +152,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
         }
 
         final matchingItems = session.items
-            .where((candidate) => candidate.song.id == song.id)
+            .where((candidate) => candidate.song.slug == songSlug)
             .toList(growable: false);
         if (matchingItems.length != 1) {
           return const _RouteStateScaffold(
@@ -168,7 +162,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
         final selectedItem = matchingItems.single;
 
         return SongReaderScreen(
-          songId: song.id,
+          songId: selectedItem.song.id,
           planId: detail.plan.id,
           sessionId: session.id,
           sessionItemId: selectedItem.id,
