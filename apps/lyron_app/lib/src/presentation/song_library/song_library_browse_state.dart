@@ -1,12 +1,6 @@
-enum SongLibraryBrowseFilter {
-  all,
-  pendingSync,
-  conflicts,
-}
+enum SongLibraryBrowseFilter { all, pendingSync, conflicts }
 
-enum SongLibraryBrowseSort {
-  titleAscending,
-}
+enum SongLibraryBrowseSort { titleAscending }
 
 class SongLibraryBrowseState {
   const SongLibraryBrowseState({

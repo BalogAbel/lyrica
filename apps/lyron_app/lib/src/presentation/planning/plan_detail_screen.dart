@@ -485,16 +485,14 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final selectableSongs = visibleSongsState.valueOrNull;
     final FutureOr<List<SongSummary>> selectableSongsFuture =
         selectableSongs == null || visibleSongsState.isLoading
-            ? ref.read(songLibraryListProvider.future).then((visibleSongs) {
-                return visibleSongs
-                    .where(
-                      (candidate) => !existingSongIds.contains(candidate.id),
-                    )
-                    .toList(growable: false);
-              })
-            : selectableSongs
+        ? ref.read(songLibraryListProvider.future).then((visibleSongs) {
+            return visibleSongs
                 .where((candidate) => !existingSongIds.contains(candidate.id))
                 .toList(growable: false);
+          })
+        : selectableSongs
+              .where((candidate) => !existingSongIds.contains(candidate.id))
+              .toList(growable: false);
     await Future<void>.delayed(Duration.zero);
     if (!context.mounted) {
       return;

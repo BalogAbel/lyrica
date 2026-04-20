@@ -3,10 +3,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 
 class SongLibraryBrowseRow {
-  const SongLibraryBrowseRow({
-    required this.song,
-    this.mutationRecord,
-  });
+  const SongLibraryBrowseRow({required this.song, this.mutationRecord});
 
   final SongSummary song;
   final SongMutationRecord? mutationRecord;
@@ -25,7 +22,7 @@ class SongLibraryBrowseRow {
       SongLibraryBrowseFilter.all => true,
       SongLibraryBrowseFilter.pendingSync =>
         mutationRecord != null &&
-        _pendingStatuses.contains(mutationRecord!.syncStatus),
+            _pendingStatuses.contains(mutationRecord!.syncStatus),
       SongLibraryBrowseFilter.conflicts =>
         mutationRecord?.syncStatus == SongSyncStatus.conflict,
     };
@@ -77,17 +74,19 @@ List<SongLibraryBrowseRow> filterSongLibraryBrowseRows({
   required SongLibraryBrowseSort sort,
 }) {
   final normalizedQuery = query.trim().toLowerCase();
-  final filteredRows = rows.where((row) {
-    if (!row.matchesFilter(filter)) {
-      return false;
-    }
+  final filteredRows = rows
+      .where((row) {
+        if (!row.matchesFilter(filter)) {
+          return false;
+        }
 
-    if (normalizedQuery.isEmpty) {
-      return true;
-    }
+        if (normalizedQuery.isEmpty) {
+          return true;
+        }
 
-    return row.song.title.toLowerCase().contains(normalizedQuery);
-  }).toList(growable: false);
+        return row.song.title.toLowerCase().contains(normalizedQuery);
+      })
+      .toList(growable: false);
 
   return switch (sort) {
     SongLibraryBrowseSort.titleAscending => [
