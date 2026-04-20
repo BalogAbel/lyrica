@@ -89,14 +89,6 @@ List<SongLibraryBrowseRow> filterSongLibraryBrowseRows({
       .toList(growable: false);
 
   return switch (sort) {
-    SongLibraryBrowseSort.titleAscending => [
-      ...filteredRows..sort((left, right) {
-        final titleCompare = left.song.title.compareTo(right.song.title);
-        if (titleCompare != 0) {
-          return titleCompare;
-        }
-        return left.song.id.compareTo(right.song.id);
-      }),
-    ],
+    SongLibraryBrowseSort.titleAscending => filteredRows,
   };
 }

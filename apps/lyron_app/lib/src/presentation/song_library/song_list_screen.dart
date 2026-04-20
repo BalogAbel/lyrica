@@ -9,7 +9,6 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_browse_row.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -104,17 +103,19 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
 
-    if (_searchController.text != browseState.query) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _searchController.text == browseState.query) {
-          return;
-        }
-        _searchController.value = TextEditingValue(
-          text: browseState.query,
-          selection: TextSelection.collapsed(offset: browseState.query.length),
-        );
-      });
-    }
+    ref.listen(songLibraryBrowseControllerProvider.select((s) => s.query), (
+      previous,
+      next,
+    ) {
+      if (_searchController.text == next) {
+        return;
+      }
+
+      _searchController.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -266,6 +267,10 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                               );
                             }
 
+                            final browseRows = ref.watch(
+                              songLibraryBrowseRowsProvider,
+                            );
+
                             final activeOrganizationId =
                                 catalogState.context?.organizationId;
                             final mutationEntriesFromProvider =
@@ -310,22 +315,9 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                               );
                             }
 
-                            final visibleSongs = mutationRowsReady
-                                ? filterSongLibraryBrowseRows(
-                                        rows: buildSongLibraryBrowseRows(
-                                          songs: songs,
-                                          mutationEntries: mutationEntries,
-                                        ),
-                                        query: browseState.query,
-                                        filter: browseState.filter,
-                                        sort: browseState.sort,
-                                      )
-                                      .map((row) => row.song)
-                                      .toList(growable: false)
-                                : filterSongSummariesByQuery(
-                                    songs,
-                                    browseState.query,
-                                  );
+                            final visibleSongs = browseRows
+                                .map((row) => row.song)
+                                .toList(growable: false);
                             final mutationStatusMessage =
                                 mutationEntriesAsync.isLoading
                                 ? AppStrings

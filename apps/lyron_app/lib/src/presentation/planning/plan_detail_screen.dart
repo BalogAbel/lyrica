@@ -243,7 +243,8 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       _dismissPicker();
     });
     final songsAsync = ref.watch(songLibraryListProvider);
-    final canAddSong = catalogState.hasCachedCatalog && !_addSongInFlight;
+    final canAddSong =
+        catalogState.hasCachedCatalog && !_addSongInFlight && !_pickerOpen;
     final showAddSongStatus =
         !_addSongInFlight &&
         (!catalogState.hasCachedCatalog || songsAsync.isLoading);

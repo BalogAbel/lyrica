@@ -45,16 +45,8 @@ class _SessionSongPickerState extends State<SessionSongPicker> {
 
   @override
   Widget build(BuildContext context) {
-    final sortedEligibleSongs = [...widget.eligibleSongs]
-      ..sort((left, right) {
-        final titleCompare = left.title.compareTo(right.title);
-        if (titleCompare != 0) {
-          return titleCompare;
-        }
-        return left.id.compareTo(right.id);
-      });
     final filteredSongs = filterSongSummariesByQuery(
-      sortedEligibleSongs,
+      widget.eligibleSongs,
       _state.query,
     );
     final content = _PickerContent(
@@ -62,7 +54,7 @@ class _SessionSongPickerState extends State<SessionSongPicker> {
       phase: widget.phase,
       searchController: _searchController,
       query: _state.query,
-      eligibleSongs: sortedEligibleSongs,
+      eligibleSongs: widget.eligibleSongs,
       filteredSongs: filteredSongs,
       onQueryChanged: (query) {
         setState(() {
@@ -348,7 +340,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
     final songs = widget.eligibleSongs;
     if (songs is List<SongSummary>) {
       setState(() {
-        _eligibleSongs = songs;
+        _eligibleSongs = _sortedSongs(songs);
         _phase = SessionSongPickerPhase.ready;
       });
       return;
@@ -360,7 +352,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
         return;
       }
       setState(() {
-        _eligibleSongs = resolvedSongs;
+        _eligibleSongs = _sortedSongs(resolvedSongs);
         _phase = SessionSongPickerPhase.ready;
       });
     } catch (_) {
@@ -372,6 +364,18 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
         _phase = SessionSongPickerPhase.unavailable;
       });
     }
+  }
+
+  List<SongSummary> _sortedSongs(List<SongSummary> songs) {
+    final sortedSongs = [...songs];
+    sortedSongs.sort((left, right) {
+      final titleCompare = left.title.compareTo(right.title);
+      if (titleCompare != 0) {
+        return titleCompare;
+      }
+      return left.id.compareTo(right.id);
+    });
+    return sortedSongs;
   }
 
   Future<void> _handlePick(SongSummary song) async {
