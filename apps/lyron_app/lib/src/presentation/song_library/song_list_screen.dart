@@ -273,26 +273,10 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
 
                             final activeOrganizationId =
                                 catalogState.context?.organizationId;
-                            final mutationEntriesFromProvider =
-                                mutationEntriesAsync.valueOrNull;
-                            final mutationEntriesFromProviderOrganizationId =
-                                mutationEntriesFromProvider == null
-                                ? null
-                                : mutationEntriesFromProvider.isEmpty
-                                ? activeOrganizationId
-                                : mutationEntriesFromProvider
-                                      .first
-                                      .organizationId;
-                            final mutationEntries = activeOrganizationId == null
-                                ? mutationEntriesFromProvider ??
-                                      _cachedMutationEntries
-                                : mutationEntriesFromProviderOrganizationId ==
-                                      activeOrganizationId
-                                ? mutationEntriesFromProvider
-                                : _cachedMutationEntriesOrganizationId ==
-                                      activeOrganizationId
-                                ? _cachedMutationEntries
-                                : null;
+                            final mutationEntries = _resolveMutationEntries(
+                              activeOrganizationId: activeOrganizationId,
+                              mutationEntriesAsync: mutationEntriesAsync,
+                            );
                             final mutationRowsReady = mutationEntries != null;
                             if (!mutationRowsReady &&
                                 browseState.filter !=
@@ -392,6 +376,27 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         ),
       ),
     );
+  }
+
+  List<SongMutationRecord>? _resolveMutationEntries({
+    required String? activeOrganizationId,
+    required AsyncValue<List<SongMutationRecord>> mutationEntriesAsync,
+  }) {
+    final mutationEntriesFromProvider = mutationEntriesAsync.valueOrNull;
+    final mutationEntriesFromProviderOrganizationId =
+        mutationEntriesFromProvider == null
+        ? null
+        : mutationEntriesFromProvider.isEmpty
+        ? activeOrganizationId
+        : mutationEntriesFromProvider.first.organizationId;
+
+    return activeOrganizationId == null
+        ? mutationEntriesFromProvider ?? _cachedMutationEntries
+        : mutationEntriesFromProviderOrganizationId == activeOrganizationId
+        ? mutationEntriesFromProvider
+        : _cachedMutationEntriesOrganizationId == activeOrganizationId
+        ? _cachedMutationEntries
+        : null;
   }
 
   Future<void> _syncNow() {

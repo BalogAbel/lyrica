@@ -470,7 +470,11 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     setState(() {
       _pickerOpen = false;
     });
-    Navigator.of(context, rootNavigator: true).maybePop();
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (!navigator.canPop()) {
+      return;
+    }
+    navigator.maybePop();
   }
 
   Future<void> _addSong(BuildContext context, WidgetRef ref) async {
