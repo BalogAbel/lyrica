@@ -36,6 +36,13 @@ cat >"$tmp_dir/mock-db-reset.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "db-reset" >>"$LOG_FILE"
+echo "supabase:start" >>"$LOG_FILE"
+EOF
+
+cat >"$tmp_dir/mock-supabase-cleanup.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "supabase-cleanup" >>"$LOG_FILE"
 EOF
 
 cat >"$tmp_dir/mock-provision.sh" <<'EOF'
@@ -72,6 +79,7 @@ chmod +x \
   "$tmp_dir/mock-check-migrations.sh" \
   "$tmp_dir/mock-supabase.sh" \
   "$tmp_dir/mock-db-reset.sh" \
+  "$tmp_dir/mock-supabase-cleanup.sh" \
   "$tmp_dir/mock-provision.sh" \
   "$tmp_dir/mock-provision-test.sh" \
   "$tmp_dir/mock-manual-validation-test.sh" \
@@ -82,6 +90,7 @@ LOG_FILE="$log_file" \
 CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
 SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
 DB_RESET_SCRIPT="$tmp_dir/mock-db-reset.sh" \
+SUPABASE_CLEANUP_SCRIPT="$tmp_dir/mock-supabase-cleanup.sh" \
 PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
 PROVISION_DEMO_USER_TEST_SCRIPT="$tmp_dir/mock-provision-test.sh" \
 MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT="$tmp_dir/mock-manual-validation-test.sh" \
@@ -99,13 +108,16 @@ expected = [
     "flutter:analyze",
     "flutter:test",
     "check-migrations",
+    "supabase-cleanup",
     "db-reset",
+    "supabase:start",
     "provision",
     "provision-test",
     "supabase:status -o env",
     "flutter:test test/integration/authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
     "flutter:test test/integration/local_first_authenticated_song_reader_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key --dart-define=SERVICE_ROLE_KEY=test-service-role-key",
     "flutter:test test/integration/plan_and_session_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
+    "flutter:test test/integration/local_first_planning_read_flow_test.dart --dart-define=SUPABASE_URL=http://127.0.0.1:54321 --dart-define=SUPABASE_ANON_KEY=test-anon-key",
     "manual-validation-test",
 ]
 

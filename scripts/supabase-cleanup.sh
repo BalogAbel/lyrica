@@ -6,4 +6,14 @@ cd "$SCRIPT_DIR/.."
 
 supabase_script="${SUPABASE_SCRIPT:-./scripts/supabase.sh}"
 
-"$supabase_script" stop
+if ! stop_output="$("$supabase_script" stop 2>&1)"; then
+  if grep -q "is not running" <<<"$stop_output"; then
+    printf '%s\n' "$stop_output"
+    exit 0
+  fi
+
+  printf '%s\n' "$stop_output" >&2
+  exit 1
+fi
+
+printf '%s\n' "$stop_output"
