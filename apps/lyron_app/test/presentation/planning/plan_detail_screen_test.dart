@@ -503,6 +503,10 @@ void main() {
     expect(writeService.createdSessionItemDraft, isNotNull);
     expect(
       find.byKey(const ValueKey('session-song-picker-body')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('session-add-song-focus-session-1')),
       findsOneWidget,
     );
   });

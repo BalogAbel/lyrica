@@ -302,6 +302,7 @@ Future<SongSummary?> showSessionSongPicker({
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      useRootNavigator: true,
       showDragHandle: false,
       builder: (_) => route,
     );
