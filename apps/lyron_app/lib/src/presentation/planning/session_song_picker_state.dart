@@ -1,9 +1,4 @@
-enum SessionSongPickerPhase {
-  loading,
-  unavailable,
-  ready,
-  addInProgress,
-}
+enum SessionSongPickerPhase { loading, unavailable, ready, addInProgress }
 
 class SessionSongPickerState {
   const SessionSongPickerState({

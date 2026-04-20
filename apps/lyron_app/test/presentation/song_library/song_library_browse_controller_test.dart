@@ -49,7 +49,9 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
-    final controller = container.read(songLibraryBrowseControllerProvider.notifier);
+    final controller = container.read(
+      songLibraryBrowseControllerProvider.notifier,
+    );
     controller
       ..setQuery('grace')
       ..setFilter(SongLibraryBrowseFilter.pendingSync)
@@ -166,77 +168,79 @@ void main() {
     expect(matches.single.song.title, 'Gamma');
   });
 
-  test('browse row filter keeps every pending sync state under pending sync', () {
-    const rows = [
-      SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-      ),
-      SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-2',
-          organizationId: 'org-1',
-          slug: 'beta',
-          title: 'Beta',
-          chordproSource: '{title: Beta}',
-          version: 2,
-          baseVersion: null,
-          syncStatus: SongSyncStatus.pendingCreate,
+  test(
+    'browse row filter keeps every pending sync state under pending sync',
+    () {
+      const rows = [
+        SongLibraryBrowseRow(
+          song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
         ),
-      ),
-      SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-3',
-          organizationId: 'org-1',
-          slug: 'gamma',
-          title: 'Gamma',
-          chordproSource: '{title: Gamma}',
-          version: 3,
-          baseVersion: 2,
-          syncStatus: SongSyncStatus.pendingUpdate,
+        SongLibraryBrowseRow(
+          song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          mutationRecord: SongMutationRecord(
+            id: 'song-2',
+            organizationId: 'org-1',
+            slug: 'beta',
+            title: 'Beta',
+            chordproSource: '{title: Beta}',
+            version: 2,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
         ),
-      ),
-      SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-4', slug: 'delta', title: 'Delta'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-4',
-          organizationId: 'org-1',
-          slug: 'delta',
-          title: 'Delta',
-          chordproSource: '{title: Delta}',
-          version: 4,
-          baseVersion: 3,
-          syncStatus: SongSyncStatus.pendingDelete,
+        SongLibraryBrowseRow(
+          song: SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+          mutationRecord: SongMutationRecord(
+            id: 'song-3',
+            organizationId: 'org-1',
+            slug: 'gamma',
+            title: 'Gamma',
+            chordproSource: '{title: Gamma}',
+            version: 3,
+            baseVersion: 2,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
         ),
-      ),
-      SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-5', slug: 'epsilon', title: 'Epsilon'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-5',
-          organizationId: 'org-1',
-          slug: 'epsilon',
-          title: 'Epsilon',
-          chordproSource: '{title: Epsilon}',
-          version: 5,
-          baseVersion: 4,
-          syncStatus: SongSyncStatus.conflict,
+        SongLibraryBrowseRow(
+          song: SongSummary(id: 'song-4', slug: 'delta', title: 'Delta'),
+          mutationRecord: SongMutationRecord(
+            id: 'song-4',
+            organizationId: 'org-1',
+            slug: 'delta',
+            title: 'Delta',
+            chordproSource: '{title: Delta}',
+            version: 4,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingDelete,
+          ),
         ),
-      ),
-    ];
+        SongLibraryBrowseRow(
+          song: SongSummary(id: 'song-5', slug: 'epsilon', title: 'Epsilon'),
+          mutationRecord: SongMutationRecord(
+            id: 'song-5',
+            organizationId: 'org-1',
+            slug: 'epsilon',
+            title: 'Epsilon',
+            chordproSource: '{title: Epsilon}',
+            version: 5,
+            baseVersion: 4,
+            syncStatus: SongSyncStatus.conflict,
+          ),
+        ),
+      ];
 
-    final matches = filterSongLibraryBrowseRows(
-      rows: rows,
-      query: '',
-      filter: SongLibraryBrowseFilter.pendingSync,
-      sort: SongLibraryBrowseSort.titleAscending,
-    );
+      final matches = filterSongLibraryBrowseRows(
+        rows: rows,
+        query: '',
+        filter: SongLibraryBrowseFilter.pendingSync,
+        sort: SongLibraryBrowseSort.titleAscending,
+      );
 
-    expect(matches, hasLength(3));
-    expect(matches.map((row) => row.song.title), containsAllInOrder([
-      'Beta',
-      'Delta',
-      'Gamma',
-    ]));
-  });
+      expect(matches, hasLength(3));
+      expect(
+        matches.map((row) => row.song.title),
+        containsAllInOrder(['Beta', 'Delta', 'Gamma']),
+      );
+    },
+  );
 }

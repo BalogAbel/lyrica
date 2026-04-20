@@ -507,62 +507,61 @@ void main() {
     );
   });
 
-  testWidgets(
-    'opens picker with cached songs after refresh later fails',
-    (tester) async {
-      var loadCount = 0;
-      final writeService = _FakePlanningWriteService();
+  testWidgets('opens picker with cached songs after refresh later fails', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    final writeService = _FakePlanningWriteService();
 
-      await tester.pumpWidget(
-        buildApp(
-          planDetailValue: _editablePlanDetailFixture(),
-          writeService: writeService,
-          songsForContext: (context) {
-            loadCount += 1;
-            if (loadCount == 1) {
-              return const [
-                SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-                SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-              ];
-            }
-            throw StateError('refresh failed');
-          },
-          catalogSnapshotState: const CatalogSnapshotState(
-            context: ActiveCatalogContext(
-              userId: 'user-1',
-              organizationId: 'org-1',
-            ),
-            connectionStatus: CatalogConnectionStatus.online,
-            refreshStatus: CatalogRefreshStatus.idle,
-            sessionStatus: CatalogSessionStatus.verified,
-            hasCachedCatalog: true,
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+        songsForContext: (context) {
+          loadCount += 1;
+          if (loadCount == 1) {
+            return const [
+              SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+              SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+            ];
+          }
+          throw StateError('refresh failed');
+        },
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
           ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(PlanDetailScreen)),
-      );
-      container.invalidate(songLibraryListProvider);
-      await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanDetailScreen)),
+    );
+    container.invalidate(songLibraryListProvider);
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const ValueKey('session-song-picker-body')),
-        findsOneWidget,
-      );
-      expect(find.text('Alpha'), findsOneWidget);
-      expect(find.text('Beta'), findsOneWidget);
-      expect(
-        find.text(AppStrings.sessionItemSongPickerUnavailableMessage),
-        findsNothing,
-      );
-      expect(writeService.createdSessionItemDraft, isNull);
-    },
-  );
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsOneWidget,
+    );
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+    expect(
+      find.text(AppStrings.sessionItemSongPickerUnavailableMessage),
+      findsNothing,
+    );
+    expect(writeService.createdSessionItemDraft, isNull);
+  });
 
   testWidgets(
     'aborts add-song when active planning context changes while picker is open',
