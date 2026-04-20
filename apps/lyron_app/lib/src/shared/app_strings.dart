@@ -37,7 +37,28 @@ class AppStrings {
   static const songListLoadingMessage = 'Loading songs...';
   static const songListLoadFailureMessage =
       'Unable to load songs. Please try again.';
+  static const songListMutationStatusLoadingMessage =
+      'Loading song status...';
+  static const songListMutationStatusFailedMessage =
+      'Song status could not load. Showing songs without operational filters.';
   static const songListEmptyMessage = 'No songs available.';
+  static const songListNoResultsMessage = 'No songs match your current search.';
+  static const songListSearchLabel = 'Search songs';
+  static const songListSearchHint = 'Type a title...';
+  static const songLibraryFilterAllLabel = 'All';
+  static const songLibraryFilterPendingSyncLabel = 'Pending sync';
+  static const songLibraryFilterConflictsLabel = 'Conflicts';
+  static const sessionItemSongPickerSearchLabel = 'Search songs';
+  static const sessionItemSongPickerSearchHint = 'Type a title...';
+  static const sessionItemSongPickerLoadingMessage = 'Loading eligible songs...';
+  static const sessionItemSongPickerUnavailableMessage =
+      'This picker is unavailable until a local song catalog is ready.';
+  static const sessionItemSongPickerNoResultsMessage =
+      'No eligible songs match your search.';
+  static const sessionItemSongPickerEmptyMessage =
+      'All visible songs are already present in this session.';
+  static const sessionItemSongPickerAddInProgressMessage =
+      'Adding song...';
   static const songCatalogOnlineStatus = 'Online. Songs are up to date.';
   static const songCatalogOfflineStatus = 'Offline. Showing cached songs.';
   static const songCatalogRefreshingStatus = 'Refreshing song catalog...';

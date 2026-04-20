@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
@@ -30,6 +31,7 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -46,14 +48,20 @@ void main() {
 
   Widget buildApp({
     List<SongSummary> songs = const [],
+    CatalogSnapshotState? initialCatalogState,
+    StateProvider<CatalogSnapshotState>? mutableCatalogStateProvider,
     Completer<List<SongSummary>>? loadingCompleter,
     Future<List<SongSummary>> Function()? listSongs,
+    FutureOr<List<SongSummary>> Function(ActiveCatalogContext? context)?
+    songsForContext,
     SongCatalogController? catalogController,
     PlanningSyncController? planningSyncController,
     SongLibraryService? songLibraryService,
     SongMutationSyncController? songMutationSyncController,
     List<SongMutationRecord>? mutationEntries,
     Future<List<SongMutationRecord>> Function()? loadMutationEntries,
+    FutureOr<List<SongMutationRecord>> Function(ActiveCatalogContext? context)?
+    mutationEntriesForContext,
     bool? hasUnsyncedChanges,
     bool? hasUnsyncedPlanningMutations,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
@@ -64,6 +72,7 @@ void main() {
       hasCachedCatalog: true,
     ),
   }) {
+    final effectiveCatalogState = initialCatalogState ?? catalogState;
     final authRepository = _TestAuthRepository();
     final authController = AppAuthController(authRepository);
     addTearDown(authController.dispose);
@@ -109,6 +118,16 @@ void main() {
           songMutationEntriesProvider.overrideWith(
             (ref) => loadMutationEntries(),
           ),
+        if (mutationEntriesForContext != null)
+          songMutationEntriesProvider.overrideWith((ref) async {
+            final entries = mutationEntriesForContext(
+              ref.watch(activeCatalogContextProvider),
+            );
+            if (entries is Future<List<SongMutationRecord>>) {
+              return entries;
+            }
+            return entries;
+          }),
         if (mutationEntries != null)
           songMutationEntriesProvider.overrideWith(
             (ref) async => mutationEntries,
@@ -121,9 +140,31 @@ void main() {
           hasUnsyncedPlanningMutationsProvider.overrideWith(
             (ref) async => hasUnsyncedPlanningMutations,
           ),
-        catalogSnapshotStateProvider.overrideWithValue(catalogState),
-        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        if (mutableCatalogStateProvider != null)
+          catalogSnapshotStateProvider.overrideWith(
+            (ref) => ref.watch(mutableCatalogStateProvider),
+          )
+        else
+          catalogSnapshotStateProvider.overrideWithValue(effectiveCatalogState),
+        if (mutableCatalogStateProvider != null)
+          activeCatalogContextProvider.overrideWith(
+            (ref) => ref.watch(mutableCatalogStateProvider).context,
+          )
+        else
+          activeCatalogContextProvider.overrideWithValue(
+            effectiveCatalogState.context,
+          ),
         songLibraryListProvider.overrideWith((ref) {
+          if (songsForContext != null) {
+            final songs = songsForContext(
+              ref.watch(activeCatalogContextProvider),
+            );
+            if (songs is Future<List<SongSummary>>) {
+              return songs;
+            }
+            return Future.value(songs);
+          }
+
           if (listSongs != null) {
             return listSongs();
           }
@@ -292,6 +333,671 @@ void main() {
     expect(find.text(AppStrings.signOutAction), findsOneWidget);
   });
 
+  testWidgets('search narrows titles and shows explicit no-results copy', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+          ),
+          SongSummary(
+            id: 'song-2',
+            slug: 'great-is-thy-faithfulness',
+            title: 'Great Is Thy Faithfulness',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('song-list-search-field')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('song-list-search-field')),
+      '  grace  ',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    expect(find.text('Great Is Thy Faithfulness'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('song-list-search-field')),
+      'zzz',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songListNoResultsMessage), findsOneWidget);
+    expect(find.text('Amazing Grace'), findsNothing);
+  });
+
+  testWidgets('shows loading while mutation entries resolve', (tester) async {
+    final mutationEntriesCompleter = Completer<List<SongMutationRecord>>();
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        loadMutationEntries: () => mutationEntriesCompleter.future,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.text(AppStrings.songListMutationStatusLoadingMessage),
+      findsOneWidget,
+    );
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text(AppStrings.songListNoResultsMessage), findsNothing);
+  });
+
+  testWidgets(
+    'preserves cached songs while active catalog switches and list reloads',
+    (tester) async {
+      final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+        (ref) => const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      );
+      final org2SongsCompleter = Completer<List<SongSummary>>();
+
+      await tester.pumpWidget(
+        buildApp(
+          mutableCatalogStateProvider: catalogStateProvider,
+          songsForContext: (context) {
+            return switch (context?.organizationId) {
+              'org-1' => const [
+                SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+                SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+              ],
+              _ => org2SongsCompleter.future,
+            };
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alpha'), findsOneWidget);
+      expect(find.text('Beta'), findsOneWidget);
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SongListScreen)),
+      );
+      container
+          .read(catalogStateProvider.notifier)
+          .state = const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-2',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      );
+      await tester.pump();
+
+      expect(find.text('Alpha'), findsOneWidget);
+      expect(find.text('Beta'), findsOneWidget);
+      expect(find.text(AppStrings.songListLoadingMessage), findsNothing);
+
+      org2SongsCompleter.complete(const []);
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.songListEmptyMessage), findsOneWidget);
+      expect(find.text('Alpha'), findsNothing);
+      expect(find.text('Beta'), findsNothing);
+    },
+  );
+
+  testWidgets('keeps cached songs visible when refresh later fails', (
+    tester,
+  ) async {
+    final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+      (ref) => CatalogSnapshotState(
+        context: const ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      ),
+    );
+    FutureOr<List<SongSummary>> Function(ActiveCatalogContext?) songsLoader =
+        (_) => const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ];
+
+    await tester.pumpWidget(
+      buildApp(
+        mutableCatalogStateProvider: catalogStateProvider,
+        songsForContext: (context) => songsLoader(context),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongListScreen)),
+    );
+
+    songsLoader = (_) => Future<List<SongSummary>>.error(StateError('boom'));
+    container.invalidate(songLibraryListProvider);
+    container.read(catalogStateProvider.notifier).state = container
+        .read(catalogStateProvider)
+        .copyWith(refreshStatus: CatalogRefreshStatus.failed);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+    expect(
+      find.text(AppStrings.songCatalogRefreshFailedStatus),
+      findsOneWidget,
+    );
+    expect(find.text(AppStrings.songListLoadFailureMessage), findsNothing);
+  });
+
+  testWidgets('shows a narrow warning when mutation entries fail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        loadMutationEntries: () =>
+            Future<List<SongMutationRecord>>.error(StateError('boom')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.songListMutationStatusFailedMessage),
+      findsOneWidget,
+    );
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsOneWidget);
+  });
+
+  testWidgets('clears cached mutation entries when active catalog changes', (
+    tester,
+  ) async {
+    final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+      (ref) => const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      ),
+    );
+    final org2MutationEntriesCompleter = Completer<List<SongMutationRecord>>();
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        mutableCatalogStateProvider: catalogStateProvider,
+        mutationEntriesForContext: (context) {
+          return switch (context?.organizationId) {
+            'org-1' => [
+              const SongMutationRecord(
+                id: 'song-1',
+                organizationId: 'org-1',
+                slug: 'alpha',
+                title: 'Alpha',
+                chordproSource: '{title: Alpha}',
+                version: 2,
+                baseVersion: 1,
+                syncStatus: SongSyncStatus.pendingUpdate,
+              ),
+            ],
+            _ => org2MutationEntriesCompleter.future,
+          };
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongListScreen)),
+    );
+    Finder rowText(String text) => find.descendant(
+      of: find.byKey(const ValueKey('song-library-results-list')),
+      matching: find.text(text),
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('song-list-filter-control')),
+        matching: find.text('Pending sync'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(rowText('Alpha'), findsOneWidget);
+    expect(rowText('Beta'), findsNothing);
+
+    container
+        .read(catalogStateProvider.notifier)
+        .state = const CatalogSnapshotState(
+      context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-2'),
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('song-list-filter-control')),
+        matching: find.text('Pending sync'),
+      ),
+    );
+    await tester.pump();
+
+    expect(rowText('Alpha'), findsNothing);
+    expect(
+      find.text(AppStrings.songListMutationStatusLoadingMessage),
+      findsOneWidget,
+    );
+
+    org2MutationEntriesCompleter.complete(const []);
+    await tester.pumpAndSettle();
+
+    expect(rowText('Alpha'), findsNothing);
+    expect(find.text(AppStrings.songListNoResultsMessage), findsOneWidget);
+  });
+
+  testWidgets('filter controls narrow songs by local mutation status', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+          SongSummary(id: 'song-4', slug: 'delta', title: 'Delta'),
+          SongSummary(id: 'song-5', slug: 'coda', title: 'Coda'),
+        ],
+        mutationEntries: const [
+          SongMutationRecord(
+            id: 'song-2',
+            organizationId: 'org-1',
+            slug: 'beta',
+            title: 'Beta',
+            chordproSource: '{title: Beta}',
+            version: 2,
+            baseVersion: 1,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+          SongMutationRecord(
+            id: 'song-3',
+            organizationId: 'org-1',
+            slug: 'gamma',
+            title: 'Gamma',
+            chordproSource: '{title: Gamma}',
+            version: 3,
+            baseVersion: 2,
+            syncStatus: SongSyncStatus.conflict,
+          ),
+          SongMutationRecord(
+            id: 'song-4',
+            organizationId: 'org-1',
+            slug: 'delta',
+            title: 'Delta',
+            chordproSource: '{title: Delta}',
+            version: 4,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+          SongMutationRecord(
+            id: 'song-5',
+            organizationId: 'org-1',
+            slug: 'coda',
+            title: 'Coda',
+            chordproSource: '{title: Coda}',
+            version: 5,
+            baseVersion: 4,
+            syncStatus: SongSyncStatus.pendingDelete,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder rowText(String text) => find.descendant(
+      of: find.byKey(const ValueKey('song-library-results-list')),
+      matching: find.text(text),
+    );
+
+    expect(rowText('Alpha'), findsOneWidget);
+    expect(rowText('Beta'), findsOneWidget);
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('Pending sync'), findsOneWidget);
+    expect(find.text('Conflicts'), findsOneWidget);
+
+    Future<void> tapFilterLabel(String label) async {
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('song-list-filter-control')),
+          matching: find.text(label),
+        ),
+      );
+    }
+
+    await tapFilterLabel('Pending sync');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.pendingSync},
+    );
+
+    expect(rowText('Alpha'), findsNothing);
+    expect(rowText('Beta'), findsOneWidget);
+    expect(rowText('Gamma'), findsNothing);
+    await tester.drag(
+      find.byKey(const ValueKey('song-library-results-list')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+
+    expect(rowText('Delta'), findsOneWidget);
+    expect(rowText('Coda'), findsOneWidget);
+
+    await tapFilterLabel('Conflicts');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.conflicts},
+    );
+
+    expect(rowText('Alpha'), findsNothing);
+    expect(rowText('Beta'), findsNothing);
+    expect(rowText('Gamma'), findsOneWidget);
+
+    await tapFilterLabel('All');
+    await tester.pumpAndSettle();
+
+    expect(rowText('Alpha'), findsOneWidget);
+    expect(rowText('Beta'), findsOneWidget);
+  });
+
+  testWidgets('search state survives reader navigation and back navigation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+          ),
+          SongSummary(
+            id: 'song-2',
+            slug: 'great-is-thy-faithfulness',
+            title: 'Great Is Thy Faithfulness',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('song-list-search-field')),
+      'grace',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    expect(find.text('Great Is Thy Faithfulness'), findsNothing);
+
+    await tester.tap(find.text('Amazing Grace'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('reader:amazing-grace'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('song-list-search-field')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('song-list-search-field')),
+          )
+          .controller
+          ?.text,
+      'grace',
+    );
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    expect(find.text('Great Is Thy Faithfulness'), findsNothing);
+  });
+
+  testWidgets('search state resets when active catalog changes', (
+    tester,
+  ) async {
+    final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+      (ref) => const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+          ),
+          SongSummary(
+            id: 'song-2',
+            slug: 'great-is-thy-faithfulness',
+            title: 'Great Is Thy Faithfulness',
+          ),
+        ],
+        mutableCatalogStateProvider: catalogStateProvider,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongListScreen)),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('song-list-search-field')),
+      'grace',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    expect(find.text('Great Is Thy Faithfulness'), findsNothing);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('song-list-filter-control')),
+        matching: find.text('Pending sync'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.pendingSync},
+    );
+
+    container
+        .read(catalogStateProvider.notifier)
+        .state = const CatalogSnapshotState(
+      context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-2'),
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('song-list-search-field')),
+          )
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.all},
+    );
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    expect(find.text('Great Is Thy Faithfulness'), findsOneWidget);
+  });
+
+  testWidgets('search state resets when signing out', (tester) async {
+    final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+      (ref) => const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(
+            id: 'song-1',
+            slug: 'amazing-grace',
+            title: 'Amazing Grace',
+          ),
+          SongSummary(
+            id: 'song-2',
+            slug: 'great-is-thy-faithfulness',
+            title: 'Great Is Thy Faithfulness',
+          ),
+        ],
+        mutableCatalogStateProvider: catalogStateProvider,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongListScreen)),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('song-list-search-field')),
+      'grace',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Amazing Grace'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('song-list-filter-control')),
+        matching: find.text('Pending sync'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.pendingSync},
+    );
+
+    container
+        .read(catalogStateProvider.notifier)
+        .state = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('song-list-search-field')),
+          )
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
+            find.byKey(const ValueKey('song-list-filter-control')),
+          )
+          .selected,
+      {SongLibraryBrowseFilter.all},
+    );
+  });
+
   testWidgets('shows a warning before sign out when unsynced changes exist', (
     tester,
   ) async {
@@ -436,11 +1142,16 @@ void main() {
     await tester.tap(find.text(AppStrings.songCreateAction));
     await tester.pumpAndSettle();
 
-    final sourceField = tester.widget<TextField>(find.byType(TextField).last);
-    expect(sourceField.maxLines, isNull);
+    final titleField = find.byKey(const ValueKey('song-editor-title-field'));
+    final sourceField = find.byKey(const ValueKey('song-editor-source-field'));
+    expect(titleField, findsOneWidget);
+    expect(sourceField, findsOneWidget);
 
-    await tester.enterText(find.byType(TextField).first, 'New Song');
-    await tester.enterText(find.byType(TextField).last, '{title: New Song}');
+    final sourceFieldWidget = tester.widget<TextField>(sourceField);
+    expect(sourceFieldWidget.maxLines, isNull);
+
+    await tester.enterText(titleField, 'New Song');
+    await tester.enterText(sourceField, '{title: New Song}');
     await tester.tap(find.text(AppStrings.songSaveAction));
     await tester.pumpAndSettle();
 
