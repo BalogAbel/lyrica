@@ -835,7 +835,7 @@ void main() {
     expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNull);
     expect(
       find.text(AppStrings.sessionItemSongPickerAddInProgressMessage),
-      findsOneWidget,
+      findsWidgets,
     );
 
     addCompleter.complete();

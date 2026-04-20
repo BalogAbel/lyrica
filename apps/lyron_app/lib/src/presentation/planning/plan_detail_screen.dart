@@ -246,8 +246,9 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final canAddSong =
         catalogState.hasCachedCatalog && !_addSongInFlight && !_pickerOpen;
     final showAddSongStatus =
-        !_addSongInFlight &&
-        (!catalogState.hasCachedCatalog || songsAsync.isLoading);
+        _addSongInFlight ||
+        !catalogState.hasCachedCatalog ||
+        songsAsync.isLoading;
 
     return Card(
       child: Padding(

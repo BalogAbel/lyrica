@@ -124,11 +124,6 @@ final songMutationEntriesProvider =
 
 final songLibraryBrowseRowsProvider =
     Provider.autoDispose<List<SongLibraryBrowseRow>>((ref) {
-      final activeOrganizationId = ref.watch(
-        catalogSnapshotStateProvider.select(
-          (state) => state.context?.organizationId,
-        ),
-      );
       final songs = ref.watch(songLibraryListProvider).valueOrNull;
       if (songs == null) {
         return const [];
@@ -137,24 +132,6 @@ final songLibraryBrowseRowsProvider =
       final mutationEntries = ref
           .watch(songMutationEntriesProvider)
           .valueOrNull;
-      final mutationEntriesOrganizationId = mutationEntries == null
-          ? null
-          : mutationEntries.isEmpty
-          ? activeOrganizationId
-          : mutationEntries.first.organizationId;
-      final mutationRowsReady =
-          activeOrganizationId == null ||
-          mutationEntriesOrganizationId == activeOrganizationId;
-      if (!mutationRowsReady) {
-        final browseState = ref.watch(songLibraryBrowseControllerProvider);
-        return buildSongLibraryBrowseRows(
-              songs: songs,
-              mutationEntries: const [],
-            )
-            .where((row) => row.matchesQuery(browseState.query))
-            .toList(growable: false);
-      }
-
       final browseState = ref.watch(songLibraryBrowseControllerProvider);
       final rows = buildSongLibraryBrowseRows(
         songs: songs,
