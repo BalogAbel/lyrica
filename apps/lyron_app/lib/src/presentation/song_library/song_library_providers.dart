@@ -125,8 +125,8 @@ final songMutationEntriesProvider =
 final songLibraryBrowseRowsProvider =
     Provider.autoDispose<List<SongLibraryBrowseRow>>((ref) {
       final activeOrganizationId = ref.watch(
-        activeCatalogContextProvider.select(
-          (context) => context?.organizationId,
+        catalogSnapshotStateProvider.select(
+          (state) => state.context?.organizationId,
         ),
       );
       final songs = ref.watch(songLibraryListProvider).valueOrNull;
