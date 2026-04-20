@@ -1025,6 +1025,39 @@ void main() {
     expect(tester.widget<Focus>(addFocusFinder).focusNode!.hasFocus, isTrue);
   });
 
+  testWidgets('disables add-song while the picker is open', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addButtonFinder = find.byKey(
+      const ValueKey('session-add-song-session-1'),
+    );
+
+    await tester.tap(addButtonFinder);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsOneWidget,
+    );
+    expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNull);
+  });
+
   testWidgets('disables add-song when no cached catalog is available', (
     tester,
   ) async {
