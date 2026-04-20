@@ -9,6 +9,7 @@ flutter_bin="${FLUTTER_BIN:-flutter}"
 check_migrations_script="${CHECK_MIGRATIONS_SCRIPT:-./scripts/check-migrations.sh}"
 supabase_script="${SUPABASE_SCRIPT:-./scripts/supabase.sh}"
 db_reset_script="${DB_RESET_SCRIPT:-./scripts/db-reset.sh}"
+supabase_cleanup_script="${SUPABASE_CLEANUP_SCRIPT:-./scripts/supabase-cleanup.sh}"
 provision_demo_user_script="${PROVISION_DEMO_USER_SCRIPT:-./scripts/provision-local-demo-user.sh}"
 provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scripts/tests/provision-local-demo-user-test.sh}"
 manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
@@ -22,6 +23,7 @@ if [[ "$skip_migrations" == "--skip-migrations" ]]; then
 fi
 
 "$check_migrations_script"
+"$supabase_cleanup_script"
 "$db_reset_script"
 "$provision_demo_user_script"
 eval "$provision_demo_user_test_script"
