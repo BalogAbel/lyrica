@@ -565,7 +565,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
             } on DuplicateSessionSongException catch (_) {
               ref.invalidate(planningMutationEntriesProvider);
               ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-              return false;
+              return true;
             } on PlanningSongUnavailableException catch (_) {
               ref.invalidate(planningMutationEntriesProvider);
               ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
