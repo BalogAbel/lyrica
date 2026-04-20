@@ -1,8 +1,8 @@
 # Song List And Plan Song Pick UX Implementation Plan
 
-> Status: Draft
+> Status: Delivered
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Implement the approved song-library browse UX and plan-session song picker UX so both flows support local title search, explicit state handling, and scope-controlled discovery controls without redesigning unrelated song or planning features.
 
@@ -18,9 +18,22 @@
 
 Implement song-library search plus explicit no-results state first. It is the smallest user-visible slice, reuses the existing local catalog contract, and establishes the search-state pattern that the picker can follow.
 
+This branch now carries the combined first slice plus the browse filter/sort expansion:
+
+- song-library title search
+- explicit no-results state
+- route-scoped browse query seam
+- plan-session picker title search
+- explicit picker no-eligible and no-results states
+- responsive picker shell seam
+- focused cross-route integration flow test
+- keyboard and focus polish for picker dismissal and add control return
+
+Later slices, if any, are limited to new requirements or extra polish beyond this shipped scope.
+
 ### Required Integration Gate
 
-Do not treat this slice as widget-test-only work. Route-state persistence and picker close/add behavior must finish with a dedicated integration test because they span navigation, modal presentation, and immediate local planning overlay updates.
+Do not treat the full feature as widget-test-only work. Route-state persistence and picker close/add behavior now have a dedicated integration test in this branch because they span navigation, modal presentation, and immediate local planning overlay updates. If future slices add new cross-route behavior, extend that coverage again.
 
 ### Deferred / Out-Of-Scope
 
@@ -47,7 +60,7 @@ Do not treat this slice as widget-test-only work. Route-state persistence and pi
 - Test: `apps/lyron_app/test/presentation/song_library/song_library_providers_test.dart`
 - Test: `apps/lyron_app/test/presentation/song_library/song_library_browse_controller_test.dart`
 
-- [ ] **Step 1: Write failing tests for route-scoped browse state**
+- [x] **Step 1: Write failing tests for route-scoped browse state**
 
 Cover:
 
@@ -69,7 +82,7 @@ flutter test \
 
 Expected: FAIL because no browse-state seam exists yet.
 
-- [ ] **Step 2: Introduce focused browse-state types**
+- [x] **Step 2: Introduce focused browse-state types**
 
 Add a small browse state that owns only:
 
@@ -79,7 +92,7 @@ Add a small browse state that owns only:
 
 Do not put loading or catalog sync state into this object; those remain owned by existing catalog state.
 
-- [ ] **Step 3: Add explicit browse-row normalization seam**
+- [x] **Step 3: Add explicit browse-row normalization seam**
 
 Create a small browse-row type that joins:
 
@@ -88,7 +101,7 @@ Create a small browse-row type that joins:
 
 Use this row as the filterable/searchable input for operational browse filters. Do not push mutation-awareness into `SongSummary`.
 
-- [ ] **Step 4: Derive searched song-library results from normalized local data**
+- [x] **Step 4: Derive searched song-library results from normalized local data**
 
 Extend the song-library provider layer so the browse-visible list can be derived from:
 
@@ -100,7 +113,7 @@ Extend the song-library provider layer so the browse-visible list can be derived
 Keep matching title-only for this slice.
 Keep one raw catalog-list provider for non-browse consumers such as the plan song picker, and add a separate browse-derived provider for the song-list screen so picker eligibility never inherits browse query/filter state.
 
-- [ ] **Step 5: Re-run the focused provider/controller tests**
+- [x] **Step 5: Re-run the focused provider/controller tests**
 
 Run:
 
@@ -119,7 +132,7 @@ Expected: PASS
 - Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
 - Test: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 
-- [ ] **Step 1: Write failing widget tests for browse controls and no-results states**
+- [x] **Step 1: Write failing widget tests for browse controls and no-results states**
 
 Cover:
 
@@ -138,11 +151,11 @@ flutter test apps/lyron_app/test/presentation/song_library/song_list_screen_test
 
 Expected: FAIL because the current screen only renders the flat list.
 
-- [ ] **Step 2: Add browse controls without disturbing existing app-bar actions**
+- [x] **Step 2: Add browse controls without disturbing existing app-bar actions**
 
 Place search and narrow discovery controls below the existing status surface and above the list. Keep the current refresh, add-song, planning-entry, and sign-out actions intact.
 
-- [ ] **Step 3: Render explicit no-results copy**
+- [x] **Step 3: Render explicit no-results copy**
 
 Add dedicated copy for:
 
@@ -152,7 +165,7 @@ Add dedicated copy for:
 
 Do not collapse these into one generic empty message.
 
-- [ ] **Step 4: Re-run the song-list widget test**
+- [x] **Step 4: Re-run the song-list widget test**
 
 Run:
 
@@ -172,7 +185,7 @@ Expected: PASS
 - Test: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
 - Test: `apps/lyron_app/test/presentation/planning/session_song_picker_test.dart`
 
-- [ ] **Step 1: Write failing picker tests**
+- [x] **Step 1: Write failing picker tests**
 
 Cover:
 
@@ -194,17 +207,17 @@ flutter test \
 
 Expected: FAIL because the current picker is an inline static `AlertDialog` list.
 
-- [ ] **Step 2: Extract the picker into its own widget**
+- [x] **Step 2: Extract the picker into its own widget**
 
 Move picker content out of `plan_detail_screen.dart` so search, empty-state taxonomy, and responsive presentation can be tested without loading the whole plan screen.
 
 Keep picker state widget-owned or presentation-owned per open. Construct fresh picker state each time the open action runs, dispose it on close, and verify reopen returns to the default empty query and default ordering. Do not hoist picker query/sort into app-global state that can leak across reopen or tenant changes.
 
-- [ ] **Step 3: Keep picker logic title-based and local-only**
+- [x] **Step 3: Keep picker logic title-based and local-only**
 
 Apply search and sort after duplicate exclusion. Do not fetch remote data or add richer metadata logic.
 
-- [ ] **Step 4: Re-run picker tests**
+- [x] **Step 4: Re-run picker tests**
 
 Run:
 
@@ -224,7 +237,7 @@ Expected: PASS
 - Test: `apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart`
 - Test: `apps/lyron_app/test/presentation/planning/session_song_picker_test.dart`
 
-- [ ] **Step 1: Add failing responsive-presentation tests**
+- [x] **Step 1: Add failing responsive-presentation tests**
 
 Cover:
 
@@ -242,11 +255,11 @@ flutter test \
 
 Expected: FAIL because only one fixed dialog presentation exists today.
 
-- [ ] **Step 2: Add one presentation seam for picker form factor**
+- [x] **Step 2: Add one presentation seam for picker form factor**
 
 Resolve dialog versus narrow full-screen presentation at the presentation boundary only. Do not move plan-write orchestration into a new layer.
 
-- [ ] **Step 3: Re-run responsive picker tests**
+- [x] **Step 3: Re-run responsive picker tests**
 
 Run:
 
@@ -269,7 +282,7 @@ Expected: PASS
 - Test: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart`
 - Test: `apps/lyron_app/test/presentation/planning/session_song_picker_test.dart`
 
-- [ ] **Step 1: Add failing focus and semantics tests where practical**
+- [x] **Step 1: Add failing focus and semantics tests where practical**
 
 Cover:
 
@@ -289,7 +302,7 @@ flutter test \
 
 Expected: FAIL for the new accessibility/focus expectations before implementation.
 
-- [ ] **Step 2: Align copy and focus-return behavior**
+- [x] **Step 2: Align copy and focus-return behavior**
 
 Ensure new strings and focus handling match the spec, especially:
 
@@ -299,7 +312,7 @@ Ensure new strings and focus handling match the spec, especially:
 - search labels
 - focus return to the session-local add control after picker dismissal
 
-- [ ] **Step 3: Re-run focused widget tests**
+- [x] **Step 3: Re-run focused widget tests**
 
 Run:
 
@@ -319,7 +332,7 @@ Expected: PASS
 - Modify: `docs/specs/2026-04-19-song-list-plan-song-pick-ux.md`
 - Modify: `docs/plans/2026-04-19-song-list-plan-song-pick-ux.md`
 
-- [ ] **Step 1: Reconcile implementation against discovery/spec/plan**
+- [x] **Step 1: Reconcile implementation against discovery/spec/plan**
 
 Confirm the delivered behavior still matches:
 
@@ -329,7 +342,7 @@ Confirm the delivered behavior still matches:
 - explicit state taxonomy
 - route-scoped persistence for browse flow only
 
-- [ ] **Step 2: Add targeted integration coverage for cross-route and picker flows**
+- [x] **Step 2: Add targeted integration coverage for cross-route and picker flows**
 
 Create one focused integration test that proves:
 
@@ -347,7 +360,7 @@ flutter test apps/lyron_app/test/integration/song_list_plan_song_pick_flow_test.
 
 Expected: PASS
 
-- [ ] **Step 3: Run app-only verification**
+- [x] **Step 3: Run app-only verification**
 
 Run:
 
@@ -361,6 +374,6 @@ Expected: PASS
 
 Use full `./scripts/verify.sh` only if implementation unexpectedly touches backend-backed song read, planning contract, or local Supabase workflow behavior.
 
-- [ ] **Step 4: Update status lines and deferred notes if scope changes**
+- [x] **Step 4: Update status lines and deferred notes if scope changes**
 
 If implementation narrows or expands the slice, update the spec/plan status notes and add a `docs/deferred/` entry only for consciously deferred correctness or workflow behavior, not generic polish.

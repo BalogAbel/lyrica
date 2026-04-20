@@ -9,6 +9,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_contro
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -36,6 +37,9 @@ void main() {
     PlanningMutationSyncController? mutationSyncController,
     Future<List<PlanningMutationRecord>> Function()? loadMutationEntries,
     List<SongSummary>? visibleSongs,
+    FutureOr<List<SongSummary>> Function(ActiveCatalogContext? context)?
+    songsForContext,
+    StateProvider<ActivePlanningReadContext?>? mutablePlanningContextProvider,
     CatalogSnapshotState? catalogSnapshotState,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
@@ -94,9 +98,19 @@ void main() {
         planningMutationStoreProvider.overrideWithValue(
           _PlanDetailTestPlanningMutationStore(),
         ),
-        songLibraryListProvider.overrideWith(
-          (ref) => Future.value(visibleSongs ?? const <SongSummary>[]),
-        ),
+        songLibraryListProvider.overrideWith((ref) {
+          if (songsForContext != null) {
+            final songs = songsForContext(
+              ref.watch(activeCatalogContextProvider),
+            );
+            if (songs is Future<List<SongSummary>>) {
+              return songs;
+            }
+            return Future.value(songs);
+          }
+
+          return Future.value(visibleSongs ?? const <SongSummary>[]);
+        }),
         catalogSnapshotStateProvider.overrideWithValue(
           catalogSnapshotState ??
               const CatalogSnapshotState(
@@ -107,12 +121,20 @@ void main() {
                 hasCachedCatalog: false,
               ),
         ),
-        activePlanningContextProvider.overrideWithValue(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
+        activeCatalogContextProvider.overrideWithValue(
+          catalogSnapshotState?.context,
         ),
+        if (mutablePlanningContextProvider != null)
+          activePlanningContextProvider.overrideWith(
+            (ref) => ref.watch(mutablePlanningContextProvider),
+          )
+        else
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -418,7 +440,7 @@ void main() {
 
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: _planDetailWithItemsFixture(),
+        planDetailValue: _editablePlanDetailFixture(),
         writeService: writeService,
         visibleSongs: const [
           SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
@@ -443,6 +465,565 @@ void main() {
 
     expect(writeService.createdSessionItemDraft?.sessionId, 'session-1');
     expect(writeService.createdSessionItemDraft?.songId, 'song-3');
+  });
+
+  testWidgets('ignores duplicate song add failures from the picker flow', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService(
+      addSongException: const DuplicateSessionSongException(
+        'session-1',
+        'song-1',
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
+    await tester.pumpAndSettle();
+
+    expect(writeService.createdSessionItemDraft, isNotNull);
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'opens picker with cached songs after refresh later fails',
+    (tester) async {
+      var loadCount = 0;
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+          songsForContext: (context) {
+            loadCount += 1;
+            if (loadCount == 1) {
+              return const [
+                SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+                SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+              ];
+            }
+            throw StateError('refresh failed');
+          },
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+      container.invalidate(songLibraryListProvider);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsOneWidget,
+      );
+      expect(find.text('Alpha'), findsOneWidget);
+      expect(find.text('Beta'), findsOneWidget);
+      expect(
+        find.text(AppStrings.sessionItemSongPickerUnavailableMessage),
+        findsNothing,
+      );
+      expect(writeService.createdSessionItemDraft, isNull);
+    },
+  );
+
+  testWidgets(
+    'aborts add-song when active planning context changes while picker is open',
+    (tester) async {
+      final planningContextProvider = StateProvider<ActivePlanningReadContext?>(
+        (ref) => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+          mutablePlanningContextProvider: planningContextProvider,
+          visibleSongs: const [
+            SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+            SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          ],
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('session-add-song-session-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsOneWidget,
+      );
+
+      container
+          .read(planningContextProvider.notifier)
+          .state = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-2',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsNothing,
+      );
+
+      expect(writeService.createdSessionItemDraft, isNull);
+      expect(writeService.createdSongContext, isNull);
+    },
+  );
+
+  testWidgets(
+    'aborts add-song when active catalog changes while picker is open',
+    (tester) async {
+      final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+        (ref) => const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      );
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catalogSnapshotStateProvider.overrideWith(
+              (ref) => ref.watch(catalogStateProvider),
+            ),
+            activeCatalogContextProvider.overrideWith(
+              (ref) => ref.watch(catalogStateProvider).context,
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) => Future.value(_editablePlanDetailFixture())),
+            planningMutationEntriesProvider.overrideWith(
+              (ref) async => const <PlanningMutationRecord>[],
+            ),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            songLibraryListProvider.overrideWith(
+              (ref) => Future.value(const [
+                SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+                SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+              ]),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: AppRoutes.planDetail.path.replaceFirst(
+                ':planSlug',
+                'team-rehearsal',
+              ),
+              routes: [
+                GoRoute(
+                  path: AppRoutes.planDetail.path,
+                  builder: (context, state) =>
+                      const PlanDetailScreen(planId: 'plan-1'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('session-add-song-session-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsOneWidget,
+      );
+
+      container
+          .read(catalogStateProvider.notifier)
+          .state = const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-2',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsNothing,
+      );
+      expect(writeService.createdSessionItemDraft, isNull);
+    },
+  );
+
+  testWidgets(
+    'aborts add-song when active planning context changes before picker opens',
+    (tester) async {
+      final planningContextProvider = StateProvider<ActivePlanningReadContext?>(
+        (ref) => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+          mutablePlanningContextProvider: planningContextProvider,
+          songsForContext: (context) {
+            return switch (context?.organizationId) {
+              'org-1' => const [
+                SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+                SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+              ],
+              _ => const [
+                SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+              ],
+            };
+          },
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('session-add-song-session-1')),
+      );
+      container
+          .read(planningContextProvider.notifier)
+          .state = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-2',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsNothing,
+      );
+      expect(writeService.createdSessionItemDraft, isNull);
+      expect(writeService.createdSongContext, isNull);
+    },
+  );
+
+  testWidgets('disables add-song while the local add is in flight', (
+    tester,
+  ) async {
+    final addCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      addSongCompleter: addCompleter,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addButtonFinder = find.byKey(
+      const ValueKey('session-add-song-session-1'),
+    );
+
+    await tester.tap(addButtonFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
+    await tester.pump();
+
+    expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNull);
+    expect(
+      find.text(AppStrings.sessionItemSongPickerAddInProgressMessage),
+      findsOneWidget,
+    );
+
+    addCompleter.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'opens a loading picker while active catalog switches and list reloads',
+    (tester) async {
+      final catalogStateProvider = StateProvider<CatalogSnapshotState>(
+        (ref) => const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      );
+      final org2SongsCompleter = Completer<List<SongSummary>>();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            catalogSnapshotStateProvider.overrideWith(
+              (ref) => ref.watch(catalogStateProvider),
+            ),
+            activeCatalogContextProvider.overrideWith(
+              (ref) => ref.watch(catalogStateProvider).context,
+            ),
+            planningPlanDetailProvider(
+              'plan-1',
+            ).overrideWith((ref) => Future.value(_editablePlanDetailFixture())),
+            songLibraryListProvider.overrideWith((ref) {
+              final context = ref.watch(activeCatalogContextProvider);
+              return switch (context?.organizationId) {
+                'org-1' => Future.value(const [
+                  SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+                  SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+                ]),
+                _ => org2SongsCompleter.future,
+              };
+            }),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: GoRouter(
+              initialLocation: AppRoutes.planDetail.path.replaceFirst(
+                ':planSlug',
+                'team-rehearsal',
+              ),
+              routes: [
+                GoRoute(
+                  path: AppRoutes.planDetail.path,
+                  builder: (context, state) =>
+                      const PlanDetailScreen(planId: 'plan-1'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+      final addButtonFinder = find.byKey(
+        const ValueKey('session-add-song-session-1'),
+      );
+
+      expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
+
+      container
+          .read(catalogStateProvider.notifier)
+          .state = const CatalogSnapshotState(
+        context: ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-2',
+        ),
+        connectionStatus: CatalogConnectionStatus.online,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.verified,
+        hasCachedCatalog: true,
+      );
+      await tester.pump();
+
+      expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
+
+      await tester.tap(addButtonFinder);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.text(AppStrings.sessionItemSongPickerLoadingMessage),
+        findsOneWidget,
+      );
+
+      org2SongsCompleter.complete(const []);
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('opens picker in loading state while songs resolve', (
+    tester,
+  ) async {
+    final songsCompleter = Completer<List<SongSummary>>();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        songsForContext: (_) => songsCompleter.future,
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addButtonFinder = find.byKey(
+      const ValueKey('session-add-song-session-1'),
+    );
+
+    expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
+
+    await tester.tap(addButtonFinder);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.text(AppStrings.sessionItemSongPickerLoadingMessage),
+      findsOneWidget,
+    );
+
+    songsCompleter.complete(const [
+      SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+      SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('session-song-picker-search-field')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('returns focus to the add-song control after picker dismissal', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final addFocusFinder = find.byKey(
+      const ValueKey('session-add-song-focus-session-1'),
+    );
+    expect(addFocusFinder, findsOneWidget);
+    expect(tester.widget<Focus>(addFocusFinder).focusNode!.hasFocus, isFalse);
+
+    await tester.tap(find.text(AppStrings.sessionItemAddSongAction).first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Focus>(addFocusFinder).focusNode!.hasFocus, isTrue);
   });
 
   testWidgets('disables add-song when no cached catalog is available', (
@@ -867,7 +1448,7 @@ PlanDetail _planDetailWithItemsFixture() {
 }
 
 class _FakePlanningWriteService extends PlanningWriteService {
-  _FakePlanningWriteService()
+  _FakePlanningWriteService({this.addSongCompleter, this.addSongException})
     : super(
         _PlanDetailTestPlanningRepository(),
         mutationStore: _PlanDetailTestPlanningMutationStore(),
@@ -877,12 +1458,15 @@ class _FakePlanningWriteService extends PlanningWriteService {
         ),
       );
 
+  final Completer<void>? addSongCompleter;
+  final Object? addSongException;
   PlanEditDraft? editedDraft;
   SessionCreateDraft? createdSessionDraft;
   SessionRenameDraft? renamedSessionDraft;
   SessionDeleteDraft? deletedSessionDraft;
   SessionReorderDraft? reorderedSessionDraft;
   SessionItemCreateSongDraft? createdSessionItemDraft;
+  PlanningWriteContext? createdSongContext;
   SessionItemDeleteDraft? deletedSessionItemDraft;
   SessionItemReorderDraft? reorderedSessionItemDraft;
 
@@ -931,7 +1515,14 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemCreateSongDraft draft,
   }) async {
+    createdSongContext = context;
     createdSessionItemDraft = draft;
+    if (addSongException != null) {
+      throw addSongException!;
+    }
+    if (addSongCompleter != null) {
+      await addSongCompleter!.future;
+    }
   }
 
   @override

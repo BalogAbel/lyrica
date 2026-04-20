@@ -14,6 +14,9 @@ import 'package:lyron_app/src/infrastructure/song_library/chord_transposer.dart'
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_mutation_repository.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_browse_controller.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_browse_row.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 
 typedef SongLibraryDiagnosticLogger = void Function(ParseDiagnostic diagnostic);
 
@@ -117,6 +120,56 @@ final songMutationEntriesProvider =
         }
         return left.id.compareTo(right.id);
       });
+    });
+
+final songLibraryBrowseRowsProvider =
+    Provider.autoDispose<List<SongLibraryBrowseRow>>((ref) {
+      final activeOrganizationId = ref.watch(
+        activeCatalogContextProvider.select((context) => context?.organizationId),
+      );
+      final songs = ref.watch(songLibraryListProvider).valueOrNull;
+      if (songs == null) {
+        return const [];
+      }
+
+      final mutationEntries = ref.watch(songMutationEntriesProvider).valueOrNull;
+      final mutationEntriesOrganizationId = mutationEntries == null
+          ? null
+          : mutationEntries.isEmpty
+          ? activeOrganizationId
+          : mutationEntries.first.organizationId;
+      final mutationRowsReady = activeOrganizationId == null ||
+          mutationEntriesOrganizationId == activeOrganizationId;
+      if (!mutationRowsReady) {
+        final browseState = ref.watch(songLibraryBrowseControllerProvider);
+        return buildSongLibraryBrowseRows(
+          songs: songs,
+          mutationEntries: const [],
+        )
+            .where((row) => row.matchesQuery(browseState.query))
+            .toList(growable: false);
+      }
+
+      final browseState = ref.watch(songLibraryBrowseControllerProvider);
+      final rows = buildSongLibraryBrowseRows(
+        songs: songs,
+        mutationEntries: mutationEntries ?? const [],
+      );
+
+      return filterSongLibraryBrowseRows(
+        rows: rows,
+        query: browseState.query,
+        filter: browseState.filter,
+        sort: browseState.sort,
+      );
+    });
+
+final songLibraryBrowseControllerProvider =
+    StateNotifierProvider.autoDispose<
+      SongLibraryBrowseController,
+      SongLibraryBrowseState
+    >((ref) {
+      return SongLibraryBrowseController();
     });
 
 final songMutationRecordByIdProvider = FutureProvider.autoDispose

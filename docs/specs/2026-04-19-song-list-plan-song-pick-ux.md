@@ -1,6 +1,6 @@
 # Song List And Plan Song Pick UX Spec
 
-> Status: Draft
+> Status: Delivered
 
 ## Goal
 
@@ -16,6 +16,8 @@ The repository already proves local-first song reads and local-first planning wr
 That gap creates a product mismatch. The app can already keep songs and planning locally usable offline, but it still makes common browse and add flows scale poorly as catalogs grow.
 
 This slice should improve discoverability and add speed while preserving the current local-first, backend-enforced, projection-plus-mutation architecture.
+
+This spec is now satisfied by the delivered `feat/song-list-plan-picker-ux` slice. Any future browse/picker additions should be captured in a new spec/plan instead of extending this one.
 
 ## Companion Artifact
 

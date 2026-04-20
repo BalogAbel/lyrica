@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
+import 'package:lyron_app/src/presentation/planning/session_song_picker.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -89,7 +92,11 @@ class PlanDetailScreen extends ConsumerWidget {
                       ],
                       const SizedBox(height: 20),
                       for (final session in detail.sessions) ...[
-                        _SessionCard(planDetail: detail, session: session),
+                        _SessionCard(
+                          key: ValueKey(session.id),
+                          planDetail: detail,
+                          session: session,
+                        ),
                         const SizedBox(height: 16),
                       ],
                     ],
@@ -175,14 +182,42 @@ class PlanDetailScreen extends ConsumerWidget {
   }
 }
 
-class _SessionCard extends ConsumerWidget {
-  const _SessionCard({required this.planDetail, required this.session});
+class _SessionCard extends ConsumerStatefulWidget {
+  const _SessionCard({
+    super.key,
+    required this.planDetail,
+    required this.session,
+  });
 
   final PlanDetail planDetail;
   final SessionSummary session;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SessionCard> createState() => _SessionCardState();
+}
+
+class _SessionCardState extends ConsumerState<_SessionCard> {
+  late final FocusNode _addSongFocusNode;
+  var _pickerOpen = false;
+  var _addSongInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _addSongFocusNode = FocusNode(debugLabel: 'session-add-song-focus');
+  }
+
+  @override
+  void dispose() {
+    _addSongFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final planDetail = widget.planDetail;
+    final session = widget.session;
+    final ref = this.ref;
     final sessionIndex = planDetail.sessions.indexWhere(
       (candidate) => candidate.id == session.id,
     );
@@ -190,9 +225,28 @@ class _SessionCard extends ConsumerWidget {
     final canMoveDown =
         sessionIndex >= 0 && sessionIndex < planDetail.sessions.length - 1;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
-    final visibleSongs =
-        ref.watch(songLibraryListProvider).valueOrNull ?? const <SongSummary>[];
-    final canAddSong = catalogState.hasCachedCatalog && visibleSongs.isNotEmpty;
+    ref.listen(activePlanningContextProvider, (previous, next) {
+      if (!mounted || !_pickerOpen || previous == next) {
+        return;
+      }
+
+      _dismissPicker();
+    });
+    ref.listen(catalogSnapshotStateProvider.select((state) => state.context), (
+      previous,
+      next,
+    ) {
+      if (!mounted || !_pickerOpen || previous == next) {
+        return;
+      }
+
+      _dismissPicker();
+    });
+    final songsAsync = ref.watch(songLibraryListProvider);
+    final canAddSong = catalogState.hasCachedCatalog && !_addSongInFlight;
+    final showAddSongStatus =
+        !_addSongInFlight &&
+        (!catalogState.hasCachedCatalog || songsAsync.isLoading);
 
     return Card(
       child: Padding(
@@ -242,19 +296,27 @@ class _SessionCard extends ConsumerWidget {
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                key: ValueKey('session-add-song-${session.id}'),
-                onPressed: canAddSong
-                    ? () => _addSong(context, ref, visibleSongs)
-                    : null,
-                icon: const Icon(Icons.add),
-                label: const Text(AppStrings.sessionItemAddSongAction),
+              child: Focus(
+                key: ValueKey('session-add-song-focus-${session.id}'),
+                focusNode: _addSongFocusNode,
+                child: TextButton.icon(
+                  key: ValueKey('session-add-song-${session.id}'),
+                  onPressed: canAddSong ? () => _addSong(context, ref) : null,
+                  icon: const Icon(Icons.add),
+                  label: const Text(AppStrings.sessionItemAddSongAction),
+                ),
               ),
             ),
-            if (!canAddSong)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 12),
-                child: Text(AppStrings.sessionItemSongUnavailableMessage),
+            if (showAddSongStatus)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  _addSongInFlight
+                      ? AppStrings.sessionItemSongPickerAddInProgressMessage
+                      : songsAsync.isLoading && catalogState.hasCachedCatalog
+                      ? AppStrings.songListLoadingMessage
+                      : AppStrings.sessionItemSongUnavailableMessage,
+                ),
               ),
             for (var index = 0; index < session.items.length; index += 1) ...[
               _SongItemRow(
@@ -272,6 +334,8 @@ class _SessionCard extends ConsumerWidget {
   }
 
   Future<void> _renameSession(BuildContext context, WidgetRef ref) async {
+    final planDetail = widget.planDetail;
+    final session = widget.session;
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
@@ -307,6 +371,8 @@ class _SessionCard extends ConsumerWidget {
   }
 
   Future<void> _deleteSession(BuildContext context, WidgetRef ref) async {
+    final planDetail = widget.planDetail;
+    final session = widget.session;
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
@@ -358,6 +424,8 @@ class _SessionCard extends ConsumerWidget {
     WidgetRef ref,
     int delta,
   ) async {
+    final planDetail = widget.planDetail;
+    final session = widget.session;
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
@@ -392,66 +460,146 @@ class _SessionCard extends ConsumerWidget {
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
 
-  Future<void> _addSong(
-    BuildContext context,
-    WidgetRef ref,
-    List<SongSummary> visibleSongs,
-  ) async {
+  void _dismissPicker() {
+    if (!_pickerOpen) {
+      return;
+    }
+
+    setState(() {
+      _pickerOpen = false;
+    });
+    Navigator.of(context, rootNavigator: true).maybePop();
+  }
+
+  Future<void> _addSong(BuildContext context, WidgetRef ref) async {
+    final planDetail = widget.planDetail;
+    final session = widget.session;
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
     }
+    final activeCatalogContext = ref.read(catalogSnapshotStateProvider).context;
+
+    final visibleSongsState = ref.read(songLibraryListProvider);
     final existingSongIds = session.items.map((item) => item.song.id).toSet();
-    final selectableSongs = visibleSongs
-        .where((candidate) => !existingSongIds.contains(candidate.id))
-        .toList(growable: false);
-    final selectedSong = await showDialog<SongSummary>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(AppStrings.sessionItemSongPickerTitle),
-        content: SizedBox(
-          width: 420,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 400),
-            child: ListView(
-              shrinkWrap: true,
-              children: selectableSongs
-                  .map(
-                    (song) => ListTile(
-                      key: ValueKey('session-song-option-${song.id}'),
-                      title: Text(song.title),
-                      onTap: () => Navigator.of(context).pop(song),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-          ),
-        ),
-      ),
-    );
-    if (selectedSong == null) {
+    final selectableSongs = visibleSongsState.valueOrNull;
+    final FutureOr<List<SongSummary>> selectableSongsFuture =
+        selectableSongs == null || visibleSongsState.isLoading
+            ? ref.read(songLibraryListProvider.future).then((visibleSongs) {
+                return visibleSongs
+                    .where(
+                      (candidate) => !existingSongIds.contains(candidate.id),
+                    )
+                    .toList(growable: false);
+              })
+            : selectableSongs
+                .where((candidate) => !existingSongIds.contains(candidate.id))
+                .toList(growable: false);
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) {
       return;
     }
+    final currentCatalogContext = ref
+        .read(catalogSnapshotStateProvider)
+        .context;
+    if (currentCatalogContext != null &&
+        activeCatalogContext != null &&
+        (currentCatalogContext.userId != activeCatalogContext.userId ||
+            currentCatalogContext.organizationId !=
+                activeCatalogContext.organizationId)) {
+      return;
+    }
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
+      return;
+    }
+    setState(() {
+      _pickerOpen = true;
+    });
+    try {
+      final selectedSong = await showSessionSongPicker(
+        context: context,
+        eligibleSongs: selectableSongsFuture,
+        onPick: (song) async {
+          final currentCatalogContext = ref
+              .read(catalogSnapshotStateProvider)
+              .context;
+          if (currentCatalogContext != null &&
+              activeCatalogContext != null &&
+              (currentCatalogContext.userId != activeCatalogContext.userId ||
+                  currentCatalogContext.organizationId !=
+                      activeCatalogContext.organizationId)) {
+            return false;
+          }
+          final currentContext = ref.read(activePlanningContextProvider);
+          if (currentContext == null ||
+              currentContext.userId != activeContext.userId ||
+              currentContext.organizationId != activeContext.organizationId) {
+            return false;
+          }
 
-    if (!context.mounted) return;
-    await ref
-        .read(planningWriteServiceProvider)
-        .addSongSessionItem(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionItemCreateSongDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-            songId: selectedSong.id,
-          ),
-        );
+          setState(() {
+            _addSongInFlight = true;
+          });
+          try {
+            if (!context.mounted) return false;
+            try {
+              await ref
+                  .read(planningWriteServiceProvider)
+                  .addSongSessionItem(
+                    context: PlanningWriteContext(
+                      userId: currentContext.userId,
+                      organizationId: currentContext.organizationId,
+                    ),
+                    draft: SessionItemCreateSongDraft(
+                      sessionId: session.id,
+                      planId: planDetail.plan.id,
+                      songId: song.id,
+                    ),
+                  );
+            } on PlanningWriteContextMismatchException catch (_) {
+              ref.invalidate(planningMutationEntriesProvider);
+              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+              return false;
+            } on DuplicateSessionSongException catch (_) {
+              ref.invalidate(planningMutationEntriesProvider);
+              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+              return false;
+            } on PlanningSongUnavailableException catch (_) {
+              ref.invalidate(planningMutationEntriesProvider);
+              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+              return false;
+            }
 
-    if (!context.mounted) return;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+            if (!context.mounted) return false;
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanListProvider);
+            ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+            return true;
+          } finally {
+            if (mounted) {
+              setState(() {
+                _addSongInFlight = false;
+              });
+            }
+          }
+        },
+      );
+      if (mounted) {
+        _addSongFocusNode.requestFocus();
+      }
+      if (selectedSong == null) {
+        return;
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pickerOpen = false;
+        });
+      }
+    }
   }
 }
 
