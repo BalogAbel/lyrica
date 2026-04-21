@@ -336,6 +336,71 @@ void main() {
     expect(tester.takeException(), isA<StateError>());
   });
 
+  testWidgets(
+    'wide picker future waits for add callback after closing',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1024, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final addCompleter = Completer<bool>();
+      var resultCompleted = false;
+      SongSummary? pickedSong;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      unawaited(
+                        showSessionSongPicker(
+                          context: context,
+                          eligibleSongs: const [
+                            SongSummary(
+                              id: 'song-1',
+                              slug: 'alpha',
+                              title: 'Alpha',
+                            ),
+                          ],
+                          onPick: (_) => addCompleter.future,
+                        ).then((value) {
+                          resultCompleted = true;
+                          pickedSong = value;
+                        }),
+                      );
+                    },
+                    child: const Text('Open picker'),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open picker'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('session-song-picker-body')),
+        findsNothing,
+      );
+      expect(resultCompleted, isFalse);
+
+      addCompleter.complete(true);
+      await tester.pumpAndSettle();
+
+      expect(resultCompleted, isTrue);
+      expect(pickedSong?.id, 'song-1');
+    },
+  );
+
   testWidgets('enter activates a focused picker row', (tester) async {
     SongSummary pickedSong = const SongSummary(
       id: 'song-0',
