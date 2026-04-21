@@ -292,23 +292,45 @@ Future<SongSummary?> showSessionSongPicker({
   Future<bool> Function(SongSummary song)? onPick,
 }) {
   final compact = MediaQuery.sizeOf(context).width < 600;
+  final resultCompleter = Completer<SongSummary?>();
   final route = _SessionSongPickerRoute(
     eligibleSongs: eligibleSongs,
     onPick: onPick,
     compact: compact,
+    onComplete: (result) {
+      if (!resultCompleter.isCompleted) {
+        resultCompleter.complete(result);
+      }
+    },
   );
   if (compact) {
-    return showModalBottomSheet<SongSummary>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      useRootNavigator: true,
-      showDragHandle: false,
-      builder: (_) => route,
+    unawaited(
+      showModalBottomSheet<SongSummary>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        useRootNavigator: true,
+        showDragHandle: false,
+        builder: (_) => route,
+      ).then((value) {
+        if (value == null && !resultCompleter.isCompleted) {
+          resultCompleter.complete(value);
+        }
+      }),
     );
+    return resultCompleter.future;
   }
 
-  return showDialog<SongSummary>(context: context, builder: (_) => route);
+  unawaited(
+    showDialog<SongSummary>(context: context, builder: (_) => route).then((
+      value,
+    ) {
+      if (value == null && !resultCompleter.isCompleted) {
+        resultCompleter.complete(value);
+      }
+    }),
+  );
+  return resultCompleter.future;
 }
 
 class _SessionSongPickerRoute extends StatefulWidget {
@@ -316,11 +338,13 @@ class _SessionSongPickerRoute extends StatefulWidget {
     required this.eligibleSongs,
     required this.onPick,
     required this.compact,
+    required this.onComplete,
   });
 
   final FutureOr<List<SongSummary>> eligibleSongs;
   final Future<bool> Function(SongSummary song)? onPick;
   final bool compact;
+  final ValueChanged<SongSummary?> onComplete;
 
   @override
   State<_SessionSongPickerRoute> createState() =>
@@ -391,14 +415,19 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
     if (!widget.compact) {
       final callback = widget.onPick;
       if (callback != null) {
-        unawaited(
-          Future.sync(() => callback(song)).catchError((error, stackTrace) {
+        unawaited(() async {
+          try {
+            final shouldClose = await Future.sync(() => callback(song));
+            widget.onComplete(shouldClose ? song : null);
+          } catch (error, stackTrace) {
             FlutterError.reportError(
               FlutterErrorDetails(exception: error, stack: stackTrace),
             );
-            return false;
-          }),
-        );
+            widget.onComplete(null);
+          }
+        }());
+      } else {
+        widget.onComplete(song);
       }
       if (!mounted) {
         return;
@@ -419,6 +448,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
         });
         return;
       }
+      widget.onComplete(song);
       Navigator.of(context).pop(song);
     } catch (_) {
       if (mounted) {
@@ -435,7 +465,10 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
       compact: widget.compact,
       eligibleSongs: _eligibleSongs,
       onPick: _handlePick,
-      onCancel: () => Navigator.of(context).pop(),
+      onCancel: () {
+        widget.onComplete(null);
+        Navigator.of(context).pop();
+      },
       phase: _phase,
     );
 
