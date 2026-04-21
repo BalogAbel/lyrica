@@ -440,9 +440,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
             final shouldClose = await callback(song);
             onComplete(shouldClose ? song : null);
           } catch (error, stackTrace) {
-            FlutterError.reportError(
-              FlutterErrorDetails(exception: error, stack: stackTrace),
-            );
+            _reportPickerRouteError(error, stackTrace);
             onComplete(null);
           }
         }());
