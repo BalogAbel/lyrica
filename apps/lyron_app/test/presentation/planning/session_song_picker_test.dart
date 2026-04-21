@@ -288,7 +288,7 @@ void main() {
     );
   });
 
-  testWidgets('onPick exception keeps the picker open', (tester) async {
+  testWidgets('onPick exception closes the wide picker', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -331,11 +331,7 @@ void main() {
 
     expect(
       find.byKey(const ValueKey('session-song-picker-body')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('session-song-picker-search-field')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
