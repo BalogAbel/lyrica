@@ -419,7 +419,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
       if (callback != null) {
         unawaited(() async {
           try {
-            final shouldClose = await Future.sync(() => callback(song));
+            final shouldClose = await callback(song);
             onComplete(shouldClose ? song : null);
           } catch (error, stackTrace) {
             FlutterError.reportError(
