@@ -333,6 +333,7 @@ void main() {
       find.byKey(const ValueKey('session-song-picker-body')),
       findsNothing,
     );
+    expect(tester.takeException(), isA<StateError>());
   });
 
   testWidgets('enter activates a focused picker row', (tester) async {
