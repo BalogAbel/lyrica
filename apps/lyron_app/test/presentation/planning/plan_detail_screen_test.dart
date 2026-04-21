@@ -944,6 +944,96 @@ void main() {
     },
   );
 
+  testWidgets('closes the tablet picker after adding a song', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1024, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
+    await tester.pumpAndSettle();
+
+    expect(writeService.createdSessionItemDraft?.songId, 'song-1');
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('closes the tablet picker before the add finishes', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1024, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final addCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      addSongCompleter: addCompleter,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('session-song-picker-body')),
+      findsNothing,
+    );
+
+    addCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(writeService.createdSessionItemDraft?.songId, 'song-1');
+  });
+
   testWidgets('opens picker in loading state while songs resolve', (
     tester,
   ) async {

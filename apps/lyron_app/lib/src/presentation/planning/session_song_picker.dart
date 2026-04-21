@@ -388,6 +388,24 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
       _phase = SessionSongPickerPhase.addInProgress;
     });
 
+    if (!widget.compact) {
+      final callback = widget.onPick;
+      if (callback != null) {
+        unawaited(() async {
+          try {
+            await callback(song);
+          } catch (_) {
+            // Wide picker already closed. Flow handles refresh/error later.
+          }
+        }());
+      }
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop(song);
+      return;
+    }
+
     try {
       final callback = widget.onPick;
       final shouldClose = callback == null ? true : await callback(song);
