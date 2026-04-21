@@ -1,8 +1,8 @@
 # Song List And Plan Song Pick UX Discovery
 
-> Status: Draft
+> Status: Draft; partially superseded by docs/specs/2026-04-19-song-list-plan-song-pick-ux.md, docs/plans/2026-04-19-song-list-plan-song-pick-ux.md
 
-> This discovery artifact remains low-fidelity design input. Canonical shipped behavior for this slice lives in `docs/specs/2026-04-19-song-list-plan-song-pick-ux.md` and `docs/plans/2026-04-19-song-list-plan-song-pick-ux.md`.
+> This discovery artifact remains low-fidelity design input.
 
 ## Purpose
 
