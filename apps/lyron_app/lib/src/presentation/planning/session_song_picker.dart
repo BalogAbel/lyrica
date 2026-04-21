@@ -412,22 +412,24 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
       _phase = SessionSongPickerPhase.addInProgress;
     });
 
+    final onComplete = widget.onComplete;
+    final callback = widget.onPick;
+
     if (!widget.compact) {
-      final callback = widget.onPick;
       if (callback != null) {
         unawaited(() async {
           try {
             final shouldClose = await Future.sync(() => callback(song));
-            widget.onComplete(shouldClose ? song : null);
+            onComplete(shouldClose ? song : null);
           } catch (error, stackTrace) {
             FlutterError.reportError(
               FlutterErrorDetails(exception: error, stack: stackTrace),
             );
-            widget.onComplete(null);
+            onComplete(null);
           }
         }());
       } else {
-        widget.onComplete(song);
+        onComplete(song);
       }
       if (!mounted) {
         return;
@@ -437,7 +439,6 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
     }
 
     try {
-      final callback = widget.onPick;
       final shouldClose = callback == null ? true : await callback(song);
       if (!mounted) {
         return;
@@ -448,7 +449,7 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
         });
         return;
       }
-      widget.onComplete(song);
+      onComplete(song);
       Navigator.of(context).pop(song);
     } catch (_) {
       if (mounted) {
