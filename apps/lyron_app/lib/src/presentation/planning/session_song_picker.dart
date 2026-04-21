@@ -391,13 +391,14 @@ class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
     if (!widget.compact) {
       final callback = widget.onPick;
       if (callback != null) {
-        unawaited(() async {
-          try {
-            await callback(song);
-          } catch (_) {
-            // Wide picker already closed. Flow handles refresh/error later.
-          }
-        }());
+        unawaited(
+          Future.sync(() => callback(song)).catchError((error, stackTrace) {
+            FlutterError.reportError(
+              FlutterErrorDetails(exception: error, stack: stackTrace),
+            );
+            return false;
+          }),
+        );
       }
       if (!mounted) {
         return;
