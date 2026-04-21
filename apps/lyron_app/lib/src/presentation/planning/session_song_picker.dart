@@ -293,47 +293,66 @@ Future<SongSummary?> showSessionSongPicker({
 }) {
   final compact = MediaQuery.sizeOf(context).width < 600;
   final resultCompleter = Completer<SongSummary?>();
-  final route = _SessionSongPickerRoute(
-    eligibleSongs: eligibleSongs,
-    onPick: onPick,
+  final pickerFuture = _showSessionSongPickerRoute(
+    context: context,
     compact: compact,
-    onComplete: (result) {
-      if (!resultCompleter.isCompleted) {
-        resultCompleter.complete(result);
-      }
-    },
+    route: _SessionSongPickerRoute(
+      eligibleSongs: eligibleSongs,
+      onPick: onPick,
+      compact: compact,
+      onComplete: (result) => _completePickerResult(resultCompleter, result),
+    ),
   );
-  if (compact) {
-    unawaited(
-      showModalBottomSheet<SongSummary>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        useRootNavigator: true,
-        showDragHandle: false,
-        builder: (_) => route,
-      ).then((value) {
-        if (value == null && !resultCompleter.isCompleted) {
-          resultCompleter.complete(value);
-        }
-      }),
-    );
-    return resultCompleter.future;
-  }
-
   unawaited(
-    showDialog<SongSummary>(context: context, builder: (_) => route).then((
-      value,
-    ) {
-      if (value == null && !resultCompleter.isCompleted) {
-        resultCompleter.complete(value);
-      }
-    }),
+    pickerFuture
+        .then((value) {
+          if (value == null) {
+            _completePickerResult(resultCompleter, null);
+          }
+        })
+        .catchError((Object error, StackTrace stackTrace) {
+          _reportPickerRouteError(error, stackTrace);
+          _completePickerResult(resultCompleter, null);
+        }),
   );
   return resultCompleter.future;
 }
 
-class _SessionSongPickerRoute extends StatefulWidget {
+Future<SongSummary?> _showSessionSongPickerRoute({
+  required BuildContext context,
+  required bool compact,
+  required Widget route,
+}) {
+  if (compact) {
+    return showModalBottomSheet<SongSummary>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      useRootNavigator: true,
+      showDragHandle: false,
+      builder: (_) => route,
+    );
+  }
+
+  return showDialog<SongSummary>(context: context, builder: (_) => route);
+}
+
+void _completePickerResult(
+  Completer<SongSummary?> resultCompleter,
+  SongSummary? value,
+) {
+  if (!resultCompleter.isCompleted) {
+    resultCompleter.complete(value);
+  }
+}
+
+void _reportPickerRouteError(Object error, StackTrace stackTrace) {
+  FlutterError.reportError(
+    FlutterErrorDetails(exception: error, stack: stackTrace),
+  );
+}
+
+final class _SessionSongPickerRoute extends StatefulWidget {
   const _SessionSongPickerRoute({
     required this.eligibleSongs,
     required this.onPick,
@@ -354,7 +373,6 @@ class _SessionSongPickerRoute extends StatefulWidget {
 class _SessionSongPickerRouteState extends State<_SessionSongPickerRoute> {
   SessionSongPickerPhase _phase = SessionSongPickerPhase.loading;
   List<SongSummary> _eligibleSongs = const [];
-
   @override
   void initState() {
     super.initState();
