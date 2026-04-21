@@ -2,6 +2,8 @@
 
 > Status: Draft
 
+> This discovery artifact remains low-fidelity design input. Canonical shipped behavior for this slice lives in `docs/specs/2026-04-19-song-list-plan-song-pick-ux.md` and `docs/plans/2026-04-19-song-list-plan-song-pick-ux.md`.
+
 ## Purpose
 
 Capture the minimum UX decisions needed before implementation planning for two adjacent but different flows:
