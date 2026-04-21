@@ -1,6 +1,6 @@
 # Specification: Song Sync Convergence Hardening
 
-> Status: Proposed
+> Status: Implemented
 
 > This spec closes the high-priority deferred correctness gap recorded in [docs/deferred/2026-04-08-offline-song-crud.md](docs/deferred/2026-04-08-offline-song-crud.md). It extends the shipped song CRUD slice in [docs/specs/2026-04-05-song-crud.md](docs/specs/2026-04-05-song-crud.md) and preserves the backend-owned write boundary established by [docs/architecture/decisions/ADR-013-song-write-sync-boundary.md](docs/architecture/decisions/ADR-013-song-write-sync-boundary.md).
 
