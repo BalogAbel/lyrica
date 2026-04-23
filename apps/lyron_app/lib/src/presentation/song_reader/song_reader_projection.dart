@@ -18,17 +18,15 @@ class SongReaderProjection {
        transposeOffset = state.transposeOffset,
        capoOffset = state.capoOffset,
        effectiveTranspose = song.baseTranspose + state.transposeOffset,
-       effectiveCapo = song.baseCapo + state.capoOffset < 0
-           ? 0
-           : song.baseCapo + state.capoOffset,
+       effectiveCapo = SongReaderProjection.effectiveCapoValue(song, state),
        isCapoDirectiveVisible =
            state.instrumentDisplayMode ==
            SongReaderInstrumentDisplayMode.guitar,
        capoDirectiveText =
            state.instrumentDisplayMode ==
                    SongReaderInstrumentDisplayMode.guitar &&
-               song.baseCapo + state.capoOffset > 0
-           ? 'Capo ${song.baseCapo + state.capoOffset}'
+               SongReaderProjection.effectiveCapoValue(song, state) > 0
+           ? 'Capo ${SongReaderProjection.effectiveCapoValue(song, state)}'
            : null,
        sharedFontScale = state.sharedFontScale,
        sections = List.unmodifiable(

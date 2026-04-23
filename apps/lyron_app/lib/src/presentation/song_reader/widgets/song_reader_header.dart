@@ -40,6 +40,10 @@ class SongReaderHeader extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (projection.sourceKey != null) ...[
+              _MetadataChip(label: 'Key', value: projection.sourceKey!),
+              const SizedBox(height: 16),
+            ],
             if (hasRecoverableWarnings) ...[
               const SizedBox(height: 14),
               _WarningSurface(warningCount: warningCount),
@@ -71,8 +75,8 @@ class SongReaderHeader extends StatelessWidget {
                     onPressed: onTransposeDown,
                     child: const Text('-'),
                   ),
-                  _MetadataChip(
-                    label: 'Transpose',
+                  _ValueChip(
+                    key: const Key('song-reader-transpose-value'),
                     value: _signed(projection.effectiveTranspose),
                   ),
                   OutlinedButton(
@@ -97,8 +101,8 @@ class SongReaderHeader extends StatelessWidget {
                       onPressed: onCapoDown,
                       child: const Text('-'),
                     ),
-                    _MetadataChip(
-                      label: 'Capo',
+                    _ValueChip(
+                      key: const Key('song-reader-capo-value'),
                       value: '${projection.effectiveCapo}',
                     ),
                     OutlinedButton(
@@ -166,6 +170,28 @@ class _MetadataChip extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Text('$label: $value', style: theme.textTheme.labelLarge),
+      ),
+    );
+  }
+}
+
+class _ValueChip extends StatelessWidget {
+  const _ValueChip({super.key, required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(value, style: theme.textTheme.labelLarge),
       ),
     );
   }
