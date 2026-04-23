@@ -5,6 +5,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.da
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class SongReaderCompactSurface extends StatefulWidget {
   const SongReaderCompactSurface({
@@ -119,8 +120,8 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
       child: Semantics(
         button: true,
         label: widget.areControlsVisible
-            ? 'Hide reader controls'
-            : 'Show reader controls',
+            ? AppStrings.songReaderHideControlsSemantics
+            : AppStrings.songReaderShowControlsSemantics,
         onTap: widget.onSurfaceTap,
         child: Listener(
           onPointerDown: _handlePointerDown,

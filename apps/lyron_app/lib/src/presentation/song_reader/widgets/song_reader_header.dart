@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 const _sectionSpacing = 16.0;
 const _warningSpacing = 14.0;
@@ -57,7 +58,7 @@ class SongReaderHeader extends StatelessWidget {
             ],
             const SizedBox(height: _sectionSpacing),
             _ControlSection(
-              label: 'View',
+              label: AppStrings.songReaderViewSectionLabel,
               child: Wrap(
                 spacing: _controlSpacing,
                 runSpacing: _controlSpacing,
@@ -71,7 +72,7 @@ class SongReaderHeader extends StatelessWidget {
             ),
             const SizedBox(height: _sectionSpacing),
             _ControlSection(
-              label: 'Transpose',
+              label: AppStrings.songReaderTransposeSectionLabel,
               child: Wrap(
                 spacing: _controlSpacing,
                 runSpacing: _controlSpacing,
@@ -97,7 +98,7 @@ class SongReaderHeader extends StatelessWidget {
             if (showCapoControls) ...[
               const SizedBox(height: _sectionSpacing),
               _ControlSection(
-                label: 'Capo',
+                label: AppStrings.songReaderCapoSectionLabel,
                 child: Wrap(
                   spacing: _controlSpacing,
                   runSpacing: _controlSpacing,
@@ -123,7 +124,7 @@ class SongReaderHeader extends StatelessWidget {
             ],
             const SizedBox(height: _sectionSpacing),
             _ControlSection(
-              label: 'Scale',
+              label: AppStrings.songReaderScaleSectionLabel,
               child: Wrap(
                 spacing: _controlSpacing,
                 runSpacing: _controlSpacing,
@@ -148,9 +149,9 @@ class SongReaderHeader extends StatelessWidget {
   String _viewModeLabel(SongReaderViewMode viewMode) {
     switch (viewMode) {
       case SongReaderViewMode.chordsAndLyrics:
-        return 'Lyrics only';
+        return AppStrings.songReaderLyricsOnlyAction;
       case SongReaderViewMode.lyricsOnly:
-        return 'Chords + lyrics';
+        return AppStrings.songReaderChordsAndLyricsAction;
     }
   }
 

@@ -79,6 +79,17 @@ class AppStrings {
   static const songReaderTitle = 'Song reader';
   static const routeNotFoundMessage = 'The requested page was not found.';
   static const songReaderBackAction = 'Back to song list';
+  static const songReaderViewSectionLabel = 'View';
+  static const songReaderTransposeSectionLabel = 'Transpose';
+  static const songReaderCapoSectionLabel = 'Capo';
+  static const songReaderScaleSectionLabel = 'Scale';
+  static const songReaderLyricsOnlyAction = 'Lyrics only';
+  static const songReaderChordsAndLyricsAction = 'Chords + lyrics';
+  static const songReaderGuitarViewAction = 'Guitar View';
+  static const songReaderPianoViewAction = 'Piano View';
+  static const songReaderCapoDirectivePrefix = 'Capo ';
+  static const songReaderShowControlsSemantics = 'Show reader controls';
+  static const songReaderHideControlsSemantics = 'Hide reader controls';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
       'This session-scoped reader route is unavailable.';
