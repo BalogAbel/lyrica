@@ -38,43 +38,20 @@ class SongLineView extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: hasLyricSegments
-          ? Wrap(
-              spacing: spacing,
-              runSpacing: runSpacing,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                for (final segment in line.segments)
-                  _SongLineSegmentView(
-                    segment: segment,
-                    viewMode: viewMode,
-                    chordStyle: chordStyle,
-                    lyricStyle: lyricStyle,
-                  ),
-              ],
-            )
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (
-                    var index = 0;
-                    index < line.segments.length;
-                    index += 1
-                  ) ...[
-                    _SongLineSegmentView(
-                      segment: line.segments[index],
-                      viewMode: viewMode,
-                      chordStyle: chordStyle,
-                      lyricStyle: lyricStyle,
-                    ),
-                    if (index < line.segments.length - 1)
-                      const SizedBox(width: 22),
-                  ],
-                ],
-              ),
+      child: Wrap(
+        spacing: spacing,
+        runSpacing: runSpacing,
+        crossAxisAlignment: WrapCrossAlignment.end,
+        children: [
+          for (final segment in line.segments)
+            _SongLineSegmentView(
+              segment: segment,
+              viewMode: viewMode,
+              chordStyle: chordStyle,
+              lyricStyle: lyricStyle,
             ),
+        ],
+      ),
     );
   }
 }

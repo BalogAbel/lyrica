@@ -32,11 +32,15 @@ void main() {
       ),
     );
 
+    expect(find.text('Key: G'), findsOneWidget);
     expect(find.text('Lyrics only'), findsOneWidget);
-    expect(find.text('Transpose: +2'), findsOneWidget);
+    expect(
+      find.byKey(const Key('song-reader-transpose-value')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('song-reader-transpose-down')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
-    expect(find.text('Capo: 2'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
     expect(find.text('A-'), findsOneWidget);
@@ -68,7 +72,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Capo: 0'), findsOneWidget);
+    expect(find.text('Key: G'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
     expect(
       tester

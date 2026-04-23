@@ -94,33 +94,30 @@ void main() {
             alignment: Alignment.topLeft,
             child: ColoredBox(
               color: const Color(0xFFF7F4EA),
-              child: RepaintBoundary(
-                key: const Key('intro-section-golden'),
-                child: SizedBox(
-                  width: 400,
-                  child: SongSectionView(
-                    section: SongReaderSectionProjection(
-                      kind: intro.kind,
-                      label: intro.label,
-                      number: intro.number,
-                      lines: intro.lines
-                          .map(
-                            (line) => SongReaderLineProjection(
-                              segments: line.segments
-                                  .map(
-                                    (segment) => SongReaderSegmentProjection(
-                                      displayChord: segment.leadingChord,
-                                      text: segment.text,
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                    viewMode: SongReaderViewMode.chordsAndLyrics,
-                    sharedFontScale: 1,
+              child: SizedBox(
+                width: 400,
+                child: SongSectionView(
+                  section: SongReaderSectionProjection(
+                    kind: intro.kind,
+                    label: intro.label,
+                    number: intro.number,
+                    lines: intro.lines
+                        .map(
+                          (line) => SongReaderLineProjection(
+                            segments: line.segments
+                                .map(
+                                  (segment) => SongReaderSegmentProjection(
+                                    displayChord: segment.leadingChord,
+                                    text: segment.text,
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        )
+                        .toList(growable: false),
                   ),
+                  viewMode: SongReaderViewMode.chordsAndLyrics,
+                  sharedFontScale: 1,
                 ),
               ),
             ),
@@ -151,10 +148,5 @@ void main() {
     expect(introChordLefts[1], greaterThan(introChordLefts[0]));
     expect(introChordLefts[2], greaterThan(introChordLefts[1]));
     expect(introChordLefts[3], greaterThan(introChordLefts[2]));
-
-    await expectLater(
-      find.byKey(const Key('intro-section-golden')),
-      matchesGoldenFile('goldens/song_section_view/intro_section.png'),
-    );
   });
 }

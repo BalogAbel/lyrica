@@ -598,7 +598,7 @@ void main() {
 
     expect(find.byKey(const Key('song-reader-capo-up')), findsNothing);
     expect(find.byKey(const Key('song-reader-capo-down')), findsNothing);
-    expect(find.text('Capo: 0'), findsNothing);
+    expect(find.byKey(const Key('song-reader-capo-value')), findsNothing);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
@@ -607,7 +607,8 @@ void main() {
 
     expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
-    expect(find.text('Capo: 0'), findsOneWidget);
+    expect(find.text('Key: G'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
     expect(
       tester
           .widget<OutlinedButton>(
