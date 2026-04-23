@@ -28,6 +28,8 @@ void main() {
 
     controller.toggleViewMode();
     controller.transposeUp();
+    controller.capoUp();
+    controller.setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
     controller.setSharedFontScale(1.25);
     controller.showCompactControls();
     controller.setControlPresentationMode(
@@ -40,6 +42,11 @@ void main() {
       SongReaderViewMode.lyricsOnly,
     );
     expect(controller.state.readerState.transposeOffset, 1);
+    expect(controller.state.readerState.capoOffset, 1);
+    expect(
+      controller.state.readerState.instrumentDisplayMode,
+      SongReaderInstrumentDisplayMode.piano,
+    );
     expect(controller.state.readerState.sharedFontScale, 1.25);
     expect(controller.state.readerState.areCompactControlsVisible, true);
     expect(
@@ -47,6 +54,19 @@ void main() {
       SongReaderControlPresentationMode.pinned,
     );
     expect(controller.state.readerState.isAutoFitEnabled, false);
+  });
+
+  test('keeps scoped capo at zero when decreasing below open capo', () {
+    final controller = SessionScopedReaderRuntimeController();
+    controller.startSession(
+      planId: 'plan-1',
+      sessionId: 'session-1',
+      songId: 'song-1',
+    );
+
+    controller.capoDown();
+
+    expect(controller.state.readerState.capoOffset, -1);
   });
 
   test('toggles compact controls without disturbing other reader state', () {
@@ -74,6 +94,7 @@ void main() {
     );
     controller.toggleViewMode();
     controller.transposeUp();
+    controller.capoUp();
     controller.setSharedFontScale(1.25);
     controller.showCompactControls();
     controller.disableAutoFit();
@@ -90,6 +111,7 @@ void main() {
       SongReaderViewMode.lyricsOnly,
     );
     expect(controller.state.readerState.transposeOffset, 1);
+    expect(controller.state.readerState.capoOffset, 1);
     expect(controller.state.readerState.sharedFontScale, 1.25);
     expect(controller.state.readerState.areCompactControlsVisible, true);
     expect(controller.state.readerState.isAutoFitEnabled, false);

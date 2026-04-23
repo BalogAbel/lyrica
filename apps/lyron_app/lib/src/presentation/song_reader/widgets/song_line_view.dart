@@ -27,22 +27,54 @@ class SongLineView extends StatelessWidget {
       height: 1.25,
     );
 
+    final hasLyricSegments = line.segments.any(
+      (segment) => segment.text.trim().isNotEmpty,
+    );
+    if (!hasLyricSegments && viewMode == SongReaderViewMode.lyricsOnly) {
+      return const SizedBox.shrink();
+    }
+    final spacing = hasLyricSegments ? 0.0 : 22.0;
+    final runSpacing = hasLyricSegments ? 10.0 : 0.0;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: Wrap(
-        spacing: 0,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.end,
-        children: [
-          for (final segment in line.segments)
-            _SongLineSegmentView(
-              segment: segment,
-              viewMode: viewMode,
-              chordStyle: chordStyle,
-              lyricStyle: lyricStyle,
+      child: hasLyricSegments
+          ? Wrap(
+              spacing: spacing,
+              runSpacing: runSpacing,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              children: [
+                for (final segment in line.segments)
+                  _SongLineSegmentView(
+                    segment: segment,
+                    viewMode: viewMode,
+                    chordStyle: chordStyle,
+                    lyricStyle: lyricStyle,
+                  ),
+              ],
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (
+                    var index = 0;
+                    index < line.segments.length;
+                    index += 1
+                  ) ...[
+                    _SongLineSegmentView(
+                      segment: line.segments[index],
+                      viewMode: viewMode,
+                      chordStyle: chordStyle,
+                      lyricStyle: lyricStyle,
+                    ),
+                    if (index < line.segments.length - 1)
+                      const SizedBox(width: 22),
+                  ],
+                ],
+              ),
             ),
-        ],
-      ),
     );
   }
 }
@@ -65,13 +97,13 @@ class _SongLineSegmentView extends StatelessWidget {
     final showChord =
         viewMode == SongReaderViewMode.chordsAndLyrics &&
         segment.displayChord != null;
-    final showLyric = segment.text.isNotEmpty;
+    final showLyric = segment.text.trim().isNotEmpty;
 
     if (!showChord && !showLyric) {
       return const SizedBox.shrink();
     }
 
-    return Column(
+    final child = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -82,5 +114,7 @@ class _SongLineSegmentView extends StatelessWidget {
         if (showLyric) Text(segment.text, style: lyricStyle),
       ],
     );
+
+    return child;
   }
 }

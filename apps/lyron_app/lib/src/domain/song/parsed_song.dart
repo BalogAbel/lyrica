@@ -11,6 +11,8 @@ class ParsedSong {
     required this.title,
     this.subtitle,
     this.sourceKey,
+    this.baseTranspose = 0,
+    this.baseCapo = 0,
     required List<SongSection> sections,
     required List<ParseDiagnostic> diagnostics,
   }) : sections = List.unmodifiable(sections),
@@ -19,6 +21,8 @@ class ParsedSong {
   final String title;
   final String? subtitle;
   final String? sourceKey;
+  final int baseTranspose;
+  final int baseCapo;
   final List<SongSection> sections;
   final List<ParseDiagnostic> diagnostics;
 
@@ -28,6 +32,8 @@ class ParsedSong {
         other.title == title &&
         other.subtitle == subtitle &&
         other.sourceKey == sourceKey &&
+        other.baseTranspose == baseTranspose &&
+        other.baseCapo == baseCapo &&
         _listEquals(other.sections, sections) &&
         _listEquals(other.diagnostics, diagnostics);
   }
@@ -37,6 +43,8 @@ class ParsedSong {
     title,
     subtitle,
     sourceKey,
+    baseTranspose,
+    baseCapo,
     Object.hashAll(sections),
     Object.hashAll(diagnostics),
   );

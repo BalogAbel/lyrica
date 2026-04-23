@@ -11,6 +11,8 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
     required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
+    this.onCapoDown,
+    this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
   });
@@ -21,6 +23,8 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
 
@@ -33,6 +37,8 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
       onToggleViewMode: onToggleViewMode,
       onTransposeDown: onTransposeDown,
       onTransposeUp: onTransposeUp,
+      onCapoDown: onCapoDown,
+      onCapoUp: onCapoUp,
       onDecreaseFontScale: onDecreaseFontScale,
       onIncreaseFontScale: onIncreaseFontScale,
     );

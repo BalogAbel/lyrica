@@ -12,9 +12,24 @@ class SongReaderProjection {
   }) : title = song.title,
        subtitle = song.subtitle,
        sourceKey = song.sourceKey,
+       instrumentDisplayMode = state.instrumentDisplayMode,
        diagnostics = List.unmodifiable(song.diagnostics),
        viewMode = state.viewMode,
        transposeOffset = state.transposeOffset,
+       capoOffset = state.capoOffset,
+       effectiveTranspose = song.baseTranspose + state.transposeOffset,
+       effectiveCapo = song.baseCapo + state.capoOffset < 0
+           ? 0
+           : song.baseCapo + state.capoOffset,
+       isCapoDirectiveVisible =
+           state.instrumentDisplayMode ==
+           SongReaderInstrumentDisplayMode.guitar,
+       capoDirectiveText =
+           state.instrumentDisplayMode ==
+                   SongReaderInstrumentDisplayMode.guitar &&
+               song.baseCapo + state.capoOffset > 0
+           ? 'Capo ${song.baseCapo + state.capoOffset}'
+           : null,
        sharedFontScale = state.sharedFontScale,
        sections = List.unmodifiable(
          song.sections
@@ -34,6 +49,7 @@ class SongReaderProjection {
                                      displayChord: _displayChord(
                                        segment.leadingChord,
                                        state,
+                                       song,
                                        transposeChord,
                                      ),
                                      text: segment.text,
@@ -53,15 +69,22 @@ class SongReaderProjection {
   final String title;
   final String? subtitle;
   final String? sourceKey;
+  final SongReaderInstrumentDisplayMode instrumentDisplayMode;
   final List<ParseDiagnostic> diagnostics;
   final SongReaderViewMode viewMode;
   final int transposeOffset;
+  final int capoOffset;
+  final int effectiveTranspose;
+  final int effectiveCapo;
+  final bool isCapoDirectiveVisible;
+  final String? capoDirectiveText;
   final double sharedFontScale;
   final List<SongReaderSectionProjection> sections;
 
   static String? _displayChord(
     String? leadingChord,
     SongReaderState state,
+    ParsedSong song,
     SongChordTransposer transposeChord,
   ) {
     if (state.viewMode == SongReaderViewMode.lyricsOnly ||
@@ -70,10 +93,23 @@ class SongReaderProjection {
     }
 
     try {
-      return transposeChord(leadingChord, state.transposeOffset);
+      final soundingChord = transposeChord(
+        leadingChord,
+        song.baseTranspose + state.transposeOffset,
+      );
+      if (state.instrumentDisplayMode ==
+          SongReaderInstrumentDisplayMode.piano) {
+        return soundingChord;
+      }
+      return transposeChord(soundingChord, -effectiveCapoValue(song, state));
     } on FormatException {
       return leadingChord;
     }
+  }
+
+  static int effectiveCapoValue(ParsedSong song, SongReaderState state) {
+    final capo = song.baseCapo + state.capoOffset;
+    return capo < 0 ? 0 : capo;
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
@@ -19,6 +20,8 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
+    this.onCapoDown,
+    this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
     required this.showBottomContextBar,
@@ -44,6 +47,8 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
 
@@ -98,58 +103,84 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: _handlePointerDown,
-      onPointerMove: _handlePointerMove,
-      onPointerUp: (event) => _handlePointerEnd(event.pointer),
-      onPointerCancel: (event) => _handlePointerEnd(event.pointer),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
-        onDoubleTap: widget.onSurfaceDoubleTap,
-        child: Stack(
-          children: [
-            Column(
+    return FocusableActionDetector(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (intent) {
+            widget.onSurfaceTap();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: widget.areControlsVisible
+            ? 'Hide reader controls'
+            : 'Show reader controls',
+        onTap: widget.onSurfaceTap,
+        child: Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerMove: _handlePointerMove,
+          onPointerUp: (event) => _handlePointerEnd(event.pointer),
+          onPointerCancel: (event) => _handlePointerEnd(event.pointer),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
+            onDoubleTap: widget.onSurfaceDoubleTap,
+            child: Stack(
               children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        child: SongReaderSectionGrid(
-                          sections: widget.projection.sections,
-                          viewMode: widget.projection.viewMode,
-                          sharedFontScale: widget.projection.sharedFontScale,
-                          columnCount: widget.contentColumnCount,
-                          availableHeight: constraints.maxHeight,
-                        ),
-                      );
-                    },
-                  ),
+                Column(
+                  children: [
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            child: SongReaderSectionGrid(
+                              leadingDirectiveText:
+                                  widget.projection.capoDirectiveText,
+                              sections: widget.projection.sections,
+                              viewMode: widget.projection.viewMode,
+                              sharedFontScale:
+                                  widget.projection.sharedFontScale,
+                              columnCount: widget.contentColumnCount,
+                              availableHeight: constraints.maxHeight,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (widget.showBottomContextBar) ...[
+                      const SizedBox(height: 16),
+                      SongReaderBottomContextBar(
+                        currentTitle: widget.currentTitle,
+                        previousTitle: widget.previousTitle,
+                        nextTitle: widget.nextTitle,
+                        onPreviousTap: widget.onPreviousTap,
+                        onNextTap: widget.onNextTap,
+                      ),
+                    ],
+                  ],
                 ),
-                if (widget.showBottomContextBar) ...[
-                  const SizedBox(height: 16),
-                  SongReaderBottomContextBar(
-                    currentTitle: widget.currentTitle,
-                    previousTitle: widget.previousTitle,
-                    nextTitle: widget.nextTitle,
-                    onPreviousTap: widget.onPreviousTap,
-                    onNextTap: widget.onNextTap,
-                  ),
-                ],
+                SongReaderCompactOverlay(
+                  isVisible: widget.areControlsVisible,
+                  projection: widget.projection,
+                  hasRecoverableWarnings: widget.hasRecoverableWarnings,
+                  warningCount: widget.warningCount,
+                  onToggleViewMode: widget.onToggleViewMode,
+                  onTransposeDown: widget.onTransposeDown,
+                  onTransposeUp: widget.onTransposeUp,
+                  onCapoDown: widget.onCapoDown,
+                  onCapoUp: widget.onCapoUp,
+                  onDecreaseFontScale: widget.onDecreaseFontScale,
+                  onIncreaseFontScale: widget.onIncreaseFontScale,
+                ),
               ],
             ),
-            SongReaderCompactOverlay(
-              isVisible: widget.areControlsVisible,
-              projection: widget.projection,
-              hasRecoverableWarnings: widget.hasRecoverableWarnings,
-              warningCount: widget.warningCount,
-              onToggleViewMode: widget.onToggleViewMode,
-              onTransposeDown: widget.onTransposeDown,
-              onTransposeUp: widget.onTransposeUp,
-              onDecreaseFontScale: widget.onDecreaseFontScale,
-              onIncreaseFontScale: widget.onIncreaseFontScale,
-            ),
-          ],
+          ),
         ),
       ),
     );

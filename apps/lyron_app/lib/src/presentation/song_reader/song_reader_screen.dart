@@ -20,12 +20,13 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_run
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-enum _SongReaderOverflowAction { edit, delete }
+enum _SongReaderOverflowAction { guitarView, pianoView, edit, delete }
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -127,6 +128,45 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     }
 
     _updateState((controller) => controller.transposeUp());
+    _bumpCompactOverlayInactivityIfVisible();
+  }
+
+  void _capoDown() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .capoDown();
+      _bumpCompactOverlayInactivityIfVisible();
+      return;
+    }
+
+    _updateState((controller) => controller.capoDown());
+    _bumpCompactOverlayInactivityIfVisible();
+  }
+
+  void _capoUp() {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .capoUp();
+      _bumpCompactOverlayInactivityIfVisible();
+      return;
+    }
+
+    _updateState((controller) => controller.capoUp());
+    _bumpCompactOverlayInactivityIfVisible();
+  }
+
+  void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
+    if (_isScopedMode) {
+      ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .setInstrumentDisplayMode(mode);
+      _bumpCompactOverlayInactivityIfVisible();
+      return;
+    }
+
+    _updateState((controller) => controller.setInstrumentDisplayMode(mode));
     _bumpCompactOverlayInactivityIfVisible();
   }
 
@@ -562,13 +602,34 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
               icon: const Icon(Icons.more_horiz),
               onSelected: (action) {
                 switch (action) {
+                  case _SongReaderOverflowAction.guitarView:
+                    _setInstrumentDisplayMode(
+                      SongReaderInstrumentDisplayMode.guitar,
+                    );
+                    break;
+                  case _SongReaderOverflowAction.pianoView:
+                    _setInstrumentDisplayMode(
+                      SongReaderInstrumentDisplayMode.piano,
+                    );
+                    break;
                   case _SongReaderOverflowAction.edit:
                     unawaited(_editSong(context, readerResult));
+                    break;
                   case _SongReaderOverflowAction.delete:
                     unawaited(_deleteSong(context));
+                    break;
                 }
               },
               itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.guitarView,
+                  child: Text('Guitar View'),
+                ),
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.pianoView,
+                  child: Text('Piano View'),
+                ),
+                const PopupMenuDivider(),
                 PopupMenuItem(
                   value: _SongReaderOverflowAction.edit,
                   child: Text(AppStrings.songEditAction),
@@ -701,6 +762,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
+                                onCapoDown: projection.effectiveCapo > 0
+                                    ? _capoDown
+                                    : null,
+                                onCapoUp: _capoUp,
                                 onDecreaseFontScale: () =>
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
@@ -736,6 +801,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
+                                onCapoDown: projection.effectiveCapo > 0
+                                    ? _capoDown
+                                    : null,
+                                onCapoUp: _capoUp,
                                 onDecreaseFontScale: () =>
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>

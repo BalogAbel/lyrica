@@ -8,6 +8,11 @@ void main() {
 
     expect(controller.state.viewMode, SongReaderViewMode.chordsAndLyrics);
     expect(controller.state.transposeOffset, 0);
+    expect(controller.state.capoOffset, 0);
+    expect(
+      controller.state.instrumentDisplayMode,
+      SongReaderInstrumentDisplayMode.guitar,
+    );
     expect(controller.state.sharedFontScale, 1.0);
     expect(controller.state.areCompactControlsVisible, false);
     expect(
@@ -37,6 +42,35 @@ void main() {
     controller.transposeDown();
 
     expect(controller.state.transposeOffset, 1);
+  });
+
+  test('adjusts capo up and down', () {
+    final controller = SongReaderController();
+
+    controller.capoUp();
+    controller.capoUp();
+    controller.capoDown();
+
+    expect(controller.state.capoOffset, 1);
+  });
+
+  test('keeps capo at zero when decreasing below open capo', () {
+    final controller = SongReaderController();
+
+    controller.capoDown();
+
+    expect(controller.state.capoOffset, -1);
+  });
+
+  test('switches instrument display mode', () {
+    final controller = SongReaderController();
+
+    controller.setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+
+    expect(
+      controller.state.instrumentDisplayMode,
+      SongReaderInstrumentDisplayMode.piano,
+    );
   });
 
   test('updates shared font scale', () {
@@ -108,6 +142,8 @@ void main() {
 
   test('preserves UI state through copyWith', () {
     final state = SongReaderState(
+      instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
+      capoOffset: 2,
       areCompactControlsVisible: true,
       controlPresentationMode: SongReaderControlPresentationMode.pinned,
       isAutoFitEnabled: false,
@@ -116,6 +152,8 @@ void main() {
     expect(
       state.copyWith(sharedFontScale: double.nan),
       SongReaderState(
+        instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
+        capoOffset: 2,
         areCompactControlsVisible: true,
         controlPresentationMode: SongReaderControlPresentationMode.pinned,
         isAutoFitEnabled: false,

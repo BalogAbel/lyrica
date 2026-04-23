@@ -11,6 +11,9 @@ class ChordproParser {
     var title = '';
     String? subtitle;
     String? sourceKey;
+    var baseTranspose = 0;
+    var baseCapo = 0;
+    var hasSeenSongContent = false;
     final sections = <_SectionBuilder>[];
     final diagnostics = <ParseDiagnostic>[];
     _SectionBuilder? currentSection;
@@ -23,6 +26,7 @@ class ChordproParser {
           );
         }
       } else if (line.kind == ChordproLineKind.lyric) {
+        hasSeenSongContent = true;
         currentSection = _ensureSection(
           sections: sections,
           currentSection: currentSection,
@@ -37,7 +41,60 @@ class ChordproParser {
         } else if (directiveName == 'subtitle') {
           subtitle = line.directiveValue;
         } else if (directiveName == 'key') {
-          sourceKey = line.directiveValue;
+          if (!hasSeenSongContent) {
+            final normalizedKey = line.directiveValue?.trim();
+            if (normalizedKey == null || normalizedKey.isEmpty) {
+              diagnostics.add(
+                ParseDiagnostic(
+                  severity: ParseDiagnosticSeverity.warning,
+                  message: 'Invalid key value: ${line.directiveValue ?? ''}',
+                  line: ParseDiagnosticLineMetadata(
+                    lineNumber: line.lineNumber,
+                    columnNumber: 1,
+                  ),
+                  context: 'key:${line.directiveValue ?? ''}',
+                ),
+              );
+            } else {
+              sourceKey = normalizedKey;
+            }
+          }
+        } else if (directiveName == 'capo') {
+          if (!hasSeenSongContent) {
+            final parsedCapo = _parseDirectiveInteger(
+              directiveValue: line.directiveValue,
+              directiveName: directiveName,
+              lineNumber: line.lineNumber,
+              diagnostics: diagnostics,
+            );
+            if (parsedCapo != null && parsedCapo >= 0) {
+              baseCapo = parsedCapo;
+            } else if (parsedCapo != null) {
+              diagnostics.add(
+                ParseDiagnostic(
+                  severity: ParseDiagnosticSeverity.warning,
+                  message: 'Invalid capo value: $parsedCapo',
+                  line: ParseDiagnosticLineMetadata(
+                    lineNumber: line.lineNumber,
+                    columnNumber: 1,
+                  ),
+                  context: 'capo:$parsedCapo',
+                ),
+              );
+            }
+          }
+        } else if (directiveName == 'transpose') {
+          if (!hasSeenSongContent) {
+            final parsedTranspose = _parseDirectiveInteger(
+              directiveValue: line.directiveValue,
+              directiveName: directiveName,
+              lineNumber: line.lineNumber,
+              diagnostics: diagnostics,
+            );
+            if (parsedTranspose != null) {
+              baseTranspose = parsedTranspose;
+            }
+          }
         } else if (directiveName == 'comment') {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);
@@ -57,8 +114,10 @@ class ChordproParser {
           } else if (!_isSameSection(currentSection, parsedSection)) {
             sections.add(parsedSection);
             currentSection = parsedSection;
+            hasSeenSongContent = true;
           }
         } else if (directiveName == 'start_of_chorus') {
+          hasSeenSongContent = true;
           if (currentSection?.kind != SongSectionKind.chorus) {
             final chorusSection = _SectionBuilder(
               kind: SongSectionKind.chorus,
@@ -68,6 +127,7 @@ class ChordproParser {
             currentSection = chorusSection;
           }
         } else if (directiveName == 'end_of_chorus') {
+          hasSeenSongContent = true;
           if (currentSection?.kind == SongSectionKind.chorus) {
             currentSection = null;
           }
@@ -91,6 +151,8 @@ class ChordproParser {
       title: title,
       subtitle: subtitle,
       sourceKey: sourceKey,
+      baseTranspose: baseTranspose,
+      baseCapo: baseCapo,
       sections: sections
           .map((section) => section.build())
           .toList(growable: false),
@@ -214,6 +276,46 @@ class ChordproParser {
     }
 
     return segments;
+  }
+
+  int? _parseDirectiveInteger({
+    required String? directiveValue,
+    required String directiveName,
+    required int lineNumber,
+    required List<ParseDiagnostic> diagnostics,
+  }) {
+    if (directiveValue == null) {
+      diagnostics.add(
+        ParseDiagnostic(
+          severity: ParseDiagnosticSeverity.warning,
+          message: 'Invalid $directiveName value: ',
+          line: ParseDiagnosticLineMetadata(
+            lineNumber: lineNumber,
+            columnNumber: 1,
+          ),
+          context: '$directiveName:',
+        ),
+      );
+      return null;
+    }
+
+    final parsed = int.tryParse(directiveValue.trim());
+    if (parsed == null) {
+      diagnostics.add(
+        ParseDiagnostic(
+          severity: ParseDiagnosticSeverity.warning,
+          message: 'Invalid $directiveName value: $directiveValue',
+          line: ParseDiagnosticLineMetadata(
+            lineNumber: lineNumber,
+            columnNumber: 1,
+          ),
+          context: '$directiveName:$directiveValue',
+        ),
+      );
+      return null;
+    }
+
+    return parsed;
   }
 }
 

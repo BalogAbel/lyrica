@@ -2,10 +2,14 @@ enum SongReaderViewMode { chordsAndLyrics, lyricsOnly }
 
 enum SongReaderControlPresentationMode { overlay, pinned }
 
+enum SongReaderInstrumentDisplayMode { guitar, piano }
+
 class SongReaderState {
   SongReaderState({
     this.viewMode = SongReaderViewMode.chordsAndLyrics,
     this.transposeOffset = 0,
+    this.capoOffset = 0,
+    this.instrumentDisplayMode = SongReaderInstrumentDisplayMode.guitar,
     double sharedFontScale = 1.0,
     this.areCompactControlsVisible = false,
     this.controlPresentationMode = SongReaderControlPresentationMode.overlay,
@@ -14,6 +18,8 @@ class SongReaderState {
 
   final SongReaderViewMode viewMode;
   final int transposeOffset;
+  final int capoOffset;
+  final SongReaderInstrumentDisplayMode instrumentDisplayMode;
   final double sharedFontScale;
   final bool areCompactControlsVisible;
   final SongReaderControlPresentationMode controlPresentationMode;
@@ -22,6 +28,8 @@ class SongReaderState {
   SongReaderState copyWith({
     SongReaderViewMode? viewMode,
     int? transposeOffset,
+    int? capoOffset,
+    SongReaderInstrumentDisplayMode? instrumentDisplayMode,
     double? sharedFontScale,
     bool? areCompactControlsVisible,
     SongReaderControlPresentationMode? controlPresentationMode,
@@ -30,6 +38,9 @@ class SongReaderState {
     return SongReaderState(
       viewMode: viewMode ?? this.viewMode,
       transposeOffset: transposeOffset ?? this.transposeOffset,
+      capoOffset: capoOffset ?? this.capoOffset,
+      instrumentDisplayMode:
+          instrumentDisplayMode ?? this.instrumentDisplayMode,
       sharedFontScale: sharedFontScale ?? this.sharedFontScale,
       areCompactControlsVisible:
           areCompactControlsVisible ?? this.areCompactControlsVisible,
@@ -44,6 +55,8 @@ class SongReaderState {
     return other is SongReaderState &&
         other.viewMode == viewMode &&
         other.transposeOffset == transposeOffset &&
+        other.capoOffset == capoOffset &&
+        other.instrumentDisplayMode == instrumentDisplayMode &&
         other.sharedFontScale == sharedFontScale &&
         other.areCompactControlsVisible == areCompactControlsVisible &&
         other.controlPresentationMode == controlPresentationMode &&
@@ -54,6 +67,8 @@ class SongReaderState {
   int get hashCode => Object.hash(
     viewMode,
     transposeOffset,
+    capoOffset,
+    instrumentDisplayMode,
     sharedFontScale,
     areCompactControlsVisible,
     controlPresentationMode,

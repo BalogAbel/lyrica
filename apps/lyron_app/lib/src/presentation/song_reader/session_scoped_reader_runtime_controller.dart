@@ -54,6 +54,22 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
     );
   }
 
+  void capoUp() {
+    _updateReaderState(
+      (state) => state.copyWith(capoOffset: state.capoOffset + 1),
+    );
+  }
+
+  void capoDown() {
+    _updateReaderState(
+      (state) => state.copyWith(capoOffset: state.capoOffset - 1),
+    );
+  }
+
+  void setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
+    _updateReaderState((state) => state.copyWith(instrumentDisplayMode: mode));
+  }
+
   void setSharedFontScale(double scale) {
     _updateReaderState((state) => state.copyWith(sharedFontScale: scale));
   }

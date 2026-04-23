@@ -321,4 +321,48 @@ void main() {
     expect((dX - aX).abs(), lessThan(1));
     expect(eX, greaterThan(aX));
   });
+
+  testWidgets('counts the injected capo directive in column height', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 760,
+            child: SongReaderSectionGrid(
+              leadingDirectiveText: 'Capo 2',
+              sections: [
+                SongReaderSectionProjection(
+                  kind: SongSectionKind.verse,
+                  label: 'Verse',
+                  number: 1,
+                  lines: const [],
+                ),
+                SongReaderSectionProjection(
+                  kind: SongSectionKind.chorus,
+                  label: 'Chorus',
+                  number: 1,
+                  lines: const [],
+                ),
+              ],
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              sharedFontScale: 1,
+              columnCount: 2,
+              availableHeight: 70,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('song-reader-section-grid-columns-2')),
+      findsNothing,
+    );
+  });
 }

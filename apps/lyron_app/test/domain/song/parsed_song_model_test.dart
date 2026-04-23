@@ -24,6 +24,8 @@ void main() {
       title: 'A forrásnál',
       subtitle: 'Ha szólsz megdobban a szív',
       sourceKey: 'E',
+      baseTranspose: -2,
+      baseCapo: 3,
       sections: sections,
       diagnostics: diagnostics,
     );
@@ -31,6 +33,8 @@ void main() {
     expect(song.title, 'A forrásnál');
     expect(song.subtitle, 'Ha szólsz megdobban a szív');
     expect(song.sourceKey, 'E');
+    expect(song.baseTranspose, -2);
+    expect(song.baseCapo, 3);
     expect(song.sections.first.kind, SongSectionKind.verse);
     expect(song.sections.first.label, 'Verse');
     expect(song.sections.first.number, isNull);
@@ -195,6 +199,8 @@ void main() {
       title: 'Amazing Grace',
       subtitle: 'Verse 1',
       sourceKey: 'G',
+      baseTranspose: 2,
+      baseCapo: 1,
       sections: [songSection],
       diagnostics: [parseDiagnostic],
     );
@@ -202,6 +208,8 @@ void main() {
       title: 'Amazing Grace',
       subtitle: 'Verse 1',
       sourceKey: 'G',
+      baseTranspose: 2,
+      baseCapo: 1,
       sections: [matchingSongSection],
       diagnostics: [matchingParseDiagnostic],
     );
@@ -209,6 +217,8 @@ void main() {
       title: 'Amazing Grace',
       subtitle: 'Verse 1',
       sourceKey: 'A',
+      baseTranspose: 2,
+      baseCapo: 1,
       sections: [matchingSongSection],
       diagnostics: [matchingParseDiagnostic],
     );
@@ -216,5 +226,16 @@ void main() {
     expect(parsedSong, matchingParsedSong);
     expect(parsedSong.hashCode, matchingParsedSong.hashCode);
     expect(parsedSong, isNot(differentParsedSong));
+  });
+
+  test('parsed song defaults capo and transpose metadata to zero', () {
+    final song = ParsedSong(
+      title: 'Default metadata song',
+      sections: const [],
+      diagnostics: const [],
+    );
+
+    expect(song.baseTranspose, 0);
+    expect(song.baseCapo, 0);
   });
 }

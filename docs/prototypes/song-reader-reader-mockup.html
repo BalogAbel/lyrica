@@ -67,9 +67,14 @@
               <button type="button">Lyrics Only</button>
             </div>
             <div class="overlay-group">
-              <button type="button">-1</button>
-              <span class="chip">Transpose: +2</span>
-              <button type="button">+1</button>
+              <button id="overlay-transpose-down" type="button">-</button>
+              <span class="chip" id="overlay-transpose-chip">Transpose: +2</span>
+              <button id="overlay-transpose-up" type="button">+</button>
+            </div>
+            <div class="overlay-group" id="overlay-capo-group">
+              <button id="overlay-capo-down" type="button">-</button>
+              <span class="chip" id="overlay-capo-chip">Capo: 2</span>
+              <button id="overlay-capo-up" type="button">+</button>
             </div>
             <div class="overlay-group">
               <span class="chip" id="fit-chip">Auto Fit: Off</span>
@@ -84,8 +89,22 @@
             tabindex="0"
             aria-label="Song reader prototype surface"
           >
+            <div class="reader-menu">
+              <details class="overflow-menu">
+                <summary aria-label="Reader options">...</summary>
+                <div class="overflow-menu-card">
+                  <p class="menu-label">Instrument Display</p>
+                  <button class="menu-item active" id="instrument-guitar" type="button">
+                    Guitar View
+                  </button>
+                  <button class="menu-item" id="instrument-piano" type="button">
+                    Piano View
+                  </button>
+                </div>
+              </details>
+            </div>
             <header class="song-header">
-              <p class="song-kicker">Key of G</p>
+              <p class="song-kicker" id="song-kicker">Player Key: G</p>
               <h2>Mily Nagy Isten</h2>
               <p class="song-meta">
                 Tap to reveal controls. Double tap to auto fit. Two-finger touch
@@ -93,29 +112,31 @@
               </p>
             </header>
 
+            <p class="directive-line" id="capo-directive">Capo 2</p>
+
             <div class="song-body">
               <section class="song-column">
                 <div class="song-section">
                   <p class="section-label">Verse 1</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D/F#</p>
+                  <p class="line chord" data-chords="G,D/F#"></p>
                   <p class="line lyric">A hegyek fölött felhangzik szavad</p>
-                  <p class="line chord">Em&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;C</p>
+                  <p class="line chord" data-chords="Em,C"></p>
                   <p class="line lyric">A csendben is hűséged marad</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D/F#</p>
+                  <p class="line chord" data-chords="G,D/F#"></p>
                   <p class="line lyric">Nem fogy el bennem az ének soha</p>
-                  <p class="line chord">C&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</p>
+                  <p class="line chord" data-chords="C,D"></p>
                   <p class="line lyric">Mert láttam, milyen nagy vagy Uram</p>
                 </div>
 
                 <div class="song-section chorus">
                   <p class="section-label">Chorus</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</p>
+                  <p class="line chord" data-chords="G,D"></p>
                   <p class="line lyric">Mily nagy Isten, mily nagy Isten</p>
-                  <p class="line chord">Em&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;C</p>
+                  <p class="line chord" data-chords="Em,C"></p>
                   <p class="line lyric">Dicsőség tölti be a házat</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</p>
+                  <p class="line chord" data-chords="G,D"></p>
                   <p class="line lyric">Felemel a kegyelem hangja</p>
-                  <p class="line chord">C&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</p>
+                  <p class="line chord" data-chords="C,D"></p>
                   <p class="line lyric">Mily nagy, mily nagy Isten</p>
                 </div>
               </section>
@@ -123,21 +144,21 @@
               <section class="song-column second-column">
                 <div class="song-section">
                   <p class="section-label">Verse 2</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D/F#</p>
+                  <p class="line chord" data-chords="G,D/F#"></p>
                   <p class="line lyric">A fényed áttör minden éjjelen</p>
-                  <p class="line chord">Em&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;C</p>
+                  <p class="line chord" data-chords="Em,C"></p>
                   <p class="line lyric">Reményt ad ott is, hol nincs jelen</p>
-                  <p class="line chord">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D/F#</p>
+                  <p class="line chord" data-chords="G,D/F#"></p>
                   <p class="line lyric">Egész a szívem nálad megpihen</p>
-                  <p class="line chord">C&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</p>
+                  <p class="line chord" data-chords="C,D"></p>
                   <p class="line lyric">Szent neved zengem újra csendesen</p>
                 </div>
 
                 <div class="song-section bridge">
                   <p class="section-label">Bridge</p>
-                  <p class="line chord">Em&nbsp;&nbsp;&nbsp;D&nbsp;&nbsp;&nbsp;C</p>
+                  <p class="line chord" data-chords="Em,D,C"></p>
                   <p class="line lyric">Nincs más név, mely életet ad</p>
-                  <p class="line chord">Em&nbsp;&nbsp;&nbsp;D&nbsp;&nbsp;&nbsp;C</p>
+                  <p class="line chord" data-chords="Em,D,C"></p>
                   <p class="line lyric">Nincs más fény, mely hazavezet</p>
                 </div>
               </section>
@@ -172,9 +193,17 @@
           <div class="panel-card controls">
             <p class="muted">Transpose</p>
             <div class="stepper">
-              <button type="button">-</button>
-              <span>+2</span>
-              <button type="button">+</button>
+              <button id="panel-transpose-down" type="button">-</button>
+              <span id="panel-transpose-value">+2</span>
+              <button id="panel-transpose-up" type="button">+</button>
+            </div>
+          </div>
+          <div class="panel-card controls" id="panel-capo-card">
+            <p class="muted">Capo</p>
+            <div class="stepper">
+              <button id="panel-capo-down" type="button">-</button>
+              <span id="panel-capo-value">2</span>
+              <button id="panel-capo-up" type="button">+</button>
             </div>
           </div>
           <div class="panel-card controls">

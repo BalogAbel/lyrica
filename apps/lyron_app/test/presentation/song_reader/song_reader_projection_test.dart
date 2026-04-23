@@ -6,6 +6,9 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 ParsedSong _buildParsedSong({String leadingChord = 'A'}) {
   return ParsedSong(
     title: 'Reader test song',
+    sourceKey: 'G',
+    baseTranspose: 2,
+    baseCapo: 2,
     sections: [
       SongSection(
         kind: SongSectionKind.verse,
@@ -32,6 +35,12 @@ void main() {
     );
 
     expect(projection.viewMode, SongReaderViewMode.chordsAndLyrics);
+    expect(
+      projection.instrumentDisplayMode,
+      SongReaderInstrumentDisplayMode.guitar,
+    );
+    expect(projection.effectiveTranspose, 2);
+    expect(projection.effectiveCapo, 2);
     expect(
       projection.sections.first.lines.first.segments.first.displayChord,
       'A',
@@ -97,6 +106,54 @@ void main() {
     expect(
       song.sections.first.lines.first.segments.first.leadingChord,
       'not-a-real-chord',
+    );
+  });
+
+  test('piano mode shows sounding chords without capo subtraction', () {
+    final projection = SongReaderProjection(
+      song: _buildParsedSong(),
+      state: SongReaderState(
+        instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
+      ),
+    );
+
+    expect(
+      projection.sections.first.lines.first.segments.first.displayChord,
+      'B',
+    );
+    expect(projection.isCapoDirectiveVisible, false);
+  });
+
+  test(
+    'guitar mode applies runtime capo and transpose offsets on top of bases',
+    () {
+      final projection = SongReaderProjection(
+        song: _buildParsedSong(),
+        state: SongReaderState(transposeOffset: -1, capoOffset: 1),
+      );
+
+      expect(projection.effectiveTranspose, 1);
+      expect(projection.effectiveCapo, 3);
+      expect(
+        projection.sections.first.lines.first.segments.first.displayChord,
+        'G',
+      );
+      expect(projection.isCapoDirectiveVisible, true);
+      expect(projection.capoDirectiveText, 'Capo 3');
+    },
+  );
+
+  test('guitar mode clamps effective capo at open capo', () {
+    final projection = SongReaderProjection(
+      song: _buildParsedSong(),
+      state: SongReaderState(capoOffset: -5),
+    );
+
+    expect(projection.effectiveCapo, 0);
+    expect(projection.capoDirectiveText, isNull);
+    expect(
+      projection.sections.first.lines.first.segments.first.displayChord,
+      'B',
     );
   });
 }
