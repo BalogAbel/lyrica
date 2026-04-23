@@ -23,6 +23,8 @@ void main() {
             onToggleViewMode: () {},
             onTransposeDown: () {},
             onTransposeUp: () {},
+            onCapoDown: () {},
+            onCapoUp: () {},
             onDecreaseFontScale: () {},
             onIncreaseFontScale: () {},
           ),
@@ -31,11 +33,51 @@ void main() {
     );
 
     expect(find.text('Lyrics only'), findsOneWidget);
-    expect(find.text('-1'), findsOneWidget);
-    expect(find.text('+1'), findsOneWidget);
+    expect(find.text('Transpose: +2'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-transpose-down')), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
+    expect(find.text('Capo: 2'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
     expect(find.text('A-'), findsOneWidget);
     expect(find.text('A+'), findsOneWidget);
     expect(find.text('Reader Song'), findsNothing);
+  });
+
+  testWidgets('shows capo zero as disabled but visible', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderCompactOverlay(
+            isVisible: true,
+            projection: SongReaderProjection(
+              song: _buildSong(baseCapo: 0),
+              state: SongReaderState(),
+            ),
+            hasRecoverableWarnings: false,
+            warningCount: 0,
+            onToggleViewMode: () {},
+            onTransposeDown: () {},
+            onTransposeUp: () {},
+            onCapoDown: null,
+            onCapoUp: () {},
+            onDecreaseFontScale: () {},
+            onIncreaseFontScale: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Capo: 0'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('song-reader-capo-down')),
+          )
+          .onPressed,
+      isNull,
+    );
   });
 
   testWidgets('does not render actions when hidden', (tester) async {
@@ -53,6 +95,8 @@ void main() {
             onToggleViewMode: () {},
             onTransposeDown: () {},
             onTransposeUp: () {},
+            onCapoDown: () {},
+            onCapoUp: () {},
             onDecreaseFontScale: () {},
             onIncreaseFontScale: () {},
           ),
@@ -61,7 +105,7 @@ void main() {
     );
 
     expect(find.text('Lyrics only'), findsNothing);
-    expect(find.text('+1'), findsNothing);
+    expect(find.byKey(const Key('song-reader-transpose-up')), findsNothing);
   });
 
   testWidgets('expanded panels render without the whole screen', (
@@ -89,6 +133,8 @@ void main() {
                   onToggleViewMode: () {},
                   onTransposeDown: () {},
                   onTransposeUp: () {},
+                  onCapoDown: () {},
+                  onCapoUp: () {},
                   onDecreaseFontScale: () {},
                   onIncreaseFontScale: () {},
                 ),
@@ -105,10 +151,12 @@ void main() {
   });
 }
 
-ParsedSong _buildSong() {
+ParsedSong _buildSong({int baseCapo = 2}) {
   return ParsedSong(
     title: 'Reader Song',
     sourceKey: 'G',
+    baseTranspose: 2,
+    baseCapo: baseCapo,
     sections: [
       SongSection(
         kind: SongSectionKind.verse,

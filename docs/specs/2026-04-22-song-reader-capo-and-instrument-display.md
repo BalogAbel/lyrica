@@ -41,8 +41,8 @@ This produces incorrect or incomplete guidance for real performance use. A guita
 Reader behavior must follow ChordPro semantics for the directives used in this slice:
 
 - `key` is the player-facing key from the ChordPro source.
-- `capo` does not change the player-facing key, but it changes the sounding key heard by other musicians and listeners.
-- `transpose` changes the effective sounding chords from the point where it appears.
+- `capo` does not change the player-facing key; it changes guitar shape and the guitarist's visible chord spelling.
+- `transpose` changes the player-facing chord spelling from the point where it appears.
 
 For this slice, only a global transpose value is supported. That means:
 
@@ -60,7 +60,7 @@ The reader needs two kinds of values:
 
 These come from parsed ChordPro source:
 
-- `baseKey`
+- `sourceKey`
 - `baseTranspose`
 - `baseCapo`
 
@@ -93,13 +93,13 @@ The parsed song remains canonical. Projection computes displayed chords from can
 Definitions:
 
 - `effectiveTranspose = baseTranspose + runtimeTransposeDelta`
-- `effectiveCapo = baseCapo + runtimeCapoDelta`
-- `soundingChord = originalChord + effectiveTranspose`
+- `effectiveCapo = max(0, baseCapo + runtimeCapoDelta)`
+- `concertChord = originalChord + effectiveTranspose`
 
 Displayed chord formulas:
 
-- guitar display chord = `soundingChord - effectiveCapo`
-- piano display chord = `soundingChord`
+- guitar display chord = `concertChord - effectiveCapo`
+- piano display chord = `concertChord`
 
 This preserves one shared parsed-song model while allowing instrument-specific display.
 
@@ -131,6 +131,8 @@ The capo control belongs with transpose in the reader controls:
 
 - in compact mode inside the overlay
 - in expanded mode inside the tools panel
+
+The capo control stays visible in guitar mode even at `Capo 0`; the down button is disabled there so the layout stays stable and the open-capo state stays explicit.
 
 The displayed control values must be effective values. Example:
 
@@ -197,4 +199,3 @@ This slice must update:
 - `docs/prototypes/song-reader-reader-mockup.js`
 - `docs/plans/` with an implementation plan for this slice
 - `docs/deferred/` with the deferred follow-up for song-internal transpose modulation
-

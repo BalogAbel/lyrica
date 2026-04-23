@@ -183,6 +183,58 @@ body[data-layout="expanded"] .panel {
     box-shadow 160ms ease;
 }
 
+.reader-menu {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
+}
+
+.overflow-menu summary {
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+}
+
+.overflow-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.overflow-menu-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 200px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+}
+
+.menu-label {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+}
+
+.menu-item.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+}
+
 .reader-overlay {
   position: absolute;
   z-index: 2;
@@ -232,6 +284,7 @@ body[data-layout="expanded"] .reader-overlay {
 
 .song-header {
   margin-bottom: 26px;
+  padding-right: 92px;
 }
 
 .song-header h2 {
@@ -243,6 +296,19 @@ body[data-layout="expanded"] .reader-overlay {
 .song-meta,
 .muted {
   color: var(--muted);
+}
+
+.directive-line {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 22px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-soft) 86%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border));
+  color: var(--accent);
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 0.9rem;
 }
 
 .strong {
@@ -293,6 +359,7 @@ body[data-layout="compact"][data-columns="two"] .second-column {
   font-weight: 700;
   letter-spacing: 0.04em;
   margin-bottom: 3px;
+  white-space: pre-wrap;
 }
 
 .line.lyric {
@@ -343,6 +410,12 @@ body[data-layout="expanded"] .bottom-context {
   text-align: center;
 }
 
+body[data-instrument="piano"] #overlay-capo-group,
+body[data-instrument="piano"] #panel-capo-card,
+body[data-instrument="piano"] .directive-line {
+  display: none;
+}
+
 @media (max-width: 960px) {
   .topbar {
     align-items: start;
@@ -351,6 +424,10 @@ body[data-layout="expanded"] .bottom-context {
 
   .reader-overlay {
     flex-direction: column;
+  }
+
+  .song-header {
+    padding-right: 68px;
   }
 
   body[data-layout="compact"][data-overlay="shown"] .song-body {

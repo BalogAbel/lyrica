@@ -24,6 +24,18 @@ class SongReaderController {
     _state = _state.copyWith(transposeOffset: _state.transposeOffset - 1);
   }
 
+  void capoUp() {
+    _state = _state.copyWith(capoOffset: _state.capoOffset + 1);
+  }
+
+  void capoDown() {
+    _state = _state.copyWith(capoOffset: _state.capoOffset - 1);
+  }
+
+  void setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
+    _state = _state.copyWith(instrumentDisplayMode: mode);
+  }
+
   void setSharedFontScale(double scale) {
     _state = _state.copyWith(sharedFontScale: scale);
   }

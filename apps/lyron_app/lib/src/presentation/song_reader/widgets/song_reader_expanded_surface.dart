@@ -15,6 +15,8 @@ class SongReaderExpandedSurface extends StatelessWidget {
     required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
+    this.onCapoDown,
+    this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
     this.previousTitle,
@@ -35,6 +37,8 @@ class SongReaderExpandedSurface extends StatelessWidget {
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
 
@@ -59,18 +63,26 @@ class SongReaderExpandedSurface extends StatelessWidget {
         ),
         const SizedBox(width: 24),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                child: SongReaderSectionGrid(
-                  sections: projection.sections,
-                  viewMode: projection.viewMode,
-                  sharedFontScale: projection.sharedFontScale,
-                  columnCount: contentColumnCount,
-                  availableHeight: constraints.maxHeight,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      child: SongReaderSectionGrid(
+                        leadingDirectiveText: projection.capoDirectiveText,
+                        sections: projection.sections,
+                        viewMode: projection.viewMode,
+                        sharedFontScale: projection.sharedFontScale,
+                        columnCount: contentColumnCount,
+                        availableHeight: constraints.maxHeight,
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 24),
@@ -83,6 +95,8 @@ class SongReaderExpandedSurface extends StatelessWidget {
             onToggleViewMode: onToggleViewMode,
             onTransposeDown: onTransposeDown,
             onTransposeUp: onTransposeUp,
+            onCapoDown: onCapoDown,
+            onCapoUp: onCapoUp,
             onDecreaseFontScale: onDecreaseFontScale,
             onIncreaseFontScale: onIncreaseFontScale,
           ),

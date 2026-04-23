@@ -83,6 +83,7 @@ void main() {
     final line = SongReaderLineProjection(
       segments: const [
         SongReaderSegmentProjection(displayChord: 'E', text: ''),
+        SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),
       ],
     );
 
@@ -99,6 +100,38 @@ void main() {
     );
 
     expect(find.text('E'), findsOneWidget);
-    expect(find.byType(Text), findsOneWidget);
+    expect(find.text('C#m/G#'), findsOneWidget);
+    expect(find.byType(Text), findsNWidgets(2));
+    expect(
+      tester.getTopLeft(find.text('C#m/G#')).dx -
+          tester.getTopRight(find.text('E')).dx,
+      greaterThan(8),
+    );
+  });
+
+  testWidgets('collapses chord-only lines in lyrics only mode', (tester) async {
+    final line = SongReaderLineProjection(
+      segments: const [
+        SongReaderSegmentProjection(displayChord: 'E', text: ''),
+        SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongLineView(
+            line: line,
+            viewMode: SongReaderViewMode.lyricsOnly,
+            sharedFontScale: 1,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('E'), findsNothing);
+    expect(find.text('C#m/G#'), findsNothing);
+    expect(find.byType(SongLineView), findsOneWidget);
+    expect(tester.getSize(find.byType(SongLineView)).height, 0);
   });
 }

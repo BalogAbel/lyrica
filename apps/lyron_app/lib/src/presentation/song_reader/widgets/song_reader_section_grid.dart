@@ -6,6 +6,7 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_section_view
 class SongReaderSectionGrid extends StatelessWidget {
   const SongReaderSectionGrid({
     super.key,
+    this.leadingDirectiveText,
     required this.sections,
     required this.viewMode,
     required this.sharedFontScale,
@@ -13,6 +14,7 @@ class SongReaderSectionGrid extends StatelessWidget {
     required this.availableHeight,
   });
 
+  final String? leadingDirectiveText;
   final List<SongReaderSectionProjection> sections;
   final SongReaderViewMode viewMode;
   final double sharedFontScale;
@@ -25,6 +27,7 @@ class SongReaderSectionGrid extends StatelessWidget {
   static const _characterWidthEstimate = 10.0;
   static const _chordRowHeight = 20.0;
   static const _lyricRowHeight = 24.0;
+  static const _directiveLineHeight = 36.0;
   static const _columnHeightToleranceFactor = 1.15;
 
   @override
@@ -40,12 +43,16 @@ class SongReaderSectionGrid extends StatelessWidget {
         final effectiveHeight = availableHeight.isFinite
             ? availableHeight
             : MediaQuery.sizeOf(context).height;
+        final leadingDirectiveHeight = leadingDirectiveText == null
+            ? 0.0
+            : _directiveLineHeight;
         final shouldUseMultipleColumns =
             normalizedColumns > 1 &&
             _singleColumnHeightEstimate(
-                  sourceSections: normalizedSections,
-                  maxColumnWidth: availableWidth,
-                ) >
+                      sourceSections: normalizedSections,
+                      maxColumnWidth: availableWidth,
+                    ) +
+                    leadingDirectiveHeight >
                 effectiveHeight;
         var effectiveColumns = shouldUseMultipleColumns ? normalizedColumns : 1;
 
@@ -65,6 +72,9 @@ class SongReaderSectionGrid extends StatelessWidget {
         final estimatedColumnHeights = columns
             .map((column) => _columnHeightEstimate(column, tileWidth))
             .toList(growable: false);
+        if (leadingDirectiveHeight > 0 && estimatedColumnHeights.isNotEmpty) {
+          estimatedColumnHeights[0] += leadingDirectiveHeight;
+        }
         final tallestColumn = estimatedColumnHeights.fold<double>(
           0,
           (maxHeight, height) => height > maxHeight ? height : maxHeight,
@@ -84,6 +94,10 @@ class SongReaderSectionGrid extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (index == 0 && leadingDirectiveText != null) ...[
+                      _DirectiveLine(text: leadingDirectiveText!),
+                      const SizedBox(height: spacing),
+                    ],
                     for (final section in columns[index]) ...[
                       SongSectionView(
                         section: section,
@@ -115,6 +129,10 @@ class SongReaderSectionGrid extends StatelessWidget {
       key: const Key('song-reader-section-grid-columns-1'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (leadingDirectiveText != null) ...[
+          _DirectiveLine(text: leadingDirectiveText!),
+          const SizedBox(height: _sectionGap),
+        ],
         for (final section in sections) ...[
           SongSectionView(
             section: section,
@@ -234,5 +252,29 @@ class SongReaderSectionGrid extends StatelessWidget {
       linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
     }
     return headerHeight + linesHeight + _sectionGap;
+  }
+}
+
+class _DirectiveLine extends StatelessWidget {
+  const _DirectiveLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text(
+        text,
+        key: const Key('song-reader-capo-directive-line'),
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.02,
+        ),
+      ),
+    );
   }
 }

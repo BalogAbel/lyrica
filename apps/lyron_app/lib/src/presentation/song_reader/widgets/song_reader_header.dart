@@ -11,6 +11,8 @@ class SongReaderHeader extends StatelessWidget {
     required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
+    this.onCapoDown,
+    this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
   });
@@ -21,11 +23,15 @@ class SongReaderHeader extends StatelessWidget {
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
 
   @override
   Widget build(BuildContext context) {
+    final showCapoControls = projection.isCapoDirectiveVisible;
+
     return Card(
       elevation: 0,
       child: Padding(
@@ -34,39 +40,93 @@ class SongReaderHeader extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (projection.sourceKey != null) ...[
-              _MetadataChip(label: 'Key', value: projection.sourceKey!),
-            ],
             if (hasRecoverableWarnings) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               _WarningSurface(warningCount: warningCount),
             ],
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                OutlinedButton(
-                  onPressed: onToggleViewMode,
-                  child: Text(_viewModeLabel(projection.viewMode)),
+            _ControlSection(
+              label: 'View',
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  OutlinedButton(
+                    onPressed: onToggleViewMode,
+                    child: Text(_viewModeLabel(projection.viewMode)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _ControlSection(
+              label: 'Transpose',
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton(
+                    key: const Key('song-reader-transpose-down'),
+                    onPressed: onTransposeDown,
+                    child: const Text('-'),
+                  ),
+                  _MetadataChip(
+                    label: 'Transpose',
+                    value: _signed(projection.effectiveTranspose),
+                  ),
+                  OutlinedButton(
+                    key: const Key('song-reader-transpose-up'),
+                    onPressed: onTransposeUp,
+                    child: const Text('+'),
+                  ),
+                ],
+              ),
+            ),
+            if (showCapoControls) ...[
+              const SizedBox(height: 16),
+              _ControlSection(
+                label: 'Capo',
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    OutlinedButton(
+                      key: const Key('song-reader-capo-down'),
+                      onPressed: onCapoDown,
+                      child: const Text('-'),
+                    ),
+                    _MetadataChip(
+                      label: 'Capo',
+                      value: '${projection.effectiveCapo}',
+                    ),
+                    OutlinedButton(
+                      key: const Key('song-reader-capo-up'),
+                      onPressed: onCapoUp,
+                      child: const Text('+'),
+                    ),
+                  ],
                 ),
-                OutlinedButton(
-                  onPressed: onTransposeDown,
-                  child: const Text('-1'),
-                ),
-                OutlinedButton(
-                  onPressed: onTransposeUp,
-                  child: const Text('+1'),
-                ),
-                OutlinedButton(
-                  onPressed: onDecreaseFontScale,
-                  child: const Text('A-'),
-                ),
-                OutlinedButton(
-                  onPressed: onIncreaseFontScale,
-                  child: const Text('A+'),
-                ),
-              ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            _ControlSection(
+              label: 'Scale',
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  OutlinedButton(
+                    onPressed: onDecreaseFontScale,
+                    child: const Text('A-'),
+                  ),
+                  OutlinedButton(
+                    onPressed: onIncreaseFontScale,
+                    child: const Text('A+'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -81,6 +141,10 @@ class SongReaderHeader extends StatelessWidget {
       case SongReaderViewMode.lyricsOnly:
         return 'Chords + lyrics';
     }
+  }
+
+  String _signed(int value) {
+    return value > 0 ? '+$value' : '$value';
   }
 }
 
@@ -103,6 +167,33 @@ class _MetadataChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Text('$label: $value', style: theme.textTheme.labelLarge),
       ),
+    );
+  }
+}
+
+class _ControlSection extends StatelessWidget {
+  const _ControlSection({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            letterSpacing: 0.08,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+      ],
     );
   }
 }

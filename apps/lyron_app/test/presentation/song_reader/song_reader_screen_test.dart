@@ -41,12 +41,18 @@ void main() {
 
   const songId = 'reader_song';
 
-  SongReaderResult buildResult({List<ParseDiagnostic> diagnostics = const []}) {
+  SongReaderResult buildResult({
+    List<ParseDiagnostic> diagnostics = const [],
+    int baseTranspose = 0,
+    int baseCapo = 0,
+  }) {
     return SongReaderResult(
       song: ParsedSong(
         title: 'Reader Song',
         subtitle: 'Live version',
         sourceKey: 'G',
+        baseTranspose: baseTranspose,
+        baseCapo: baseCapo,
         sections: [
           SongSection(
             kind: SongSectionKind.verse,
@@ -331,7 +337,6 @@ void main() {
 
     expect(find.text('Reader Song'), findsWidgets);
     expect(find.text('Live version'), findsNothing);
-    expect(find.text('Key: G'), findsOneWidget);
     expect(find.text('Verse 1'), findsOneWidget);
     expect(find.text('Chorus 2'), findsOneWidget);
     expect(find.text('F#m'), findsOneWidget);
@@ -379,14 +384,14 @@ void main() {
     await tester.pump();
 
     expect(find.text('Lyrics only'), findsOneWidget);
-    expect(find.text('+1'), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
 
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
     expect(find.text('Lyrics only'), findsNothing);
-    expect(find.text('+1'), findsNothing);
+    expect(find.byKey(const Key('song-reader-transpose-up')), findsNothing);
   });
 
   testWidgets('expanded reader shows side panels and no compact overlay', (
@@ -531,7 +536,7 @@ void main() {
     expect(find.text('Lyrics only'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
-    await tester.tap(find.text('+1'));
+    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
     await tester.pumpAndSettle();
 
     await tester.pump(const Duration(seconds: 2));
@@ -575,6 +580,68 @@ void main() {
 
     expect(find.text(AppStrings.songEditAction), findsOneWidget);
     expect(find.text(AppStrings.songDeleteAction), findsOneWidget);
+  });
+
+  testWidgets('overflow menu switches between guitar and piano views', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: buildApp(result: buildResult()),
+    );
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Piano View'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('song-reader-capo-up')), findsNothing);
+    expect(find.byKey(const Key('song-reader-capo-down')), findsNothing);
+    expect(find.text('Capo: 0'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Guitar View'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
+    expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
+    expect(find.text('Capo: 0'), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('song-reader-capo-down')),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('guitar reader shows capo directive line in song flow', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(800, 1200),
+      child: buildApp(result: buildResult(baseCapo: 2)),
+    );
+
+    expect(
+      find.byKey(const Key('song-reader-capo-directive-line')),
+      findsOneWidget,
+    );
+    expect(find.text('Capo 2'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Piano View'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('song-reader-capo-directive-line')),
+      findsNothing,
+    );
   });
 
   testWidgets('delete blocked locally shows an explicit dialog', (
@@ -696,7 +763,7 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    await tester.tap(find.text('+1'));
+    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
     await tester.pumpAndSettle();
 
     expect(find.text('Gm'), findsOneWidget);
@@ -1181,7 +1248,7 @@ void main() {
 
       await tester.tap(find.text('Lyrics only'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('+1'));
+      await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('A+'));
       await tester.pumpAndSettle();

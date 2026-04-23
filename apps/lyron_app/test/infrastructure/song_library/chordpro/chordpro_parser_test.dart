@@ -12,6 +12,8 @@ void main() {
 {title:Example Song}
 {subtitle:Example Subtitle}
 {key:E}
+{capo:2}
+{transpose:-2}
 {comment:<Verse 1>}
 [A]Hello [F#m]world
 
@@ -28,6 +30,8 @@ Bridge line
       expect(song.title, 'Example Song');
       expect(song.subtitle, 'Example Subtitle');
       expect(song.sourceKey, 'E');
+      expect(song.baseCapo, 2);
+      expect(song.baseTranspose, -2);
       expect(song.sections.map((section) => section.label).toList(), [
         'Verse',
         'Chorus',
@@ -164,4 +168,193 @@ Line two
     expect(song.sections[1].lines.single.segments.single.text, 'Line two');
     expect(song.diagnostics, isEmpty);
   });
+
+  test(
+    'defaults capo and transpose metadata to zero when directives missing',
+    () {
+      final parser = ChordproParser();
+
+      final song = parser.parse('''
+{title:Example Song}
+{key:G}
+[G]Line
+''');
+
+      expect(song.sourceKey, 'G');
+      expect(song.baseCapo, 0);
+      expect(song.baseTranspose, 0);
+    },
+  );
+
+  test(
+    'ignores later transpose directives for current global reader slice',
+    () {
+      final parser = ChordproParser();
+
+      final song = parser.parse('''
+{title:Example Song}
+{transpose:2}
+[C]Line one
+{transpose:-3}
+[D]Line two
+''');
+
+      expect(song.baseTranspose, 2);
+      expect(song.baseCapo, 0);
+      expect(song.diagnostics, isEmpty);
+    },
+  );
+
+  test('reads global transpose after blank lines before the first lyric', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+
+{transpose:4}
+[C]Line one
+''');
+
+    expect(song.baseTranspose, 4);
+    expect(song.baseCapo, 0);
+  });
+
+  test('ignores later capo directives after song content starts', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{capo:2}
+[C]Line one
+{capo:7}
+[D]Line two
+''');
+
+    expect(song.baseCapo, 2);
+    expect(song.baseTranspose, 0);
+  });
+
+  test('ignores later key directives after song content starts', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{key:G}
+[G]Line one
+{key:D}
+[D]Line two
+''');
+
+    expect(song.sourceKey, 'G');
+    expect(song.baseCapo, 0);
+    expect(song.baseTranspose, 0);
+  });
+
+  test('treats body directives before the first lyric as song content', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{comment:<Verse>}
+{key:G}
+{capo:2}
+{transpose:4}
+[C]Line one
+''');
+
+    expect(song.sourceKey, isNull);
+    expect(song.baseCapo, 0);
+    expect(song.baseTranspose, 0);
+  });
+
+  test(
+    'keeps metadata open after unsupported directives before the first lyric',
+    () {
+      final parser = ChordproParser();
+
+      final song = parser.parse('''
+{title:Example Song}
+{foobar:ignore me}
+{key:G}
+{capo:2}
+{transpose:4}
+[C]Line one
+''');
+
+      expect(song.sourceKey, 'G');
+      expect(song.baseCapo, 2);
+      expect(song.baseTranspose, 4);
+      expect(song.diagnostics.single.context, '{foobar:ignore me}');
+    },
+  );
+
+  test(
+    'keeps metadata open after malformed comments before the first lyric',
+    () {
+      final parser = ChordproParser();
+
+      final song = parser.parse('''
+{title:Example Song}
+{comment:// note}
+{key:D}
+{capo:3}
+{transpose:1}
+[C]Line one
+''');
+
+      expect(song.sourceKey, 'D');
+      expect(song.baseCapo, 3);
+      expect(song.baseTranspose, 1);
+      expect(song.diagnostics.single.context, 'comment:// note');
+    },
+  );
+
+  test('rejects blank key values and negative capo values', () {
+    final parser = ChordproParser();
+
+    final song = parser.parse('''
+{title:Example Song}
+{key:}
+{capo:-1}
+{transpose:3}
+[C]Line
+''');
+
+    expect(song.sourceKey, isNull);
+    expect(song.baseCapo, 0);
+    expect(song.baseTranspose, 3);
+    expect(song.diagnostics, hasLength(2));
+    expect(song.diagnostics.map((diagnostic) => diagnostic.context).toList(), [
+      'key:',
+      'capo:-1',
+    ]);
+  });
+
+  test(
+    'keeps earlier capo and transpose values when later directives are invalid',
+    () {
+      final parser = ChordproParser();
+
+      final song = parser.parse('''
+{title:Example Song}
+{capo:2}
+{transpose:-3}
+{capo:abc}
+{transpose:}
+[C]Line
+''');
+
+      expect(song.baseCapo, 2);
+      expect(song.baseTranspose, -3);
+      expect(song.diagnostics, hasLength(2));
+      expect(
+        song.diagnostics.map((diagnostic) => diagnostic.context).toList(),
+        ['capo:abc', 'transpose:'],
+      );
+      expect(
+        song.diagnostics.map((diagnostic) => diagnostic.message).toList(),
+        ['Invalid capo value: abc', 'Invalid transpose value: '],
+      );
+    },
+  );
 }

@@ -12,6 +12,8 @@ class SongReaderCompactOverlay extends StatelessWidget {
     required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
+    this.onCapoDown,
+    this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
   });
@@ -23,6 +25,8 @@ class SongReaderCompactOverlay extends StatelessWidget {
   final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
 
@@ -34,7 +38,7 @@ class SongReaderCompactOverlay extends StatelessWidget {
 
     return Align(
       alignment: Alignment.topCenter,
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: SongReaderHeader(
           projection: projection,
@@ -43,6 +47,8 @@ class SongReaderCompactOverlay extends StatelessWidget {
           onToggleViewMode: onToggleViewMode,
           onTransposeDown: onTransposeDown,
           onTransposeUp: onTransposeUp,
+          onCapoDown: onCapoDown,
+          onCapoUp: onCapoUp,
           onDecreaseFontScale: onDecreaseFontScale,
           onIncreaseFontScale: onIncreaseFontScale,
         ),
