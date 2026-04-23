@@ -50,7 +50,6 @@ class SongReaderHeader extends StatelessWidget {
           children: [
             if (projection.sourceKey != null) ...[
               _MetadataChip(label: 'Key', value: projection.sourceKey!),
-              const SizedBox(height: _sectionSpacing),
             ],
             if (hasRecoverableWarnings) ...[
               const SizedBox(height: _warningSpacing),
