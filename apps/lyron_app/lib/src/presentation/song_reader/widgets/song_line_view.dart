@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
+const _lineRunSpacing = 10.0;
+const _chordOnlySpacing = 22.0;
+
 class SongLineView extends StatelessWidget {
   const SongLineView({
     super.key,
@@ -33,14 +36,13 @@ class SongLineView extends StatelessWidget {
     if (!hasLyricSegments && viewMode == SongReaderViewMode.lyricsOnly) {
       return const SizedBox.shrink();
     }
-    final spacing = hasLyricSegments ? 0.0 : 22.0;
-    final runSpacing = hasLyricSegments ? 10.0 : 0.0;
+    final spacing = hasLyricSegments ? 0.0 : _chordOnlySpacing;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Wrap(
         spacing: spacing,
-        runSpacing: runSpacing,
+        runSpacing: _lineRunSpacing,
         crossAxisAlignment: WrapCrossAlignment.end,
         children: [
           for (final segment in line.segments)

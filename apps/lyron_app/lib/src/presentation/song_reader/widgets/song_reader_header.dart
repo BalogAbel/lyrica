@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
+const _sectionSpacing = 16.0;
+const _warningSpacing = 14.0;
+const _controlSpacing = 12.0;
+const _chipHorizontalPadding = 12.0;
+const _chipVerticalPadding = 8.0;
+const _labelValueGap = 8.0;
+
 class SongReaderHeader extends StatelessWidget {
   const SongReaderHeader({
     super.key,
@@ -42,18 +49,18 @@ class SongReaderHeader extends StatelessWidget {
           children: [
             if (projection.sourceKey != null) ...[
               _MetadataChip(label: 'Key', value: projection.sourceKey!),
-              const SizedBox(height: 16),
+              const SizedBox(height: _sectionSpacing),
             ],
             if (hasRecoverableWarnings) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: _warningSpacing),
               _WarningSurface(warningCount: warningCount),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: _sectionSpacing),
             _ControlSection(
               label: 'View',
               child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: _controlSpacing,
+                runSpacing: _controlSpacing,
                 children: [
                   OutlinedButton(
                     onPressed: onToggleViewMode,
@@ -62,12 +69,12 @@ class SongReaderHeader extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: _sectionSpacing),
             _ControlSection(
               label: 'Transpose',
               child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: _controlSpacing,
+                runSpacing: _controlSpacing,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   OutlinedButton(
@@ -88,12 +95,12 @@ class SongReaderHeader extends StatelessWidget {
               ),
             ),
             if (showCapoControls) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: _sectionSpacing),
               _ControlSection(
                 label: 'Capo',
                 child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
+                  spacing: _controlSpacing,
+                  runSpacing: _controlSpacing,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     OutlinedButton(
@@ -114,12 +121,12 @@ class SongReaderHeader extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: _sectionSpacing),
             _ControlSection(
               label: 'Scale',
               child: Wrap(
-                spacing: 12,
-                runSpacing: 12,
+                spacing: _controlSpacing,
+                runSpacing: _controlSpacing,
                 children: [
                   OutlinedButton(
                     onPressed: onDecreaseFontScale,
@@ -168,7 +175,10 @@ class _MetadataChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: _chipHorizontalPadding,
+          vertical: _chipVerticalPadding,
+        ),
         child: Text('$label: $value', style: theme.textTheme.labelLarge),
       ),
     );
@@ -190,7 +200,10 @@ class _ValueChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: _chipHorizontalPadding,
+          vertical: _chipVerticalPadding,
+        ),
         child: Text(value, style: theme.textTheme.labelLarge),
       ),
     );
@@ -217,7 +230,7 @@ class _ControlSection extends StatelessWidget {
             letterSpacing: 0.08,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: _labelValueGap),
         child,
       ],
     );
