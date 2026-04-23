@@ -63,26 +63,19 @@ class SongReaderExpandedSurface extends StatelessWidget {
         ),
         const SizedBox(width: 24),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    return SingleChildScrollView(
-                      child: SongReaderSectionGrid(
-                        leadingDirectiveText: projection.capoDirectiveText,
-                        sections: projection.sections,
-                        viewMode: projection.viewMode,
-                        sharedFontScale: projection.sharedFontScale,
-                        columnCount: contentColumnCount,
-                        availableHeight: constraints.maxHeight,
-                      ),
-                    );
-                  },
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: SongReaderSectionGrid(
+                  leadingDirectiveText: projection.capoDirectiveText,
+                  sections: projection.sections,
+                  viewMode: projection.viewMode,
+                  sharedFontScale: projection.sharedFontScale,
+                  columnCount: contentColumnCount,
+                  availableHeight: constraints.maxHeight,
                 ),
-              ),
-            ],
+              );
+            },
           ),
         ),
         const SizedBox(width: 24),
