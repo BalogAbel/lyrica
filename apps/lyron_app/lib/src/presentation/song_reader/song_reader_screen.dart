@@ -620,7 +620,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     break;
                 }
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: _SongReaderOverflowAction.guitarView,
                   child: Text('Guitar View'),
