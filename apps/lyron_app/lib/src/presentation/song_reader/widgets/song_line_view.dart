@@ -76,7 +76,7 @@ class _SongLineSegmentView extends StatelessWidget {
     final showChord =
         viewMode == SongReaderViewMode.chordsAndLyrics &&
         segment.displayChord != null;
-    final showLyric = segment.text.trim().isNotEmpty;
+    final showLyric = segment.text.isNotEmpty;
 
     if (!showChord && !showLyric) {
       return const SizedBox.shrink();

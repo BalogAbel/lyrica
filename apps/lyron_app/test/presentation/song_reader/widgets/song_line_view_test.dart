@@ -109,6 +109,36 @@ void main() {
     );
   });
 
+  testWidgets('preserves whitespace lyric segments used for chord alignment', (
+    tester,
+  ) async {
+    final line = SongReaderLineProjection(
+      segments: const [
+        SongReaderSegmentProjection(displayChord: 'A', text: '   '),
+        SongReaderSegmentProjection(displayChord: 'E', text: 'Hello'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongLineView(
+            line: line,
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+          ),
+        ),
+      ),
+    );
+
+    final whitespaceText = find.byWidgetPredicate(
+      (widget) => widget is Text && widget.data == '   ',
+    );
+
+    expect(whitespaceText, findsOneWidget);
+    expect(tester.getSize(whitespaceText).width, greaterThan(0));
+  });
+
   testWidgets('collapses chord-only lines in lyrics only mode', (tester) async {
     final line = SongReaderLineProjection(
       segments: const [

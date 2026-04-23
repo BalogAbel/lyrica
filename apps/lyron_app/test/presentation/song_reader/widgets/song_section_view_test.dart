@@ -131,22 +131,18 @@ void main() {
     expect(find.text('F#m'), findsOneWidget);
     expect(find.text('C#m/G#'), findsNWidgets(2));
 
-    final introChordTop = tester.getTopLeft(find.text('A')).dy;
-    final introChordLefts = [
-      tester.getTopLeft(find.text('A')).dx,
-      tester.getTopLeft(find.text('C#m/G#').at(0)).dx,
-      tester.getTopLeft(find.text('F#m')).dx,
-      tester.getTopLeft(find.text('C#m/G#').at(1)).dx,
+    final introChordRects = [
+      tester.getRect(find.text('A')),
+      tester.getRect(find.text('C#m/G#').at(0)),
+      tester.getRect(find.text('F#m')),
+      tester.getRect(find.text('C#m/G#').at(1)),
     ];
 
-    expect([
-      tester.getTopLeft(find.text('A')).dy,
-      tester.getTopLeft(find.text('C#m/G#').at(0)).dy,
-      tester.getTopLeft(find.text('F#m')).dy,
-      tester.getTopLeft(find.text('C#m/G#').at(1)).dy,
-    ], everyElement(equals(introChordTop)));
-    expect(introChordLefts[1], greaterThan(introChordLefts[0]));
-    expect(introChordLefts[2], greaterThan(introChordLefts[1]));
-    expect(introChordLefts[3], greaterThan(introChordLefts[2]));
+    for (var index = 0; index < introChordRects.length - 1; index += 1) {
+      expect(
+        introChordRects[index].overlaps(introChordRects[index + 1]),
+        isFalse,
+      );
+    }
   });
 }

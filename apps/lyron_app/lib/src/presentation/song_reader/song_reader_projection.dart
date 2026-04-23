@@ -1,6 +1,7 @@
 import 'package:lyron_app/src/domain/song/chord_symbol.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 typedef SongChordTransposer = String Function(String chord, int semitoneOffset);
 
@@ -26,7 +27,7 @@ class SongReaderProjection {
            state.instrumentDisplayMode ==
                    SongReaderInstrumentDisplayMode.guitar &&
                SongReaderProjection.effectiveCapoValue(song, state) > 0
-           ? 'Capo ${SongReaderProjection.effectiveCapoValue(song, state)}'
+           ? '${AppStrings.songReaderCapoDirectivePrefix}${SongReaderProjection.effectiveCapoValue(song, state)}'
            : null,
        sharedFontScale = state.sharedFontScale,
        sections = List.unmodifiable(
