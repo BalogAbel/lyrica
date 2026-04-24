@@ -165,7 +165,7 @@ The prototype should include reviewer controls matching the existing prototype s
 
 - layout: tablet, wide
 - theme: standard, high contrast, black
-- state: default, loading, empty, no sessions, empty session, offline cached, pending mutation, conflict, authorization denied, retryable failure
+- state: default, loading, empty, no sessions, empty session, catalog unavailable, offline cached, pending mutation, conflict, authorization denied, retryable failure
 
 The prototype should show both plan selection and plan detail behavior in one artifact.
 
