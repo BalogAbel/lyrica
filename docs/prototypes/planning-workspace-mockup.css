@@ -80,6 +80,7 @@ body {
 .topbar {
   align-items: end;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
 .topbar h1,
@@ -133,6 +134,7 @@ body {
 }
 
 .toolbar {
+  max-width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 22px;
@@ -143,6 +145,8 @@ body {
 .toolbar label {
   display: grid;
   gap: 4px;
+  min-width: 132px;
+  flex: 1 1 132px;
   font-size: 0.85rem;
 }
 
