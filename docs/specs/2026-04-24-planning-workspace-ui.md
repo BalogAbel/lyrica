@@ -70,6 +70,8 @@ Wide and tablet layouts should adapt each route surface independently:
 
 - plan list route shows the plan selector/list surface
 - plan detail route shows the selected plan builder surface
+- wide plan detail and session editor routes may use a right-side support rail for status, summary, rules, or next-action context
+- tablet keeps those support details inline or compact so list/detail route surfaces are never stacked together
 
 Tablet must not stack plan list and plan detail on the same screen. Wide layout also does not require a split-pane workspace in this slice. If a later slice introduces split-pane planning, it needs its own spec because it changes navigation and selection behavior.
 
