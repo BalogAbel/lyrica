@@ -25,7 +25,10 @@ The current UI still reads like an implementation surface for those capabilities
 - Add a planning workspace prototype under `docs/prototypes/` using the same visual vocabulary as the existing reader and song-list/picker prototypes.
 - Define responsive tablet and wide behavior for the same workspace, not separate feature sets.
 - Refine plan list hierarchy, active/selected plan presentation, empty/loading/error/offline states, and planning mutation status presentation.
-- Refine plan detail hierarchy, plan header, session grouping, song rows, session actions, and add-song entry points.
+- Refine plan detail hierarchy, plan header, session grouping, song rows, and session edit entry points.
+- Refine the existing plan create/edit editor view enough that primary plan actions have a matching visual treatment.
+- Replace the separate session rename editor concept with one session editor surface where users can rename the selected session and reorder its songs without interpreting raw icon rows.
+- Keep route back navigation standard: when a planning surface can go back, use a top-left arrow affordance rather than a dedicated text back button in the content or action area.
 - Keep existing local-first write flows and mutation invalidation behavior intact unless a presentation refactor exposes an existing bug.
 - Keep reader navigation integration intact for song rows opened from a plan/session context.
 - Keep tests centered on observable UI behavior and state surfaces.
@@ -59,21 +62,16 @@ The UI should expose the domain hierarchy without exposing raw infrastructure co
 
 ## Responsive Layout Decisions
 
-### Same Screen, Adaptive Layout
+### Current Navigation, Adaptive Layout
 
-Tablet and wide layouts must be variants of the same planning workspace. They should use the same actions, labels, state model, and navigation semantics.
+Tablet and wide layouts must keep the current planning navigation model: plan list and plan detail remain separate visible route surfaces. The slice still treats them as one product workflow through shared visual language, state taxonomy, and action vocabulary.
 
-Wide layout may use additional horizontal space for a two-pane composition:
+Wide and tablet layouts should adapt each route surface independently:
 
-- plan list / plan overview rail
-- active plan detail workspace
+- plan list route shows the plan selector/list surface
+- plan detail route shows the selected plan builder surface
 
-Tablet layout should collapse that into a focused single-column flow:
-
-- plan list / plan overview surface
-- active plan detail surface stacked with the same action vocabulary
-
-The visible planning experience must be one responsive workspace surface with shared composition, state vocabulary, and action placement. The implementation may keep existing route boundaries internally for router compatibility, but route structure must not produce two unrelated visible UI models.
+Tablet must not stack plan list and plan detail on the same screen. Wide layout also does not require a split-pane workspace in this slice. If a later slice introduces split-pane planning, it needs its own spec because it changes navigation and selection behavior.
 
 ### Visual Consistency
 
@@ -98,6 +96,7 @@ The plan list should help users choose the right plan and understand whether a p
 Required behavior:
 
 - show plan name, optional description, scheduled date when present, and lightweight operational status
+- do not invent plan lifecycle statuses such as `Ready` or `Draft`; plan-row badges should represent existing local-first/sync conditions such as local changes, conflict, or authorization denied
 - distinguish empty planning data from loading and retryable failure
 - surface pending or failed planning changes without replacing the list
 - keep create-plan available as a primary action
@@ -112,10 +111,12 @@ The plan detail should behave as a service builder.
 Required behavior:
 
 - show a plan header with name, description, scheduled date when present, and edit action
+- show route back navigation as a top-left arrow when the current navigation stack supports going back
 - show sessions in current merged local-first order
-- show session actions for rename, reorder, and eligible delete without crowding the session title
-- show add-song entry at the session level
+- show a clear session editor entry point without crowding the session title
 - show session items in current merged local-first order
+- expose session editing from each session on plan detail
+- show inline session-name editing, add-song, and song-order controls once the session editor is open
 - preserve scoped reader navigation when a song row opens the reader
 - render empty session state explicitly
 - render no-session state explicitly
@@ -136,7 +137,7 @@ The workspace must distinguish these states where applicable:
 - no local song catalog available for add-song
 - pending planning mutation
 - failed retryable planning mutation
-- conflict planning mutation
+- conflict planning mutation with per-entry `Keep mine` and `Discard mine` choices where the app has enough local mutation context to present the affected item
 - authorization-denied planning mutation
 - offline cached planning data remains usable
 
@@ -163,24 +164,30 @@ Create a prototype companion in `docs/prototypes/` before implementation plannin
 
 The prototype should include reviewer controls matching the existing prototype style:
 
+- screen: plan list, plan detail, plan editor, session editor
 - layout: tablet, wide
 - theme: standard, high contrast, black
 - state: default, loading, empty, no sessions, empty session, catalog unavailable, offline cached, pending mutation, conflict, authorization denied, retryable failure
 
-The prototype should show both plan selection and plan detail behavior in one artifact.
+The prototype should show plan selection, plan detail behavior, the plan editor, and the combined session editor in one artifact.
 
 ## Acceptance Criteria
 
 1. A repository-owned planning workspace prototype exists under `docs/prototypes/` and reuses the existing prototype visual vocabulary.
 2. Plan list and plan detail are treated as one coherent planning workspace in spec, plan, and implementation.
-3. Tablet and wide layouts expose the same workflow as responsive variants of the same visible workspace surface, even if router internals keep separate route boundaries.
+3. Tablet and wide layouts keep the existing plan-list-to-plan-detail navigation model and never stack both route surfaces on the same tablet screen.
 4. Plan list renders clear loading, empty, retryable failure, and mutation-status states.
 5. Plan detail renders clear loading, retryable failure, no-session, empty-session, pending, conflict, and authorization-denied states.
-6. Existing plan create/edit and session create/rename/delete/reorder behaviors remain available.
-7. Existing session-item add/delete/reorder and scoped reader navigation remain available.
-8. Planning mutation retry remains available for failed entries.
-9. UI code remains provider/repository-driven and does not bypass backend-enforced authorization or repository-owned local-first boundaries.
-10. Widget tests cover the main responsive/state surfaces and critical existing planning actions after refactor.
+6. Plan create/edit and the combined session editor views match the planning workspace visual vocabulary.
+7. Session rename and song reorder affordances live in the combined session editor and preserve existing local-first behavior.
+8. Each session on plan detail exposes a visible entry point into session editing.
+9. Conflict state presents affected local changes individually with `Keep mine` and `Discard mine` choices.
+10. Back-capable planning surfaces use a top-left arrow affordance and do not expose a separate text back button in the main action area.
+11. Existing plan create/edit and session create/rename/delete/reorder behaviors remain available.
+12. Existing session-item add/delete/reorder and scoped reader navigation remain available.
+13. Planning mutation retry remains available for failed entries.
+14. UI code remains provider/repository-driven and does not bypass backend-enforced authorization or repository-owned local-first boundaries.
+15. Widget tests cover the main responsive/state surfaces and critical existing planning actions after refactor.
 
 ## Validation Notes
 

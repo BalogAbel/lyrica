@@ -6,17 +6,26 @@
     <title>Lyron Planning Workspace Mockup</title>
     <link rel="stylesheet" href="./planning-workspace-mockup.css" />
   </head>
-  <body data-theme="standard" data-layout="wide" data-state="default">
+  <body data-theme="standard" data-layout="wide" data-screen="plan-list" data-state="default">
     <div class="shell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Lyron Chords</p>
-          <h1>Planning Workspace Mockup</h1>
+          <h1>Lyron Planning Workspace Mockup</h1>
           <p class="topbar-note">
-            Responsive planning companion for plan list and plan detail decisions.
+            Current navigation model: plan list and selected plan detail are separate responsive route surfaces.
           </p>
         </div>
         <div class="toolbar" aria-label="Reviewer controls">
+          <label>
+            Screen
+            <select id="screen-select">
+              <option value="plan-list">Plan List</option>
+              <option value="plan-detail">Plan Detail</option>
+              <option value="plan-editor">Plan Editor</option>
+              <option value="session-editor">Session Editor</option>
+            </select>
+          </label>
           <label>
             Layout
             <select id="layout-select">
@@ -56,7 +65,7 @@
           <header class="surface-header">
             <div>
               <p class="eyebrow">Plans</p>
-              <h2>Upcoming</h2>
+              <h2>Plan selector</h2>
             </div>
             <button type="button">New plan</button>
           </header>
@@ -64,6 +73,9 @@
           <div class="status-bar" id="workspace-status">
             <span class="badge ok">Planning data up to date</span>
           </div>
+          <p class="rail-note">
+            Tap a plan row to open its detail route.
+          </p>
 
           <section class="plan-list" id="plan-list">
             <article class="plan-row active">
@@ -71,21 +83,19 @@
                 <p class="row-title">Sunday Morning</p>
                 <p class="row-subtle">Apr 26 - 3 sessions - 9 songs</p>
               </div>
-              <span class="badge ok">Ready</span>
             </article>
             <article class="plan-row">
               <div>
                 <p class="row-title">Youth Night</p>
                 <p class="row-subtle">May 1 - 2 sessions - 5 songs</p>
               </div>
-              <span class="badge">Draft</span>
             </article>
             <article class="plan-row attention">
               <div>
                 <p class="row-title">Team Rehearsal</p>
                 <p class="row-subtle">No date - local changes</p>
               </div>
-              <span class="badge warn">Pending</span>
+              <span class="badge warn">Local changes</span>
             </article>
           </section>
 
@@ -98,8 +108,9 @@
 
         <section class="plan-detail surface">
           <header class="detail-header">
+            <button class="route-back" type="button" aria-label="Back to plans">&lt;</button>
             <div>
-              <p class="eyebrow">Active plan</p>
+              <p class="eyebrow">Selected plan</p>
               <h2>Sunday Morning</h2>
               <p class="detail-meta">Apr 26 - Main hall - local-first workspace</p>
             </div>
@@ -117,6 +128,29 @@
             <button id="mutation-action" type="button">Retry</button>
           </div>
 
+          <section class="conflict-list" id="conflict-list" hidden>
+            <article class="conflict-row">
+              <div>
+                <p class="row-title">Opening Set rename</p>
+                <p class="row-subtle">Mine: Opening Set · Remote: Welcome Set</p>
+              </div>
+              <div class="actions">
+                <button type="button">Keep mine</button>
+                <button type="button">Discard mine</button>
+              </div>
+            </article>
+            <article class="conflict-row">
+              <div>
+                <p class="row-title">Holy Forever order</p>
+                <p class="row-subtle">Mine keeps it second in Opening Set.</p>
+              </div>
+              <div class="actions">
+                <button type="button">Keep mine</button>
+                <button type="button">Discard mine</button>
+              </div>
+            </article>
+          </section>
+
           <section class="session-list" id="session-list">
             <article class="session-card">
               <header class="session-header">
@@ -125,9 +159,8 @@
                   <h3>Opening Set</h3>
                 </div>
                 <div class="icon-actions" aria-label="Session actions">
-                  <button type="button" aria-label="Move session up">Up</button>
-                  <button type="button" aria-label="Move session down">Down</button>
-                  <button type="button" aria-label="Rename session">Edit</button>
+                  <button type="button" aria-label="Move session up">↑</button>
+                  <button type="button" aria-label="Move session down">↓</button>
                 </div>
               </header>
               <div class="song-list">
@@ -146,7 +179,7 @@
                   <span class="chevron">&gt;</span>
                 </article>
               </div>
-              <button class="add-song" type="button">Add song</button>
+              <button type="button">Edit session</button>
             </article>
 
             <article class="session-card optional-session">
@@ -156,9 +189,8 @@
                   <h3>Response Set</h3>
                 </div>
                 <div class="icon-actions" aria-label="Session actions">
-                  <button type="button" aria-label="Move session up">Up</button>
-                  <button type="button" aria-label="Move session down">Down</button>
-                  <button type="button" aria-label="Rename session">Edit</button>
+                  <button type="button" aria-label="Move session up">↑</button>
+                  <button type="button" aria-label="Move session down">↓</button>
                 </div>
               </header>
               <div class="song-list">
@@ -170,13 +202,93 @@
                   <span class="chevron">&gt;</span>
                 </article>
               </div>
-              <button class="add-song" type="button">Add song</button>
+              <button type="button">Edit session</button>
             </article>
           </section>
 
           <section class="state-card" id="detail-state-card" hidden>
             <p class="state-title" id="detail-state-title">State</p>
             <p class="state-copy" id="detail-state-copy">State message</p>
+          </section>
+        </section>
+
+        <section class="editor-surface surface" id="plan-editor-surface">
+          <header class="detail-header">
+            <button class="route-back" type="button" aria-label="Back to plan">&lt;</button>
+            <div>
+              <p class="eyebrow">Plan editor</p>
+              <h2>Edit plan</h2>
+              <p class="detail-meta">Used for plan create and edit.</p>
+            </div>
+            <div class="actions">
+              <button type="button">Save plan</button>
+            </div>
+          </header>
+
+          <form class="editor-form">
+            <label>
+              Plan name
+              <input type="text" value="Sunday Morning" />
+            </label>
+            <label>
+              Description
+              <textarea rows="4">Main worship service preparation.</textarea>
+            </label>
+            <label>
+              Scheduled for
+              <input type="text" value="2026-04-26" />
+            </label>
+          </form>
+        </section>
+
+        <section class="editor-surface surface" id="session-editor-surface">
+          <header class="detail-header">
+            <button class="route-back" type="button" aria-label="Back to plan">&lt;</button>
+            <div>
+              <p class="eyebrow">Session editor</p>
+              <h2>Edit session</h2>
+              <p class="detail-meta">Rename this session and arrange its songs.</p>
+            </div>
+            <div class="actions">
+              <button type="button">Save changes</button>
+            </div>
+          </header>
+
+          <section class="order-panel">
+            <header class="section-heading">
+              <div>
+                <p class="eyebrow">Session</p>
+                <input
+                  class="section-title-input"
+                  type="text"
+                  aria-label="Session name"
+                  value="Opening Set"
+                />
+              </div>
+              <button type="button">Add song</button>
+            </header>
+            <article class="order-row">
+              <span class="order-index">1</span>
+              <div>
+                <p class="row-title">Amazing Grace</p>
+                <p class="row-subtle">Opens scoped reader</p>
+              </div>
+              <div class="icon-actions">
+                <button type="button" aria-label="Move Amazing Grace up">Up</button>
+                <button type="button" aria-label="Move Amazing Grace down">Down</button>
+              </div>
+            </article>
+            <article class="order-row">
+              <span class="order-index">2</span>
+              <div>
+                <p class="row-title">Holy Forever</p>
+                <p class="row-subtle">Pending reorder safe</p>
+              </div>
+              <div class="icon-actions">
+                <button type="button" aria-label="Move Holy Forever up">Up</button>
+                <button type="button" aria-label="Move Holy Forever down">Down</button>
+              </div>
+            </article>
           </section>
         </section>
       </main>
