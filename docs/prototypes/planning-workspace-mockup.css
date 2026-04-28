@@ -256,33 +256,6 @@ body[data-screen="session-editor"] #plan-editor-surface {
   gap: 10px;
 }
 
-.detail-grid {
-  display: grid;
-  gap: 16px;
-}
-
-body[data-layout="wide"] .detail-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-  align-items: start;
-}
-
-.detail-main {
-  display: grid;
-  gap: 10px;
-}
-
-.context-rail {
-  display: grid;
-  gap: 10px;
-}
-
-.rail-card {
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 14px;
-  background: var(--surface-soft);
-}
-
 .plan-row,
 .song-row,
 .session-card,
