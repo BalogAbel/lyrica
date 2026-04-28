@@ -103,6 +103,7 @@ body {
 
 .topbar-note,
 .detail-meta,
+.rail-note,
 .row-subtle,
 .state-copy {
   color: var(--muted);
@@ -146,24 +147,40 @@ body {
 }
 
 select,
-button {
+button,
+input,
+textarea {
   border: 1px solid var(--border);
   background: var(--surface-strong);
   color: var(--text);
-  border-radius: 999px;
   padding: 10px 14px;
   font: inherit;
 }
 
+select,
+button {
+  border-radius: 999px;
+}
+
+button {
+  white-space: nowrap;
+}
+
+input,
+textarea {
+  width: 100%;
+  border-radius: 18px;
+}
+
 .workspace {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 960px);
+  justify-content: center;
   gap: 18px;
 }
 
 body[data-layout="tablet"] .workspace {
-  grid-template-columns: minmax(0, 720px);
-  justify-content: center;
+  grid-template-columns: minmax(0, 640px);
 }
 
 .surface {
@@ -190,13 +207,32 @@ body[data-layout="tablet"] .surface {
   gap: 16px;
 }
 
+body[data-screen="plan-list"] .plan-detail,
+body[data-screen="plan-list"] .editor-surface,
+body[data-screen="plan-detail"] .plan-rail,
+body[data-screen="plan-detail"] .editor-surface,
+body[data-screen="plan-editor"] .plan-rail,
+body[data-screen="plan-editor"] .plan-detail,
+body[data-screen="plan-editor"] #session-editor-surface,
+body[data-screen="session-editor"] .plan-rail,
+body[data-screen="session-editor"] .plan-detail,
+body[data-screen="session-editor"] #plan-editor-surface {
+  display: none;
+}
+
 .status-bar {
   margin: 14px 0;
+}
+
+.rail-note {
+  margin: -4px 0 14px;
+  font-size: 0.9rem;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   border-radius: 999px;
   border: 1px solid var(--border);
   padding: 8px 11px;
@@ -224,17 +260,20 @@ body[data-layout="tablet"] .surface {
 .song-row,
 .session-card,
 .state-card,
-.mutation-banner {
+.mutation-banner,
+.conflict-row {
   border: 1px solid var(--border);
   background: var(--surface-soft);
 }
 
 .plan-row,
 .song-row,
-.mutation-banner {
+.mutation-banner,
+.conflict-row {
   align-items: center;
   border-radius: 18px;
   padding: 12px 14px;
+  flex-wrap: wrap;
 }
 
 .plan-row.active {
@@ -242,12 +281,104 @@ body[data-layout="tablet"] .surface {
 }
 
 .plan-row.attention,
-.mutation-banner {
+.mutation-banner,
+.conflict-row {
   border-color: color-mix(in srgb, var(--danger) 36%, var(--border));
 }
 
 .detail-header {
   align-items: start;
+  justify-content: start;
+}
+
+.detail-header .actions {
+  margin-left: auto;
+}
+
+.actions,
+.icon-actions {
+  justify-content: flex-end;
+}
+
+.icon-actions {
+  flex-shrink: 0;
+}
+
+.route-back {
+  padding: 10px 13px;
+  min-width: 42px;
+}
+
+.editor-surface {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.editor-form {
+  display: grid;
+  gap: 14px;
+  max-width: 620px;
+}
+
+.editor-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.order-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 16px;
+  background: var(--surface-soft);
+}
+
+.section-heading,
+.order-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.section-heading > div,
+.order-row > div:not(.icon-actions),
+.conflict-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.section-title-input {
+  max-width: min(420px, 100%);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 1.17rem;
+  font-weight: 700;
+}
+
+
+.order-row {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: var(--surface-strong);
+}
+
+.order-index {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--surface-soft);
+  font-weight: 700;
 }
 
 .detail-meta,
@@ -258,6 +389,10 @@ body[data-layout="tablet"] .surface {
 .session-card {
   border-radius: 22px;
   padding: 16px;
+}
+
+.session-card > button {
+  margin-top: 12px;
 }
 
 .session-header {
@@ -278,10 +413,6 @@ body[data-layout="tablet"] .surface {
   font-size: 1.5rem;
 }
 
-.add-song {
-  margin-top: 12px;
-}
-
 .state-card {
   border-radius: 18px;
   padding: 16px;
@@ -289,6 +420,18 @@ body[data-layout="tablet"] .surface {
 
 .state-copy {
   margin: 6px 0 0;
+}
+
+.conflict-list {
+  display: grid;
+  gap: 10px;
+}
+
+.conflict-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
 }
 
 body[data-state="loading"] .plan-list,
@@ -308,15 +451,48 @@ body[data-state="empty"] .mutation-banner {
   display: none;
 }
 
+body:not([data-state="conflict"]) .conflict-list {
+  display: none;
+}
+
 body[data-state="empty-session"] .optional-session .song-list {
   display: none;
 }
 
 @media (max-width: 860px) {
   .topbar,
+  .surface-header,
   .detail-header,
-  .session-header {
+  .session-header,
+  .section-heading,
+  .conflict-row {
     flex-direction: column;
     align-items: start;
+  }
+
+  .detail-header .actions {
+    margin-left: 0;
+  }
+
+  .actions,
+  .icon-actions {
+    justify-content: flex-start;
+  }
+
+  .conflict-row .actions,
+  .section-heading button,
+  .section-title-input {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .order-row {
+    align-items: start;
+    flex-wrap: wrap;
+  }
+
+  .order-row .icon-actions {
+    width: 100%;
   }
 }

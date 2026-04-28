@@ -1,4 +1,5 @@
 const body = document.body;
+const screenSelect = document.getElementById("screen-select");
 const layoutSelect = document.getElementById("layout-select");
 const themeSelect = document.getElementById("theme-select");
 const stateSelect = document.getElementById("state-select");
@@ -15,7 +16,8 @@ const mutationBanner = document.getElementById("mutation-banner");
 const mutationTitle = document.getElementById("mutation-title");
 const mutationCopy = document.getElementById("mutation-copy");
 const mutationAction = document.getElementById("mutation-action");
-const addSongButtons = Array.from(document.querySelectorAll(".add-song"));
+const conflictList = document.getElementById("conflict-list");
+const addSongButtons = Array.from(document.querySelectorAll("#session-editor-surface .add-song"));
 
 const stateMap = {
   default: {
@@ -52,7 +54,8 @@ const stateMap = {
   },
   conflict: {
     status: '<span class="badge warn">Planning conflict needs review</span>',
-    banner: ["Conflict", "A remote change conflicts with a local planning change.", "Retry"],
+    banner: ["Conflict", "Review each affected local change.", "Refresh"],
+    showConflicts: true,
   },
   "auth-denied": {
     status: '<span class="badge warn">Planning authorization changed</span>',
@@ -95,15 +98,18 @@ function applyState() {
   } else {
     mutationBanner.hidden = true;
   }
+  conflictList.hidden = !model.showConflicts;
 }
 
 function syncControls() {
+  body.dataset.screen = screenSelect.value;
   body.dataset.layout = layoutSelect.value;
   body.dataset.theme = themeSelect.value;
   body.dataset.state = stateSelect.value;
   applyState();
 }
 
+screenSelect.addEventListener("change", syncControls);
 layoutSelect.addEventListener("change", syncControls);
 themeSelect.addEventListener("change", syncControls);
 stateSelect.addEventListener("change", syncControls);
