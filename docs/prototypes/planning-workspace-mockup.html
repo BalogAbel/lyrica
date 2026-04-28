@@ -152,79 +152,58 @@
           </section>
 
           <section class="session-list" id="session-list">
-            <div class="detail-grid">
-              <div class="detail-main">
-                <article class="session-card">
-                  <header class="session-header">
-                    <div>
-                      <p class="eyebrow">Session 1</p>
-                      <h3>Opening Set</h3>
-                    </div>
-                    <div class="icon-actions" aria-label="Session actions">
-                      <button type="button" aria-label="Move session up">↑</button>
-                      <button type="button" aria-label="Move session down">↓</button>
-                    </div>
-                  </header>
-                  <div class="song-list">
-                    <article class="song-row">
-                      <div>
-                        <p class="row-title">Amazing Grace</p>
-                        <p class="row-subtle">Song 1 - opens scoped reader</p>
-                      </div>
-                      <span class="chevron">&gt;</span>
-                    </article>
-                    <article class="song-row">
-                      <div>
-                        <p class="row-title">Holy Forever</p>
-                        <p class="row-subtle">Song 2 - can move up/down</p>
-                      </div>
-                      <span class="chevron">&gt;</span>
-                    </article>
+            <article class="session-card">
+              <header class="session-header">
+                <div>
+                  <p class="eyebrow">Session 1</p>
+                  <h3>Opening Set</h3>
+                </div>
+                <div class="icon-actions" aria-label="Session actions">
+                  <button type="button" aria-label="Move session up">↑</button>
+                  <button type="button" aria-label="Move session down">↓</button>
+                </div>
+              </header>
+              <div class="song-list">
+                <article class="song-row">
+                  <div>
+                    <p class="row-title">Amazing Grace</p>
+                    <p class="row-subtle">Song 1 - opens scoped reader</p>
                   </div>
-                  <button type="button">Edit session</button>
+                  <span class="chevron">&gt;</span>
                 </article>
-
-                <article class="session-card optional-session">
-                  <header class="session-header">
-                    <div>
-                      <p class="eyebrow">Session 2</p>
-                      <h3>Response Set</h3>
-                    </div>
-                    <div class="icon-actions" aria-label="Session actions">
-                      <button type="button" aria-label="Move session up">↑</button>
-                      <button type="button" aria-label="Move session down">↓</button>
-                    </div>
-                  </header>
-                  <div class="song-list">
-                    <article class="song-row">
-                      <div>
-                        <p class="row-title">Build My Life</p>
-                        <p class="row-subtle">Song 1 - pending reorder safe</p>
-                      </div>
-                      <span class="chevron">&gt;</span>
-                    </article>
+                <article class="song-row">
+                  <div>
+                    <p class="row-title">Holy Forever</p>
+                    <p class="row-subtle">Song 2 - can move up/down</p>
                   </div>
-                  <button type="button">Edit session</button>
+                  <span class="chevron">&gt;</span>
                 </article>
               </div>
-              <aside class="context-rail">
-                <section class="rail-card">
-                  <p class="eyebrow">Plan status</p>
-                  <p class="row-title">Local-first</p>
-                  <p class="row-subtle">No unresolved conflicts for this plan.</p>
-                </section>
-                <section class="rail-card">
-                  <p class="eyebrow">Summary</p>
-                  <p class="row-title">3 sessions</p>
-                  <p class="row-subtle">9 songs scheduled for Apr 26.</p>
-                </section>
-                <section class="rail-card">
-                  <p class="eyebrow">Next action</p>
-                  <p class="row-title">Review Response Set</p>
-                  <p class="row-subtle">One session has fewer than two songs.</p>
-                </section>
-              </aside>
-            </div>
+              <button type="button">Edit session</button>
+            </article>
+
+            <article class="session-card optional-session">
+              <header class="session-header">
+                <div>
+                  <p class="eyebrow">Session 2</p>
+                  <h3>Response Set</h3>
+                </div>
+                <div class="icon-actions" aria-label="Session actions">
+                  <button type="button" aria-label="Move session up">↑</button>
+                  <button type="button" aria-label="Move session down">↓</button>
+                </div>
+              </header>
+              <div class="song-list">
+                <article class="song-row">
+                  <div>
+                    <p class="row-title">Build My Life</p>
+                    <p class="row-subtle">Song 1 - pending reorder safe</p>
+                  </div>
+                  <span class="chevron">&gt;</span>
+                </article>
+              </div>
+              <button type="button">Edit session</button>
+            </article>
           </section>
 
           <section class="state-card" id="detail-state-card" hidden>
@@ -275,56 +254,42 @@
             </div>
           </header>
 
-          <div class="detail-grid">
-            <section class="order-panel">
-              <header class="section-heading">
-                <div>
-                  <p class="eyebrow">Session</p>
-                  <input
-                    class="section-title-input"
-                    type="text"
-                    aria-label="Session name"
-                    value="Opening Set"
-                  />
-                </div>
-                <button type="button">Add song</button>
-              </header>
-              <article class="order-row">
-                <span class="order-index">1</span>
-                <div>
-                  <p class="row-title">Amazing Grace</p>
-                  <p class="row-subtle">Opens scoped reader</p>
-                </div>
-                <div class="icon-actions">
-                  <button type="button" aria-label="Move Amazing Grace up">Up</button>
-                  <button type="button" aria-label="Move Amazing Grace down">Down</button>
-                </div>
-              </article>
-              <article class="order-row">
-                <span class="order-index">2</span>
-                <div>
-                  <p class="row-title">Holy Forever</p>
-                  <p class="row-subtle">Pending reorder safe</p>
-                </div>
-                <div class="icon-actions">
-                  <button type="button" aria-label="Move Holy Forever up">Up</button>
-                  <button type="button" aria-label="Move Holy Forever down">Down</button>
-                </div>
-              </article>
-            </section>
-            <aside class="context-rail">
-              <section class="rail-card">
-                <p class="eyebrow">Session status</p>
-                <p class="row-title">Saved locally</p>
-                <p class="row-subtle">Song order changes sync with planning.</p>
-              </section>
-              <section class="rail-card">
-                <p class="eyebrow">Rules</p>
-                <p class="row-title">Songs stay unique</p>
-                <p class="row-subtle">Duplicate songs are blocked per session.</p>
-              </section>
-            </aside>
-          </div>
+          <section class="order-panel">
+            <header class="section-heading">
+              <div>
+                <p class="eyebrow">Session</p>
+                <input
+                  class="section-title-input"
+                  type="text"
+                  aria-label="Session name"
+                  value="Opening Set"
+                />
+              </div>
+              <button type="button">Add song</button>
+            </header>
+            <article class="order-row">
+              <span class="order-index">1</span>
+              <div>
+                <p class="row-title">Amazing Grace</p>
+                <p class="row-subtle">Opens scoped reader</p>
+              </div>
+              <div class="icon-actions">
+                <button type="button" aria-label="Move Amazing Grace up">Up</button>
+                <button type="button" aria-label="Move Amazing Grace down">Down</button>
+              </div>
+            </article>
+            <article class="order-row">
+              <span class="order-index">2</span>
+              <div>
+                <p class="row-title">Holy Forever</p>
+                <p class="row-subtle">Pending reorder safe</p>
+              </div>
+              <div class="icon-actions">
+                <button type="button" aria-label="Move Holy Forever up">Up</button>
+                <button type="button" aria-label="Move Holy Forever down">Down</button>
+              </div>
+            </article>
+          </section>
         </section>
       </main>
     </div>
