@@ -12,30 +12,27 @@ enum PlanningInlineMutationStatus {
 PlanningInlineMutationStatus? planningInlineMutationStatusFor(
   Iterable<PlanningMutationRecord> entries,
 ) {
-  var hasPending = false;
-  var hasFailed = false;
-  for (final entry in entries) {
-    if (entry.syncStatus == PlanningMutationSyncStatus.failedAuthorization ||
-        entry.errorCode == PlanningMutationSyncErrorCode.authorizationDenied) {
-      return PlanningInlineMutationStatus.authorizationDenied;
-    }
-    if (entry.syncStatus == PlanningMutationSyncStatus.conflict ||
-        entry.errorCode == PlanningMutationSyncErrorCode.conflict) {
-      return PlanningInlineMutationStatus.conflict;
-    }
-    if (entry.syncStatus == PlanningMutationSyncStatus.pending) {
-      hasPending = true;
-    } else {
-      hasFailed = true;
-    }
+  if (entries.any(
+    (entry) =>
+        entry.syncStatus == PlanningMutationSyncStatus.failedAuthorization ||
+        entry.errorCode == PlanningMutationSyncErrorCode.authorizationDenied,
+  )) {
+    return PlanningInlineMutationStatus.authorizationDenied;
   }
-  if (hasFailed) {
-    return PlanningInlineMutationStatus.failed;
+  if (entries.any(
+    (entry) =>
+        entry.syncStatus == PlanningMutationSyncStatus.conflict ||
+        entry.errorCode == PlanningMutationSyncErrorCode.conflict,
+  )) {
+    return PlanningInlineMutationStatus.conflict;
   }
+  final hasPending = entries.any(
+    (entry) => entry.syncStatus == PlanningMutationSyncStatus.pending,
+  );
   if (hasPending) {
     return PlanningInlineMutationStatus.pending;
   }
-  return null;
+  return entries.isEmpty ? null : PlanningInlineMutationStatus.failed;
 }
 
 class PlanningInlineMutationStatusBadge extends StatelessWidget {

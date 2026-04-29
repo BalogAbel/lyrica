@@ -177,8 +177,13 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final sessionsById = {
       for (final session in detail.sessions) session.id: session,
     };
-    if (!order.every(sessionsById.containsKey)) {
+    if (sessionsById.length != order.length) {
       return detail.sessions;
+    }
+    for (final sessionId in order) {
+      if (!sessionsById.containsKey(sessionId)) {
+        return detail.sessions;
+      }
     }
     return [for (final sessionId in order) sessionsById[sessionId]!];
   }
@@ -592,8 +597,13 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       return session.items;
     }
     final itemsById = {for (final item in session.items) item.id: item};
-    if (!order.every(itemsById.containsKey)) {
+    if (itemsById.length != order.length) {
       return session.items;
+    }
+    for (final itemId in order) {
+      if (!itemsById.containsKey(itemId)) {
+        return session.items;
+      }
     }
     return [for (final itemId in order) itemsById[itemId]!];
   }

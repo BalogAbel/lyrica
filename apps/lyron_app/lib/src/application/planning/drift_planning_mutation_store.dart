@@ -693,40 +693,39 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
   }) async {
     final planId = record.planId ?? record.aggregateId;
-    if (record.kind == PlanningMutationKind.planCreate) {
-      return record.baseVersion;
-    }
-    if (record.kind == PlanningMutationKind.planEdit ||
-        record.kind == PlanningMutationKind.sessionReorder) {
-      final detail = await _localStore.readPlanDetail(
-        userId: userId,
-        organizationId: organizationId,
-        planId: planId,
-      );
-      return detail?.plan.version;
-    }
-    if (record.kind == PlanningMutationKind.sessionRename ||
-        record.kind == PlanningMutationKind.sessionDelete ||
-        record.kind == PlanningMutationKind.sessionItemCreateSong ||
-        record.kind == PlanningMutationKind.sessionItemDelete ||
-        record.kind == PlanningMutationKind.sessionItemReorder) {
-      final detail = await _localStore.readPlanDetail(
-        userId: userId,
-        organizationId: organizationId,
-        planId: planId,
-      );
-      final sessionId = record.sessionId;
-      if (detail == null || sessionId == null) {
+    switch (record.kind) {
+      case PlanningMutationKind.planCreate:
         return record.baseVersion;
-      }
-      for (final session in detail.sessions) {
-        if (session.id == sessionId) {
-          return session.version;
+      case PlanningMutationKind.planEdit:
+      case PlanningMutationKind.sessionCreate:
+      case PlanningMutationKind.sessionReorder:
+        final detail = await _localStore.readPlanDetail(
+          userId: userId,
+          organizationId: organizationId,
+          planId: planId,
+        );
+        return detail?.plan.version;
+      case PlanningMutationKind.sessionRename:
+      case PlanningMutationKind.sessionDelete:
+      case PlanningMutationKind.sessionItemCreateSong:
+      case PlanningMutationKind.sessionItemDelete:
+      case PlanningMutationKind.sessionItemReorder:
+        final detail = await _localStore.readPlanDetail(
+          userId: userId,
+          organizationId: organizationId,
+          planId: planId,
+        );
+        final sessionId = record.sessionId;
+        if (detail == null || sessionId == null) {
+          return record.baseVersion;
         }
-      }
-      return record.baseVersion;
+        for (final session in detail.sessions) {
+          if (session.id == sessionId) {
+            return session.version;
+          }
+        }
+        return record.baseVersion;
     }
-    return record.baseVersion;
   }
 
   Future<bool> _hasReservedPlanSlug({
