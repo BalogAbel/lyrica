@@ -37,6 +37,8 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final ref = this.ref;
     final detailAsync = ref.watch(planningPlanDetailProvider(planId));
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
+    final mutationEntries =
+        mutationsAsync.valueOrNull ?? const <PlanningMutationRecord>[];
 
     return PlanningWorkspaceShell(
       title: AppStrings.planDetailTitle,
@@ -95,19 +97,46 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             plan: detail.plan,
             sessions: sessions,
           );
+          final planInlineStatus = planningInlineMutationStatusFor(
+            mutationEntries.where(
+              (entry) =>
+                  entry.aggregateId == detail.plan.id &&
+                  (entry.kind == PlanningMutationKind.planCreate ||
+                      entry.kind == PlanningMutationKind.planEdit),
+            ),
+          );
           return ReorderableListView.builder(
             buildDefaultDragHandles: false,
             padding: EdgeInsets.zero,
             header: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  detail.plan.name,
-                  style: Theme.of(context).textTheme.headlineSmall,
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      detail.plan.name,
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    if (planInlineStatus != null)
+                      PlanningInlineMutationStatusBadge(
+                        key: ValueKey('plan-local-status-${detail.plan.id}'),
+                        status: planInlineStatus,
+                      ),
+                  ],
                 ),
                 if ((detail.plan.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Text(detail.plan.description!),
+                ],
+                if (detail.plan.scheduledFor != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _formatScheduledFor(context, detail.plan.scheduledFor!),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ],
                 if (sessions.isEmpty) ...[
                   const SizedBox(height: 16),
@@ -131,6 +160,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                 planDetail: orderedDetail,
                 session: session,
                 sessionIndex: index,
+                mutationEntries: mutationEntries,
               );
             },
           );
@@ -356,17 +386,25 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   }
 }
 
+String _formatScheduledFor(BuildContext context, DateTime scheduledFor) {
+  return MaterialLocalizations.of(
+    context,
+  ).formatMediumDate(scheduledFor.toLocal());
+}
+
 class _SessionCard extends ConsumerStatefulWidget {
   const _SessionCard({
     super.key,
     required this.planDetail,
     required this.session,
     required this.sessionIndex,
+    required this.mutationEntries,
   });
 
   final PlanDetail planDetail;
   final SessionSummary session;
   final int sessionIndex;
+  final List<PlanningMutationRecord> mutationEntries;
 
   @override
   ConsumerState<_SessionCard> createState() => _SessionCardState();
@@ -395,6 +433,12 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final planDetail = widget.planDetail;
     final session = widget.session;
     final items = _orderedItems(session);
+    final inlineStatus = planningInlineMutationStatusFor(
+      widget.mutationEntries.where(
+        (entry) =>
+            entry.aggregateId == session.id || entry.sessionId == session.id,
+      ),
+    );
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
     final sessionIndex = planDetail.sessions.indexWhere(
@@ -427,9 +471,21 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    session.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        session.name,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      if (inlineStatus != null)
+                        PlanningInlineMutationStatusBadge(
+                          key: ValueKey('session-local-status-${session.id}'),
+                          status: inlineStatus,
+                        ),
+                    ],
                   ),
                 ),
                 ReorderableDelayedDragStartListener(
@@ -438,11 +494,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     key: ValueKey('session-drag-handle-${session.id}'),
                     width: 40,
                     height: 40,
-                    child: Tooltip(
-                      message:
-                          '${AppStrings.sessionReorderAction}: ${session.name}',
-                      child: const Center(child: Icon(Icons.drag_indicator)),
-                    ),
+                    child: const Center(child: Icon(Icons.drag_indicator)),
                   ),
                 ),
                 IconButton(
@@ -1110,11 +1162,7 @@ class _SongItemRow extends ConsumerWidget {
             key: ValueKey('session-item-drag-handle-${item.id}'),
             width: 40,
             height: 40,
-            child: Tooltip(
-              message:
-                  '${AppStrings.sessionItemReorderAction}: ${item.song.title}',
-              child: const Center(child: Icon(Icons.drag_indicator)),
-            ),
+            child: const Center(child: Icon(Icons.drag_indicator)),
           ),
         ),
         Expanded(

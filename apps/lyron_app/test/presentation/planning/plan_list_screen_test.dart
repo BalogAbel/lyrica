@@ -149,6 +149,34 @@ void main() {
     expect(find.text('plan-detail:sunday-morning'), findsOneWidget);
   });
 
+  testWidgets('shows plan descriptions and scheduled dates in subtitles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: [
+          PlanSummary(
+            id: 'plan-1',
+            slug: 'sunday-morning',
+            name: 'Sunday Morning',
+            description: 'Single-session Sunday fixture',
+            scheduledFor: DateTime(2026, 4, 5, 8, 30),
+            updatedAt: DateTime(2026, 3, 31, 8),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final titleContext = tester.element(find.text('Sunday Morning'));
+    final scheduledForLabel = MaterialLocalizations.of(
+      titleContext,
+    ).formatMediumDate(DateTime(2026, 4, 5, 8, 30));
+
+    expect(find.text('Single-session Sunday fixture'), findsOneWidget);
+    expect(find.text(scheduledForLabel), findsOneWidget);
+  });
+
   testWidgets('shows a loading state while plans are loading', (tester) async {
     final completer = Completer<List<PlanSummary>>();
 
@@ -322,6 +350,158 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(syncController.retriedAggregateIds, ['plan-1']);
+  });
+
+  testWidgets('marks plans with pending local changes inline', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: [
+          PlanSummary(
+            id: 'plan-1',
+            slug: 'sunday-morning',
+            name: 'Sunday Morning',
+            description: 'Single-session Sunday fixture',
+            scheduledFor: DateTime(2026, 4, 5, 8, 30),
+            updatedAt: DateTime(2026, 3, 31, 8),
+          ),
+        ],
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            name: 'Sunday Mornings',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('plan-row-status-plan-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('marks conflict rows inline', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: [
+          PlanSummary(
+            id: 'plan-1',
+            slug: 'conflict',
+            name: 'Conflict plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime(2026, 3, 31, 8),
+          ),
+        ],
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            name: 'Conflicting draft',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('plan-row-status-plan-1')),
+      findsOneWidget,
+    );
+    expect(find.text(AppStrings.planningConflictLabel), findsOneWidget);
+  });
+
+  testWidgets('marks authorization denied rows inline', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: [
+          PlanSummary(
+            id: 'plan-2',
+            slug: 'authorization',
+            name: 'Authorization plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime(2026, 3, 31, 8),
+          ),
+        ],
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: 'org-1',
+            planId: 'plan-2',
+            name: 'Authorization draft',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.failedAuthorization,
+            errorCode: PlanningMutationSyncErrorCode.authorizationDenied,
+            errorMessage: 'permission_denied',
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('plan-row-status-plan-2')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AppStrings.planningAuthorizationDeniedLabel),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('marks sync issue rows inline', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: [
+          PlanSummary(
+            id: 'plan-3',
+            slug: 'sync-issue',
+            name: 'Sync issue plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime(2026, 3, 31, 8),
+          ),
+        ],
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'plan-3',
+            organizationId: 'org-1',
+            planId: 'plan-3',
+            name: 'Sync issue draft',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            errorCode: PlanningMutationSyncErrorCode.connectivityFailure,
+            errorMessage: 'offline',
+            orderKey: 3,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('plan-row-status-plan-3')),
+      findsOneWidget,
+    );
+    expect(find.text(AppStrings.planningSyncIssueLabel), findsOneWidget);
   });
 
   testWidgets('shows a validation error for invalid scheduled-for input', (

@@ -120,6 +120,10 @@ class AppStrings {
   static const planListUnscheduledLabel = 'Unscheduled';
   static const planMutationPendingMessage =
       'Planning changes are pending sync.';
+  static const planningLocalChangesLabel = 'Local changes';
+  static const planningConflictLabel = 'Conflict';
+  static const planningAuthorizationDeniedLabel = 'Authorization changed';
+  static const planningSyncIssueLabel = 'Sync issue';
   static const planConflictMessage =
       'Planning changes conflict with a newer server version.';
   static const planAuthorizationRevokedMessage =

@@ -73,10 +73,24 @@ class PlanListScreen extends ConsumerWidget {
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final plan = plans[index];
+              final inlineStatus = planningInlineMutationStatusFor(
+                mutationsAsync.valueOrNull?.where(
+                      (entry) =>
+                          entry.aggregateId == plan.id ||
+                          entry.planId == plan.id,
+                    ) ??
+                    const <PlanningMutationRecord>[],
+              );
 
               return ListTile(
                 title: Text(plan.name),
                 subtitle: _PlanSummarySubtitle(plan: plan),
+                trailing: inlineStatus == null
+                    ? null
+                    : PlanningInlineMutationStatusBadge(
+                        key: ValueKey('plan-row-status-${plan.id}'),
+                        status: inlineStatus,
+                      ),
                 onTap: () =>
                     context.push(PlanningRoutes.planDetailLocation(plan.slug)),
               );
@@ -322,13 +336,31 @@ class _PlanSummarySubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheduledFor = plan.scheduledFor;
-    if (scheduledFor == null) {
-      return const Text(AppStrings.planListUnscheduledLabel);
+    final children = <Widget>[];
+    final description = plan.description?.trim();
+    if (description != null && description.isNotEmpty) {
+      children.add(Text(description));
     }
 
-    return Text(scheduledFor.toIso8601String());
+    final scheduledFor = plan.scheduledFor;
+    if (scheduledFor == null) {
+      children.add(const Text(AppStrings.planListUnscheduledLabel));
+    } else {
+      children.add(Text(_formatScheduledFor(context, scheduledFor)));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
   }
+}
+
+String _formatScheduledFor(BuildContext context, DateTime scheduledFor) {
+  return MaterialLocalizations.of(
+    context,
+  ).formatMediumDate(scheduledFor.toLocal());
 }
 
 class _RetryableErrorState extends StatelessWidget {

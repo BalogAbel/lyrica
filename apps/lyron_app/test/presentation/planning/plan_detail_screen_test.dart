@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -234,6 +235,21 @@ void main() {
     );
   });
 
+  testWidgets('shows the plan scheduled date in the header', (tester) async {
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _editablePlanDetailFixture()),
+    );
+    await tester.pumpAndSettle();
+
+    final titleContext = tester.element(find.text('Team Rehearsal'));
+    final scheduledForLabel = MaterialLocalizations.of(
+      titleContext,
+    ).formatMediumDate(DateTime(2026, 4, 10, 18));
+
+    expect(find.text('Fixture'), findsOneWidget);
+    expect(find.text(scheduledForLabel), findsOneWidget);
+  });
+
   testWidgets('shows an explicit loading state while the plan loads', (
     tester,
   ) async {
@@ -395,6 +411,46 @@ void main() {
       findsOneWidget,
     );
     expect(find.text(AppStrings.sessionItemAddSongAction), findsWidgets);
+  });
+
+  testWidgets('marks pending plan and session edits inline', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            name: 'Team Rehearsals',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026, 4, 10, 9),
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'session-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionRename,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            name: 'Warm-Ups',
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026, 4, 10, 9),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('plan-local-status-plan-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('session-local-status-session-1')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('renders each conflict row with keep and discard mine actions', (
@@ -596,13 +652,10 @@ void main() {
     );
   });
 
-  testWidgets('shows reordered sessions before local write completes', (
+  testWidgets('tap on the session drag handle does not reorder sessions', (
     tester,
   ) async {
-    final reorderCompleter = Completer<void>();
-    final writeService = _FakePlanningWriteService(
-      reorderSessionsCompleter: reorderCompleter,
-    );
+    final writeService = _FakePlanningWriteService();
 
     await tester.pumpWidget(
       buildApp(
@@ -612,26 +665,48 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final sessionList = tester.widget<ReorderableListView>(
-      find.byType(ReorderableListView).first,
+    await tester.tap(
+      find.byKey(const ValueKey('session-drag-handle-session-1')),
     );
-    sessionList.onReorder(0, 2);
-    await tester.pump();
-
-    expect(
-      tester.getTopLeft(find.text('Closing')).dy,
-      lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
-    );
-    expect(writeService.reorderedSessionDraft, isNull);
-
-    reorderCompleter.complete();
     await tester.pumpAndSettle();
 
+    expect(writeService.reorderedSessionDraft, isNull);
     expect(
-      writeService.reorderedSessionDraft?.orderedSessionIds,
-      orderedEquals(const ['session-2', 'session-1']),
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Closing')).dy),
     );
   });
+
+  testWidgets(
+    'long-press drag on the session handle reorders sessions',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: _ReorderHandleHarness())),
+      );
+      await tester.pumpAndSettle();
+
+      final dragHandle = find.byKey(
+        const ValueKey('session-drag-handle-warm-up'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getCenter(dragHandle),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump(kLongPressTimeout);
+      await gesture.moveBy(const Offset(0, 10));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 
   testWidgets('adds a visible song locally from the session picker', (
     tester,
@@ -1796,6 +1871,56 @@ PlanDetail _editablePlanDetailFixture() {
   );
 }
 
+class _ReorderHandleHarness extends StatefulWidget {
+  const _ReorderHandleHarness();
+
+  @override
+  State<_ReorderHandleHarness> createState() => _ReorderHandleHarnessState();
+}
+
+class _ReorderHandleHarnessState extends State<_ReorderHandleHarness> {
+  final List<String> _items = ['Warm-Up', 'Closing'];
+
+  void _reorder(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    setState(() {
+      final moved = _items.removeAt(oldIndex);
+      _items.insert(newIndex, moved);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: ReorderableListView.builder(
+          buildDefaultDragHandles: false,
+          itemCount: _items.length,
+          onReorder: _reorder,
+          itemBuilder: (context, index) {
+            final label = _items[index];
+            return ListTile(
+              key: ValueKey(label),
+              leading: ReorderableDelayedDragStartListener(
+                index: index,
+                child: SizedBox(
+                  key: ValueKey('session-drag-handle-${label.toLowerCase()}'),
+                  width: 40,
+                  height: 40,
+                  child: const Center(child: Icon(Icons.drag_indicator)),
+                ),
+              ),
+              title: Text(label),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 PlanDetail _planDetailWithItemsFixture() {
   return PlanDetail(
     plan: PlanSummary(
@@ -1842,15 +1967,14 @@ class _FakePlanningWriteService extends PlanningWriteService {
     this.addSongException,
     this.reorderSessionsCompleter,
     this.reorderSessionItemsCompleter,
-  })
-    : super(
-        _PlanDetailTestPlanningRepository(),
-        mutationStore: _PlanDetailTestPlanningMutationStore(),
-        activeContextReader: () async => const ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-      );
+  }) : super(
+         _PlanDetailTestPlanningRepository(),
+         mutationStore: _PlanDetailTestPlanningMutationStore(),
+         activeContextReader: () async => const ActivePlanningReadContext(
+           userId: 'user-1',
+           organizationId: 'org-1',
+         ),
+       );
 
   final Completer<void>? addSongCompleter;
   final Completer<void>? reorderSessionsCompleter;
