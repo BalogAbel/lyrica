@@ -14,6 +14,8 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/session_song_picker.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanDetailScreen extends ConsumerWidget {
@@ -26,86 +28,91 @@ class PlanDetailScreen extends ConsumerWidget {
     final detailAsync = ref.watch(planningPlanDetailProvider(planId));
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.planDetailTitle),
-        actions: [
-          TextButton(
-            onPressed: () => _editPlan(context, ref),
-            child: const Text(AppStrings.planEditAction),
-          ),
-          TextButton(
-            onPressed: () => _createSession(context, ref),
-            child: const Text(AppStrings.sessionCreateAction),
-          ),
-        ],
-        leading: BackButton(
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            }
-          },
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            mutationsAsync.when(
-              data: (entries) {
-                final relevantEntries = entries
-                    .where(
-                      (entry) =>
-                          entry.aggregateId == planId || entry.planId == planId,
-                    )
-                    .toList(growable: false);
-                return relevantEntries.isEmpty
-                    ? const SizedBox.shrink()
-                    : _PlanningMutationStatusSurface(
-                        entries: relevantEntries,
-                        currentPlanId: planId,
-                      );
+    return PlanningWorkspaceShell(
+      title: AppStrings.planDetailTitle,
+      leading: context.canPop()
+          ? BackButton(
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                }
               },
-              error: (_, _) => const SizedBox.shrink(),
-              loading: () => const SizedBox.shrink(),
-            ),
-            Expanded(
-              child: detailAsync.when(
-                loading: () => const Center(
-                  child: Text(AppStrings.planDetailLoadingMessage),
-                ),
-                error: (error, stackTrace) => _RetryableErrorState(
-                  message: AppStrings.planDetailLoadFailureMessage,
-                  onRetry: () =>
-                      ref.invalidate(planningPlanDetailProvider(planId)),
-                ),
-                data: (PlanDetail detail) {
-                  return ListView(
-                    padding: const EdgeInsets.all(24),
-                    children: [
-                      Text(
-                        detail.plan.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      if ((detail.plan.description ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(detail.plan.description!),
-                      ],
-                      const SizedBox(height: 20),
-                      for (final session in detail.sessions) ...[
-                        _SessionCard(
-                          key: ValueKey(session.id),
-                          planDetail: detail,
-                          session: session,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ],
-                  );
-                },
-              ),
-            ),
-          ],
+            )
+          : null,
+      actions: [
+        TextButton(
+          onPressed: () => _editPlan(context, ref),
+          child: const Text(AppStrings.planEditAction),
         ),
+        TextButton(
+          onPressed: () => _createSession(context, ref),
+          child: const Text(AppStrings.sessionCreateAction),
+        ),
+      ],
+      statusSurface: mutationsAsync.when(
+        data: (entries) {
+          final relevantEntries = entries
+              .where(
+                (entry) =>
+                    entry.aggregateId == planId || entry.planId == planId,
+              )
+              .toList(growable: false);
+          if (relevantEntries.isEmpty) {
+            return null;
+          }
+          return PlanningWorkspaceStatusSurface(
+            entries: relevantEntries,
+            onRetry: (entry) => _retryMutation(context, ref, entry),
+            onKeepMine: (entry) => _keepMine(context, ref, entry),
+            onDiscardMine: (entry) => _discardMine(context, ref, entry),
+          );
+        },
+        error: (_, _) => null,
+        loading: () => null,
+      ),
+      body: detailAsync.when(
+        loading: () =>
+            const Center(child: Text(AppStrings.planDetailLoadingMessage)),
+        error: (error, stackTrace) => _RetryableErrorState(
+          message: AppStrings.planDetailLoadFailureMessage,
+          onRetry: () => ref.invalidate(planningPlanDetailProvider(planId)),
+        ),
+        data: (PlanDetail detail) {
+          return ReorderableListView.builder(
+            buildDefaultDragHandles: false,
+            padding: EdgeInsets.zero,
+            header: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail.plan.name,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                if ((detail.plan.description ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(detail.plan.description!),
+                ],
+                if (detail.sessions.isEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(AppStrings.sessionListEmptyMessage),
+                ],
+                const SizedBox(height: 20),
+              ],
+            ),
+            itemCount: detail.sessions.length,
+            onReorder: (oldIndex, newIndex) =>
+                _reorderSessions(context, ref, detail, oldIndex, newIndex),
+            itemBuilder: (context, index) {
+              final session = detail.sessions[index];
+              return _SessionCard(
+                key: ValueKey(session.id),
+                planDetail: detail,
+                session: session,
+                sessionIndex: index,
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -133,13 +140,20 @@ class PlanDetailScreen extends ConsumerWidget {
       return;
     }
 
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
+      return;
+    }
+
     if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .editPlan(
           context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
+            userId: currentContext.userId,
+            organizationId: currentContext.organizationId,
           ),
           draft: draft,
         );
@@ -164,13 +178,20 @@ class PlanDetailScreen extends ConsumerWidget {
       return;
     }
 
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
+      return;
+    }
+
     if (!context.mounted) return;
     await ref
         .read(planningWriteServiceProvider)
         .createSession(
           context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
+            userId: currentContext.userId,
+            organizationId: currentContext.organizationId,
           ),
           draft: SessionCreateDraft(planId: planId, name: draft),
         );
@@ -180,6 +201,110 @@ class PlanDetailScreen extends ConsumerWidget {
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
   }
+
+  Future<void> _retryMutation(
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+
+    await ref
+        .read(planningMutationSyncControllerProvider)
+        .retryMutation(
+          activeContext,
+          aggregateType: entry.kind.aggregateType,
+          aggregateId: entry.aggregateId,
+        );
+    if (!context.mounted) {
+      return;
+    }
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planId));
+  }
+
+  Future<void> _keepMine(
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
+    await _retryMutation(context, ref, entry);
+  }
+
+  Future<void> _discardMine(
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+
+    await ref
+        .read(planningMutationSyncControllerProvider)
+        .discardMutation(
+          activeContext,
+          aggregateType: entry.kind.aggregateType,
+          aggregateId: entry.aggregateId,
+        );
+    if (!context.mounted) {
+      return;
+    }
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(planId));
+  }
+
+  Future<void> _reorderSessions(
+    BuildContext context,
+    WidgetRef ref,
+    PlanDetail detail,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+
+    final currentOrder = detail.sessions.map((value) => value.id).toList();
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    if (oldIndex < 0 ||
+        oldIndex >= currentOrder.length ||
+        newIndex < 0 ||
+        newIndex >= currentOrder.length) {
+      return;
+    }
+    final movedId = currentOrder.removeAt(oldIndex);
+    currentOrder.insert(newIndex, movedId);
+
+    await ref
+        .read(planningWriteServiceProvider)
+        .reorderSessions(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionReorderDraft(
+            planId: detail.plan.id,
+            orderedSessionIds: currentOrder,
+          ),
+        );
+
+    if (!context.mounted) return;
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
+    ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+  }
 }
 
 class _SessionCard extends ConsumerStatefulWidget {
@@ -187,10 +312,12 @@ class _SessionCard extends ConsumerStatefulWidget {
     super.key,
     required this.planDetail,
     required this.session,
+    required this.sessionIndex,
   });
 
   final PlanDetail planDetail;
   final SessionSummary session;
+  final int sessionIndex;
 
   @override
   ConsumerState<_SessionCard> createState() => _SessionCardState();
@@ -218,13 +345,10 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final planDetail = widget.planDetail;
     final session = widget.session;
     final ref = this.ref;
+    final catalogState = ref.watch(catalogSnapshotStateProvider);
     final sessionIndex = planDetail.sessions.indexWhere(
       (candidate) => candidate.id == session.id,
     );
-    final canMoveUp = sessionIndex > 0;
-    final canMoveDown =
-        sessionIndex >= 0 && sessionIndex < planDetail.sessions.length - 1;
-    final catalogState = ref.watch(catalogSnapshotStateProvider);
     ref.listen(activePlanningContextProvider, (previous, next) {
       if (!mounted || !_pickerOpen || previous == next) {
         return;
@@ -242,13 +366,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
 
       _dismissPicker();
     });
-    final songsAsync = ref.watch(songLibraryListProvider);
-    final canAddSong =
-        catalogState.hasCachedCatalog && !_addSongInFlight && !_pickerOpen;
-    final showAddSongStatus =
-        _addSongInFlight ||
-        !catalogState.hasCachedCatalog ||
-        songsAsync.isLoading;
 
     return Card(
       child: Padding(
@@ -264,15 +381,30 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
+                ReorderableDelayedDragStartListener(
+                  index: widget.sessionIndex,
+                  child: SizedBox(
+                    key: ValueKey('session-drag-handle-${session.id}'),
+                    width: 40,
+                    height: 40,
+                    child: Tooltip(
+                      message:
+                          '${AppStrings.sessionReorderAction}: ${session.name}',
+                      child: const Center(child: Icon(Icons.drag_indicator)),
+                    ),
+                  ),
+                ),
                 IconButton(
-                  onPressed: canMoveUp
+                  onPressed: sessionIndex > 0
                       ? () => _reorderSession(context, ref, -1)
                       : null,
                   icon: const Icon(Icons.keyboard_arrow_up),
                   tooltip: '${AppStrings.sessionMoveUpAction}: ${session.name}',
                 ),
                 IconButton(
-                  onPressed: canMoveDown
+                  onPressed:
+                      sessionIndex >= 0 &&
+                          sessionIndex < planDetail.sessions.length - 1
                       ? () => _reorderSession(context, ref, 1)
                       : null,
                   icon: const Icon(Icons.keyboard_arrow_down),
@@ -280,54 +412,65 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                       '${AppStrings.sessionMoveDownAction}: ${session.name}',
                 ),
                 IconButton(
-                  onPressed: () => _renameSession(context, ref),
+                  onPressed: () => _renameSession(context),
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: '${AppStrings.sessionRenameAction}: ${session.name}',
                 ),
-                if (session.items.isEmpty)
+                if (session.items.isEmpty) ...[
+                  const SizedBox(width: 8),
                   IconButton(
                     onPressed: () => _deleteSession(context, ref),
                     icon: const Icon(Icons.delete_outline),
                     tooltip:
                         '${AppStrings.sessionDeleteAction}: ${session.name}',
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 8),
             Text('${AppStrings.sessionLabel} ${session.position}'),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Focus(
-                key: ValueKey('session-add-song-focus-${session.id}'),
-                focusNode: _addSongFocusNode,
-                child: TextButton.icon(
-                  key: ValueKey('session-add-song-${session.id}'),
-                  onPressed: canAddSong ? () => _addSong(context, ref) : null,
-                  icon: const Icon(Icons.add),
-                  label: const Text(AppStrings.sessionItemAddSongAction),
-                ),
+            if (session.items.isEmpty) ...[
+              const Text(AppStrings.sessionItemsEmptyMessage),
+              const SizedBox(height: 12),
+            ],
+            ReorderableListView.builder(
+              buildDefaultDragHandles: false,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: session.items.length,
+              onReorder: (oldIndex, newIndex) =>
+                  _reorderItems(context, ref, oldIndex, newIndex),
+              itemBuilder: (context, index) {
+                final item = session.items[index];
+                return Padding(
+                  key: ValueKey(item.id),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _SongItemRow(
+                    planDetail: planDetail,
+                    session: session,
+                    item: item,
+                    itemIndex: index,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Focus(
+              key: ValueKey('session-add-song-focus-${session.id}'),
+              focusNode: _addSongFocusNode,
+              child: TextButton.icon(
+                key: ValueKey('session-add-song-${session.id}'),
+                onPressed: _canAddSong()
+                    ? () => _addSong(context, planDetail, session)
+                    : null,
+                icon: const Icon(Icons.add),
+                label: const Text(AppStrings.sessionItemAddSongAction),
               ),
             ),
-            if (showAddSongStatus)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _addSongInFlight
-                      ? AppStrings.sessionItemSongPickerAddInProgressMessage
-                      : songsAsync.isLoading && catalogState.hasCachedCatalog
-                      ? AppStrings.songListLoadingMessage
-                      : AppStrings.sessionItemSongUnavailableMessage,
-                ),
-              ),
-            for (var index = 0; index < session.items.length; index += 1) ...[
-              _SongItemRow(
-                planDetail: planDetail,
-                session: session,
-                item: session.items[index],
-                itemIndex: index,
-              ),
+            if (!catalogState.hasCachedCatalog) ...[
               const SizedBox(height: 8),
+              const Text(AppStrings.sessionItemSongUnavailableMessage),
             ],
           ],
         ),
@@ -335,19 +478,32 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     );
   }
 
-  Future<void> _renameSession(BuildContext context, WidgetRef ref) async {
-    final planDetail = widget.planDetail;
-    final session = widget.session;
+  bool _canAddSong() {
+    final catalogState = ref.read(catalogSnapshotStateProvider);
+    return catalogState.hasCachedCatalog && !_pickerOpen && !_addSongInFlight;
+  }
+
+  Future<void> _renameSession(BuildContext context) async {
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
     }
 
-    final draft = await showDialog<String>(
+    final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _SessionEditorDialog(initialName: session.name),
+      builder: (context) =>
+          _SessionEditorDialog(initialName: widget.session.name),
     );
-    if (draft == null) {
+    if (nextName == null ||
+        nextName.isEmpty ||
+        nextName == widget.session.name) {
+      return;
+    }
+
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
       return;
     }
 
@@ -356,20 +512,161 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         .read(planningWriteServiceProvider)
         .renameSession(
           context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
+            userId: currentContext.userId,
+            organizationId: currentContext.organizationId,
           ),
           draft: SessionRenameDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-            name: draft,
+            sessionId: widget.session.id,
+            planId: widget.planDetail.plan.id,
+            name: nextName,
           ),
         );
 
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
-    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+    ref.invalidate(planningPlanDetailProvider(widget.planDetail.plan.id));
+  }
+
+  Future<void> _addSong(
+    BuildContext context,
+    PlanDetail detail,
+    SessionSummary session,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final activeCatalogContext = ref.read(catalogSnapshotStateProvider).context;
+    final visibleSongsState = ref.read(songLibraryListProvider);
+    final existingSongIds = session.items.map((item) => item.song.id).toSet();
+    final selectableSongs = visibleSongsState.valueOrNull;
+    final FutureOr<List<SongSummary>> eligibleSongs =
+        selectableSongs == null || visibleSongsState.isLoading
+        ? ref.read(songLibraryListProvider.future).then((songs) {
+            return songs
+                .where((candidate) => !existingSongIds.contains(candidate.id))
+                .toList(growable: false);
+          })
+        : selectableSongs
+              .where((candidate) => !existingSongIds.contains(candidate.id))
+              .toList(growable: false);
+
+    await Future<void>.delayed(Duration.zero);
+    if (!context.mounted) {
+      return;
+    }
+    final currentCatalogContext = ref
+        .read(catalogSnapshotStateProvider)
+        .context;
+    if (currentCatalogContext != null &&
+        activeCatalogContext != null &&
+        (currentCatalogContext.userId != activeCatalogContext.userId ||
+            currentCatalogContext.organizationId !=
+                activeCatalogContext.organizationId)) {
+      return;
+    }
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
+      return;
+    }
+
+    setState(() {
+      _pickerOpen = true;
+    });
+    try {
+      final selectedSong = await showSessionSongPicker(
+        context: context,
+        eligibleSongs: eligibleSongs,
+        onPick: (song) async {
+          final currentCatalogContext = ref
+              .read(catalogSnapshotStateProvider)
+              .context;
+          if (currentCatalogContext != null &&
+              activeCatalogContext != null &&
+              (currentCatalogContext.userId != activeContext.userId ||
+                  currentCatalogContext.organizationId !=
+                      activeContext.organizationId)) {
+            return false;
+          }
+          final currentContext = ref.read(activePlanningContextProvider);
+          if (currentContext == null ||
+              currentContext.userId != activeContext.userId ||
+              currentContext.organizationId != activeContext.organizationId) {
+            return false;
+          }
+
+          setState(() {
+            _addSongInFlight = true;
+          });
+          try {
+            await ref
+                .read(planningWriteServiceProvider)
+                .addSongSessionItem(
+                  context: PlanningWriteContext(
+                    userId: currentContext.userId,
+                    organizationId: currentContext.organizationId,
+                  ),
+                  draft: SessionItemCreateSongDraft(
+                    sessionId: session.id,
+                    planId: detail.plan.id,
+                    songId: song.id,
+                  ),
+                );
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanListProvider);
+            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+            return true;
+          } on PlanningWriteContextMismatchException {
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+            return false;
+          } on DuplicateSessionSongException {
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+            return true;
+          } on PlanningSongUnavailableException {
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+            return false;
+          } finally {
+            if (mounted) {
+              setState(() {
+                _addSongInFlight = false;
+              });
+            }
+          }
+        },
+      );
+      if (selectedSong == null || !context.mounted) {
+        return;
+      }
+      ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pickerOpen = false;
+        });
+        _addSongFocusNode.requestFocus();
+      }
+    }
+  }
+
+  void _dismissPicker() {
+    if (!_pickerOpen) {
+      return;
+    }
+
+    setState(() {
+      _pickerOpen = false;
+    });
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (!navigator.canPop()) {
+      return;
+    }
+    navigator.maybePop();
   }
 
   Future<void> _deleteSession(BuildContext context, WidgetRef ref) async {
@@ -462,229 +759,53 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
 
-  void _dismissPicker() {
-    if (!_pickerOpen) {
-      return;
-    }
-
-    setState(() {
-      _pickerOpen = false;
-    });
-    final navigator = Navigator.of(context, rootNavigator: true);
-    if (!navigator.canPop()) {
-      return;
-    }
-    navigator.maybePop();
-  }
-
-  Future<void> _addSong(BuildContext context, WidgetRef ref) async {
+  Future<void> _reorderItems(
+    BuildContext context,
+    WidgetRef ref,
+    int oldIndex,
+    int newIndex,
+  ) async {
     final planDetail = widget.planDetail;
     final session = widget.session;
     final activeContext = ref.read(activePlanningContextProvider);
     if (activeContext == null) {
       return;
     }
-    final activeCatalogContext = ref.read(catalogSnapshotStateProvider).context;
 
-    final visibleSongsState = ref.read(songLibraryListProvider);
-    final existingSongIds = session.items.map((item) => item.song.id).toSet();
-    final selectableSongs = visibleSongsState.valueOrNull;
-    final FutureOr<List<SongSummary>> selectableSongsFuture =
-        selectableSongs == null || visibleSongsState.isLoading
-        ? ref.read(songLibraryListProvider.future).then((visibleSongs) {
-            return visibleSongs
-                .where((candidate) => !existingSongIds.contains(candidate.id))
-                .toList(growable: false);
-          })
-        : selectableSongs
-              .where((candidate) => !existingSongIds.contains(candidate.id))
-              .toList(growable: false);
-    await Future<void>.delayed(Duration.zero);
-    if (!context.mounted) {
+    final currentOrder = session.items.map((value) => value.id).toList();
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    if (oldIndex < 0 ||
+        oldIndex >= currentOrder.length ||
+        newIndex < 0 ||
+        newIndex >= currentOrder.length) {
       return;
     }
-    final currentCatalogContext = ref
-        .read(catalogSnapshotStateProvider)
-        .context;
-    if (currentCatalogContext != null &&
-        activeCatalogContext != null &&
-        (currentCatalogContext.userId != activeCatalogContext.userId ||
-            currentCatalogContext.organizationId !=
-                activeCatalogContext.organizationId)) {
-      return;
-    }
-    final currentContext = ref.read(activePlanningContextProvider);
-    if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
-      return;
-    }
-    setState(() {
-      _pickerOpen = true;
-    });
-    try {
-      final selectedSong = await showSessionSongPicker(
-        context: context,
-        eligibleSongs: selectableSongsFuture,
-        onPick: (song) async {
-          final currentCatalogContext = ref
-              .read(catalogSnapshotStateProvider)
-              .context;
-          if (currentCatalogContext != null &&
-              activeCatalogContext != null &&
-              (currentCatalogContext.userId != activeCatalogContext.userId ||
-                  currentCatalogContext.organizationId !=
-                      activeCatalogContext.organizationId)) {
-            return false;
-          }
-          final currentContext = ref.read(activePlanningContextProvider);
-          if (currentContext == null ||
-              currentContext.userId != activeContext.userId ||
-              currentContext.organizationId != activeContext.organizationId) {
-            return false;
-          }
-
-          setState(() {
-            _addSongInFlight = true;
-          });
-          try {
-            if (!context.mounted) return false;
-            try {
-              await ref
-                  .read(planningWriteServiceProvider)
-                  .addSongSessionItem(
-                    context: PlanningWriteContext(
-                      userId: currentContext.userId,
-                      organizationId: currentContext.organizationId,
-                    ),
-                    draft: SessionItemCreateSongDraft(
-                      sessionId: session.id,
-                      planId: planDetail.plan.id,
-                      songId: song.id,
-                    ),
-                  );
-            } on PlanningWriteContextMismatchException catch (_) {
-              ref.invalidate(planningMutationEntriesProvider);
-              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-              return false;
-            } on DuplicateSessionSongException catch (_) {
-              ref.invalidate(planningMutationEntriesProvider);
-              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-              return true;
-            } on PlanningSongUnavailableException catch (_) {
-              ref.invalidate(planningMutationEntriesProvider);
-              ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-              return false;
-            }
-
-            if (!context.mounted) return false;
-            ref.invalidate(planningMutationEntriesProvider);
-            ref.invalidate(planningPlanListProvider);
-            ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-            return true;
-          } finally {
-            if (mounted) {
-              setState(() {
-                _addSongInFlight = false;
-              });
-            }
-          }
-        },
-      );
-      if (mounted) {
-        _addSongFocusNode.requestFocus();
-      }
-      if (selectedSong == null) {
-        return;
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _pickerOpen = false;
-        });
-      }
-    }
-  }
-}
-
-class _PlanningMutationStatusSurface extends ConsumerWidget {
-  const _PlanningMutationStatusSurface({
-    required this.entries,
-    required this.currentPlanId,
-  });
-
-  final List<PlanningMutationRecord> entries;
-  final String currentPlanId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Column(
-        children: entries
-            .map(
-              (entry) => Card(
-                child: ListTile(
-                  title: Text(entry.name ?? entry.slug ?? entry.aggregateId),
-                  subtitle: Text(_messageFor(entry)),
-                  trailing:
-                      entry.syncStatus == PlanningMutationSyncStatus.pending
-                      ? null
-                      : TextButton(
-                          onPressed: () => _retryEntry(context, ref, entry),
-                          child: const Text(AppStrings.retryAction),
-                        ),
-                ),
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-
-  Future<void> _retryEntry(
-    BuildContext context,
-    WidgetRef ref,
-    PlanningMutationRecord entry,
-  ) async {
-    final activeContext = ref.read(activePlanningContextProvider);
-    if (activeContext == null) {
-      return;
-    }
+    final movedId = currentOrder.removeAt(oldIndex);
+    currentOrder.insert(newIndex, movedId);
 
     await ref
-        .read(planningMutationSyncControllerProvider)
-        .retryMutation(
-          activeContext,
-          aggregateType: entry.kind.aggregateType,
-          aggregateId: entry.aggregateId,
+        .read(planningWriteServiceProvider)
+        .reorderSessionItems(
+          context: PlanningWriteContext(
+            userId: activeContext.userId,
+            organizationId: activeContext.organizationId,
+          ),
+          draft: SessionItemReorderDraft(
+            sessionId: session.id,
+            planId: planDetail.plan.id,
+            orderedSessionItemIds: currentOrder,
+          ),
         );
     if (!context.mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
-    ref.invalidate(planningPlanDetailProvider(currentPlanId));
-  }
-
-  String _messageFor(PlanningMutationRecord entry) {
-    return switch (entry.errorCode) {
-      PlanningMutationSyncErrorCode.authorizationDenied =>
-        AppStrings.planAuthorizationRevokedMessage,
-      PlanningMutationSyncErrorCode.dependencyBlocked =>
-        AppStrings.sessionDeleteBlockedMessage,
-      PlanningMutationSyncErrorCode.remoteMissing =>
-        AppStrings.planRemoteMissingMessage,
-      PlanningMutationSyncErrorCode.conflict => AppStrings.planConflictMessage,
-      PlanningMutationSyncErrorCode.connectivityFailure =>
-        AppStrings.planMutationPendingMessage,
-      PlanningMutationSyncErrorCode.unknown =>
-        entry.errorMessage ?? AppStrings.planMutationPendingMessage,
-      null => entry.errorMessage ?? AppStrings.planMutationPendingMessage,
-    };
+    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
 }
 
-class _PlanEditorDialog extends StatefulWidget {
+class _PlanEditorDialog extends ConsumerStatefulWidget {
   const _PlanEditorDialog({
     required this.planId,
     required this.initialName,
@@ -698,10 +819,10 @@ class _PlanEditorDialog extends StatefulWidget {
   final DateTime? initialScheduledFor;
 
   @override
-  State<_PlanEditorDialog> createState() => _PlanEditorDialogState();
+  ConsumerState<_PlanEditorDialog> createState() => _PlanEditorDialogState();
 }
 
-class _PlanEditorDialogState extends State<_PlanEditorDialog> {
+class _PlanEditorDialogState extends ConsumerState<_PlanEditorDialog> {
   late final TextEditingController _nameController = TextEditingController(
     text: widget.initialName,
   );
@@ -723,6 +844,16 @@ class _PlanEditorDialogState extends State<_PlanEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(activePlanningContextProvider, (previous, next) {
+      if (!mounted || previous == next) {
+        return;
+      }
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).maybePop();
+      }
+    });
+
     return AlertDialog(
       title: const Text(AppStrings.planEditorTitleEdit),
       content: SizedBox(
@@ -798,16 +929,17 @@ class _PlanEditorDialogState extends State<_PlanEditorDialog> {
   }
 }
 
-class _SessionEditorDialog extends StatefulWidget {
+class _SessionEditorDialog extends ConsumerStatefulWidget {
   const _SessionEditorDialog({this.initialName = ''});
 
   final String initialName;
 
   @override
-  State<_SessionEditorDialog> createState() => _SessionEditorDialogState();
+  ConsumerState<_SessionEditorDialog> createState() =>
+      _SessionEditorDialogState();
 }
 
-class _SessionEditorDialogState extends State<_SessionEditorDialog> {
+class _SessionEditorDialogState extends ConsumerState<_SessionEditorDialog> {
   late final TextEditingController _nameController = TextEditingController(
     text: widget.initialName,
   );
@@ -820,6 +952,16 @@ class _SessionEditorDialogState extends State<_SessionEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(activePlanningContextProvider, (previous, next) {
+      if (!mounted || previous == next) {
+        return;
+      }
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).maybePop();
+      }
+    });
+
     final isRename = widget.initialName.isNotEmpty;
 
     return AlertDialog(
@@ -882,10 +1024,21 @@ class _SongItemRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canMoveUp = itemIndex > 0;
-    final canMoveDown = itemIndex < session.items.length - 1;
     return Row(
       children: [
+        ReorderableDelayedDragStartListener(
+          index: itemIndex,
+          child: SizedBox(
+            key: ValueKey('session-item-drag-handle-${item.id}'),
+            width: 40,
+            height: 40,
+            child: Tooltip(
+              message:
+                  '${AppStrings.sessionItemReorderAction}: ${item.song.title}',
+              child: const Center(child: Icon(Icons.drag_indicator)),
+            ),
+          ),
+        ),
         Expanded(
           child: InkWell(
             key: ValueKey('plan-session-item-${item.id}'),
@@ -912,61 +1065,12 @@ class _SongItemRow extends ConsumerWidget {
           ),
         ),
         IconButton(
-          onPressed: canMoveUp ? () => _reorderItem(context, ref, -1) : null,
-          icon: const Icon(Icons.keyboard_arrow_up),
-          tooltip: '${AppStrings.sessionItemMoveUpAction}: ${item.song.title}',
-        ),
-        IconButton(
-          onPressed: canMoveDown ? () => _reorderItem(context, ref, 1) : null,
-          icon: const Icon(Icons.keyboard_arrow_down),
-          tooltip:
-              '${AppStrings.sessionItemMoveDownAction}: ${item.song.title}',
-        ),
-        IconButton(
           onPressed: () => _deleteItem(context, ref),
           icon: const Icon(Icons.delete_outline),
           tooltip: '${AppStrings.sessionItemDeleteAction}: ${item.song.title}',
         ),
       ],
     );
-  }
-
-  Future<void> _reorderItem(
-    BuildContext context,
-    WidgetRef ref,
-    int delta,
-  ) async {
-    final activeContext = ref.read(activePlanningContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-    final currentOrder = session.items.map((value) => value.id).toList();
-    final currentIndex = currentOrder.indexOf(item.id);
-    final targetIndex = currentIndex + delta;
-    if (currentIndex < 0 ||
-        targetIndex < 0 ||
-        targetIndex >= currentOrder.length) {
-      return;
-    }
-    final movedId = currentOrder.removeAt(currentIndex);
-    currentOrder.insert(targetIndex, movedId);
-    await ref
-        .read(planningWriteServiceProvider)
-        .reorderSessionItems(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionItemReorderDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-            orderedSessionItemIds: currentOrder,
-          ),
-        );
-    if (!context.mounted) return;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
   }
 
   Future<void> _deleteItem(BuildContext context, WidgetRef ref) async {

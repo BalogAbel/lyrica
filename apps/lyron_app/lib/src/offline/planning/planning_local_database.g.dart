@@ -2313,6 +2313,17 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _originSnapshotJsonMeta =
+      const VerificationMeta('originSnapshotJson');
+  @override
+  late final GeneratedColumn<String> originSnapshotJson =
+      GeneratedColumn<String>(
+        'origin_snapshot_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _errorCodeMeta = const VerificationMeta(
     'errorCode',
   );
@@ -2376,6 +2387,7 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    originSnapshotJson,
     errorCode,
     errorMessage,
     orderKey,
@@ -2531,6 +2543,15 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         ),
       );
     }
+    if (data.containsKey('origin_snapshot_json')) {
+      context.handle(
+        _originSnapshotJsonMeta,
+        originSnapshotJson.isAcceptableOrUnknown(
+          data['origin_snapshot_json']!,
+          _originSnapshotJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('error_code')) {
       context.handle(
         _errorCodeMeta,
@@ -2644,6 +2665,10 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.int,
         data['${effectivePrefix}base_version'],
       ),
+      originSnapshotJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin_snapshot_json'],
+      ),
       errorCode: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}error_code'],
@@ -2688,6 +2713,7 @@ class CachedPlanningMutation extends DataClass
   final String? songTitle;
   final String? orderedSiblingIds;
   final int? baseVersion;
+  final String? originSnapshotJson;
   final String? errorCode;
   final String? errorMessage;
   final int orderKey;
@@ -2710,6 +2736,7 @@ class CachedPlanningMutation extends DataClass
     this.songTitle,
     this.orderedSiblingIds,
     this.baseVersion,
+    this.originSnapshotJson,
     this.errorCode,
     this.errorMessage,
     required this.orderKey,
@@ -2756,6 +2783,9 @@ class CachedPlanningMutation extends DataClass
     }
     if (!nullToAbsent || baseVersion != null) {
       map['base_version'] = Variable<int>(baseVersion);
+    }
+    if (!nullToAbsent || originSnapshotJson != null) {
+      map['origin_snapshot_json'] = Variable<String>(originSnapshotJson);
     }
     if (!nullToAbsent || errorCode != null) {
       map['error_code'] = Variable<String>(errorCode);
@@ -2805,6 +2835,9 @@ class CachedPlanningMutation extends DataClass
       baseVersion: baseVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(baseVersion),
+      originSnapshotJson: originSnapshotJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originSnapshotJson),
       errorCode: errorCode == null && nullToAbsent
           ? const Value.absent()
           : Value(errorCode),
@@ -2841,6 +2874,9 @@ class CachedPlanningMutation extends DataClass
         json['orderedSiblingIds'],
       ),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
+      originSnapshotJson: serializer.fromJson<String?>(
+        json['originSnapshotJson'],
+      ),
       errorCode: serializer.fromJson<String?>(json['errorCode']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       orderKey: serializer.fromJson<int>(json['orderKey']),
@@ -2868,6 +2904,7 @@ class CachedPlanningMutation extends DataClass
       'songTitle': serializer.toJson<String?>(songTitle),
       'orderedSiblingIds': serializer.toJson<String?>(orderedSiblingIds),
       'baseVersion': serializer.toJson<int?>(baseVersion),
+      'originSnapshotJson': serializer.toJson<String?>(originSnapshotJson),
       'errorCode': serializer.toJson<String?>(errorCode),
       'errorMessage': serializer.toJson<String?>(errorMessage),
       'orderKey': serializer.toJson<int>(orderKey),
@@ -2893,6 +2930,7 @@ class CachedPlanningMutation extends DataClass
     Value<String?> songTitle = const Value.absent(),
     Value<String?> orderedSiblingIds = const Value.absent(),
     Value<int?> baseVersion = const Value.absent(),
+    Value<String?> originSnapshotJson = const Value.absent(),
     Value<String?> errorCode = const Value.absent(),
     Value<String?> errorMessage = const Value.absent(),
     int? orderKey,
@@ -2917,6 +2955,9 @@ class CachedPlanningMutation extends DataClass
         ? orderedSiblingIds.value
         : this.orderedSiblingIds,
     baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
+    originSnapshotJson: originSnapshotJson.present
+        ? originSnapshotJson.value
+        : this.originSnapshotJson,
     errorCode: errorCode.present ? errorCode.value : this.errorCode,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     orderKey: orderKey ?? this.orderKey,
@@ -2961,6 +3002,9 @@ class CachedPlanningMutation extends DataClass
       baseVersion: data.baseVersion.present
           ? data.baseVersion.value
           : this.baseVersion,
+      originSnapshotJson: data.originSnapshotJson.present
+          ? data.originSnapshotJson.value
+          : this.originSnapshotJson,
       errorCode: data.errorCode.present ? data.errorCode.value : this.errorCode,
       errorMessage: data.errorMessage.present
           ? data.errorMessage.value
@@ -2990,6 +3034,7 @@ class CachedPlanningMutation extends DataClass
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('orderKey: $orderKey, ')
@@ -3017,6 +3062,7 @@ class CachedPlanningMutation extends DataClass
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    originSnapshotJson,
     errorCode,
     errorMessage,
     orderKey,
@@ -3043,6 +3089,7 @@ class CachedPlanningMutation extends DataClass
           other.songTitle == this.songTitle &&
           other.orderedSiblingIds == this.orderedSiblingIds &&
           other.baseVersion == this.baseVersion &&
+          other.originSnapshotJson == this.originSnapshotJson &&
           other.errorCode == this.errorCode &&
           other.errorMessage == this.errorMessage &&
           other.orderKey == this.orderKey &&
@@ -3068,6 +3115,7 @@ class CachedPlanningMutationsCompanion
   final Value<String?> songTitle;
   final Value<String?> orderedSiblingIds;
   final Value<int?> baseVersion;
+  final Value<String?> originSnapshotJson;
   final Value<String?> errorCode;
   final Value<String?> errorMessage;
   final Value<int> orderKey;
@@ -3091,6 +3139,7 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.orderKey = const Value.absent(),
@@ -3115,6 +3164,7 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
     required int orderKey,
@@ -3146,6 +3196,7 @@ class CachedPlanningMutationsCompanion
     Expression<String>? songTitle,
     Expression<String>? orderedSiblingIds,
     Expression<int>? baseVersion,
+    Expression<String>? originSnapshotJson,
     Expression<String>? errorCode,
     Expression<String>? errorMessage,
     Expression<int>? orderKey,
@@ -3170,6 +3221,8 @@ class CachedPlanningMutationsCompanion
       if (songTitle != null) 'song_title': songTitle,
       if (orderedSiblingIds != null) 'ordered_sibling_ids': orderedSiblingIds,
       if (baseVersion != null) 'base_version': baseVersion,
+      if (originSnapshotJson != null)
+        'origin_snapshot_json': originSnapshotJson,
       if (errorCode != null) 'error_code': errorCode,
       if (errorMessage != null) 'error_message': errorMessage,
       if (orderKey != null) 'order_key': orderKey,
@@ -3196,6 +3249,7 @@ class CachedPlanningMutationsCompanion
     Value<String?>? songTitle,
     Value<String?>? orderedSiblingIds,
     Value<int?>? baseVersion,
+    Value<String?>? originSnapshotJson,
     Value<String?>? errorCode,
     Value<String?>? errorMessage,
     Value<int>? orderKey,
@@ -3220,6 +3274,7 @@ class CachedPlanningMutationsCompanion
       songTitle: songTitle ?? this.songTitle,
       orderedSiblingIds: orderedSiblingIds ?? this.orderedSiblingIds,
       baseVersion: baseVersion ?? this.baseVersion,
+      originSnapshotJson: originSnapshotJson ?? this.originSnapshotJson,
       errorCode: errorCode ?? this.errorCode,
       errorMessage: errorMessage ?? this.errorMessage,
       orderKey: orderKey ?? this.orderKey,
@@ -3282,6 +3337,9 @@ class CachedPlanningMutationsCompanion
     if (baseVersion.present) {
       map['base_version'] = Variable<int>(baseVersion.value);
     }
+    if (originSnapshotJson.present) {
+      map['origin_snapshot_json'] = Variable<String>(originSnapshotJson.value);
+    }
     if (errorCode.present) {
       map['error_code'] = Variable<String>(errorCode.value);
     }
@@ -3320,6 +3378,7 @@ class CachedPlanningMutationsCompanion
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('orderKey: $orderKey, ')
@@ -4504,6 +4563,7 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<String?> originSnapshotJson,
       Value<String?> errorCode,
       Value<String?> errorMessage,
       required int orderKey,
@@ -4529,6 +4589,7 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<String?> originSnapshotJson,
       Value<String?> errorCode,
       Value<String?> errorMessage,
       Value<int> orderKey,
@@ -4627,6 +4688,11 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<int> get baseVersion => $composableBuilder(
     column: $table.baseVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originSnapshotJson => $composableBuilder(
+    column: $table.originSnapshotJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4745,6 +4811,11 @@ class $$CachedPlanningMutationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get originSnapshotJson => $composableBuilder(
+    column: $table.originSnapshotJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get errorCode => $composableBuilder(
     column: $table.errorCode,
     builder: (column) => ColumnOrderings(column),
@@ -4844,6 +4915,11 @@ class $$CachedPlanningMutationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get originSnapshotJson => $composableBuilder(
+    column: $table.originSnapshotJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get errorCode =>
       $composableBuilder(column: $table.errorCode, builder: (column) => column);
 
@@ -4922,6 +4998,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<int> orderKey = const Value.absent(),
@@ -4945,6 +5022,7 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
                 orderKey: orderKey,
@@ -4970,6 +5048,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 required int orderKey,
@@ -4993,6 +5072,7 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
                 orderKey: orderKey,

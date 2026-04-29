@@ -97,6 +97,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
           baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
     });
@@ -182,6 +183,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
     });
@@ -233,6 +235,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
       await _removeSessionFromPendingReorder(
@@ -273,6 +276,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           updatedAt: DateTime.now().toUtc(),
           orderedSiblingIds: draft.orderedSessionIds,
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
     });
@@ -303,6 +307,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           ),
           updatedAt: DateTime.now().toUtc(),
           baseVersion: draft.baseVersion,
+          originSnapshot: draft.originSnapshot,
         ),
       );
     });
@@ -355,6 +360,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
       await _removeSessionItemFromPendingReorder(
@@ -396,6 +402,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           updatedAt: DateTime.now().toUtc(),
           orderedSiblingIds: draft.orderedSessionItemIds,
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
+          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
         ),
       );
     });
@@ -582,6 +589,11 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       throw StateError('Planning mutation record not found: $aggregateId');
     }
 
+    final rebasedBaseVersion = await _currentBaseVersionFor(
+      existing,
+      userId: userId,
+      organizationId: organizationId,
+    );
     await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
@@ -592,6 +604,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         syncStatus: PlanningMutationSyncStatus.pending,
         clearErrorCode: true,
         clearErrorMessage: true,
+        baseVersion: rebasedBaseVersion ?? existing.baseVersion,
         updatedAt: DateTime.now().toUtc(),
       ),
     );
@@ -644,6 +657,11 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   : jsonEncode(record.orderedSiblingIds),
             ),
             baseVersion: Value(record.baseVersion),
+            originSnapshotJson: Value(
+              record.originSnapshot == null
+                  ? null
+                  : jsonEncode(record.originSnapshot),
+            ),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
             orderKey: record.orderKey,
@@ -667,6 +685,48 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       );
     final row = await query.getSingle();
     return (row.read(maxExpression) ?? 0) + 1;
+  }
+
+  Future<int?> _currentBaseVersionFor(
+    PlanningMutationRecord record, {
+    required String userId,
+    required String organizationId,
+  }) async {
+    final planId = record.planId ?? record.aggregateId;
+    if (record.kind == PlanningMutationKind.planCreate) {
+      return record.baseVersion;
+    }
+    if (record.kind == PlanningMutationKind.planEdit ||
+        record.kind == PlanningMutationKind.sessionReorder) {
+      final detail = await _localStore.readPlanDetail(
+        userId: userId,
+        organizationId: organizationId,
+        planId: planId,
+      );
+      return detail?.plan.version;
+    }
+    if (record.kind == PlanningMutationKind.sessionRename ||
+        record.kind == PlanningMutationKind.sessionDelete ||
+        record.kind == PlanningMutationKind.sessionItemCreateSong ||
+        record.kind == PlanningMutationKind.sessionItemDelete ||
+        record.kind == PlanningMutationKind.sessionItemReorder) {
+      final detail = await _localStore.readPlanDetail(
+        userId: userId,
+        organizationId: organizationId,
+        planId: planId,
+      );
+      final sessionId = record.sessionId;
+      if (detail == null || sessionId == null) {
+        return record.baseVersion;
+      }
+      for (final session in detail.sessions) {
+        if (session.id == sessionId) {
+          return session.version;
+        }
+      }
+      return record.baseVersion;
+    }
+    return record.baseVersion;
   }
 
   Future<bool> _hasReservedPlanSlug({
@@ -744,6 +804,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       songTitle: row.songTitle,
       orderedSiblingIds: _orderedSiblingIdsFromValue(row.orderedSiblingIds),
       baseVersion: row.baseVersion,
+      originSnapshot: _originSnapshotFromValue(row.originSnapshotJson),
       errorCode: _errorCodeFromValue(row.errorCode),
       errorMessage: row.errorMessage,
       kind: planningMutationKindFromValue(row.mutationKind),
@@ -779,6 +840,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return null;
     }
     return decoded.map((entry) => entry.toString()).toList(growable: false);
+  }
+
+  Map<String, Object?>? _originSnapshotFromValue(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final decoded = jsonDecode(value);
+    if (decoded is! Map) {
+      return null;
+    }
+    return decoded.map((key, value) => MapEntry(key.toString(), value));
   }
 
   Future<void> _removeSessionFromPendingReorder({

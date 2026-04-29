@@ -190,6 +190,8 @@ void main() {
         aggregateId: 'plan-1',
       );
       expect(mutation?.baseVersion, 1);
+      expect(mutation?.originSnapshot?['name'], 'Sunday AM');
+      expect(mutation?.originSnapshot?['description'], 'Original');
       expect(syncCalls, 1);
     });
 
@@ -376,9 +378,40 @@ void main() {
         expect(mutation?.kind, PlanningMutationKind.sessionReorder);
         expect(mutation?.baseVersion, 1);
         expect(
+          mutation?.originSnapshot?['orderedSiblingIds'],
+          orderedEquals(const ['session-1', 'session-2']),
+        );
+        expect(
           mutation?.orderedSiblingIds,
           orderedEquals(const ['session-2', 'session-1']),
         );
+      },
+    );
+
+    test(
+      'session rename records the original session snapshot for rollback',
+      () async {
+        await seedProjection();
+
+        await service.renameSession(
+          context: context,
+          draft: const SessionRenameDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            name: 'Opening Set Updated',
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionRename.aggregateType,
+          aggregateId: 'session-1',
+        );
+        expect(mutation?.originSnapshot?['name'], 'Welcome');
+        expect(mutation?.originSnapshot?['slug'], 'welcome');
+        expect(mutation?.originSnapshot?['position'], 10);
+        expect(mutation?.originSnapshot?['version'], 1);
       },
     );
 

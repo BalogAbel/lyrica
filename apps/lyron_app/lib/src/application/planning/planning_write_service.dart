@@ -1,6 +1,9 @@
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
+import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 
 class PlanningWriteContext {
@@ -274,6 +277,7 @@ class PlanningWriteService {
         sessionId: draft.sessionId,
         planId: draft.planId,
         baseVersion: session.version,
+        originSnapshot: _sessionSnapshot(session),
       ),
     );
     await _scheduleSync(context);
@@ -294,6 +298,7 @@ class PlanningWriteService {
         planId: draft.planId,
         orderedSessionIds: draft.orderedSessionIds,
         baseVersion: detail.plan.version,
+        originSnapshot: _sessionOrderSnapshot(detail.sessions),
       ),
     );
     await _scheduleSync(context);
@@ -339,6 +344,7 @@ class PlanningWriteService {
         songTitle: song.first.title,
         position: nextPosition,
         baseVersion: session.version,
+        originSnapshot: _sessionItemOrderSnapshot(session.items),
       ),
     );
     await _scheduleSync(context);
@@ -363,6 +369,11 @@ class PlanningWriteService {
         sessionId: draft.sessionId,
         planId: draft.planId,
         baseVersion: session.version,
+        originSnapshot: _sessionItemSnapshot(
+          session.items.firstWhere(
+            (candidate) => candidate.id == draft.sessionItemId,
+          ),
+        ),
       ),
     );
     await _scheduleSync(context);
@@ -387,6 +398,7 @@ class PlanningWriteService {
         planId: draft.planId,
         orderedSessionItemIds: draft.orderedSessionItemIds,
         baseVersion: session.version,
+        originSnapshot: _sessionItemOrderSnapshot(session.items),
       ),
     );
     await _scheduleSync(context);
@@ -409,6 +421,7 @@ class PlanningWriteService {
         description: draft.description,
         scheduledFor: draft.scheduledFor,
         baseVersion: detail.plan.version,
+        originSnapshot: _planSnapshot(detail.plan),
       ),
     );
     await _scheduleSync(context);
@@ -433,6 +446,7 @@ class PlanningWriteService {
         planId: draft.planId,
         name: draft.name,
         baseVersion: session.version,
+        originSnapshot: _sessionSnapshot(session),
       ),
     );
     await _scheduleSync(context);
@@ -453,5 +467,56 @@ class PlanningWriteService {
       return;
     }
     await syncScheduler(context);
+  }
+
+  Map<String, Object?> _planSnapshot(PlanSummary plan) {
+    return <String, Object?>{
+      'name': plan.name,
+      'description': plan.description,
+      'scheduledFor': plan.scheduledFor?.toUtc().toIso8601String(),
+      'version': plan.version,
+    };
+  }
+
+  Map<String, Object?> _sessionSnapshot(SessionSummary session) {
+    return <String, Object?>{
+      'name': session.name,
+      'slug': session.slug,
+      'position': session.position,
+      'version': session.version,
+    };
+  }
+
+  Map<String, Object?> _sessionOrderSnapshot(List<SessionSummary> sessions) {
+    return <String, Object?>{
+      'orderedSiblingIds': sessions
+          .map((session) => session.id)
+          .toList(growable: false),
+      'orderedSiblingPositions': sessions
+          .map((session) => session.position)
+          .toList(growable: false),
+    };
+  }
+
+  Map<String, Object?> _sessionItemSnapshot(SessionItemSummary item) {
+    return <String, Object?>{
+      'id': item.id,
+      'position': item.position,
+      'songId': item.song.id,
+      'songTitle': item.song.title,
+    };
+  }
+
+  Map<String, Object?> _sessionItemOrderSnapshot(
+    List<SessionItemSummary> items,
+  ) {
+    return <String, Object?>{
+      'orderedSiblingIds': items.map((item) => item.id).toList(growable: false),
+      'orderedSiblingPositions': items
+          .map((item) => item.position)
+          .toList(growable: false),
+      if (items.isNotEmpty)
+        'items': items.map(_sessionItemSnapshot).toList(growable: false),
+    };
   }
 }

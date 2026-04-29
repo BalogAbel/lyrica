@@ -9,88 +9,78 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanListScreen extends ConsumerWidget {
   const PlanListScreen({super.key});
-
-  static const _contentWidth = 720.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(planningPlanListProvider);
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.planListTitle),
-        actions: [
-          TextButton(
-            onPressed: () => _createPlan(context, ref),
-            child: const Text(AppStrings.planCreateAction),
-          ),
-        ],
-        leading: BackButton(
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            }
-          },
+    return PlanningWorkspaceShell(
+      title: AppStrings.planListTitle,
+      leading: context.canPop()
+          ? BackButton(
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                }
+              },
+            )
+          : null,
+      actions: [
+        TextButton(
+          onPressed: () => _createPlan(context, ref),
+          child: const Text(AppStrings.planCreateAction),
         ),
+      ],
+      statusSurface: mutationsAsync.when(
+        data: (entries) {
+          if (entries.isEmpty) {
+            return null;
+          }
+          return PlanningWorkspaceStatusSurface(
+            entries: entries,
+            onRetry: (entry) => _retryMutation(context, ref, entry),
+            onKeepMine: (entry) => _keepMine(context, ref, entry),
+            onDiscardMine: (entry) => _discardMine(context, ref, entry),
+          );
+        },
+        error: (_, _) => null,
+        loading: () => null,
       ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: _contentWidth),
-            child: Column(
-              children: [
-                mutationsAsync.when(
-                  data: (entries) => entries.isEmpty
-                      ? const SizedBox.shrink()
-                      : _PlanningMutationStatusSurface(entries: entries),
-                  error: (_, _) => const SizedBox.shrink(),
-                  loading: () => const SizedBox.shrink(),
-                ),
-                Expanded(
-                  child: plansAsync.when(
-                    loading: () => const Center(
-                      child: Text(AppStrings.planListLoadingMessage),
-                    ),
-                    error: (error, stackTrace) => _RetryableErrorState(
-                      message: AppStrings.planListLoadFailureMessage,
-                      onRetry: () => ref.invalidate(planningPlanListProvider),
-                    ),
-                    data: (plans) {
-                      if (plans.isEmpty) {
-                        return const Center(
-                          child: Text(AppStrings.planListEmptyMessage),
-                        );
-                      }
-
-                      return ListView.separated(
-                        padding: const EdgeInsets.all(24),
-                        itemCount: plans.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final plan = plans[index];
-
-                          return ListTile(
-                            title: Text(plan.name),
-                            subtitle: _PlanSummarySubtitle(plan: plan),
-                            onTap: () => context.push(
-                              PlanningRoutes.planDetailLocation(plan.slug),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+      body: plansAsync.when(
+        loading: () =>
+            const Center(child: Text(AppStrings.planListLoadingMessage)),
+        error: (error, stackTrace) => _RetryableErrorState(
+          message: AppStrings.planListLoadFailureMessage,
+          onRetry: () => ref.invalidate(planningPlanListProvider),
         ),
+        data: (plans) {
+          if (plans.isEmpty) {
+            return const Center(child: Text(AppStrings.planListEmptyMessage));
+          }
+
+          return ListView.separated(
+            padding: EdgeInsets.zero,
+            itemCount: plans.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final plan = plans[index];
+
+              return ListTile(
+                title: Text(plan.name),
+                subtitle: _PlanSummarySubtitle(plan: plan),
+                onTap: () =>
+                    context.push(PlanningRoutes.planDetailLocation(plan.slug)),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -109,12 +99,19 @@ class PlanListScreen extends ConsumerWidget {
       return;
     }
 
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        currentContext.userId != activeContext.userId ||
+        currentContext.organizationId != activeContext.organizationId) {
+      return;
+    }
+
     final mutation = await ref
         .read(planningWriteServiceProvider)
         .createPlan(
           context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
+            userId: currentContext.userId,
+            organizationId: currentContext.organizationId,
           ),
           draft: draft,
         );
@@ -133,40 +130,8 @@ class PlanListScreen extends ConsumerWidget {
     }
     context.push(PlanningRoutes.planDetailLocation(routeSlug));
   }
-}
 
-class _PlanningMutationStatusSurface extends ConsumerWidget {
-  const _PlanningMutationStatusSurface({required this.entries});
-
-  final List<PlanningMutationRecord> entries;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Column(
-        children: entries
-            .map(
-              (entry) => Card(
-                child: ListTile(
-                  title: Text(entry.name ?? entry.slug ?? entry.aggregateId),
-                  subtitle: Text(_messageFor(entry)),
-                  trailing:
-                      entry.syncStatus == PlanningMutationSyncStatus.pending
-                      ? null
-                      : TextButton(
-                          onPressed: () => _retryEntry(context, ref, entry),
-                          child: const Text(AppStrings.retryAction),
-                        ),
-                ),
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-
-  Future<void> _retryEntry(
+  Future<void> _retryMutation(
     BuildContext context,
     WidgetRef ref,
     PlanningMutationRecord entry,
@@ -183,37 +148,56 @@ class _PlanningMutationStatusSurface extends ConsumerWidget {
           aggregateType: entry.kind.aggregateType,
           aggregateId: entry.aggregateId,
         );
+    if (!context.mounted) {
+      return;
+    }
     ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
   }
 
-  String _messageFor(PlanningMutationRecord entry) {
-    return switch (entry.errorCode) {
-      PlanningMutationSyncErrorCode.authorizationDenied =>
-        AppStrings.planAuthorizationRevokedMessage,
-      PlanningMutationSyncErrorCode.dependencyBlocked =>
-        AppStrings.sessionDeleteBlockedMessage,
-      PlanningMutationSyncErrorCode.remoteMissing =>
-        AppStrings.planRemoteMissingMessage,
-      PlanningMutationSyncErrorCode.conflict => AppStrings.planConflictMessage,
-      PlanningMutationSyncErrorCode.connectivityFailure =>
-        AppStrings.planMutationPendingMessage,
-      PlanningMutationSyncErrorCode.unknown =>
-        entry.errorMessage ?? AppStrings.planMutationPendingMessage,
-      null => entry.errorMessage ?? AppStrings.planMutationPendingMessage,
-    };
+  Future<void> _keepMine(
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
+    await _retryMutation(context, ref, entry);
+  }
+
+  Future<void> _discardMine(
+    BuildContext context,
+    WidgetRef ref,
+    PlanningMutationRecord entry,
+  ) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+
+    await ref
+        .read(planningMutationSyncControllerProvider)
+        .discardMutation(
+          activeContext,
+          aggregateType: entry.kind.aggregateType,
+          aggregateId: entry.aggregateId,
+        );
+    if (!context.mounted) {
+      return;
+    }
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
   }
 }
 
-class _PlanEditorDialog extends StatefulWidget {
+class _PlanEditorDialog extends ConsumerStatefulWidget {
   const _PlanEditorDialog();
 
   @override
-  State<_PlanEditorDialog> createState() => _PlanEditorDialogState();
+  ConsumerState<_PlanEditorDialog> createState() => _PlanEditorDialogState();
 }
 
-class _PlanEditorDialogState extends State<_PlanEditorDialog> {
+class _PlanEditorDialogState extends ConsumerState<_PlanEditorDialog> {
   late final TextEditingController _nameController = TextEditingController();
   late final TextEditingController _descriptionController =
       TextEditingController();
@@ -231,6 +215,16 @@ class _PlanEditorDialogState extends State<_PlanEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(activePlanningContextProvider, (previous, next) {
+      if (!mounted || previous == next) {
+        return;
+      }
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).maybePop();
+      }
+    });
+
     return AlertDialog(
       title: const Text(AppStrings.planEditorTitleCreate),
       content: SizedBox(

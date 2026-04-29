@@ -128,18 +128,24 @@ class AppStrings {
       'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
+  static const sessionEditAction = 'Edit session';
   static const sessionCreateAction = 'Add session';
+  static const sessionReorderAction = 'Reorder session';
   static const sessionMoveUpAction = 'Move session up';
   static const sessionMoveDownAction = 'Move session down';
   static const sessionRenameAction = 'Rename session';
   static const sessionDeleteAction = 'Delete session';
   static const sessionItemAddSongAction = 'Add song';
+  static const sessionItemReorderAction = 'Reorder item';
   static const sessionItemMoveUpAction = 'Move item up';
   static const sessionItemMoveDownAction = 'Move item down';
   static const sessionItemDeleteAction = 'Delete item';
   static const sessionItemSongPickerTitle = 'Add song to session';
   static const sessionItemSongUnavailableMessage =
       'Offline song add is unavailable until a local song catalog is available.';
+  static const sessionListEmptyMessage =
+      'No sessions yet. Add a session to start building this plan.';
+  static const sessionItemsEmptyMessage = 'No songs in this session yet.';
   static const sessionDeleteConfirmTitle = 'Delete empty session?';
   static const sessionDeleteConfirmMessage =
       'This removes the local session immediately and syncs the delete when possible.';
@@ -149,6 +155,7 @@ class AppStrings {
   static const sessionNameLabel = 'Session name';
   static const sessionEditorTitleCreate = 'Add session';
   static const sessionEditorTitleRename = 'Rename session';
+  static const sessionEditorTitleEdit = 'Edit session';
   static const planDetailLoadingMessage = 'Loading plan...';
   static const planDetailLoadFailureMessage =
       'Unable to load plan. Please try again.';

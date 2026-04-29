@@ -87,6 +87,137 @@ void main() {
       expect(pending.single.slug, 'weekend-service');
     });
 
+    test('origin snapshots persist across database reopen', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'planning-mutation-store-test-origin',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+
+      final firstDatabase = PlanningLocalDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      final firstStore = DriftPlanningMutationStore(
+        database: firstDatabase,
+        localStore: DriftPlanningLocalStore(firstDatabase),
+      );
+      await firstStore.recordSessionRename(
+        context: const PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Opening Set Updated',
+          baseVersion: 3,
+          originSnapshot: {
+            'name': 'Opening Set',
+            'slug': 'opening-set',
+            'position': 10,
+            'version': 3,
+          },
+        ),
+      );
+      await firstDatabase.close();
+
+      final secondDatabase = PlanningLocalDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      addTearDown(secondDatabase.close);
+      final secondStore = DriftPlanningMutationStore(
+        database: secondDatabase,
+        localStore: DriftPlanningLocalStore(secondDatabase),
+      );
+
+      final pending = await secondStore.readPendingMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      expect(pending, hasLength(1));
+      expect(pending.single.originSnapshot?['name'], 'Opening Set');
+      expect(pending.single.originSnapshot?['slug'], 'opening-set');
+      expect(pending.single.originSnapshot?['position'], 10);
+      expect(pending.single.originSnapshot?['version'], 3);
+    });
+
+    test(
+      'retrying a conflicted plan edit refreshes the base version',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await localStore.replaceActiveProjection(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'weekend-service',
+              name: 'Weekend Service',
+              description: 'Canonical',
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 1, 12),
+              version: 5,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 1, 12),
+        );
+
+        await store.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Weekend Service Updated',
+            description: 'Pending locally',
+            baseVersion: 3,
+            originSnapshot: {
+              'name': 'Weekend Service',
+              'description': 'Original',
+              'version': 3,
+            },
+          ),
+        );
+
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+          errorMessage: 'base_version_conflict',
+        );
+
+        await store.retryMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        final retriedRecord = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(retriedRecord?.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(retriedRecord?.baseVersion, 5);
+        expect(retriedRecord?.originSnapshot?['version'], 3);
+      },
+    );
+
     test(
       'migrates a version 3 planning database without losing mutations',
       () async {

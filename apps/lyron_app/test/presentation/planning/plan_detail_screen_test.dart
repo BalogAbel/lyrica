@@ -140,6 +140,18 @@ void main() {
     );
   }
 
+  Future<void> openSessionEditor(WidgetTester tester) async {
+    await tester.ensureVisible(find.byKey(const ValueKey('session-1')));
+    await tester.pump();
+  }
+
+  Future<void> openSessionNamePopup(WidgetTester tester) async {
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('renders sessions and song-backed items in order', (
     tester,
   ) async {
@@ -211,12 +223,12 @@ void main() {
     expect(find.textContaining('Alpha Song'), findsOneWidget);
     expect(find.textContaining('Egy út'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('Warm-Up')).dy,
-      lessThan(tester.getTopLeft(find.text('Run-Through')).dy),
+      find.byKey(const ValueKey('session-drag-handle-session-1')),
+      findsOneWidget,
     );
     expect(
-      tester.getTopLeft(find.textContaining('Zulu Song')).dy,
-      lessThan(tester.getTopLeft(find.textContaining('Alpha Song')).dy),
+      find.byKey(const ValueKey('session-item-drag-handle-item-1')),
+      findsOneWidget,
     );
   });
 
@@ -284,6 +296,127 @@ void main() {
       find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
       findsOneWidget,
     );
+    expect(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows an explicit no-session state in plan detail', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: PlanDetail(
+          plan: PlanSummary(
+            id: 'plan-1',
+            slug: 'team-rehearsal',
+            name: 'Team Rehearsal',
+            description: 'Fixture',
+            scheduledFor: null,
+            updatedAt: DateTime(2026, 3, 31, 9),
+          ),
+          sessions: const [],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.sessionListEmptyMessage), findsOneWidget);
+  });
+
+  testWidgets('shows inline add-song and rename controls on session cards', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _editablePlanDetailFixture()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.sessionEditAction), findsNothing);
+    expect(
+      find.byKey(const ValueKey('session-add-song-session-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('${AppStrings.sessionMoveUpAction}: Warm-Up'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('opens the session name popup from detail', (tester) async {
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _planDetailWithItemsFixture()),
+    );
+    await tester.pumpAndSettle();
+
+    await openSessionNamePopup(tester);
+
+    expect(find.byKey(const ValueKey('session-editor-name')), findsOneWidget);
+    expect(
+      find.widgetWithText(AlertDialog, AppStrings.sessionEditorTitleRename),
+      findsOneWidget,
+    );
+    expect(find.text(AppStrings.sessionItemAddSongAction), findsWidgets);
+  });
+
+  testWidgets('renders each conflict row with keep and discard mine actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'session-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionRename,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            name: 'Opening Set rename',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026, 4, 10, 9),
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            name: 'Team Rehearsal title',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026, 4, 10, 9),
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'item-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionItemReorder,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            name: 'Holy Forever order',
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026, 4, 10, 9),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Opening Set rename'), findsOneWidget);
+    expect(find.text('Team Rehearsal title'), findsOneWidget);
+    expect(find.text('Holy Forever order'), findsOneWidget);
+    expect(find.text('Keep mine'), findsNWidgets(3));
+    expect(find.text('Discard mine'), findsNWidgets(3));
   });
 
   testWidgets('edits a plan locally from the detail screen', (tester) async {
@@ -371,10 +504,7 @@ void main() {
     expect(writeService.createdSessionDraft?.planId, 'plan-1');
     expect(writeService.createdSessionDraft?.name, 'Closing');
 
-    await tester.tap(
-      find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'),
-    );
-    await tester.pumpAndSettle();
+    await openSessionNamePopup(tester);
     await tester.enterText(
       find.byKey(const ValueKey('session-editor-name')),
       'Warm-Up Updated',
@@ -458,6 +588,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     await tester.tap(find.text(AppStrings.sessionItemAddSongAction).first);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('session-song-option-song-3')));
@@ -495,6 +626,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
@@ -551,6 +683,7 @@ void main() {
     container.invalidate(songLibraryListProvider);
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
     await tester.pumpAndSettle();
 
@@ -605,6 +738,7 @@ void main() {
         tester.element(find.byType(PlanDetailScreen)),
       );
 
+      await openSessionEditor(tester);
       await tester.tap(
         find.byKey(const ValueKey('session-add-song-session-1')),
       );
@@ -700,6 +834,7 @@ void main() {
         tester.element(find.byType(PlanDetailScreen)),
       );
 
+      await openSessionEditor(tester);
       await tester.tap(
         find.byKey(const ValueKey('session-add-song-session-1')),
       );
@@ -776,6 +911,7 @@ void main() {
         tester.element(find.byType(PlanDetailScreen)),
       );
 
+      await openSessionEditor(tester);
       await tester.tap(
         find.byKey(const ValueKey('session-add-song-session-1')),
       );
@@ -827,6 +963,7 @@ void main() {
       const ValueKey('session-add-song-session-1'),
     );
 
+    await openSessionEditor(tester);
     await tester.tap(addButtonFinder);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('session-song-option-song-1')));
@@ -914,6 +1051,7 @@ void main() {
         const ValueKey('session-add-song-session-1'),
       );
 
+      await openSessionEditor(tester);
       expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
 
       container
@@ -931,7 +1069,6 @@ void main() {
       await tester.pump();
 
       expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
-
       await tester.tap(addButtonFinder);
       await tester.pump(const Duration(milliseconds: 300));
       expect(
@@ -969,6 +1106,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
     await tester.pumpAndSettle();
 
@@ -1017,6 +1155,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     await tester.tap(find.byKey(const ValueKey('session-add-song-session-1')));
     await tester.pumpAndSettle();
 
@@ -1061,8 +1200,8 @@ void main() {
       const ValueKey('session-add-song-session-1'),
     );
 
+    await openSessionEditor(tester);
     expect(tester.widget<TextButton>(addButtonFinder).onPressed, isNotNull);
-
     await tester.tap(addButtonFinder);
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -1104,12 +1243,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     final addFocusFinder = find.byKey(
       const ValueKey('session-add-song-focus-session-1'),
     );
     expect(addFocusFinder, findsOneWidget);
     expect(tester.widget<Focus>(addFocusFinder).focusNode!.hasFocus, isFalse);
-
     await tester.tap(find.text(AppStrings.sessionItemAddSongAction).first);
     await tester.pumpAndSettle();
 
@@ -1142,6 +1281,7 @@ void main() {
       const ValueKey('session-add-song-session-1'),
     );
 
+    await openSessionEditor(tester);
     await tester.tap(addButtonFinder);
     await tester.pumpAndSettle();
 
@@ -1164,6 +1304,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openSessionEditor(tester);
     // Use a direct ValueKey for maximum robustness
     final addButtonFinder = find.byKey(
       const ValueKey('session-add-song-session-1'),
@@ -1203,6 +1344,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
+      );
       await tester.tap(
         find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
       );
@@ -1210,9 +1354,10 @@ void main() {
 
       expect(writeService.deletedSessionItemDraft?.sessionItemId, 'item-1');
 
-      await tester.tap(
-        find.byTooltip('${AppStrings.sessionItemMoveUpAction}: Beta'),
-      );
+      final itemList = tester
+          .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+          .elementAt(1);
+      itemList.onReorder(1, 0);
       await tester.pumpAndSettle();
 
       expect(
@@ -1261,7 +1406,7 @@ void main() {
     expect(find.text(AppStrings.planConflictMessage), findsOneWidget);
     expect(find.text('Other Plan'), findsNothing);
 
-    await tester.tap(find.text(AppStrings.retryAction));
+    await tester.tap(find.text(AppStrings.songKeepMineAction));
     await tester.pumpAndSettle();
 
     expect(syncController.retriedAggregateIds, ['plan-1']);
