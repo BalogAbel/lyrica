@@ -2,6 +2,77 @@ import 'package:flutter/material.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
+enum PlanningInlineMutationStatus {
+  pending,
+  conflict,
+  authorizationDenied,
+  failed,
+}
+
+PlanningInlineMutationStatus? planningInlineMutationStatusFor(
+  Iterable<PlanningMutationRecord> entries,
+) {
+  var hasPending = false;
+  var hasFailed = false;
+  for (final entry in entries) {
+    if (entry.syncStatus == PlanningMutationSyncStatus.failedAuthorization ||
+        entry.errorCode == PlanningMutationSyncErrorCode.authorizationDenied) {
+      return PlanningInlineMutationStatus.authorizationDenied;
+    }
+    if (entry.syncStatus == PlanningMutationSyncStatus.conflict ||
+        entry.errorCode == PlanningMutationSyncErrorCode.conflict) {
+      return PlanningInlineMutationStatus.conflict;
+    }
+    if (entry.syncStatus == PlanningMutationSyncStatus.pending) {
+      hasPending = true;
+    } else {
+      hasFailed = true;
+    }
+  }
+  if (hasFailed) {
+    return PlanningInlineMutationStatus.failed;
+  }
+  if (hasPending) {
+    return PlanningInlineMutationStatus.pending;
+  }
+  return null;
+}
+
+class PlanningInlineMutationStatusBadge extends StatelessWidget {
+  const PlanningInlineMutationStatusBadge({super.key, required this.status});
+
+  final PlanningInlineMutationStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (status) {
+      PlanningInlineMutationStatus.pending => (
+        AppStrings.planningLocalChangesLabel,
+        Theme.of(context).colorScheme.tertiary,
+      ),
+      PlanningInlineMutationStatus.conflict => (
+        AppStrings.planningConflictLabel,
+        Theme.of(context).colorScheme.error,
+      ),
+      PlanningInlineMutationStatus.authorizationDenied => (
+        AppStrings.planningAuthorizationDeniedLabel,
+        Theme.of(context).colorScheme.error,
+      ),
+      PlanningInlineMutationStatus.failed => (
+        AppStrings.planningSyncIssueLabel,
+        Theme.of(context).colorScheme.error,
+      ),
+    };
+
+    return Chip(
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
+      side: BorderSide(color: color),
+      labelStyle: TextStyle(color: color),
+    );
+  }
+}
+
 class PlanningWorkspaceStatusSurface extends StatelessWidget {
   const PlanningWorkspaceStatusSurface({
     super.key,
