@@ -24,7 +24,7 @@ The current UI still reads like an implementation surface for those capabilities
 - Treat plan list and plan detail as one product slice: the planning workspace.
 - Add a planning workspace prototype under `docs/prototypes/` using the same visual vocabulary as the existing reader and song-list/picker prototypes.
 - Define responsive tablet and wide behavior for the same workspace, not separate feature sets.
-- Refine plan list hierarchy, active/selected plan presentation, empty/loading/error/offline states, and planning mutation status presentation.
+- Refine plan list hierarchy, selected route-target presentation where applicable, empty/loading/error/offline states, and planning mutation status presentation.
 - Refine plan detail hierarchy, plan header, session grouping, song rows, and session rename/add-song entry points.
 - Refine the existing plan create/edit editor view enough that primary plan actions have a matching visual treatment.
 - Replace the separate session rename editor concept with inline session-header editing: a session name edit affordance opens a small name-only popup, and add-song stays inline on the session card.
@@ -37,12 +37,12 @@ The current UI still reads like an implementation surface for those capabilities
 ## Non-Goals
 
 - No backend schema, RPC, RLS, or authorization changes.
-- No new planning domain behavior.
+- No new user-facing planning domain capability.
 - No custom drag choreography, drag physics, or bespoke animation system beyond native reorder motion.
 - No always-on touch drag; touch reorder should start from a long press so scrolling stays easy.
 - No multi-select editing.
 - No calendar view.
-- No rich conflict-resolution workflow.
+- No rich conflict-resolution workflow beyond simple per-mutation `Keep mine` and `Discard mine` actions where enough local context exists.
 - No new session item types such as notes, attachments, or headings.
 - No cross-plan session moves or cross-session item moves.
 - No global navigation redesign outside the planning workspace entry and return paths needed by the existing app.
@@ -106,6 +106,8 @@ Required behavior:
 
 Search and advanced filters are not required for this slice unless they can be added without widening the behavior surface. The main objective is visual and information hierarchy, not catalog-style discovery.
 
+Because plan list and plan detail remain separate route surfaces in this slice, selected-plan presentation is limited to clear route targets and plan-row status rather than a persistent split-pane selection state.
+
 ### Plan Detail
 
 The plan detail should behave as a service builder.
@@ -159,7 +161,7 @@ State copy and layout should remain consistent with existing app vocabulary. Syn
 
 ## Prototype Requirements
 
-Create a prototype companion in `docs/prototypes/` before implementation planning:
+Create and maintain a prototype companion in `docs/prototypes/` as part of the repository-owned planning workspace slice:
 
 - `planning-workspace-mockup.html`
 - `planning-workspace-mockup.css`
@@ -173,6 +175,8 @@ The prototype should include reviewer controls matching the existing prototype s
 - state: default, loading, empty, no sessions, empty session, catalog unavailable, offline cached, pending mutation, conflict, authorization denied, retryable failure, session name popup
 
 The prototype should show plan selection, plan detail behavior, the plan editor, and the inline session rename popup in one artifact.
+
+This requirement records the intended workflow order for future slices. If implementation planning and prototype work are amended in the same change, both artifacts must still be repository-owned and kept consistent before merge.
 
 ## Acceptance Criteria
 
@@ -197,4 +201,5 @@ The prototype should show plan selection, plan detail behavior, the plan editor,
 - Validate tablet and wide Flutter viewports.
 - Validate with normal synced data, pending local mutations, conflict mutations, and no cached song catalog for add-song.
 - Validate navigation from plan song row into scoped reader and back.
-- Run app-only verification for UI-only implementation unless the final plan changes backend, migration, or local Supabase behavior.
+- Run app-only verification for UI-only implementation unless the final plan changes backend, migration, local Drift schema, mutation persistence, planning write/sync behavior, or local Supabase behavior.
+- If the final plan changes local Drift schema, mutation persistence, or planning write/sync behavior, include focused local database, write-service, and sync-controller tests in addition to presentation widget tests.

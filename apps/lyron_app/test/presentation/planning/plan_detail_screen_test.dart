@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -72,6 +73,7 @@ void main() {
     return ProviderScope(
       overrides: [
         planningPlanDetailProvider('plan-1').overrideWith((ref) {
+          ref.watch(planningDataRevisionProvider);
           if (planDetailValue is Future<PlanDetail>) {
             return planDetailValue;
           }
@@ -241,6 +243,37 @@ void main() {
     await tester.pump();
 
     expect(find.text(AppStrings.planDetailLoadingMessage), findsOneWidget);
+  });
+
+  testWidgets('keeps current plan detail visible while revision reloads', (
+    tester,
+  ) async {
+    final reloadCompleter = Completer<PlanDetail>();
+    var reads = 0;
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: Future<PlanDetail>.sync(() {
+          reads += 1;
+          if (reads == 1) {
+            return _editablePlanDetailFixture();
+          }
+          return reloadCompleter.future;
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Team Rehearsal'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanDetailScreen)),
+    );
+    container.read(planningDataRevisionProvider.notifier).state += 1;
+    await tester.pump();
+
+    expect(find.text('Team Rehearsal'), findsOneWidget);
+    expect(find.text(AppStrings.planDetailLoadingMessage), findsNothing);
   });
 
   testWidgets('shows an explicit failure surface when the plan cannot load', (
@@ -555,6 +588,43 @@ void main() {
     await tester.tap(
       find.byTooltip('${AppStrings.sessionMoveUpAction}: Closing'),
     );
+    await tester.pumpAndSettle();
+
+    expect(
+      writeService.reorderedSessionDraft?.orderedSessionIds,
+      orderedEquals(const ['session-2', 'session-1']),
+    );
+  });
+
+  testWidgets('shows reordered sessions before local write completes', (
+    tester,
+  ) async {
+    final reorderCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      reorderSessionsCompleter: reorderCompleter,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester.widget<ReorderableListView>(
+      find.byType(ReorderableListView).first,
+    );
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+    );
+    expect(writeService.reorderedSessionDraft, isNull);
+
+    reorderCompleter.complete();
     await tester.pumpAndSettle();
 
     expect(
@@ -1367,6 +1437,54 @@ void main() {
     },
   );
 
+  testWidgets('shows reordered session items before local write completes', (
+    tester,
+  ) async {
+    final reorderCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      reorderSessionItemsCompleter: reorderCompleter,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(1, 0);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Beta')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+    );
+    expect(writeService.reorderedSessionItemDraft, isNull);
+
+    reorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      writeService.reorderedSessionItemDraft?.orderedSessionItemIds,
+      orderedEquals(const ['item-2', 'item-1']),
+    );
+  });
+
   testWidgets('shows failed planning mutations and retries them from detail', (
     tester,
   ) async {
@@ -1719,7 +1837,12 @@ PlanDetail _planDetailWithItemsFixture() {
 }
 
 class _FakePlanningWriteService extends PlanningWriteService {
-  _FakePlanningWriteService({this.addSongCompleter, this.addSongException})
+  _FakePlanningWriteService({
+    this.addSongCompleter,
+    this.addSongException,
+    this.reorderSessionsCompleter,
+    this.reorderSessionItemsCompleter,
+  })
     : super(
         _PlanDetailTestPlanningRepository(),
         mutationStore: _PlanDetailTestPlanningMutationStore(),
@@ -1730,6 +1853,8 @@ class _FakePlanningWriteService extends PlanningWriteService {
       );
 
   final Completer<void>? addSongCompleter;
+  final Completer<void>? reorderSessionsCompleter;
+  final Completer<void>? reorderSessionItemsCompleter;
   final Object? addSongException;
   PlanEditDraft? editedDraft;
   SessionCreateDraft? createdSessionDraft;
@@ -1778,6 +1903,9 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionReorderDraft draft,
   }) async {
+    if (reorderSessionsCompleter != null) {
+      await reorderSessionsCompleter!.future;
+    }
     reorderedSessionDraft = draft;
   }
 
@@ -1809,6 +1937,9 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemReorderDraft draft,
   }) async {
+    if (reorderSessionItemsCompleter != null) {
+      await reorderSessionItemsCompleter!.future;
+    }
     reorderedSessionItemDraft = draft;
   }
 }

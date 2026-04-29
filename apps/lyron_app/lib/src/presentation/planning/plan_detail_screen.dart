@@ -18,27 +18,37 @@ import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_s
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-class PlanDetailScreen extends ConsumerWidget {
+class PlanDetailScreen extends ConsumerStatefulWidget {
   const PlanDetailScreen({super.key, required this.planId});
 
   final String planId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlanDetailScreen> createState() => _PlanDetailScreenState();
+}
+
+class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
+  List<String>? _optimisticSessionOrder;
+
+  String get planId => widget.planId;
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final detailAsync = ref.watch(planningPlanDetailProvider(planId));
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
 
     return PlanningWorkspaceShell(
       title: AppStrings.planDetailTitle,
-      leading: context.canPop()
-          ? BackButton(
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                }
-              },
-            )
-          : null,
+      leading: BackButton(
+        onPressed: () {
+          if (context.canPop()) {
+            context.pop();
+            return;
+          }
+          context.go(PlanningRoutes.planListPath);
+        },
+      ),
       actions: [
         TextButton(
           onPressed: () => _editPlan(context, ref),
@@ -50,6 +60,7 @@ class PlanDetailScreen extends ConsumerWidget {
         ),
       ],
       statusSurface: mutationsAsync.when(
+        skipLoadingOnReload: true,
         data: (entries) {
           final relevantEntries = entries
               .where(
@@ -71,6 +82,7 @@ class PlanDetailScreen extends ConsumerWidget {
         loading: () => null,
       ),
       body: detailAsync.when(
+        skipLoadingOnReload: true,
         loading: () =>
             const Center(child: Text(AppStrings.planDetailLoadingMessage)),
         error: (error, stackTrace) => _RetryableErrorState(
@@ -78,6 +90,11 @@ class PlanDetailScreen extends ConsumerWidget {
           onRetry: () => ref.invalidate(planningPlanDetailProvider(planId)),
         ),
         data: (PlanDetail detail) {
+          final sessions = _orderedSessions(detail);
+          final orderedDetail = PlanDetail(
+            plan: detail.plan,
+            sessions: sessions,
+          );
           return ReorderableListView.builder(
             buildDefaultDragHandles: false,
             padding: EdgeInsets.zero,
@@ -92,21 +109,26 @@ class PlanDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(detail.plan.description!),
                 ],
-                if (detail.sessions.isEmpty) ...[
+                if (sessions.isEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(AppStrings.sessionListEmptyMessage),
                 ],
                 const SizedBox(height: 20),
               ],
             ),
-            itemCount: detail.sessions.length,
-            onReorder: (oldIndex, newIndex) =>
-                _reorderSessions(context, ref, detail, oldIndex, newIndex),
+            itemCount: sessions.length,
+            onReorder: (oldIndex, newIndex) => _reorderSessions(
+              context,
+              ref,
+              orderedDetail,
+              oldIndex,
+              newIndex,
+            ),
             itemBuilder: (context, index) {
-              final session = detail.sessions[index];
+              final session = sessions[index];
               return _SessionCard(
                 key: ValueKey(session.id),
-                planDetail: detail,
+                planDetail: orderedDetail,
                 session: session,
                 sessionIndex: index,
               );
@@ -115,6 +137,20 @@ class PlanDetailScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  List<SessionSummary> _orderedSessions(PlanDetail detail) {
+    final order = _optimisticSessionOrder;
+    if (order == null || order.length != detail.sessions.length) {
+      return detail.sessions;
+    }
+    final sessionsById = {
+      for (final session in detail.sessions) session.id: session,
+    };
+    if (!order.every(sessionsById.containsKey)) {
+      return detail.sessions;
+    }
+    return [for (final sessionId in order) sessionsById[sessionId]!];
   }
 
   Future<void> _editPlan(BuildContext context, WidgetRef ref) async {
@@ -287,18 +323,31 @@ class PlanDetailScreen extends ConsumerWidget {
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
 
-    await ref
-        .read(planningWriteServiceProvider)
-        .reorderSessions(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionReorderDraft(
-            planId: detail.plan.id,
-            orderedSessionIds: currentOrder,
-          ),
-        );
+    setState(() {
+      _optimisticSessionOrder = currentOrder;
+    });
+
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .reorderSessions(
+            context: PlanningWriteContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            ),
+            draft: SessionReorderDraft(
+              planId: detail.plan.id,
+              orderedSessionIds: currentOrder,
+            ),
+          );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _optimisticSessionOrder = null;
+        });
+      }
+      rethrow;
+    }
 
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
@@ -325,6 +374,7 @@ class _SessionCard extends ConsumerStatefulWidget {
 
 class _SessionCardState extends ConsumerState<_SessionCard> {
   late final FocusNode _addSongFocusNode;
+  List<String>? _optimisticItemOrder;
   var _pickerOpen = false;
   var _addSongInFlight = false;
 
@@ -344,6 +394,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
   Widget build(BuildContext context) {
     final planDetail = widget.planDetail;
     final session = widget.session;
+    final items = _orderedItems(session);
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
     final sessionIndex = planDetail.sessions.indexWhere(
@@ -438,11 +489,11 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
               buildDefaultDragHandles: false,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: session.items.length,
+              itemCount: items.length,
               onReorder: (oldIndex, newIndex) =>
                   _reorderItems(context, ref, oldIndex, newIndex),
               itemBuilder: (context, index) {
-                final item = session.items[index];
+                final item = items[index];
                 return Padding(
                   key: ValueKey(item.id),
                   padding: const EdgeInsets.only(bottom: 8),
@@ -481,6 +532,18 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
   bool _canAddSong() {
     final catalogState = ref.read(catalogSnapshotStateProvider);
     return catalogState.hasCachedCatalog && !_pickerOpen && !_addSongInFlight;
+  }
+
+  List<SessionItemSummary> _orderedItems(SessionSummary session) {
+    final order = _optimisticItemOrder;
+    if (order == null || order.length != session.items.length) {
+      return session.items;
+    }
+    final itemsById = {for (final item in session.items) item.id: item};
+    if (!order.every(itemsById.containsKey)) {
+      return session.items;
+    }
+    return [for (final itemId in order) itemsById[itemId]!];
   }
 
   Future<void> _renameSession(BuildContext context) async {
@@ -772,7 +835,9 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       return;
     }
 
-    final currentOrder = session.items.map((value) => value.id).toList();
+    final currentOrder = _orderedItems(
+      session,
+    ).map((value) => value.id).toList();
     if (newIndex > oldIndex) {
       newIndex -= 1;
     }
@@ -785,19 +850,32 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
 
-    await ref
-        .read(planningWriteServiceProvider)
-        .reorderSessionItems(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionItemReorderDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-            orderedSessionItemIds: currentOrder,
-          ),
-        );
+    setState(() {
+      _optimisticItemOrder = currentOrder;
+    });
+
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .reorderSessionItems(
+            context: PlanningWriteContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            ),
+            draft: SessionItemReorderDraft(
+              sessionId: session.id,
+              planId: planDetail.plan.id,
+              orderedSessionItemIds: currentOrder,
+            ),
+          );
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _optimisticItemOrder = null;
+        });
+      }
+      rethrow;
+    }
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
