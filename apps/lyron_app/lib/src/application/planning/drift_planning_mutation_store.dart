@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -719,12 +720,10 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         if (detail == null || sessionId == null) {
           return record.baseVersion;
         }
-        for (final session in detail.sessions) {
-          if (session.id == sessionId) {
-            return session.version;
-          }
-        }
-        return record.baseVersion;
+        return detail.sessions
+                .firstWhereOrNull((session) => session.id == sessionId)
+                ?.version ??
+            record.baseVersion;
     }
   }
 
