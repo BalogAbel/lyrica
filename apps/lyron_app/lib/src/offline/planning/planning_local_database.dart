@@ -51,9 +51,15 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
           cachedPlanningMutations.orderedSiblingIds,
         );
       }
+      if (from < 5) {
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.originSnapshotJson,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 }

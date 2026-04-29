@@ -216,11 +216,7 @@ body[data-screen="plan-list"] .editor-surface,
 body[data-screen="plan-detail"] .plan-rail,
 body[data-screen="plan-detail"] .editor-surface,
 body[data-screen="plan-editor"] .plan-rail,
-body[data-screen="plan-editor"] .plan-detail,
-body[data-screen="plan-editor"] #session-editor-surface,
-body[data-screen="session-editor"] .plan-rail,
-body[data-screen="session-editor"] .plan-detail,
-body[data-screen="session-editor"] #plan-editor-surface {
+body[data-screen="plan-editor"] .plan-detail {
   display: none;
 }
 
@@ -304,6 +300,14 @@ body[data-screen="session-editor"] #plan-editor-surface {
   justify-content: flex-end;
 }
 
+.drag-handle {
+  min-width: 42px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
 .icon-actions {
   flex-shrink: 0;
 }
@@ -349,6 +353,7 @@ body[data-screen="session-editor"] #plan-editor-surface {
 }
 
 .section-heading > div,
+.song-row > div,
 .order-row > div:not(.icon-actions),
 .conflict-row > div:first-child {
   flex: 1;
@@ -373,6 +378,12 @@ body[data-screen="session-editor"] #plan-editor-surface {
   background: var(--surface-strong);
 }
 
+.song-row .drag-handle,
+.order-row .drag-handle,
+.session-header .drag-handle {
+  flex-shrink: 0;
+}
+
 .order-index {
   display: inline-grid;
   place-items: center;
@@ -395,13 +406,82 @@ body[data-screen="session-editor"] #plan-editor-surface {
   padding: 16px;
 }
 
-.session-card > button {
+.session-card > .add-song {
   margin-top: 12px;
+  align-self: flex-start;
 }
 
 .session-header {
   align-items: start;
   margin-bottom: 12px;
+}
+
+.session-title-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-title-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.session-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-width: 0;
+}
+
+.session-title-line h3 {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.icon-ghost {
+  flex-shrink: 0;
+  min-width: 38px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.session-name-popup {
+  display: grid;
+  gap: 12px;
+  max-width: 460px;
+  margin: 6px 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 16px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+}
+
+.session-name-popup label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.popup-header > button {
+  min-width: 42px;
+  padding: 8px 10px;
+  align-self: start;
+}
+
+.session-name-popup .actions {
+  justify-content: flex-end;
 }
 
 .icon-actions button {
@@ -442,9 +522,7 @@ body[data-state="loading"] .plan-list,
 body[data-state="loading"] .session-list,
 body[data-state="empty"] .plan-list,
 body[data-state="empty"] .plan-detail,
-body[data-state="no-sessions"] .session-list,
-body[data-state="retryable-failure"] .plan-list,
-body[data-state="retryable-failure"] .session-list {
+body[data-state="no-sessions"] .session-list {
   display: none;
 }
 
@@ -487,6 +565,11 @@ body[data-state="empty-session"] .optional-session .song-list {
   .section-heading button,
   .section-title-input {
     width: 100%;
+  }
+
+  .session-name-popup {
+    margin-left: 0;
+    max-width: none;
   }
 }
 

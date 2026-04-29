@@ -142,6 +142,7 @@ class PlanningMutationRecord {
     this.orderedSiblingIds,
     this.orderedSiblingPositions,
     this.baseVersion,
+    this.originSnapshot,
     this.errorCode,
     this.errorMessage,
   });
@@ -160,6 +161,7 @@ class PlanningMutationRecord {
   final List<String>? orderedSiblingIds;
   final List<int>? orderedSiblingPositions;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
   final PlanningMutationSyncErrorCode? errorCode;
   final String? errorMessage;
   final PlanningMutationKind kind;
@@ -194,6 +196,8 @@ class PlanningMutationRecord {
     bool clearOrderedSiblingPositions = false,
     int? baseVersion,
     bool clearBaseVersion = false,
+    Map<String, Object?>? originSnapshot,
+    bool clearOriginSnapshot = false,
     PlanningMutationSyncErrorCode? errorCode,
     bool clearErrorCode = false,
     String? errorMessage,
@@ -224,6 +228,9 @@ class PlanningMutationRecord {
           ? null
           : (orderedSiblingPositions ?? this.orderedSiblingPositions),
       baseVersion: clearBaseVersion ? null : (baseVersion ?? this.baseVersion),
+      originSnapshot: clearOriginSnapshot
+          ? null
+          : (originSnapshot ?? this.originSnapshot),
       errorCode: clearErrorCode ? null : (errorCode ?? this.errorCode),
       errorMessage: clearErrorMessage
           ? null
@@ -259,6 +266,7 @@ class PlanningPlanEditMutationDraft {
     this.description,
     this.scheduledFor,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String planId;
@@ -266,6 +274,7 @@ class PlanningPlanEditMutationDraft {
   final String? description;
   final DateTime? scheduledFor;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionCreateMutationDraft {
@@ -290,12 +299,14 @@ class PlanningSessionRenameMutationDraft {
     required this.planId,
     required this.name,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String sessionId;
   final String planId;
   final String name;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionDeleteMutationDraft {
@@ -303,11 +314,13 @@ class PlanningSessionDeleteMutationDraft {
     required this.sessionId,
     required this.planId,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String sessionId;
   final String planId;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionReorderMutationDraft {
@@ -315,11 +328,13 @@ class PlanningSessionReorderMutationDraft {
     required this.planId,
     required this.orderedSessionIds,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String planId;
   final List<String> orderedSessionIds;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionItemCreateSongMutationDraft {
@@ -331,6 +346,7 @@ class PlanningSessionItemCreateSongMutationDraft {
     required this.songTitle,
     required this.position,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String sessionItemId;
@@ -340,6 +356,7 @@ class PlanningSessionItemCreateSongMutationDraft {
   final String songTitle;
   final int position;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionItemDeleteMutationDraft {
@@ -348,12 +365,14 @@ class PlanningSessionItemDeleteMutationDraft {
     required this.sessionId,
     required this.planId,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String sessionItemId;
   final String sessionId;
   final String planId;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 class PlanningSessionItemReorderMutationDraft {
@@ -362,12 +381,14 @@ class PlanningSessionItemReorderMutationDraft {
     required this.planId,
     required this.orderedSessionItemIds,
     this.baseVersion,
+    this.originSnapshot,
   });
 
   final String sessionId;
   final String planId;
   final List<String> orderedSessionItemIds;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
 }
 
 abstract interface class PlanningMutationStore {

@@ -17,7 +17,8 @@ const mutationTitle = document.getElementById("mutation-title");
 const mutationCopy = document.getElementById("mutation-copy");
 const mutationAction = document.getElementById("mutation-action");
 const conflictList = document.getElementById("conflict-list");
-const addSongButtons = Array.from(document.querySelectorAll("#session-editor-surface .add-song"));
+const sessionNamePopup = document.getElementById("session-name-popup");
+const addSongButtons = Array.from(document.querySelectorAll(".session-card .add-song"));
 
 const stateMap = {
   default: {
@@ -50,7 +51,7 @@ const stateMap = {
   },
   pending: {
     status: '<span class="badge warn">Local planning changes pending</span>',
-    banner: ["Local changes pending", "Changes are saved locally and will sync when available.", "Retry"],
+    banner: ["Local changes pending", "Changes are saved locally and will sync when available.", "Sync now"],
   },
   conflict: {
     status: '<span class="badge warn">Planning conflict needs review</span>',
@@ -62,10 +63,13 @@ const stateMap = {
     banner: ["Authorization denied", "Backend rejected this local change for the active organization.", "Review"],
   },
   "retryable-failure": {
-    status: '<span class="badge warn">Unable to load planning data</span>',
-    plan: ["Retryable failure", "Planning data could not load. Try again."],
-    detail: ["Retryable failure", "Selected plan could not load. Try again."],
+    status: '<span class="badge warn">Unable to sync planning data</span>',
+    banner: ["Sync failed", "This local change could not sync. Try again.", "Retry"],
     retry: true,
+  },
+  "session-name-popup": {
+    status: '<span class="badge ok">Planning data up to date</span>',
+    showSessionPopup: true,
   },
 };
 
@@ -99,6 +103,7 @@ function applyState() {
     mutationBanner.hidden = true;
   }
   conflictList.hidden = !model.showConflicts;
+  sessionNamePopup.hidden = !model.showSessionPopup;
 }
 
 function syncControls() {

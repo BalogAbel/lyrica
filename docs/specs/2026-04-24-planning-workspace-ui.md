@@ -25,9 +25,10 @@ The current UI still reads like an implementation surface for those capabilities
 - Add a planning workspace prototype under `docs/prototypes/` using the same visual vocabulary as the existing reader and song-list/picker prototypes.
 - Define responsive tablet and wide behavior for the same workspace, not separate feature sets.
 - Refine plan list hierarchy, active/selected plan presentation, empty/loading/error/offline states, and planning mutation status presentation.
-- Refine plan detail hierarchy, plan header, session grouping, song rows, and session edit entry points.
+- Refine plan detail hierarchy, plan header, session grouping, song rows, and session rename/add-song entry points.
 - Refine the existing plan create/edit editor view enough that primary plan actions have a matching visual treatment.
-- Replace the separate session rename editor concept with one session editor surface where users can rename the selected session and reorder its songs without interpreting raw icon rows.
+- Replace the separate session rename editor concept with inline session-header editing: a session name edit affordance opens a small name-only popup, and add-song stays inline on the session card.
+- Treat native drag-and-drop reordering as the target interaction for sessions and songs, with simple built-in motion, visible drag affordances, and touch reorder starting only after a long press rather than on every tap or scroll gesture.
 - Keep route back navigation standard: when a planning surface can go back, use a top-left arrow affordance rather than a dedicated text back button in the content or action area.
 - Keep existing local-first write flows and mutation invalidation behavior intact unless a presentation refactor exposes an existing bug.
 - Keep reader navigation integration intact for song rows opened from a plan/session context.
@@ -37,7 +38,8 @@ The current UI still reads like an implementation surface for those capabilities
 
 - No backend schema, RPC, RLS, or authorization changes.
 - No new planning domain behavior.
-- No drag-and-drop in this slice.
+- No custom drag choreography, drag physics, or bespoke animation system beyond native reorder motion.
+- No always-on touch drag; touch reorder should start from a long press so scrolling stays easy.
 - No multi-select editing.
 - No calendar view.
 - No rich conflict-resolution workflow.
@@ -113,16 +115,16 @@ Required behavior:
 - show a plan header with name, description, scheduled date when present, and edit action
 - show route back navigation as a top-left arrow when the current navigation stack supports going back
 - show sessions in current merged local-first order
-- show a clear session editor entry point without crowding the session title
+- show a compact pencil icon beside each session title that opens name-only editing without crowding the title
 - show session items in current merged local-first order
-- expose session editing from each session on plan detail
-- show inline session-name editing, add-song, and song-order controls once the session editor is open
+- expose session rename from each session on plan detail through the pencil icon
+- keep add-song inline on the session card and keep song-order controls on the session header/list
 - preserve scoped reader navigation when a song row opens the reader
 - render empty session state explicitly
 - render no-session state explicitly
 - show pending/conflict status in a way that does not obscure the session and song list
 
-The current up/down reorder behavior may remain the implementation interaction for this slice. Drag-and-drop can be designed later once the workspace hierarchy is stable.
+The current up/down reorder behavior is a transitional implementation detail. The target interaction for the workspace is native drag-and-drop reorder with simple built-in motion, with touch reorder initiated by long press.
 
 ## State Model
 
@@ -152,6 +154,7 @@ State copy and layout should remain consistent with existing app vocabulary. Syn
 - UI may derive display grouping from already exposed planning mutation records, but it must not create a second planning write state machine.
 - Backend-enforced authorization remains the durable authority.
 - The local-first projection plus mutation-store boundary from `ADR-014-planning-write-projection-mutation-boundary.md` remains unchanged.
+- Planning mutation records retain a persisted origin snapshot of the pre-edit baseline so later rebase, discard, and canonical reconciliation can reason about the current local state without exposing raw draft churn to presentation code.
 - Any durable product or architecture decisions discovered during implementation must be mirrored in repository docs, not only in the prototype.
 
 ## Prototype Requirements
@@ -164,12 +167,12 @@ Create a prototype companion in `docs/prototypes/` before implementation plannin
 
 The prototype should include reviewer controls matching the existing prototype style:
 
-- screen: plan list, plan detail, plan editor, session editor
+- screen: plan list, plan detail, plan editor
 - layout: tablet, wide
 - theme: standard, high contrast, black
-- state: default, loading, empty, no sessions, empty session, catalog unavailable, offline cached, pending mutation, conflict, authorization denied, retryable failure
+- state: default, loading, empty, no sessions, empty session, catalog unavailable, offline cached, pending mutation, conflict, authorization denied, retryable failure, session name popup
 
-The prototype should show plan selection, plan detail behavior, the plan editor, and the combined session editor in one artifact.
+The prototype should show plan selection, plan detail behavior, the plan editor, and the inline session rename popup in one artifact.
 
 ## Acceptance Criteria
 
@@ -178,12 +181,12 @@ The prototype should show plan selection, plan detail behavior, the plan editor,
 3. Tablet and wide layouts keep the existing plan-list-to-plan-detail navigation model and never stack both route surfaces on the same tablet screen.
 4. Plan list renders clear loading, empty, retryable failure, and mutation-status states.
 5. Plan detail renders clear loading, retryable failure, no-session, empty-session, pending, conflict, and authorization-denied states.
-6. Plan create/edit and the combined session editor views match the planning workspace visual vocabulary.
-7. Session rename and song reorder affordances live in the combined session editor and preserve existing local-first behavior.
-8. Each session on plan detail exposes a visible entry point into session editing.
+6. Plan create/edit and the inline session name popup / add-song affordances match the planning workspace visual vocabulary.
+7. Session rename and song reorder affordances live inline on the session card, preserve existing local-first behavior, and move toward native drag-and-drop reorder with simple built-in motion.
+8. Each session on plan detail exposes a visible pencil icon for session rename and a clear inline add-song entry point.
 9. Conflict state presents affected local changes individually with `Keep mine` and `Discard mine` choices.
 10. Back-capable planning surfaces use a top-left arrow affordance and do not expose a separate text back button in the main action area.
-11. Existing plan create/edit and session create/rename/delete/reorder behaviors remain available.
+11. Existing plan create/edit and session create/rename/delete/reorder behaviors remain available, with drag-and-drop treated as the long-term reorder target for sessions and songs.
 12. Existing session-item add/delete/reorder and scoped reader navigation remain available.
 13. Planning mutation retry remains available for failed entries.
 14. UI code remains provider/repository-driven and does not bypass backend-enforced authorization or repository-owned local-first boundaries.

@@ -23,7 +23,6 @@
               <option value="plan-list">Plan List</option>
               <option value="plan-detail">Plan Detail</option>
               <option value="plan-editor">Plan Editor</option>
-              <option value="session-editor">Session Editor</option>
             </select>
           </label>
           <label>
@@ -54,7 +53,8 @@
               <option value="pending">Pending Mutation</option>
               <option value="conflict">Conflict</option>
               <option value="auth-denied">Authorization Denied</option>
-              <option value="retryable-failure">Retryable Failure</option>
+              <option value="retryable-failure">Retryable Sync Failure</option>
+              <option value="session-name-popup">Session Name Popup</option>
             </select>
           </label>
         </div>
@@ -154,17 +154,25 @@
           <section class="session-list" id="session-list">
             <article class="session-card">
               <header class="session-header">
-                <div>
+                <div class="session-title-row">
+                  <div>
                   <p class="eyebrow">Session 1</p>
-                  <h3>Opening Set</h3>
+                    <div class="session-title-line">
+                      <h3>Opening Set</h3>
+                      <button class="icon-ghost" type="button" aria-label="Rename session">✎</button>
+                    </div>
+                    <p class="row-subtle">Long press to reorder sessions.</p>
+                  </div>
                 </div>
-                <div class="icon-actions" aria-label="Session actions">
-                  <button type="button" aria-label="Move session up">↑</button>
-                  <button type="button" aria-label="Move session down">↓</button>
-                </div>
+                <button class="drag-handle" type="button" aria-label="Long press to reorder session">
+                  ⋮⋮
+                </button>
               </header>
               <div class="song-list">
                 <article class="song-row">
+                  <button class="drag-handle" type="button" aria-label="Long press to reorder song">
+                    ⋮⋮
+                  </button>
                   <div>
                     <p class="row-title">Amazing Grace</p>
                     <p class="row-subtle">Song 1 - opens scoped reader</p>
@@ -172,38 +180,68 @@
                   <span class="chevron">&gt;</span>
                 </article>
                 <article class="song-row">
+                  <button class="drag-handle" type="button" aria-label="Long press to reorder song">
+                    ⋮⋮
+                  </button>
                   <div>
                     <p class="row-title">Holy Forever</p>
-                    <p class="row-subtle">Song 2 - can move up/down</p>
+                    <p class="row-subtle">Song 2 - long press to move</p>
                   </div>
                   <span class="chevron">&gt;</span>
                 </article>
               </div>
-              <button type="button">Edit session</button>
+              <button class="add-song" type="button">Add song</button>
             </article>
 
             <article class="session-card optional-session">
               <header class="session-header">
-                <div>
+                <div class="session-title-row">
+                  <div>
                   <p class="eyebrow">Session 2</p>
-                  <h3>Response Set</h3>
+                    <div class="session-title-line">
+                      <h3>Response Set</h3>
+                      <button class="icon-ghost" type="button" aria-label="Rename session">✎</button>
+                    </div>
+                    <p class="row-subtle">Long press to reorder sessions.</p>
+                  </div>
                 </div>
-                <div class="icon-actions" aria-label="Session actions">
-                  <button type="button" aria-label="Move session up">↑</button>
-                  <button type="button" aria-label="Move session down">↓</button>
-                </div>
+                <button class="drag-handle" type="button" aria-label="Long press to reorder session">
+                  ⋮⋮
+                </button>
               </header>
               <div class="song-list">
                 <article class="song-row">
+                  <button class="drag-handle" type="button" aria-label="Long press to reorder song">
+                    ⋮⋮
+                  </button>
                   <div>
                     <p class="row-title">Build My Life</p>
-                    <p class="row-subtle">Song 1 - pending reorder safe</p>
+                    <p class="row-subtle">Song 1 - long press to move</p>
                   </div>
                   <span class="chevron">&gt;</span>
                 </article>
               </div>
-              <button type="button">Edit session</button>
+              <button class="add-song" type="button">Add song</button>
             </article>
+          </section>
+
+          <section class="session-name-popup" id="session-name-popup" hidden>
+            <header class="popup-header">
+              <div>
+                <p class="eyebrow">Session name</p>
+                <h3>Rename session</h3>
+                <p class="detail-meta">Opening Set</p>
+              </div>
+              <button type="button" aria-label="Close session name popup">×</button>
+            </header>
+            <label>
+              Session name
+              <input type="text" value="Opening Set" />
+            </label>
+            <div class="actions">
+              <button type="button">Cancel</button>
+              <button type="button">Save</button>
+            </div>
           </section>
 
           <section class="state-card" id="detail-state-card" hidden>
@@ -241,56 +279,6 @@
           </form>
         </section>
 
-        <section class="editor-surface surface" id="session-editor-surface">
-          <header class="detail-header">
-            <button class="route-back" type="button" aria-label="Back to plan">&lt;</button>
-            <div>
-              <p class="eyebrow">Session editor</p>
-              <h2>Edit session</h2>
-              <p class="detail-meta">Rename this session and arrange its songs.</p>
-            </div>
-            <div class="actions">
-              <button type="button">Save changes</button>
-            </div>
-          </header>
-
-          <section class="order-panel">
-            <header class="section-heading">
-              <div>
-                <p class="eyebrow">Session</p>
-                <input
-                  class="section-title-input"
-                  type="text"
-                  aria-label="Session name"
-                  value="Opening Set"
-                />
-              </div>
-              <button class="add-song" type="button">Add song</button>
-            </header>
-            <article class="order-row">
-              <span class="order-index">1</span>
-              <div>
-                <p class="row-title">Amazing Grace</p>
-                <p class="row-subtle">Opens scoped reader</p>
-              </div>
-              <div class="icon-actions">
-                <button type="button" aria-label="Move Amazing Grace up">Up</button>
-                <button type="button" aria-label="Move Amazing Grace down">Down</button>
-              </div>
-            </article>
-            <article class="order-row">
-              <span class="order-index">2</span>
-              <div>
-                <p class="row-title">Holy Forever</p>
-                <p class="row-subtle">Pending reorder safe</p>
-              </div>
-              <div class="icon-actions">
-                <button type="button" aria-label="Move Holy Forever up">Up</button>
-                <button type="button" aria-label="Move Holy Forever down">Down</button>
-              </div>
-            </article>
-          </section>
-        </section>
       </main>
     </div>
     <script src="./planning-workspace-mockup.js"></script>

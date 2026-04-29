@@ -74,6 +74,7 @@ class CachedPlanningMutations extends Table {
   TextColumn get songTitle => text().nullable()();
   TextColumn get orderedSiblingIds => text().nullable()();
   IntColumn get baseVersion => integer().nullable()();
+  TextColumn get originSnapshotJson => text().nullable()();
   TextColumn get errorCode => text().nullable()();
   TextColumn get errorMessage => text().nullable()();
   IntColumn get orderKey => integer()();

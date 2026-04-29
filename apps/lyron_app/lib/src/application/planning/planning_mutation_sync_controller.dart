@@ -89,7 +89,27 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
+    if (!await _refreshPlanning()) {
+      return;
+    }
     await _mutationStore().retryMutation(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    );
+    await syncPendingMutations(context);
+  }
+
+  Future<void> discardMutation(
+    ActivePlanningReadContext context, {
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    if (!await _refreshPlanning()) {
+      return;
+    }
+    await _mutationStore().clearMutation(
       userId: context.userId,
       organizationId: context.organizationId,
       aggregateType: aggregateType,

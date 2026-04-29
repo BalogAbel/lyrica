@@ -117,10 +117,9 @@ void main() {
     expect(find.text('Alpha Morning'), findsOneWidget);
     expect(find.text('Zulu Rehearsal'), findsOneWidget);
     expect(find.byType(ListTile), findsNWidgets(2));
-    expect(
-      tester.getTopLeft(find.text('Zulu Rehearsal')).dy,
-      lessThan(tester.getTopLeft(find.text('Alpha Morning')).dy),
-    );
+    final tiles = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
+    expect((tiles[0].title as Text).data, 'Zulu Rehearsal');
+    expect((tiles[1].title as Text).data, 'Alpha Morning');
   });
 
   testWidgets('navigates to the plan detail route when a plan is tapped', (
@@ -190,27 +189,13 @@ void main() {
           updatedAt: DateTime.utc(2026),
         ),
       );
-      var listReadCount = 0;
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            planningPlanListProvider.overrideWith((ref) async {
-              listReadCount += 1;
-              if (listReadCount == 1) {
-                return const <PlanSummary>[];
-              }
-              return [
-                PlanSummary(
-                  id: 'plan-local-1',
-                  slug: 'weekend-service-2',
-                  name: 'Weekend Service',
-                  description: 'Local draft',
-                  scheduledFor: null,
-                  updatedAt: DateTime(2026, 4, 10),
-                ),
-              ];
-            }),
+            planningPlanListProvider.overrideWith(
+              (ref) async => const <PlanSummary>[],
+            ),
             planningMutationEntriesProvider.overrideWith(
               (ref) async => const [],
             ),
@@ -259,7 +244,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(writeService.createdDraft?.name, 'Weekend Service');
-      expect(find.text('plan-detail:weekend-service-2'), findsOneWidget);
+      expect(find.text('plan-detail:weekend-service'), findsOneWidget);
     },
   );
 
@@ -291,7 +276,7 @@ void main() {
     expect(find.text('Weekend Service'), findsOneWidget);
     expect(find.text(AppStrings.planConflictMessage), findsOneWidget);
 
-    await tester.tap(find.text(AppStrings.retryAction));
+    await tester.tap(find.text(AppStrings.songKeepMineAction));
     await tester.pumpAndSettle();
 
     expect(syncController.retriedAggregateIds, ['plan-1']);
