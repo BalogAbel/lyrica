@@ -1965,7 +1965,6 @@ class _FakePlanningWriteService extends PlanningWriteService {
   _FakePlanningWriteService({
     this.addSongCompleter,
     this.addSongException,
-    this.reorderSessionsCompleter,
     this.reorderSessionItemsCompleter,
   }) : super(
          _PlanDetailTestPlanningRepository(),
@@ -1977,7 +1976,6 @@ class _FakePlanningWriteService extends PlanningWriteService {
        );
 
   final Completer<void>? addSongCompleter;
-  final Completer<void>? reorderSessionsCompleter;
   final Completer<void>? reorderSessionItemsCompleter;
   final Object? addSongException;
   PlanEditDraft? editedDraft;
@@ -2027,9 +2025,6 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionReorderDraft draft,
   }) async {
-    if (reorderSessionsCompleter != null) {
-      await reorderSessionsCompleter!.future;
-    }
     reorderedSessionDraft = draft;
   }
 
