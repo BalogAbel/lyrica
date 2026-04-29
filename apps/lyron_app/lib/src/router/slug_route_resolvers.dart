@@ -56,6 +56,7 @@ class PlanSlugRouteResolver extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(planningPlanListProvider);
     return plansAsync.when(
+      skipLoadingOnReload: true,
       loading: () => const _RouteStateScaffold(
         message: AppStrings.planDetailLoadingMessage,
       ),
@@ -102,7 +103,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
 
     final plansAsync = ref.watch(planningPlanListProvider);
     final songsAsync = ref.watch(songLibraryListProvider);
-    if (plansAsync.isLoading) {
+    if (plansAsync.isLoading && !plansAsync.hasValue) {
       return const _RouteStateScaffold(
         message: AppStrings.songReaderLoadingMessage,
       );
@@ -135,6 +136,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
 
     final detailAsync = ref.watch(planningPlanDetailProvider(plan.id));
     return detailAsync.when(
+      skipLoadingOnReload: true,
       loading: () => const _RouteStateScaffold(
         message: AppStrings.planDetailLoadingMessage,
       ),

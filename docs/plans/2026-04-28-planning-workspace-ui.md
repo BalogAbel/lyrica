@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refactor the planning list and planning detail surfaces into one coherent workspace UI slice with clearer responsive hierarchy, inline session-name editing, inline add-song entry points, simple native drag-and-drop reorder motion for sessions and songs, long-press-only touch reorder, explicit handling for loading, empty, conflict, retryable failure, and authorization-denied states, and persisted mutation origin snapshots so local edits can rebase or discard from the current baseline.
+**Goal:** Refactor the planning list and planning detail surfaces into one coherent workspace UI slice with clearer responsive hierarchy, inline session-name editing, inline add-song entry points, simple native drag-and-drop reorder motion for sessions and songs, long-press-only touch reorder, explicit handling for loading, empty, simple per-mutation conflict actions, retryable failure, and authorization-denied states, and persisted mutation origin snapshots so local edits can rebase or discard from the current baseline.
 
-**Architecture:** Keep the planning domain, local-first read model, and backend-enforced authorization boundary unchanged. Concentrate the UI work in the Flutter presentation layer by introducing a shared workspace shell, moving session rename/add-song/reorder controls into inline session headers/cards, and making drag-and-drop reorder the long-term target interaction for sessions and songs with simple built-in motion and long-press-only touch start. Keep plan detail as a single route surface that still opens the scoped reader from song rows. Tablet and wide layouts should adapt each route independently, never stacking plan list and plan detail on the same screen. The planning write layer should preserve an origin snapshot for each local mutation so later rebase, discard, and canonical reconciliation can reason about the pre-edit baseline.
+**Architecture:** Keep user-facing planning domain capabilities, the local-first read model, and backend-enforced authorization boundary unchanged. Concentrate the UI work in the Flutter presentation layer by introducing a shared workspace shell, moving session rename/add-song/reorder controls into inline session headers/cards, and making drag-and-drop reorder the long-term target interaction for sessions and songs with simple built-in motion and long-press-only touch start. Keep plan detail as a single route surface that still opens the scoped reader from song rows. Tablet and wide layouts should adapt each route independently, never stacking plan list and plan detail on the same screen. The planning write layer should preserve an origin snapshot for each local mutation so later rebase, discard, and canonical reconciliation can reason about the pre-edit baseline.
 
-**Tech Stack:** Flutter, Material 3, Riverpod, go_router, flutter_test
+**Tech Stack:** Flutter, Material 3, Riverpod, go_router, Drift, flutter_test
+
+**Prototype note:** The companion prototype under `docs/prototypes/` is part of the same repository-owned slice. Keep prototype, spec, plan, and implementation consistent before merge; do not treat prototype decisions as external-only guidance.
 
 ---
 
@@ -53,8 +55,8 @@ Extend the detail tests to pin down:
 
 Add cases that prove:
 
-- conflict rows are rendered individually, not as one combined conflict banner
-- each conflict row offers `Keep mine` and `Discard mine`
+- conflict rows are rendered individually, not as one combined conflict banner or merge editor
+- each conflict row offers only the simple `Keep mine` and `Discard mine` actions
 - retryable planning mutation state keeps the list/detail content visible while still exposing retry actions
 
 - [x] **Step 4: Re-run the focused widget tests**
@@ -68,14 +70,11 @@ Expected: PASS after the presentation refactor is complete.
 **Files:**
 - Modify: `apps/lyron_app/lib/src/presentation/planning/plan_list_screen.dart`
 - Modify: `apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart`
-- Modify: `apps/lyron_app/lib/src/presentation/planning/planning_providers.dart`
 - Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_workspace_shell.dart`
 - Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_workspace_status_surface.dart`
-- Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_plan_editor_dialog.dart`
-- Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_session_editor_dialog.dart`
-- Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_session_item_row.dart`
-- Create: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_session_card.dart`
 - Modify: `apps/lyron_app/lib/src/presentation/planning/session_song_picker.dart`
+
+Implementation note: the final slice kept the plan editor, name-only session popup, session card, and session item row as private presentation widgets inside `plan_list_screen.dart` and `plan_detail_screen.dart` because they are not reused outside those route surfaces.
 
 - [x] **Step 1: Extract a shared workspace shell and status surface**
 
@@ -138,7 +137,7 @@ Update labels and helper text so they match the new UI hierarchy:
 
 - session name edit icon and popup labels
 - inline add song labels for session cards
-- explicit conflict copy that describes one affected local change at a time
+- explicit conflict copy that describes one affected local change at a time and offers only simple `Keep mine` / `Discard mine` actions
 - back-arrow-oriented planning navigation copy where needed
 
 - [x] **Step 2: Verify the responsive state surfaces at the widget level**
@@ -149,7 +148,7 @@ Run targeted Flutter tests for:
 - plan detail
 - session song picker
 
-Keep the verification focused on the presentation layer because the domain and sync behavior stay unchanged in this slice.
+Keep the presentation verification focused on plan list, plan detail, and picker behavior. Because this slice also preserves origin snapshots in the local mutation store, run focused local database, write-service, and sync-controller tests for that write-layer persistence.
 
 - [x] **Step 3: Review the UI slice for any durable documentation drift**
 
@@ -161,6 +160,9 @@ Run:
 
 ```bash
 cd apps/lyron_app && flutter test \
+  test/application/planning/planning_write_service_test.dart \
+  test/application/planning/planning_mutation_sync_controller_test.dart \
+  test/offline/planning/planning_mutation_store_test.dart \
   test/presentation/planning/plan_list_screen_test.dart \
   test/presentation/planning/plan_detail_screen_test.dart \
   test/presentation/planning/session_song_picker_test.dart

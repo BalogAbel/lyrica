@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -51,6 +52,7 @@ void main() {
     return ProviderScope(
       overrides: [
         planningPlanListProvider.overrideWith((ref) {
+          ref.watch(planningDataRevisionProvider);
           if (listPlansValue is Future<List<PlanSummary>>) {
             return listPlansValue;
           }
@@ -154,6 +156,46 @@ void main() {
     await tester.pump();
 
     expect(find.text(AppStrings.planListLoadingMessage), findsOneWidget);
+  });
+
+  testWidgets('keeps current plan list visible while revision reloads', (
+    tester,
+  ) async {
+    final reloadCompleter = Completer<List<PlanSummary>>();
+    var reads = 0;
+
+    await tester.pumpWidget(
+      buildApp(
+        listPlansValue: Future<List<PlanSummary>>.sync(() {
+          reads += 1;
+          if (reads == 1) {
+            return [
+              PlanSummary(
+                id: 'plan-1',
+                slug: 'alpha-morning',
+                name: 'Alpha Morning',
+                description: 'Fixture',
+                scheduledFor: null,
+                updatedAt: DateTime(2026, 3, 31, 8),
+              ),
+            ];
+          }
+          return reloadCompleter.future;
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alpha Morning'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanListScreen)),
+    );
+    container.read(planningDataRevisionProvider.notifier).state += 1;
+    await tester.pump();
+
+    expect(find.text('Alpha Morning'), findsOneWidget);
+    expect(find.text(AppStrings.planListLoadingMessage), findsNothing);
   });
 
   testWidgets('shows an explicit failure surface when plans cannot load', (

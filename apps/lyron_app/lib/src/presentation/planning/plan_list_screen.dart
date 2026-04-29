@@ -39,6 +39,7 @@ class PlanListScreen extends ConsumerWidget {
         ),
       ],
       statusSurface: mutationsAsync.when(
+        skipLoadingOnReload: true,
         data: (entries) {
           if (entries.isEmpty) {
             return null;
@@ -54,6 +55,7 @@ class PlanListScreen extends ConsumerWidget {
         loading: () => null,
       ),
       body: plansAsync.when(
+        skipLoadingOnReload: true,
         loading: () =>
             const Center(child: Text(AppStrings.planListLoadingMessage)),
         error: (error, stackTrace) => _RetryableErrorState(

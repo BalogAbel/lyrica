@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
+import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
@@ -429,10 +432,84 @@ void main() {
     expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
     expect(find.text('Sunday Morning'), findsOneWidget);
     expect(find.text('Main Set'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
     expect(
       router.routeInformationProvider.value.uri.toString(),
       '/plans/sunday-morning',
     );
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(router.routeInformationProvider.value.uri.toString(), '/plans');
+  });
+
+  testWidgets('plan slug resolver keeps detail visible while plans reload', (
+    WidgetTester tester,
+  ) async {
+    final reloadCompleter = Completer<List<PlanSummary>>();
+    var reads = 0;
+    final router = GoRouter(
+      initialLocation: '/plans/sunday-morning',
+      routes: [
+        GoRoute(
+          path: AppRoutes.planDetail.path,
+          builder: (context, state) => PlanSlugRouteResolver(
+            planSlug: state.pathParameters['planSlug']!,
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      isolatedSongCatalogProviderScope(
+        overrides: [
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+          planningPlanListProvider.overrideWith((ref) {
+            ref.watch(planningDataRevisionProvider);
+            reads += 1;
+            if (reads == 1) {
+              return Future.value([_planDetailFixture().plan]);
+            }
+            return reloadCompleter.future;
+          }),
+          planningPlanDetailProvider(
+            'plan-1',
+          ).overrideWith((ref) async => _planDetailFixture()),
+          planningMutationEntriesProvider.overrideWith((ref) async => const []),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+    expect(find.text('Sunday Morning'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanSlugRouteResolver)),
+    );
+    container.read(planningDataRevisionProvider.notifier).state += 1;
+    await tester.pump();
+
+    expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+    expect(find.text('Sunday Morning'), findsOneWidget);
+    expect(find.text(AppStrings.planDetailLoadingMessage), findsNothing);
   });
 
   testWidgets(

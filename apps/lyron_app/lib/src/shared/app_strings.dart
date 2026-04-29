@@ -155,7 +155,6 @@ class AppStrings {
   static const sessionNameLabel = 'Session name';
   static const sessionEditorTitleCreate = 'Add session';
   static const sessionEditorTitleRename = 'Rename session';
-  static const sessionEditorTitleEdit = 'Edit session';
   static const planDetailLoadingMessage = 'Loading plan...';
   static const planDetailLoadFailureMessage =
       'Unable to load plan. Please try again.';
