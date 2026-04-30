@@ -336,23 +336,19 @@ class _PlanSummarySubtitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final children = <Widget>[];
     final description = plan.description?.trim();
-    if (description != null && description.isNotEmpty) {
-      children.add(Text(description));
-    }
-
     final scheduledFor = plan.scheduledFor;
-    if (scheduledFor == null) {
-      children.add(const Text(AppStrings.planListUnscheduledLabel));
-    } else {
-      children.add(Text(_formatScheduledFor(context, scheduledFor)));
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      children: children,
+      children: [
+        if (description != null && description.isNotEmpty) Text(description),
+        if (scheduledFor == null)
+          const Text(AppStrings.planListUnscheduledLabel)
+        else
+          Text(_formatScheduledFor(context, scheduledFor)),
+      ],
     );
   }
 }
