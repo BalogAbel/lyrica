@@ -669,6 +669,45 @@ void main() {
     expect(writeService.reorderedSessionDraft, isNull);
   });
 
+  testWidgets('queues session reorder requests while one is in flight', (
+    tester,
+  ) async {
+    final firstReorderCompleter = Completer<void>();
+    var sessionReorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        sessionReorderCalls += 1;
+        if (sessionReorderCalls == 1) {
+          await firstReorderCompleter.future;
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    sessionList.onReorder(1, 0);
+    await tester.pump();
+
+    expect(writeService.reorderSessionsCallCount, 1);
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(writeService.reorderSessionsCallCount, 2);
+    expect(writeService.reorderedSessionDrafts, hasLength(2));
+  });
+
   testWidgets(
     'long-press drag on the session handle reorders sessions',
     (tester) async {
@@ -1535,6 +1574,50 @@ void main() {
     expect(writeService.reorderedSessionItemDraft, isNull);
   });
 
+  testWidgets('queues session item reorder requests while one is in flight', (
+    tester,
+  ) async {
+    final firstReorderCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      reorderSessionItemsCompleter: firstReorderCompleter,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(0, 2);
+    await tester.pump();
+    itemList.onReorder(1, 0);
+    await tester.pump();
+
+    expect(writeService.reorderSessionItemsCallCount, 1);
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(writeService.reorderSessionItemsCallCount, 2);
+    expect(writeService.reorderedSessionItemDrafts, hasLength(2));
+  });
+
   testWidgets('shows reordered session items before local write completes', (
     tester,
   ) async {
@@ -2098,6 +2181,7 @@ class _FakePlanningWriteService extends PlanningWriteService {
   _FakePlanningWriteService({
     this.addSongCompleter,
     this.addSongException,
+    this.onReorderSessions,
     this.onReorderSessionItems,
     this.reorderSessionItemsCompleter,
   }) : super(
@@ -2112,6 +2196,7 @@ class _FakePlanningWriteService extends PlanningWriteService {
   final Completer<void>? addSongCompleter;
   final Completer<void>? reorderSessionItemsCompleter;
   final Object? addSongException;
+  final Future<void> Function(SessionReorderDraft draft)? onReorderSessions;
   final Future<void> Function(SessionItemReorderDraft draft)?
   onReorderSessionItems;
   PlanEditDraft? editedDraft;
@@ -2119,10 +2204,14 @@ class _FakePlanningWriteService extends PlanningWriteService {
   SessionRenameDraft? renamedSessionDraft;
   SessionDeleteDraft? deletedSessionDraft;
   SessionReorderDraft? reorderedSessionDraft;
+  var reorderSessionsCallCount = 0;
+  final List<SessionReorderDraft> reorderedSessionDrafts = [];
   SessionItemCreateSongDraft? createdSessionItemDraft;
   PlanningWriteContext? createdSongContext;
   SessionItemDeleteDraft? deletedSessionItemDraft;
   SessionItemReorderDraft? reorderedSessionItemDraft;
+  var reorderSessionItemsCallCount = 0;
+  final List<SessionItemReorderDraft> reorderedSessionItemDrafts = [];
 
   @override
   Future<void> editPlan({
@@ -2161,7 +2250,13 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionReorderDraft draft,
   }) async {
+    reorderSessionsCallCount += 1;
     reorderedSessionDraft = draft;
+    reorderedSessionDrafts.add(draft);
+    if (onReorderSessions != null) {
+      await onReorderSessions!(draft);
+      return;
+    }
   }
 
   @override
@@ -2192,6 +2287,7 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemReorderDraft draft,
   }) async {
+    reorderSessionItemsCallCount += 1;
     if (onReorderSessionItems != null) {
       await onReorderSessionItems!(draft);
       return;
@@ -2200,6 +2296,7 @@ class _FakePlanningWriteService extends PlanningWriteService {
       await reorderSessionItemsCompleter!.future;
     }
     reorderedSessionItemDraft = draft;
+    reorderedSessionItemDrafts.add(draft);
   }
 }
 
