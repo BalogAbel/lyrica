@@ -453,6 +453,22 @@ String _formatScheduledFor(BuildContext context, DateTime scheduledFor) {
   ).formatMediumDate(scheduledFor.toLocal());
 }
 
+void _handlePlanningAddSongError(
+  WidgetRef ref,
+  String planId, {
+  required Object? error,
+  required StackTrace? stackTrace,
+  required String library,
+}) {
+  if (error != null && stackTrace != null) {
+    debugPrint('$library failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+  ref.read(planningDataRevisionProvider.notifier).state += 1;
+  ref.invalidate(planningMutationEntriesProvider);
+  ref.invalidate(planningPlanDetailProvider(planId));
+}
+
 class _SessionCard extends ConsumerStatefulWidget {
   const _SessionCard({
     super.key,
@@ -780,20 +796,32 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
             ref.invalidate(planningPlanListProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
             return true;
-          } on PlanningWriteContextMismatchException {
-            ref.read(planningDataRevisionProvider.notifier).state += 1;
-            ref.invalidate(planningMutationEntriesProvider);
-            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+          } on PlanningWriteContextMismatchException catch (e, st) {
+            _handlePlanningAddSongError(
+              ref,
+              detail.plan.id,
+              error: e,
+              stackTrace: st,
+              library: 'planning add song',
+            );
             return false;
-          } on DuplicateSessionSongException {
-            ref.read(planningDataRevisionProvider.notifier).state += 1;
-            ref.invalidate(planningMutationEntriesProvider);
-            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+          } on DuplicateSessionSongException catch (e, st) {
+            _handlePlanningAddSongError(
+              ref,
+              detail.plan.id,
+              error: e,
+              stackTrace: st,
+              library: 'planning add song',
+            );
             return true;
-          } on PlanningSongUnavailableException {
-            ref.read(planningDataRevisionProvider.notifier).state += 1;
-            ref.invalidate(planningMutationEntriesProvider);
-            ref.invalidate(planningPlanDetailProvider(detail.plan.id));
+          } on PlanningSongUnavailableException catch (e, st) {
+            _handlePlanningAddSongError(
+              ref,
+              detail.plan.id,
+              error: e,
+              stackTrace: st,
+              library: 'planning add song',
+            );
             return false;
           } finally {
             if (mounted) {
