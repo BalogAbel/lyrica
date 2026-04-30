@@ -454,9 +454,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     );
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
-    final sessionIndex = planDetail.sessions.indexWhere(
-      (candidate) => candidate.id == session.id,
-    );
     ref.listen(activePlanningContextProvider, (previous, next) {
       if (!mounted || !_pickerOpen || previous == next) {
         return;
@@ -509,23 +506,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     height: 40,
                     child: const Center(child: Icon(Icons.drag_indicator)),
                   ),
-                ),
-                IconButton(
-                  onPressed: sessionIndex > 0
-                      ? () => _reorderSession(context, ref, -1)
-                      : null,
-                  icon: const Icon(Icons.keyboard_arrow_up),
-                  tooltip: '${AppStrings.sessionMoveUpAction}: ${session.name}',
-                ),
-                IconButton(
-                  onPressed:
-                      sessionIndex >= 0 &&
-                          sessionIndex < planDetail.sessions.length - 1
-                      ? () => _reorderSession(context, ref, 1)
-                      : null,
-                  icon: const Icon(Icons.keyboard_arrow_down),
-                  tooltip:
-                      '${AppStrings.sessionMoveDownAction}: ${session.name}',
                 ),
                 IconButton(
                   onPressed: () => _renameSession(context),
@@ -838,47 +818,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
           draft: SessionDeleteDraft(
             sessionId: session.id,
             planId: planDetail.plan.id,
-          ),
-        );
-
-    if (!context.mounted) return;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-    ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
-  }
-
-  Future<void> _reorderSession(
-    BuildContext context,
-    WidgetRef ref,
-    int delta,
-  ) async {
-    final planDetail = widget.planDetail;
-    final session = widget.session;
-    final activeContext = ref.read(activePlanningContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-    final currentOrder = planDetail.sessions.map((value) => value.id).toList();
-    final currentIndex = currentOrder.indexOf(session.id);
-    final targetIndex = currentIndex + delta;
-    if (currentIndex < 0 ||
-        targetIndex < 0 ||
-        targetIndex >= currentOrder.length) {
-      return;
-    }
-    final movedId = currentOrder.removeAt(currentIndex);
-    currentOrder.insert(targetIndex, movedId);
-    if (!context.mounted) return;
-    await ref
-        .read(planningWriteServiceProvider)
-        .reorderSessions(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionReorderDraft(
-            planId: planDetail.plan.id,
-            orderedSessionIds: currentOrder,
           ),
         );
 

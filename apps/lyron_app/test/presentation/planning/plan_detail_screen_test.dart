@@ -391,10 +391,6 @@ void main() {
       find.byTooltip('${AppStrings.sessionRenameAction}: Warm-Up'),
       findsOneWidget,
     );
-    expect(
-      find.byTooltip('${AppStrings.sessionMoveUpAction}: Warm-Up'),
-      findsOneWidget,
-    );
   });
 
   testWidgets('opens the session name popup from detail', (tester) async {
@@ -626,30 +622,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(writeService.deletedSessionDraft?.sessionId, 'session-2');
-  });
-
-  testWidgets('reorders sessions locally from the detail screen', (
-    tester,
-  ) async {
-    final writeService = _FakePlanningWriteService();
-
-    await tester.pumpWidget(
-      buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
-        writeService: writeService,
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byTooltip('${AppStrings.sessionMoveUpAction}: Closing'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      writeService.reorderedSessionDraft?.orderedSessionIds,
-      orderedEquals(const ['session-2', 'session-1']),
-    );
   });
 
   testWidgets('tap on the session drag handle does not reorder sessions', (
