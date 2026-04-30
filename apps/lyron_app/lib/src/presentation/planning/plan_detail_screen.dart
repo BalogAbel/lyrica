@@ -11,6 +11,7 @@ import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/presentation/planning/planning_context_checks.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/session_song_picker.dart';
@@ -29,6 +30,7 @@ class PlanDetailScreen extends ConsumerStatefulWidget {
 
 class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   List<String>? _optimisticSessionOrder;
+  var _sessionReorderGeneration = 0;
 
   String get planId => widget.planId;
 
@@ -213,8 +215,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
 
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
+        !samePlanningContext(activeContext, currentContext)) {
       return;
     }
 
@@ -251,8 +252,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
 
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
+        !samePlanningContext(activeContext, currentContext)) {
       return;
     }
 
@@ -357,6 +357,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     }
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
+    final generation = ++_sessionReorderGeneration;
 
     setState(() {
       _optimisticSessionOrder = currentOrder;
@@ -376,14 +377,20 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             ),
           );
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _sessionReorderGeneration) {
         setState(() {
           _optimisticSessionOrder = null;
         });
       }
+      if (generation != _sessionReorderGeneration) {
+        return;
+      }
       rethrow;
     }
 
+    if (generation != _sessionReorderGeneration) {
+      return;
+    }
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
@@ -418,6 +425,7 @@ class _SessionCard extends ConsumerStatefulWidget {
 class _SessionCardState extends ConsumerState<_SessionCard> {
   late final FocusNode _addSongFocusNode;
   List<String>? _optimisticItemOrder;
+  var _itemReorderGeneration = 0;
   var _pickerOpen = false;
   var _addSongInFlight = false;
 
@@ -627,8 +635,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
 
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
+        !samePlanningContext(activeContext, currentContext)) {
       return;
     }
 
@@ -686,15 +693,12 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         .context;
     if (currentCatalogContext != null &&
         activeCatalogContext != null &&
-        (currentCatalogContext.userId != activeCatalogContext.userId ||
-            currentCatalogContext.organizationId !=
-                activeCatalogContext.organizationId)) {
+        !sameCatalogContext(activeCatalogContext, currentCatalogContext)) {
       return;
     }
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
+        !samePlanningContext(activeContext, currentContext)) {
       return;
     }
 
@@ -711,15 +715,15 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
               .context;
           if (currentCatalogContext != null &&
               activeCatalogContext != null &&
-              (currentCatalogContext.userId != activeContext.userId ||
-                  currentCatalogContext.organizationId !=
-                      activeContext.organizationId)) {
+              !sameCatalogContext(
+                activeCatalogContext,
+                currentCatalogContext,
+              )) {
             return false;
           }
           final currentContext = ref.read(activePlanningContextProvider);
           if (currentContext == null ||
-              currentContext.userId != activeContext.userId ||
-              currentContext.organizationId != activeContext.organizationId) {
+              !samePlanningContext(activeContext, currentContext)) {
             return false;
           }
 
@@ -911,6 +915,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     }
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
+    final generation = ++_itemReorderGeneration;
 
     setState(() {
       _optimisticItemOrder = currentOrder;
@@ -931,12 +936,18 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
             ),
           );
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _itemReorderGeneration) {
         setState(() {
           _optimisticItemOrder = null;
         });
       }
+      if (generation != _itemReorderGeneration) {
+        return;
+      }
       rethrow;
+    }
+    if (generation != _itemReorderGeneration) {
+      return;
     }
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);

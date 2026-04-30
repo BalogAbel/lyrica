@@ -653,16 +653,10 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             songId: Value(record.songId),
             songTitle: Value(record.songTitle),
             orderedSiblingIds: Value(
-              record.orderedSiblingIds == null
-                  ? null
-                  : jsonEncode(record.orderedSiblingIds),
+              _encodeJsonValue(record.orderedSiblingIds),
             ),
             baseVersion: Value(record.baseVersion),
-            originSnapshotJson: Value(
-              record.originSnapshot == null
-                  ? null
-                  : jsonEncode(record.originSnapshot),
-            ),
+            originSnapshotJson: Value(_encodeJsonValue(record.originSnapshot)),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
             orderKey: record.orderKey,
@@ -725,6 +719,10 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 ?.version ??
             record.baseVersion;
     }
+  }
+
+  String? _encodeJsonValue(Object? value) {
+    return value == null ? null : jsonEncode(value);
   }
 
   Future<bool> _hasReservedPlanSlug({
