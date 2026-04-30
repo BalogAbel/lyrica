@@ -146,6 +146,52 @@ void main() {
       expect(pending.single.originSnapshot?['version'], 3);
     });
 
+    test('pending updates keep the original origin snapshot', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service Updated',
+          description: 'First local draft',
+          baseVersion: 3,
+          originSnapshot: {
+            'name': 'Weekend Service',
+            'description': 'Original',
+            'version': 3,
+          },
+        ),
+      );
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service Updated Again',
+          description: 'Second local draft',
+          baseVersion: 4,
+          originSnapshot: {
+            'name': 'Weekend Service',
+            'description': 'Wrong later snapshot',
+            'version': 4,
+          },
+        ),
+      );
+
+      final pending = await store.readPendingMutations(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+
+      expect(pending, hasLength(1));
+      expect(pending.single.originSnapshot?['name'], 'Weekend Service');
+      expect(pending.single.originSnapshot?['description'], 'Original');
+      expect(pending.single.originSnapshot?['version'], 3);
+    });
+
     test(
       'retrying a conflicted plan edit refreshes the base version',
       () async {

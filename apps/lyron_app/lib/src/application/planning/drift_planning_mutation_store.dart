@@ -98,7 +98,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
           baseVersion: draft.baseVersion ?? existing?.baseVersion,
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
     });
@@ -184,7 +184,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
     });
@@ -236,7 +236,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
       await _removeSessionFromPendingReorder(
@@ -277,7 +277,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           updatedAt: DateTime.now().toUtc(),
           orderedSiblingIds: draft.orderedSessionIds,
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
     });
@@ -361,7 +361,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 organizationId: context.organizationId,
               ),
           updatedAt: DateTime.now().toUtc(),
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
       await _removeSessionItemFromPendingReorder(
@@ -403,7 +403,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           updatedAt: DateTime.now().toUtc(),
           orderedSiblingIds: draft.orderedSessionItemIds,
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
-          originSnapshot: draft.originSnapshot ?? existing?.originSnapshot,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
     });
@@ -698,27 +698,24 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       planId: planId,
     );
 
-    switch (record.kind) {
-      case PlanningMutationKind.planCreate:
-        return record.baseVersion;
-      case PlanningMutationKind.planEdit:
-      case PlanningMutationKind.sessionCreate:
-      case PlanningMutationKind.sessionReorder:
-        return detail?.plan.version;
-      case PlanningMutationKind.sessionRename:
-      case PlanningMutationKind.sessionDelete:
-      case PlanningMutationKind.sessionItemCreateSong:
-      case PlanningMutationKind.sessionItemDelete:
-      case PlanningMutationKind.sessionItemReorder:
-        final sessionId = record.sessionId;
-        if (detail == null || sessionId == null) {
-          return record.baseVersion;
-        }
-        return detail.sessions
-                .firstWhereOrNull((session) => session.id == sessionId)
-                ?.version ??
-            record.baseVersion;
-    }
+    final sessionId = record.sessionId;
+    return switch (record.kind) {
+      PlanningMutationKind.planEdit ||
+      PlanningMutationKind.sessionCreate ||
+      PlanningMutationKind.sessionReorder => detail?.plan.version,
+      PlanningMutationKind.sessionRename ||
+      PlanningMutationKind.sessionDelete ||
+      PlanningMutationKind.sessionItemCreateSong ||
+      PlanningMutationKind.sessionItemDelete ||
+      PlanningMutationKind.sessionItemReorder =>
+        detail == null || sessionId == null
+            ? record.baseVersion
+            : detail.sessions
+                      .firstWhereOrNull((session) => session.id == sessionId)
+                      ?.version ??
+                  record.baseVersion,
+      _ => record.baseVersion,
+    };
   }
 
   String? _encodeJsonValue(Object? value) {
