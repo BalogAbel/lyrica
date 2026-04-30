@@ -376,7 +376,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
               orderedSessionIds: currentOrder,
             ),
           );
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (mounted && generation == _sessionReorderGeneration) {
         setState(() {
           _optimisticSessionOrder = null;
@@ -385,7 +385,14 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       if (generation != _sessionReorderGeneration) {
         return;
       }
-      rethrow;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'planning session reorder',
+        ),
+      );
+      return;
     }
 
     if (generation != _sessionReorderGeneration) {
@@ -874,7 +881,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
               orderedSessionItemIds: currentOrder,
             ),
           );
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (mounted && generation == _itemReorderGeneration) {
         setState(() {
           _optimisticItemOrder = null;
@@ -883,7 +890,14 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       if (generation != _itemReorderGeneration) {
         return;
       }
-      rethrow;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'planning item reorder',
+        ),
+      );
+      return;
     }
     if (generation != _itemReorderGeneration) {
       return;
