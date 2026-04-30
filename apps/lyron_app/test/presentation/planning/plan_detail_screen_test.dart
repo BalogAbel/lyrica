@@ -1560,6 +1560,71 @@ void main() {
     );
   });
 
+  testWidgets('stale item reorder result does not clear newer order', (
+    tester,
+  ) async {
+    final firstReorderCompleter = Completer<void>();
+    var reorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessionItems: (_) async {
+        reorderCalls += 1;
+        if (reorderCalls == 1) {
+          await firstReorderCompleter.future;
+          throw StateError('late item reorder failure');
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithThreeItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(0, 2);
+    await tester.pump();
+    itemList.onReorder(1, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      greaterThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
+    );
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      greaterThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
+    );
+  });
+
   testWidgets('shows failed planning mutations and retries them from detail', (
     tester,
   ) async {
@@ -1961,10 +2026,56 @@ PlanDetail _planDetailWithItemsFixture() {
   );
 }
 
+PlanDetail _planDetailWithThreeItemsFixture() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      slug: 'team-rehearsal',
+      name: 'Team Rehearsal',
+      description: 'Fixture',
+      scheduledFor: DateTime(2026, 4, 10, 18),
+      updatedAt: DateTime(2026, 3, 31, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        slug: 'warm-up',
+        name: 'Warm-Up',
+        position: 10,
+        items: [
+          SessionItemSummary(
+            id: 'item-1',
+            position: 10,
+            song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          ),
+          SessionItemSummary(
+            id: 'item-2',
+            position: 20,
+            song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+          ),
+          SessionItemSummary(
+            id: 'item-3',
+            position: 30,
+            song: SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+          ),
+        ],
+      ),
+      SessionSummary(
+        id: 'session-2',
+        slug: 'closing',
+        name: 'Closing',
+        position: 20,
+        items: [],
+      ),
+    ],
+  );
+}
+
 class _FakePlanningWriteService extends PlanningWriteService {
   _FakePlanningWriteService({
     this.addSongCompleter,
     this.addSongException,
+    this.onReorderSessionItems,
     this.reorderSessionItemsCompleter,
   }) : super(
          _PlanDetailTestPlanningRepository(),
@@ -1978,6 +2089,8 @@ class _FakePlanningWriteService extends PlanningWriteService {
   final Completer<void>? addSongCompleter;
   final Completer<void>? reorderSessionItemsCompleter;
   final Object? addSongException;
+  final Future<void> Function(SessionItemReorderDraft draft)?
+  onReorderSessionItems;
   PlanEditDraft? editedDraft;
   SessionCreateDraft? createdSessionDraft;
   SessionRenameDraft? renamedSessionDraft;
@@ -2056,6 +2169,10 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemReorderDraft draft,
   }) async {
+    if (onReorderSessionItems != null) {
+      await onReorderSessionItems!(draft);
+      return;
+    }
     if (reorderSessionItemsCompleter != null) {
       await reorderSessionItemsCompleter!.future;
     }

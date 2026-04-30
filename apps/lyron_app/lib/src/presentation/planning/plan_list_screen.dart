@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/presentation/planning/planning_context_checks.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
@@ -117,8 +118,7 @@ class PlanListScreen extends ConsumerWidget {
 
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
-        currentContext.userId != activeContext.userId ||
-        currentContext.organizationId != activeContext.organizationId) {
+        !samePlanningContext(activeContext, currentContext)) {
       return;
     }
 
