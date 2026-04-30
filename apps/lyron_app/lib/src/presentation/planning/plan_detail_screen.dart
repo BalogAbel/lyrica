@@ -231,6 +231,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         );
 
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -268,6 +269,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         );
 
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -355,6 +357,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         newIndex >= currentOrder.length) {
       return;
     }
+    if (oldIndex == newIndex) {
+      return;
+    }
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
     final generation = ++_sessionReorderGeneration;
@@ -399,6 +404,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       return;
     }
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(detail.plan.id));
@@ -642,6 +648,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         );
 
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(widget.planDetail.plan.id));
@@ -731,19 +738,23 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     songId: song.id,
                   ),
                 );
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanListProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
             return true;
           } on PlanningWriteContextMismatchException {
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
             return false;
           } on DuplicateSessionSongException {
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
             return true;
           } on PlanningSongUnavailableException {
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
             return false;
@@ -829,6 +840,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         );
 
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -857,6 +869,9 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         oldIndex >= currentOrder.length ||
         newIndex < 0 ||
         newIndex >= currentOrder.length) {
+      return;
+    }
+    if (oldIndex == newIndex) {
       return;
     }
     final movedId = currentOrder.removeAt(oldIndex);
@@ -903,6 +918,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       return;
     }
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -1192,6 +1208,7 @@ class _SongItemRow extends ConsumerWidget {
           ),
         );
     if (!context.mounted) return;
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));

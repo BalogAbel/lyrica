@@ -649,6 +649,26 @@ void main() {
     );
   });
 
+  testWidgets('ignores no-op session reorder requests', (tester) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    sessionList.onReorder(0, 0);
+    await tester.pumpAndSettle();
+
+    expect(writeService.reorderedSessionDraft, isNull);
+  });
+
   testWidgets(
     'long-press drag on the session handle reorders sessions',
     (tester) async {
@@ -1483,6 +1503,37 @@ void main() {
       );
     },
   );
+
+  testWidgets('ignores no-op session item reorder requests', (tester) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(0, 0);
+    await tester.pumpAndSettle();
+
+    expect(writeService.reorderedSessionItemDraft, isNull);
+  });
 
   testWidgets('shows reordered session items before local write completes', (
     tester,
