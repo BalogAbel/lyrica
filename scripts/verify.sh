@@ -3,7 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-skip_migrations="${1:-}"
+skip_migrations=0
+skip_backend_write_contracts=0
 dart_bin="${DART_BIN:-dart}"
 flutter_bin="${FLUTTER_BIN:-flutter}"
 check_migrations_script="${CHECK_MIGRATIONS_SCRIPT:-./scripts/check-migrations.sh}"
@@ -13,16 +14,37 @@ supabase_cleanup_script="${SUPABASE_CLEANUP_SCRIPT:-./scripts/supabase-cleanup.s
 provision_demo_user_script="${PROVISION_DEMO_USER_SCRIPT:-./scripts/provision-local-demo-user.sh}"
 provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scripts/tests/provision-local-demo-user-test.sh}"
 manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
+backend_write_contracts_script="${BACKEND_WRITE_CONTRACTS_SCRIPT:-./scripts/backend-write-contracts.sh}"
+
+for arg in "$@"; do
+  case "$arg" in
+  --skip-migrations)
+    skip_migrations=1
+    ;;
+  --skip-backend-write-contracts)
+    skip_backend_write_contracts=1
+    ;;
+  *)
+    echo "Usage: ./scripts/verify.sh [--skip-migrations] [--skip-backend-write-contracts]" >&2
+    exit 1
+    ;;
+  esac
+done
 
 (cd apps/lyron_app && "$dart_bin" format --output=none --set-exit-if-changed lib test)
 (cd apps/lyron_app && "$flutter_bin" analyze)
 (cd apps/lyron_app && "$flutter_bin" test)
 
-if [[ "$skip_migrations" == "--skip-migrations" ]]; then
+if [[ "$skip_migrations" -eq 1 ]]; then
   exit 0
 fi
 
 "$check_migrations_script"
+
+if [[ "$skip_backend_write_contracts" -eq 0 ]]; then
+  "$backend_write_contracts_script"
+fi
+
 "$supabase_cleanup_script"
 "$db_reset_script"
 "$provision_demo_user_script"

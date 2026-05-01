@@ -4,9 +4,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
-./scripts/supabase.sh start >/dev/null
-./scripts/db-reset.sh >/dev/null
-./scripts/provision-local-demo-user.sh >/dev/null
+if [[ "${BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP:-0}" != "1" ]]; then
+  ./scripts/supabase.sh start >/dev/null
+  ./scripts/db-reset.sh >/dev/null
+  ./scripts/provision-local-demo-user.sh >/dev/null
+fi
 
 db_container_name="$(
   docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1

@@ -1,6 +1,6 @@
 # Backend SQL Write Contract Gates
 
-> Status: Draft
+> Status: Implemented
 
 ## Goal
 

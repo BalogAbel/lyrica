@@ -9,7 +9,7 @@
 5. Create or switch to a branch before making implementation changes; do not develop directly on `main`.
    Branch names must follow the Conventional Branch pattern `<type>/<description>`, for example `feat/song-reader-search`, `fix/catalog-refresh-timeout`, or `chore/update-docs`.
 6. Implement with tests first where behavior is introduced.
-7. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, song-catalog refresh behavior, or local Supabase workflow behavior changes.
+7. Run local verification, typically `./scripts/verify.sh --skip-migrations` for app-only/documentation-only slices and `./scripts/verify.sh` when backend-backed song reading, backend SQL write contracts, song-catalog refresh behavior, planning write behavior, or local Supabase workflow behavior changes.
 8. Update documentation and ADRs if the change affects durable knowledge.
 9. Open or update a pull request from that branch; changes reach `main` only through PR merge with green CI.
 
@@ -40,6 +40,7 @@ When a deferred item touches the same workflow, state machine, or backend contra
 - Use `./scripts/supabase.sh ...` as the canonical interface for local Supabase commands.
 - Use `./scripts/supabase-cleanup.sh` as the repository-owned convenience entrypoint for stopping the current local Supabase stack through the wrapper script.
 - Use `./scripts/check-migrations.sh` as the canonical migration lint entrypoint; it starts or reuses local Supabase before calling `db lint`.
+- Use `./scripts/backend-write-contracts.sh` as the canonical backend SQL write-contract gate for planning and song CRUD RPCs.
 - Use `./scripts/run-ci-locally.sh` when you want the closest local equivalent of the current GitHub Actions job sequencing.
 - Typical commands:
   - `./scripts/supabase.sh start`
@@ -48,8 +49,10 @@ When a deferred item touches the same workflow, state machine, or backend contra
   - `./scripts/supabase.sh migration list`
   - `./scripts/bootstrap-supabase.sh`
   - `./scripts/check-migrations.sh`
+  - `./scripts/backend-write-contracts.sh`
   - `./scripts/run-ci-locally.sh`
   - `./scripts/run-ci-locally.sh verify`
+  - `./scripts/run-ci-locally.sh backend-write-contracts`
   - `./scripts/run-ci-locally.sh migrations`
   - `./scripts/provision-local-demo-user.sh`
   - `./scripts/run-authenticated-app.sh`
@@ -73,7 +76,7 @@ For the local-first authenticated song-reader slice:
 
 The manual-validation launcher caches only the last known local Supabase status env (`API_URL` and `ANON_KEY`) so offline relaunch remains scriptable even when the backend is intentionally stopped and `./scripts/supabase.sh status -o env` is unavailable.
 Use `./scripts/verify.sh` to prove persistent cache reopen behavior in automation, then use the manual-validation scripts on native Flutter targets for true offline-relaunch acceptance. Use browser-based offline relaunch checks as best-effort diagnostics only.
-For the authenticated song-reader slice, pull requests are expected to pass the full `./scripts/verify.sh` gate in CI, including the local Supabase-backed refresh integrations, rather than only the app-only `--skip-migrations` variant.
+For the authenticated song-reader and backend planning/song write slices, pull requests are expected to pass the split CI gate: `./scripts/verify.sh --skip-backend-write-contracts` in the verify job, `./scripts/backend-write-contracts.sh` in the dedicated backend write-contract job, and `./scripts/check-migrations.sh` in the migration job. Use plain `./scripts/verify.sh` locally when you want the full repository-owned gate in one command.
 For Android emulators, the launch scripts rewrite local host loopback Supabase URLs (`127.0.0.1` or `localhost`) to `10.0.2.2` before invoking Flutter so the app reaches the host machine's backend.
 For ADB-managed Android devices, including wireless Flutter targets exposed as `adb-..._adb-tls-connect._tcp` and plain Android serials, the launch scripts run `adb reverse` for the Supabase port and keep the loopback URL unchanged so the app can reach the host machine through the reversed tunnel. This requires Android platform-tools `adb`, or an explicit `ADB_BIN` override.
 
