@@ -17,10 +17,10 @@ sealed class ActiveOrganizationResolution {
 
   @override
   bool operator ==(Object other) {
-    if (this is ActiveOrganizationSelected &&
+    final self = this;
+    if (self is ActiveOrganizationSelected &&
         other is ActiveOrganizationSelected) {
-      return other.organizationId ==
-          (this as ActiveOrganizationSelected).organizationId;
+      return other.organizationId == self.organizationId;
     }
 
     return other.runtimeType == runtimeType;
@@ -66,12 +66,11 @@ Future<ActiveOrganizationResolution> resolveActiveOrganizationResolution(
       return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
     }
 
-    final organizationIds = <String>[];
-    for (final value in response) {
-      if (value is! String) {
-        return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
-      }
-      organizationIds.add(value);
+    final List<String> organizationIds;
+    try {
+      organizationIds = List<String>.from(response);
+    } on TypeError {
+      return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
     }
 
     if (organizationIds.isEmpty) {
