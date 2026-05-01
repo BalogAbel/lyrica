@@ -65,12 +65,35 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
     final handlers = _handlers.toList(growable: false);
+    final planningCleanup = handlers.isEmpty
+        ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
+        : _runRegisteredPlanningCleanupHandlers(
+            userId: userId,
+            handlers: handlers,
+          );
+
     return Future.wait([
-      for (final handler in handlers) handler(userId: userId),
-      if (handlers.isEmpty)
-        _planningLocalStore.deletePlanningDataForUser(userId: userId),
+      planningCleanup,
       _songCatalogStore.deleteCatalogsForUser(userId: userId),
     ]);
+  }
+
+  Future<void> _runRegisteredPlanningCleanupHandlers({
+    required String userId,
+    required List<VerifiedEmptyMembershipCleanupHandler> handlers,
+  }) {
+    return Future.wait([
+      for (final handler in handlers) handler(userId: userId),
+    ]);
+  }
+
+  Future<void> _deletePlanningDataWithoutRegisteredHandler({
+    required String userId,
+  }) {
+    // Production wiring registers PlanningSyncController so it owns planning
+    // cleanup and state reset. This direct store delete is only the fallback
+    // for verified-empty calls that happen before that handler is active.
+    return _planningLocalStore.deletePlanningDataForUser(userId: userId);
   }
 }
 
