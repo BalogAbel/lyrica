@@ -45,6 +45,14 @@ typedef VerifiedEmptyMembershipCleanupHandler =
     Future<void> Function({required String userId});
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
+  VerifiedEmptyMembershipCleanupCoordinator({
+    required PlanningLocalStore planningLocalStore,
+    required SongCatalogStore songCatalogStore,
+  }) : _planningLocalStore = planningLocalStore,
+       _songCatalogStore = songCatalogStore;
+
+  final PlanningLocalStore _planningLocalStore;
+  final SongCatalogStore _songCatalogStore;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -56,8 +64,12 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   }
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
+    final handlers = _handlers.toList(growable: false);
     return Future.wait([
-      for (final handler in _handlers) handler(userId: userId),
+      for (final handler in handlers) handler(userId: userId),
+      if (handlers.isEmpty)
+        _planningLocalStore.deletePlanningDataForUser(userId: userId),
+      _songCatalogStore.deleteCatalogsForUser(userId: userId),
     ]);
   }
 }
@@ -142,7 +154,10 @@ final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
 
 final verifiedEmptyMembershipCleanupCoordinatorProvider =
     Provider<VerifiedEmptyMembershipCleanupCoordinator>((ref) {
-      return VerifiedEmptyMembershipCleanupCoordinator();
+      return VerifiedEmptyMembershipCleanupCoordinator(
+        planningLocalStore: ref.watch(planningLocalStoreProvider),
+        songCatalogStore: ref.watch(songCatalogStoreProvider),
+      );
     });
 
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
@@ -378,17 +393,9 @@ final activePlanningContextControllerProvider =
               .read(planningLocalStoreProvider)
               .readLatestCachedOrganizationId(userId: userId);
         },
-        onVerifiedEmptyMembership: ({required userId}) async {
-          try {
-            await ref
-                .read(planningLocalStoreProvider)
-                .deletePlanningDataForUser(userId: userId);
-          } finally {
-            await ref
-                .read(songCatalogStoreProvider)
-                .deleteCatalogsForUser(userId: userId);
-          }
-        },
+        onVerifiedEmptyMembership: ({required userId}) => ref
+            .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+            .handleVerifiedEmptyMembership(userId: userId),
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
@@ -538,17 +545,9 @@ final songCatalogControllerProvider =
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
-        onVerifiedEmptyMembership: ({required userId}) async {
-          try {
-            await ref
-                .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-                .handleVerifiedEmptyMembership(userId: userId);
-          } finally {
-            await ref
-                .read(songCatalogStoreProvider)
-                .deleteCatalogsForUser(userId: userId);
-          }
-        },
+        onVerifiedEmptyMembership: ({required userId}) => ref
+            .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+            .handleVerifiedEmptyMembership(userId: userId),
         foregroundState: ref.watch(appForegroundStateProvider),
       );
 
