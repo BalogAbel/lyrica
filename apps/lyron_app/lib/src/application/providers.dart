@@ -544,14 +544,9 @@ final songCatalogControllerProvider =
                 .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
                 .handleVerifiedEmptyMembership(userId: userId);
           } finally {
-            await Future.wait([
-              ref
-                  .read(planningLocalStoreProvider)
-                  .deletePlanningDataForUser(userId: userId),
-              ref
-                  .read(songCatalogStoreProvider)
-                  .deleteCatalogsForUser(userId: userId),
-            ]);
+            await ref
+                .read(songCatalogStoreProvider)
+                .deleteCatalogsForUser(userId: userId);
           }
         },
         foregroundState: ref.watch(appForegroundStateProvider),
