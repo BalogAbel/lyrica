@@ -96,6 +96,47 @@ void main() {
       },
     );
 
+    test(
+      'deletes the cached snapshot and pending song mutations for one user and organization',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'beta',
+            title: 'Beta',
+            source: '{title: Beta}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        );
+
+        await store.deleteCatalogsForUser(userId: 'user-1');
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+        expect(
+          await store.readSongMutations(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+      },
+    );
+
     test('keeps only the current cached snapshot for one user', () async {
       await store.replaceActiveSnapshot(
         userId: 'user-1',
