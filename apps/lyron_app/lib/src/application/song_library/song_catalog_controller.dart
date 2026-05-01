@@ -26,6 +26,7 @@ class SongCatalogController extends ChangeNotifier {
     required AppAuthSessionReader authSessionReader,
     required ActiveOrganizationReader organizationReader,
     required CatalogSessionVerifier sessionVerifier,
+    Future<void> Function({required String userId})? onVerifiedEmptyMembership,
     AppForegroundState? foregroundState,
     Duration refreshInterval = _defaultRefreshInterval,
   }) : _store = store,
@@ -33,6 +34,7 @@ class SongCatalogController extends ChangeNotifier {
        _authSessionReader = authSessionReader,
        _organizationReader = organizationReader,
        _sessionVerifier = sessionVerifier,
+       _onVerifiedEmptyMembership = onVerifiedEmptyMembership,
        _foregroundState = foregroundState ?? _AlwaysForegroundState(),
        _refreshInterval = refreshInterval,
        _state = const CatalogSnapshotState.initial() {
@@ -47,6 +49,8 @@ class SongCatalogController extends ChangeNotifier {
   final AppAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;
   final CatalogSessionVerifier _sessionVerifier;
+  final Future<void> Function({required String userId})?
+  _onVerifiedEmptyMembership;
   final AppForegroundState _foregroundState;
   final Duration _refreshInterval;
 
@@ -54,6 +58,7 @@ class SongCatalogController extends ChangeNotifier {
   int _refreshGeneration = 0;
   bool _disposed = false;
   String? _lastAuthenticatedUserId;
+  bool _verifiedEmptyMembershipSeen = false;
   Timer? _refreshTimer;
   StreamSubscription<bool>? _foregroundSubscription;
   Future<void>? _refreshFuture;
@@ -81,6 +86,7 @@ class SongCatalogController extends ChangeNotifier {
     final generation = _refreshGeneration;
     final session = _authSessionReader();
     if (session == null) {
+      _verifiedEmptyMembershipSeen = false;
       _setStateIfCurrent(
         generation,
         const CatalogSnapshotState.initial().copyWith(
@@ -92,10 +98,12 @@ class SongCatalogController extends ChangeNotifier {
     _rememberAuthenticatedUser(session.userId);
 
     String? organizationId;
+    var organizationLookupWasConnectivityFailure = false;
     try {
-      organizationId = await _resolveOrganizationId(session.userId);
+      organizationId = await _resolveOrganizationId();
     } catch (error) {
       if (_isAuthorizationFailure(error)) {
+        _verifiedEmptyMembershipSeen = false;
         _setStateIfCurrent(
           generation,
           const CatalogSnapshotState.initial().copyWith(
@@ -104,12 +112,65 @@ class SongCatalogController extends ChangeNotifier {
         );
         return;
       }
-      rethrow;
+      if (_isConnectivityFailure(error)) {
+        organizationLookupWasConnectivityFailure = true;
+        if (_state.context != null) {
+          return;
+        }
+        if (!_verifiedEmptyMembershipSeen) {
+          organizationId = await _store.readLatestCachedOrganizationId(
+            userId: session.userId,
+          );
+        }
+      } else {
+        _setStateIfCurrent(
+          generation,
+          _state.context == null
+              ? const CatalogSnapshotState.initial().copyWith(
+                  sessionStatus: CatalogSessionStatus.verified,
+                )
+              : _state.copyWith(
+                  refreshStatus: CatalogRefreshStatus.failed,
+                  sessionStatus: CatalogSessionStatus.verified,
+                ),
+        );
+        return;
+      }
     }
     if (_isStale(generation)) {
       return;
     }
     if (organizationId == null) {
+      if (organizationLookupWasConnectivityFailure &&
+          !_verifiedEmptyMembershipSeen) {
+        if (_state.context != null) {
+          return;
+        }
+        _setStateIfCurrent(
+          generation,
+          _state.copyWith(
+            clearContext: true,
+            connectionStatus: CatalogConnectionStatus.unavailable,
+            refreshStatus: CatalogRefreshStatus.failed,
+            sessionStatus: CatalogSessionStatus.unverifiableDueToConnectivity,
+            hasCachedCatalog: false,
+          ),
+        );
+        return;
+      }
+      if (organizationLookupWasConnectivityFailure &&
+          _verifiedEmptyMembershipSeen) {
+        return;
+      }
+      _verifiedEmptyMembershipSeen = true;
+      await _store.deleteCatalogsForUser(userId: session.userId);
+      final handler = _onVerifiedEmptyMembership;
+      if (handler != null) {
+        await handler(userId: session.userId);
+      }
+      if (_isStale(generation)) {
+        return;
+      }
       _setStateIfCurrent(
         generation,
         const CatalogSnapshotState.initial().copyWith(
@@ -123,6 +184,7 @@ class SongCatalogController extends ChangeNotifier {
       userId: session.userId,
       organizationId: organizationId,
     );
+    _verifiedEmptyMembershipSeen = false;
     final hasCachedCatalog = await _hasCachedCatalog(context);
     if (_isStale(generation)) {
       return;
@@ -231,6 +293,7 @@ class SongCatalogController extends ChangeNotifier {
   Future<void> handleExplicitSignOut() async {
     _invalidateRefreshWork();
     _stopRefreshScheduler();
+    _verifiedEmptyMembershipSeen = false;
     final userId =
         _state.context?.userId ??
         _authSessionReader()?.userId ??
@@ -244,6 +307,7 @@ class SongCatalogController extends ChangeNotifier {
   void handleSessionExpired() {
     _invalidateRefreshWork();
     _stopRefreshScheduler();
+    _verifiedEmptyMembershipSeen = false;
     _setState(
       const CatalogSnapshotState.initial().copyWith(
         sessionStatus: CatalogSessionStatus.expired,
@@ -267,15 +331,8 @@ class SongCatalogController extends ChangeNotifier {
     return summaries.isNotEmpty;
   }
 
-  Future<String?> _resolveOrganizationId(String userId) async {
-    try {
-      return await _organizationReader();
-    } catch (error) {
-      if (_isConnectivityFailure(error)) {
-        return _store.readLatestCachedOrganizationId(userId: userId);
-      }
-      rethrow;
-    }
+  Future<String?> _resolveOrganizationId() async {
+    return _organizationReader();
   }
 
   bool _isConnectivityFailure(Object error) {

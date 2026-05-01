@@ -222,6 +222,79 @@ void main() {
     );
 
     test(
+      'verified empty membership clears cached song data and prevents cached fallback from reopening later',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+        await store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'draft-song',
+            title: 'Draft Song',
+            source: '{title: Draft Song}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        );
+
+        late Future<String?> Function() organizationReader;
+        organizationReader = () async => null;
+
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () => organizationReader(),
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+        expect(
+          await store.readSongMutations(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+        expect(
+          await store.readLatestCachedOrganizationId(userId: 'user-1'),
+          isNull,
+        );
+
+        organizationReader = () async => throw const SocketException('offline');
+
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, isNull);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.unavailable,
+        );
+        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(remoteRepository.listSongsCalls, 0);
+      },
+    );
+
+    test(
       'falls back to the cached organization context when organization resolution returns backend unavailable',
       () async {
         await store.replaceActiveSnapshot(
@@ -259,6 +332,47 @@ void main() {
           CatalogConnectionStatus.offlineCached,
         );
         expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
+      'non-connectivity organization resolution failure keeps the established catalog boundary without reusing cached fallback',
+      () async {
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-2',
+          summaries: const [SongSummary(id: 'song-2', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-2', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 11),
+        );
+        organizationReaderState.nextError = StateError('malformed response');
+
+        await expectLater(controller.refreshCatalog(), completes);
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.online,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(remoteRepository.listSongsCalls, 1);
       },
     );
 
@@ -654,6 +768,27 @@ class _FakeSongRepository implements SongRepository {
     }
 
     return _sources[id]!;
+  }
+}
+
+class _MutableOrganizationReader {
+  _MutableOrganizationReader(String organizationId)
+    : _organizationId = organizationId;
+
+  String _organizationId;
+  Object? nextError;
+
+  Future<String?> read() async {
+    final error = nextError;
+    if (error != null) {
+      throw error;
+    }
+
+    return _organizationId;
+  }
+
+  void setOrganizationId(String organizationId) {
+    _organizationId = organizationId;
   }
 }
 

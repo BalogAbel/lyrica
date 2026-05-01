@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
@@ -28,7 +30,7 @@ void main() {
           authSessionReader: () => session,
           organizationReader: () async {
             if (shouldThrowOnOrganizationRead) {
-              throw StateError('offline');
+              throw const SocketException('offline');
             }
             return organizationId;
           },
@@ -59,7 +61,7 @@ void main() {
           authSessionReader: () => session,
           organizationReader: () async {
             if (shouldThrowOnOrganizationRead) {
-              throw StateError('offline');
+              throw const SocketException('offline');
             }
             return organizationId;
           },
@@ -78,6 +80,100 @@ void main() {
             organizationId: 'cached-org',
           ),
         );
+      },
+    );
+
+    test(
+      'keeps the established planning boundary when connectivity lookup fails after a verified org was already selected',
+      () async {
+        final controller = ActivePlanningContextController(
+          authSessionReader: () => session,
+          organizationReader: () async {
+            if (shouldThrowOnOrganizationRead) {
+              throw const SocketException('offline');
+            }
+            return organizationId;
+          },
+          latestOrganizationReader: ({required userId}) async {
+            expect(userId, 'user-1');
+            return latestCachedOrganizationId;
+          },
+        );
+
+        await controller.refresh();
+        shouldThrowOnOrganizationRead = true;
+        latestCachedOrganizationId = 'cached-org';
+
+        await controller.refresh(allowCachedFallback: true);
+
+        expect(
+          controller.state,
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+      },
+    );
+
+    test(
+      'does not reuse a cached organization for non-connectivity lookup failures',
+      () async {
+        latestCachedOrganizationId = 'cached-org';
+        final controller = ActivePlanningContextController(
+          authSessionReader: () => session,
+          organizationReader: () async {
+            throw StateError('membership lookup failed');
+          },
+          latestOrganizationReader: ({required userId}) async {
+            expect(userId, 'user-1');
+            return latestCachedOrganizationId;
+          },
+        );
+
+        await controller.refresh(allowCachedFallback: true);
+
+        expect(controller.state, isNull);
+      },
+    );
+
+    test(
+      'keeps cached fallback blocked after verified empty membership clears the planning boundary',
+      () async {
+        final controller = ActivePlanningContextController(
+          authSessionReader: () => session,
+          organizationReader: () async {
+            if (shouldThrowOnOrganizationRead) {
+              throw const SocketException('offline');
+            }
+            return organizationId;
+          },
+          latestOrganizationReader: ({required userId}) async {
+            expect(userId, 'user-1');
+            return latestCachedOrganizationId;
+          },
+        );
+
+        await controller.refresh();
+        expect(
+          controller.state,
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        organizationId = null;
+        await controller.refresh(allowCachedFallback: true);
+
+        expect(controller.state, isNull);
+
+        shouldThrowOnOrganizationRead = true;
+        latestCachedOrganizationId = 'cached-org';
+
+        await controller.refresh(allowCachedFallback: true);
+
+        expect(controller.state, isNull);
       },
     );
 

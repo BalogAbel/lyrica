@@ -228,9 +228,49 @@ void main() {
         );
 
         session = null;
-        await controller.handleActiveContextChanged(null, refresh: false);
+        await controller.handleVerifiedEmptyMembership(userId: 'user-1');
         await controller.handleExplicitSignOut();
 
+        expect(
+          await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'verified empty membership clears the planning boundary and deletes authenticated planning data for the user',
+      () async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(
+          await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          hasLength(1),
+        );
+
+        await controller.handleVerifiedEmptyMembership(userId: 'user-1');
+
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+        expect(controller.state.userId, isNull);
+        expect(controller.state.organizationId, isNull);
+        expect(controller.state.hasLocalPlanningData, isFalse);
         expect(
           await store.readPlanSummaries(
             userId: 'user-1',

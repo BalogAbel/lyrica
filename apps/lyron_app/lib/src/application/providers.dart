@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -40,20 +41,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 
-String? selectActiveOrganizationId(Object? response) {
-  if (response is! List) {
-    return null;
-  }
-
-  final organizationIds = response.whereType<String>().toList(growable: false);
-  if (organizationIds.isEmpty) {
-    return null;
-  }
-
-  final sortedOrganizationIds = organizationIds.toList()..sort();
-  return sortedOrganizationIds.first;
-}
-
 final syncOverviewProvider = Provider<SyncOverview>((ref) {
   return const SyncOverview(
     storeContract: defaultLocalStoreContract,
@@ -68,6 +55,17 @@ final supabaseClientProvider = Provider<SupabaseClient>((ref) {
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return SupabaseAuthRepository(ref.read(supabaseClientProvider));
 });
+
+final activeOrganizationResolutionProvider =
+    Provider<ActiveOrganizationResolutionReader>((ref) {
+      final client = ref.watch(supabaseClientProvider);
+
+      return () {
+        return resolveActiveOrganizationResolution(
+          () async => client.rpc('current_organization_ids'),
+        );
+      };
+    });
 
 final appAuthControllerProvider = Provider<AppAuthController>((ref) {
   final controller = AppAuthController(ref.read(authRepositoryProvider));
@@ -327,11 +325,19 @@ final planningRepositoryProvider = Provider<PlanningRepository>((ref) {
 final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
   ref,
 ) {
-  final client = ref.watch(supabaseClientProvider);
-
   return () async {
-    final response = await client.rpc('current_organization_ids');
-    return selectActiveOrganizationId(response);
+    final resolution = await ref.read(activeOrganizationResolutionProvider)();
+    return switch (resolution) {
+      ActiveOrganizationSelected(:final organizationId) => organizationId,
+      ActiveOrganizationVerifiedEmpty() => null,
+      ActiveOrganizationUnknownConnectivityFailure() =>
+        throw const SocketException(
+          'active organization lookup temporarily unavailable',
+        ),
+      ActiveOrganizationUnknownNonConnectivityFailure() => throw StateError(
+        'active organization lookup failed',
+      ),
+    };
   };
 });
 
@@ -346,6 +352,11 @@ final activePlanningContextControllerProvider =
               .read(planningLocalStoreProvider)
               .readLatestCachedOrganizationId(userId: userId);
         },
+        onVerifiedEmptyMembership: ({required userId}) async {
+          await ref
+              .read(planningLocalStoreProvider)
+              .deletePlanningDataForUser(userId: userId);
+        },
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
@@ -354,7 +365,7 @@ final activePlanningContextControllerProvider =
             return;
           case AppAuthStatus.signedOut:
           case AppAuthStatus.sessionExpired:
-            controller.clear();
+            controller.resetForSessionLifecycle();
             return;
           case AppAuthStatus.signedIn:
             unawaited(
@@ -484,6 +495,11 @@ final songCatalogControllerProvider =
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
+        onVerifiedEmptyMembership: ({required userId}) async {
+          await ref
+              .read(planningLocalStoreProvider)
+              .deletePlanningDataForUser(userId: userId);
+        },
         foregroundState: ref.watch(appForegroundStateProvider),
       );
 

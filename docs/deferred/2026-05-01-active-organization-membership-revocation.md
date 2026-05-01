@@ -1,12 +1,17 @@
 # Active organization membership revocation and cached fallback policy
 
-Status: Deferred
+Status: Resolved
+
+Related repository docs:
+
+- Spec: `docs/specs/2026-05-01-active-organization-membership-revocation-policy.md`
+- Plan: `docs/plans/2026-05-01-active-organization-membership-revocation-policy.md`
 
 ## Context
 
 A targeted active-organization scoping audit found that local song and planning data are correctly scoped by `(userId, organizationId)`, and backend RLS remains authoritative for remote reads/writes.
 
-However, there is a P1 lifecycle risk around membership revocation or verified empty membership responses.
+However, there was a P1 lifecycle risk around membership revocation or verified empty membership responses.
 
 Current behavior:
 - Song and planning fallback can use cached local organization context when organization lookup fails.
@@ -17,9 +22,9 @@ Current behavior:
 
 ## Risk
 
-If a user is removed from all organizations, local cached song/planning data may remain available through cached fallback during later offline or lookup-failure states.
+This slice has now been implemented in the repository through the active-organization resolution policy and verified-empty cleanup paths. Local cached song/planning data no longer reopens through verified-empty membership, and authenticated local cleanup now runs on that path.
 
-This is not a proven cross-user or cross-organization leak, because local data is scoped and backend RLS protects remote access. But it is a P1 local lifecycle/security-policy risk.
+This was not a proven cross-user or cross-organization leak, because local data is scoped and backend RLS protects remote access. It was a P1 local lifecycle/security-policy risk that has now been closed in code.
 
 ## Desired policy
 
@@ -43,10 +48,9 @@ Distinguish organization resolution outcomes explicitly:
 
 ## Open questions
 
-- Should verified-empty membership purge org-scoped local data immediately, or quarantine/block it?
-- What should happen to pending local song/planning mutations after membership revocation?
-- Should song and planning cleanup policies match session-expiry behavior?
-- Should explicit active-organization selection be introduced before or alongside this fix?
+- The repository plan now recommends delete-not-quarantine semantics for verified empty membership.
+- The repository plan now recommends dropping authenticated pending song/planning mutations immediately after verified empty membership.
+- If implementation reveals a requirement to preserve revoked local drafts, treat that as a new slice and escalate rather than broadening this hardening change.
 
 ## Suggested future plan
 

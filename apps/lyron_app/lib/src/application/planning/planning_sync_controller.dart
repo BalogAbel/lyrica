@@ -241,6 +241,17 @@ class PlanningSyncController extends ChangeNotifier {
     }
   }
 
+  Future<void> handleVerifiedEmptyMembership({required String userId}) async {
+    _advanceBoundaryGeneration();
+    _invalidateRefreshGeneration();
+    _setState(
+      const PlanningSyncState.initial().copyWith(
+        accessStatus: PlanningAccessStatus.signedIn,
+      ),
+    );
+    await _localStore().deletePlanningDataForUser(userId: userId);
+  }
+
   Future<void> handleSessionExpired() async {
     final generation = _advanceAuthGeneration();
     _advanceBoundaryGeneration();
