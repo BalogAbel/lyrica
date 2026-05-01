@@ -182,6 +182,7 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/run-app.sh
 ./scripts/run-authenticated-app.sh
 ./scripts/run-ci-locally.sh
+./scripts/backend-write-contracts.sh
 ./scripts/run-tests.sh
 ./scripts/verify.sh
 ./scripts/check-migrations.sh
@@ -193,11 +194,13 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/manual-validation/print-checklist.sh
 ```
 
-`./scripts/verify.sh` runs the Flutter quality gates first, then delegates migration lint bootstrap to `./scripts/check-migrations.sh`. Without `--skip-migrations`, it continues from that started or reused local Supabase stack, resets the database, provisions the demo auth user, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs the authenticated backend song-reading integration test, the local-first cached authenticated song-reading integration test, the authenticated planning read integration test, and the local-first planning read integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env` where required. Those integration gates now prove manual refresh, periodic refresh, refresh-failure cache preservation, persistent cache reopen behavior, and both the signed-in and local-first planning read paths against the same local Supabase stack. The local-first integration slot does not replace native manual offline-relaunch validation.
+`./scripts/backend-write-contracts.sh` is the shared backend SQL write-contract gate. It bootstraps one local Supabase write-test fixture, then runs both `scripts/tests/planning-write-contract-test.sh` and `scripts/tests/song-crud-write-contract-test.sh` against that prepared stack.
+
+`./scripts/verify.sh` runs the Flutter quality gates first, then delegates migration lint bootstrap to `./scripts/check-migrations.sh`. Without `--skip-migrations`, it also runs `./scripts/backend-write-contracts.sh`, resets and reprovisions the local Supabase fixture for the Flutter integration path, runs the repeated-provisioning regression check, runs the manual-validation script contract test, and runs the authenticated backend song-reading integration test, the local-first cached authenticated song-reading integration test, the authenticated planning read integration test, and the local-first planning read integration test with local `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SERVICE_ROLE_KEY` values discovered from `supabase status -o env` where required. Those gates now prove backend SQL write contracts, manual refresh, periodic refresh, refresh-failure cache preservation, persistent cache reopen behavior, and both the signed-in and local-first planning read paths against the local Supabase stack. The local-first integration slot does not replace native manual offline-relaunch validation. `--skip-backend-write-contracts` exists for CI job-splitting and local CI-parity runs; full local verification should continue to use plain `./scripts/verify.sh`.
 
 `./scripts/check-migrations.sh` is the canonical migration lint entrypoint for both local development and CI. It starts or reuses the local Supabase stack through the repository wrapper before running `db lint`, so the workflow does not depend on hidden pre-start steps in GitHub Actions.
 
-`./scripts/run-ci-locally.sh` mirrors the current GitHub Actions job wiring through repository scripts. Use `./scripts/run-ci-locally.sh verify` for the CI verify job, `./scripts/run-ci-locally.sh migrations` for the migration job, or `./scripts/run-ci-locally.sh` / `./scripts/run-ci-locally.sh all` to run both in order.
+`./scripts/run-ci-locally.sh` mirrors the current GitHub Actions job wiring through repository scripts. Use `./scripts/run-ci-locally.sh verify` for the CI verify job, `./scripts/run-ci-locally.sh backend-write-contracts` for the dedicated backend SQL write-contract job, `./scripts/run-ci-locally.sh migrations` for the migration job, or `./scripts/run-ci-locally.sh` / `./scripts/run-ci-locally.sh all` to run the split CI sequence in order.
 
 For manual validation of the local-first reader flow:
 

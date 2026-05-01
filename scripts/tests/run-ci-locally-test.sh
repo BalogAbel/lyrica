@@ -22,7 +22,7 @@ EOF
 cat >"$tmp_dir/mock-verify.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "verify" >>"$LOG_FILE"
+echo "verify:$*" >>"$LOG_FILE"
 EOF
 
 cat >"$tmp_dir/mock-check-migrations.sh" <<'EOF'
@@ -31,17 +31,25 @@ set -euo pipefail
 echo "check-migrations" >>"$LOG_FILE"
 EOF
 
+cat >"$tmp_dir/mock-backend-write-contracts.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "backend-write-contracts" >>"$LOG_FILE"
+EOF
+
 chmod +x \
   "$tmp_dir/mock-bootstrap.sh" \
   "$tmp_dir/mock-bootstrap-supabase.sh" \
   "$tmp_dir/mock-verify.sh" \
-  "$tmp_dir/mock-check-migrations.sh"
+  "$tmp_dir/mock-check-migrations.sh" \
+  "$tmp_dir/mock-backend-write-contracts.sh"
 
 LOG_FILE="$log_file" \
 BOOTSTRAP_SCRIPT="$tmp_dir/mock-bootstrap.sh" \
 BOOTSTRAP_SUPABASE_SCRIPT="$tmp_dir/mock-bootstrap-supabase.sh" \
 VERIFY_SCRIPT="$tmp_dir/mock-verify.sh" \
 CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
 "$repo_root/scripts/run-ci-locally.sh"
 
 python3 - <<'PY' "$log_file"
@@ -51,7 +59,9 @@ import sys
 lines = Path(sys.argv[1]).read_text().splitlines()
 expected = [
     "bootstrap",
-    "verify",
+    "verify:--skip-backend-write-contracts",
+    "bootstrap-supabase",
+    "backend-write-contracts",
     "bootstrap-supabase",
     "check-migrations",
 ]
@@ -67,6 +77,7 @@ BOOTSTRAP_SCRIPT="$tmp_dir/mock-bootstrap.sh" \
 BOOTSTRAP_SUPABASE_SCRIPT="$tmp_dir/mock-bootstrap-supabase.sh" \
 VERIFY_SCRIPT="$tmp_dir/mock-verify.sh" \
 CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
 "$repo_root/scripts/run-ci-locally.sh" verify
 
 python3 - <<'PY' "$log_file"
@@ -76,7 +87,7 @@ import sys
 lines = Path(sys.argv[1]).read_text().splitlines()
 expected = [
     "bootstrap",
-    "verify",
+    "verify:--skip-backend-write-contracts",
 ]
 
 if lines != expected:
@@ -90,6 +101,31 @@ BOOTSTRAP_SCRIPT="$tmp_dir/mock-bootstrap.sh" \
 BOOTSTRAP_SUPABASE_SCRIPT="$tmp_dir/mock-bootstrap-supabase.sh" \
 VERIFY_SCRIPT="$tmp_dir/mock-verify.sh" \
 CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
+"$repo_root/scripts/run-ci-locally.sh" backend-write-contracts
+
+python3 - <<'PY' "$log_file"
+from pathlib import Path
+import sys
+
+lines = Path(sys.argv[1]).read_text().splitlines()
+expected = [
+    "bootstrap-supabase",
+    "backend-write-contracts",
+]
+
+if lines != expected:
+    raise SystemExit(f"unexpected backend-write-contracts-job log: {lines!r}")
+PY
+
+: >"$log_file"
+
+LOG_FILE="$log_file" \
+BOOTSTRAP_SCRIPT="$tmp_dir/mock-bootstrap.sh" \
+BOOTSTRAP_SUPABASE_SCRIPT="$tmp_dir/mock-bootstrap-supabase.sh" \
+VERIFY_SCRIPT="$tmp_dir/mock-verify.sh" \
+CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
 "$repo_root/scripts/run-ci-locally.sh" migrations
 
 python3 - <<'PY' "$log_file"

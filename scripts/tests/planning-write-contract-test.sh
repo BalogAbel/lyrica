@@ -4,25 +4,27 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
-./scripts/supabase.sh start >/dev/null
-./scripts/db-reset.sh >/dev/null
+if [[ "${BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP:-0}" != "1" ]]; then
+  ./scripts/supabase.sh start >/dev/null
+  ./scripts/db-reset.sh >/dev/null
 
-status_env="$(./scripts/supabase.sh status -o env)"
-eval "$status_env"
+  status_env="$(./scripts/supabase.sh status -o env)"
+  eval "$status_env"
 
-if [[ -z "${API_URL:-}" ]]; then
-  echo "Local Supabase is not running or did not return API_URL." >&2
-  exit 1
-fi
-
-for _ in $(seq 1 30); do
-  if curl --silent --fail "$API_URL/auth/v1/health" >/dev/null 2>&1; then
-    break
+  if [[ -z "${API_URL:-}" ]]; then
+    echo "Local Supabase is not running or did not return API_URL." >&2
+    exit 1
   fi
-  sleep 1
-done
 
-./scripts/provision-local-demo-user.sh >/dev/null
+  for _ in $(seq 1 30); do
+    if curl --silent --fail "$API_URL/auth/v1/health" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  ./scripts/provision-local-demo-user.sh >/dev/null
+fi
 
 db_container_name="$(
   docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1

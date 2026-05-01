@@ -32,7 +32,27 @@ jobs:
         run: ./scripts/bootstrap.sh
 
       - name: Verify repository gate
-        run: ./scripts/verify.sh
+        run: ./scripts/verify.sh --skip-backend-write-contracts
+
+  backend_write_contracts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tooling/supabase/package-lock.json
+
+      - name: Install Supabase tooling dependencies
+        run: npm ci --prefix tooling/supabase
+
+      - name: Run backend write contracts
+        run: ./scripts/backend-write-contracts.sh
 
   migrations:
     runs-on: ubuntu-latest

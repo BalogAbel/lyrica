@@ -1,6 +1,6 @@
 # Backend SQL Write Contract Gates Implementation Plan
 
-> Status: Draft
+> Status: Implemented
 
 **Goal:** Add repository-owned gating for `scripts/tests/planning-write-contract-test.sh` and `scripts/tests/song-crud-write-contract-test.sh` so backend SQL write regressions fail both the default local verify path and the primary CI release gate.
 

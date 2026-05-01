@@ -63,6 +63,12 @@ set -euo pipefail
 echo "manual-validation-test" >>"$LOG_FILE"
 EOF
 
+cat >"$tmp_dir/mock-backend-write-contracts.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "backend-write-contracts" >>"$LOG_FILE"
+EOF
+
 cat >"$tmp_dir/mock-dart" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -83,6 +89,7 @@ chmod +x \
   "$tmp_dir/mock-provision.sh" \
   "$tmp_dir/mock-provision-test.sh" \
   "$tmp_dir/mock-manual-validation-test.sh" \
+  "$tmp_dir/mock-backend-write-contracts.sh" \
   "$tmp_dir/mock-dart" \
   "$tmp_dir/mock-flutter"
 
@@ -94,6 +101,7 @@ SUPABASE_CLEANUP_SCRIPT="$tmp_dir/mock-supabase-cleanup.sh" \
 PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
 PROVISION_DEMO_USER_TEST_SCRIPT="$tmp_dir/mock-provision-test.sh" \
 MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT="$tmp_dir/mock-manual-validation-test.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
 DART_BIN="$tmp_dir/mock-dart" \
 FLUTTER_BIN="$tmp_dir/mock-flutter" \
 "$repo_root/scripts/verify.sh"
@@ -108,6 +116,7 @@ expected = [
     "flutter:analyze",
     "flutter:test",
     "check-migrations",
+    "backend-write-contracts",
     "supabase-cleanup",
     "db-reset",
     "supabase:start",
@@ -123,4 +132,30 @@ expected = [
 
 if lines != expected:
     raise SystemExit(f"unexpected log: {lines!r}")
+PY
+
+: >"$log_file"
+
+LOG_FILE="$log_file" \
+CHECK_MIGRATIONS_SCRIPT="$tmp_dir/mock-check-migrations.sh" \
+SUPABASE_SCRIPT="$tmp_dir/mock-supabase.sh" \
+DB_RESET_SCRIPT="$tmp_dir/mock-db-reset.sh" \
+SUPABASE_CLEANUP_SCRIPT="$tmp_dir/mock-supabase-cleanup.sh" \
+PROVISION_DEMO_USER_SCRIPT="$tmp_dir/mock-provision.sh" \
+PROVISION_DEMO_USER_TEST_SCRIPT="$tmp_dir/mock-provision-test.sh" \
+MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT="$tmp_dir/mock-manual-validation-test.sh" \
+BACKEND_WRITE_CONTRACTS_SCRIPT="$tmp_dir/mock-backend-write-contracts.sh" \
+DART_BIN="$tmp_dir/mock-dart" \
+FLUTTER_BIN="$tmp_dir/mock-flutter" \
+"$repo_root/scripts/verify.sh" --skip-backend-write-contracts
+
+python3 - <<'PY' "$log_file"
+from pathlib import Path
+import sys
+
+lines = Path(sys.argv[1]).read_text().splitlines()
+unexpected = "backend-write-contracts"
+
+if unexpected in lines:
+    raise SystemExit(f"unexpected backend-write-contracts call: {lines!r}")
 PY
