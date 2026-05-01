@@ -163,10 +163,11 @@ class SongCatalogController extends ChangeNotifier {
         return;
       }
       _verifiedEmptyMembershipSeen = true;
-      await _store.deleteCatalogsForUser(userId: session.userId);
       final handler = _onVerifiedEmptyMembership;
       if (handler != null) {
         await handler(userId: session.userId);
+      } else {
+        await _store.deleteCatalogsForUser(userId: session.userId);
       }
       if (_isStale(generation)) {
         return;
