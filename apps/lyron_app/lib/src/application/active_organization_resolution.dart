@@ -66,12 +66,7 @@ Future<ActiveOrganizationResolution> resolveActiveOrganizationResolution(
       return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
     }
 
-    final List<String> organizationIds;
-    try {
-      organizationIds = List<String>.from(response);
-    } on TypeError {
-      return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
-    }
+    final organizationIds = List<String>.from(response);
 
     if (organizationIds.isEmpty) {
       return const ActiveOrganizationResolution.verifiedEmpty();
