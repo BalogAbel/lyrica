@@ -47,6 +47,11 @@ Documentation-only clarification is not sufficient as the final state, but may b
 
 Use Superpowers planning before implementation.
 
+Planning artifacts created:
+
+- `docs/specs/2026-05-01-backend-sql-write-contract-gates.md`
+- `docs/plans/2026-05-01-backend-sql-write-contract-gates.md`
+
 The plan should cover:
 
 - where the write contract scripts should run
