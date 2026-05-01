@@ -41,6 +41,27 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 
+typedef VerifiedEmptyMembershipCleanupHandler =
+    Future<void> Function({required String userId});
+
+final class VerifiedEmptyMembershipCleanupCoordinator {
+  final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
+
+  void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
+    _handlers.add(handler);
+  }
+
+  void removeHandler(VerifiedEmptyMembershipCleanupHandler handler) {
+    _handlers.remove(handler);
+  }
+
+  Future<void> handleVerifiedEmptyMembership({required String userId}) {
+    return Future.wait([
+      for (final handler in _handlers) handler(userId: userId),
+    ]);
+  }
+}
+
 final syncOverviewProvider = Provider<SyncOverview>((ref) {
   return const SyncOverview(
     storeContract: defaultLocalStoreContract,
@@ -118,6 +139,11 @@ final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
     localStore: ref.watch(planningLocalStoreProvider),
   );
 });
+
+final verifiedEmptyMembershipCleanupCoordinatorProvider =
+    Provider<VerifiedEmptyMembershipCleanupCoordinator>((ref) {
+      return VerifiedEmptyMembershipCleanupCoordinator();
+    });
 
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {
   return SupabaseSongRepository(ref.watch(supabaseClientProvider));
@@ -353,9 +379,15 @@ final activePlanningContextControllerProvider =
               .readLatestCachedOrganizationId(userId: userId);
         },
         onVerifiedEmptyMembership: ({required userId}) async {
-          await ref
-              .read(planningLocalStoreProvider)
-              .deletePlanningDataForUser(userId: userId);
+          try {
+            await ref
+                .read(planningLocalStoreProvider)
+                .deletePlanningDataForUser(userId: userId);
+          } finally {
+            await ref
+                .read(songCatalogStoreProvider)
+                .deleteCatalogsForUser(userId: userId);
+          }
         },
       );
 
@@ -401,11 +433,22 @@ final activePlanningContextProvider = Provider<ActivePlanningReadContext?>((
 final planningSyncControllerProvider =
     ChangeNotifierProvider<PlanningSyncController>((ref) {
       final authController = ref.watch(appAuthControllerProvider);
+      final cleanupCoordinator = ref.watch(
+        verifiedEmptyMembershipCleanupCoordinatorProvider,
+      );
       final controller = PlanningSyncController(
         localStore: () => ref.read(planningLocalStoreProvider),
         remoteRepository: () =>
             ref.read(planningRemoteRefreshRepositoryProvider),
         authSessionReader: () => authController.state.session,
+      );
+      Future<void> handleVerifiedEmptyMembership({required String userId}) {
+        return controller.handleVerifiedEmptyMembership(userId: userId);
+      }
+
+      cleanupCoordinator.addHandler(handleVerifiedEmptyMembership);
+      ref.onDispose(
+        () => cleanupCoordinator.removeHandler(handleVerifiedEmptyMembership),
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
@@ -496,9 +539,20 @@ final songCatalogControllerProvider =
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
         onVerifiedEmptyMembership: ({required userId}) async {
-          await ref
-              .read(planningLocalStoreProvider)
-              .deletePlanningDataForUser(userId: userId);
+          try {
+            await ref
+                .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+                .handleVerifiedEmptyMembership(userId: userId);
+          } finally {
+            await Future.wait([
+              ref
+                  .read(planningLocalStoreProvider)
+                  .deletePlanningDataForUser(userId: userId),
+              ref
+                  .read(songCatalogStoreProvider)
+                  .deleteCatalogsForUser(userId: userId),
+            ]);
+          }
         },
         foregroundState: ref.watch(appForegroundStateProvider),
       );

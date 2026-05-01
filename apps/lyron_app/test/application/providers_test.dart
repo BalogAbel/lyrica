@@ -18,13 +18,18 @@ import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
+import 'package:lyron_app/src/domain/song/song_source.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -128,6 +133,207 @@ void main() {
       isA<ActivePlanningContextController>(),
     );
   });
+
+  test(
+    'verified empty membership on the planning boundary clears song caches too',
+    () async {
+      final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final planningStore = DriftPlanningLocalStore(planningDatabase);
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final foregroundState = _TestAppForegroundState();
+
+      await planningStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'Weekend Service',
+            description: 'Draft',
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 5, 1),
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      await songStore.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'draft-song',
+          title: 'Draft Song',
+          source: '{title: Draft Song}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          supabaseClientProvider.overrideWithValue(client),
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          appForegroundStateProvider.overrideWithValue(foregroundState),
+          activeOrganizationReaderProvider.overrideWithValue(() async => null),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await planningDatabase.close();
+        await songDatabase.close();
+      });
+
+      final controller = container.read(
+        activePlanningContextControllerProvider,
+      );
+      await controller.refresh();
+
+      expect(controller.state, isNull);
+      expect(
+        await planningStore.hasProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isFalse,
+      );
+      expect(
+        await songStore.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+      expect(
+        await songStore.readSongMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'verified empty membership on the song catalog path invalidates planning sync before clearing song caches',
+    () async {
+      final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final planningStore = DriftPlanningLocalStore(planningDatabase);
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final foregroundState = _TestAppForegroundState();
+
+      await planningStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'Weekend Service',
+            description: 'Draft',
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 5, 1),
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      await songStore.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'draft-song',
+          title: 'Draft Song',
+          source: '{title: Draft Song}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          supabaseClientProvider.overrideWithValue(client),
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          appForegroundStateProvider.overrideWithValue(foregroundState),
+          activeOrganizationReaderProvider.overrideWithValue(() async => null),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await planningDatabase.close();
+        await songDatabase.close();
+      });
+
+      container.read(planningSyncControllerProvider);
+      final controller = container.read(songCatalogControllerProvider);
+      await controller.refreshCatalog();
+
+      expect(controller.state.context, isNull);
+      expect(
+        container.read(planningSyncStateProvider).accessStatus,
+        PlanningAccessStatus.signedIn,
+      );
+      expect(
+        await planningStore.hasProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isFalse,
+      );
+      expect(
+        await songStore.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+      expect(
+        await songStore.readSongMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   test(
     'propagates active catalog context changes into the planning context controller',
@@ -1050,5 +1256,24 @@ class _StaticPlanningRemoteRefreshRepository
       sessions: const [],
       items: const [],
     );
+  }
+}
+
+class _TestAppForegroundState implements AppForegroundState {
+  _TestAppForegroundState({bool isForeground = true})
+    : _isForeground = isForeground;
+
+  final StreamController<bool> _controller = StreamController<bool>.broadcast();
+  bool _isForeground;
+
+  @override
+  bool get isForeground => _isForeground;
+
+  @override
+  Stream<bool> watchForeground() => _controller.stream;
+
+  void setForeground(bool value) {
+    _isForeground = value;
+    _controller.add(value);
   }
 }
