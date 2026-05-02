@@ -371,7 +371,7 @@ function parseLyricSegments(lineText, transpose, capo) {
 
 function renderPreviewLines(parsed) {
   const sections = [];
-  let currentSection = { label: "Verse 1", lines: [] };
+  let currentSection = null;
 
   if (parsed.capo > 0) {
     readerDirectiveCard.hidden = false;
@@ -383,7 +383,7 @@ function renderPreviewLines(parsed) {
   for (const entry of parsed.bodyLines) {
     if (entry.type === "comment") {
       const label = parseSectionLabel(entry.text);
-      if (currentSection.lines.length > 0 || currentSection.label) {
+      if (currentSection && currentSection.lines.length > 0) {
         sections.push(currentSection);
       }
       currentSection = {
@@ -397,15 +397,34 @@ function renderPreviewLines(parsed) {
       continue;
     }
 
+    if (currentSection == null) {
+      currentSection = {
+        label: "Verse 1",
+        lines: [],
+      };
+    }
+
     currentSection.lines.push(entry.text);
   }
 
-  if (currentSection.lines.length > 0 || currentSection.label) {
+  if (currentSection && currentSection.lines.length > 0) {
     sections.push(currentSection);
   }
 
   if (sections.length === 0) {
-    readerGrid.innerHTML = "";
+    readerGrid.innerHTML = `
+      <article class="section-card">
+        <p class="section-label">${escapeHtml(parsed.title || "Song")}</p>
+        <div class="section-lines">
+          <div class="line-row">
+            <div class="segment">
+              <div class="chord-row">&nbsp;</div>
+              <div class="lyric-row">No renderable song lines yet.</div>
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
     return;
   }
 

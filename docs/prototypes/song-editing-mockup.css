@@ -586,6 +586,9 @@ body[data-state="offline-cached"] .summary-card {
 
   body[data-screen="overview"] .overview-panel,
   body[data-screen="source"] .source-panel,
+  body[data-screen="preview"] .source-panel {
+    display: block;
+  }
 }
 
 @media (max-width: 720px) {
