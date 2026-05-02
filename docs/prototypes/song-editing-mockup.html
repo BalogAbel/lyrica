@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lyron Song Editing Mockup</title>
+    <link rel="stylesheet" href="./song-editing-mockup.css" />
+  </head>
+  <body data-theme="standard" data-layout="wide" data-screen="source" data-state="default">
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Lyron Chords</p>
+          <h1>Song Editing Mockup</h1>
+          <p class="topbar-note">
+            ChordPro-first edit surface. Source is canonical; summary fields are derived.
+          </p>
+        </div>
+        <div class="toolbar" aria-label="Reviewer controls">
+          <label>
+            Screen
+            <select id="screen-select">
+              <option value="overview">Overview</option>
+              <option value="source">Source</option>
+              <option value="preview">Preview</option>
+            </select>
+          </label>
+          <label>
+            Layout
+            <select id="layout-select">
+              <option value="wide">Wide</option>
+              <option value="tablet">Tablet</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+          <label>
+            Theme
+            <select id="theme-select">
+              <option value="standard">Standard</option>
+              <option value="high-contrast">High Contrast</option>
+              <option value="black">Black</option>
+            </select>
+          </label>
+          <label>
+            State
+            <select id="state-select">
+              <option value="default">Default</option>
+              <option value="loading">Loading</option>
+              <option value="empty">Empty Song</option>
+              <option value="read-only">Read Only</option>
+              <option value="unauthorized">Unauthorized</option>
+              <option value="pending">Pending Mutation</option>
+              <option value="conflict">Conflict</option>
+              <option value="validation-error">Validation Error</option>
+              <option value="parse-warning">Parse Warning</option>
+              <option value="offline-cached">Offline Cached</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main class="mockup">
+        <section class="surface editor-shell">
+          <header class="surface-header">
+            <div>
+              <p class="eyebrow">Song editor</p>
+              <h2>Heart of Worship</h2>
+              <p class="surface-note">
+                Edit source once. Derived title, metadata, and reader preview refresh from it.
+              </p>
+            </div>
+            <div class="actions">
+              <button id="cancel-button" type="button">Cancel</button>
+              <button id="save-button" type="button">Save</button>
+            </div>
+          </header>
+
+          <div class="status-bar" id="status-bar">
+            <span class="badge ok">ChordPro is canonical</span>
+            <span class="badge">Derived fields refresh on save</span>
+          </div>
+
+          <nav class="view-tabs" aria-label="Editor views">
+            <button class="tab active" type="button" data-screen="overview">Overview</button>
+            <button class="tab" type="button" data-screen="source">Source</button>
+            <button class="tab" type="button" data-screen="preview">Preview</button>
+          </nav>
+
+          <div class="workspace">
+            <aside class="panel overview-panel">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-label">Derived summary</p>
+                  <h3>Overview</h3>
+                </div>
+                <span class="pill" id="derived-pill">ChordPro-derived</span>
+              </header>
+              <div class="summary-grid" id="summary-grid">
+                <article class="summary-card">
+                  <p class="muted">Title</p>
+                  <p class="strong" id="derived-title">Heart of Worship</p>
+                </article>
+                <article class="summary-card">
+                  <p class="muted">Artist</p>
+                  <p class="strong" id="derived-artist">Matt Redman</p>
+                </article>
+                <article class="summary-card">
+                  <p class="muted">Key</p>
+                  <p class="strong" id="derived-key">D</p>
+                </article>
+                <article class="summary-card">
+                  <p class="muted">Tempo</p>
+                  <p class="strong" id="derived-tempo">72 bpm</p>
+                </article>
+                <article class="summary-card">
+                  <p class="muted">Tags</p>
+                  <p class="strong" id="derived-tags">worship, acoustic</p>
+                </article>
+                <article class="summary-card">
+                  <p class="muted">Song settings</p>
+                  <p class="strong" id="derived-settings">Transpose +1 · Capo 2</p>
+                </article>
+              </div>
+            </aside>
+
+            <section class="panel source-panel">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-label">Canonical source</p>
+                  <h3>ChordPro source</h3>
+                </div>
+                <span class="pill">Syntax highlight ready</span>
+              </header>
+
+              <div class="editor-frame">
+                <div class="editor-toolbar">
+                  <span class="badge">Live parse</span>
+                  <span class="badge">Autosize textarea</span>
+                  <span class="badge">Monospace</span>
+                </div>
+                <div class="source-editor" id="source-editor">
+                  <pre class="source-highlight" id="source-highlight" aria-hidden="true"></pre>
+                  <textarea
+                    id="source-input"
+                    aria-label="ChordPro source editor"
+                    spellcheck="false"
+                  >{title: Heart of Worship}
+{artist: Matt Redman}
+{key: D}
+{tempo: 72}
+{tags: worship, acoustic}
+{transpose: 1}
+{capo: 2}
+
+[D]When the music fades
+[A]And all is stripped away
+[Bm]And I simply come
+[G]Longing just to bring</textarea>
+                </div>
+              </div>
+            </section>
+
+            <aside class="panel preview-panel">
+              <header class="panel-header">
+                <div>
+                  <p class="panel-label">Reader preview</p>
+                  <h3>Effective output</h3>
+                </div>
+                <span class="pill" id="preview-pill">Live preview</span>
+              </header>
+
+              <div class="preview-shell" id="preview-shell">
+                <div class="preview-meta">
+                  <p class="preview-title" id="preview-title">Heart of Worship</p>
+                  <p class="preview-subtitle" id="preview-subtitle">Matt Redman · Key D · Tempo 72 bpm</p>
+                  <div class="preview-badges" id="preview-badges">
+                    <span class="badge">Transpose +1</span>
+                    <span class="badge">Capo 2</span>
+                    <span class="badge">Derived from source</span>
+                  </div>
+                </div>
+
+                <article class="reader-card">
+                  <p class="reader-directive" id="reader-directive">Capo 2</p>
+                  <div class="reader-lines" id="reader-lines">
+                    <p><span class="chord">Em</span>When the music fades</p>
+                    <p><span class="chord">B</span>And all is stripped away</p>
+                    <p><span class="chord">C#m</span>And I simply come</p>
+                    <p><span class="chord">A</span>Longing just to bring</p>
+                  </div>
+                </article>
+              </div>
+            </aside>
+          </div>
+
+          <section class="state-card" id="state-card" hidden>
+            <p class="state-title" id="state-title">State</p>
+            <p class="state-copy" id="state-copy">State message</p>
+            <div class="state-actions" id="state-actions" hidden>
+              <button id="state-secondary-button" type="button">Cancel</button>
+              <button id="state-primary-button" type="button">Save</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./song-editing-mockup.js"></script>
+  </body>
+</html>
