@@ -69,7 +69,7 @@ Operational note:
 
 ### songs
 
-Organization-owned song records. ChordPro text is canonical. Structured metadata is stored in dedicated columns and mapped during import/export. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app. A later song CRUD slice adds offline-created UUID-backed rows plus write-side sync metadata without moving authorization into Flutter.
+Organization-owned song records. ChordPro text is canonical. Structured metadata and searchable song fields are derived from ChordPro into dedicated columns for fast lookup, filtering, and import/export mapping. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app. A later song CRUD slice adds offline-created UUID-backed rows plus write-side sync metadata without moving authorization into Flutter.
 
 Key fields:
 
@@ -95,6 +95,12 @@ Slug rule:
 - The slug is the public URL segment for song routes; the internal song identifier remains `id`.
 - The slug is generated at creation time and remains stable across later title edits unless an explicit slug-edit slice is introduced.
 - Offline-created songs must also keep local slug uniqueness within the active organization before sync succeeds.
+
+ChordPro-first rule:
+
+- `title`, `artist`, `key_signature`, `tempo_bpm`, `tags`, and `metadata_json` are treated as derived shadow fields refreshed from canonical ChordPro source after create, import, or save.
+- These fields remain queryable and sortable, but they are not the source of truth for song content.
+- The repository may keep them in sync for performance and search, but user edits should flow through ChordPro source.
 
 Deletion rule:
 

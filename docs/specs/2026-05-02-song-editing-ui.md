@@ -4,7 +4,7 @@
 
 ## Goal
 
-Define the visual and workflow direction for the song editing surface so title editing, structured metadata editing, chord source editing, and song-owned transpose/capo settings feel like one coherent workspace.
+Define the visual and workflow direction for a ChordPro-first song editing surface so the canonical source, derived metadata, and previewed reader behavior feel like one coherent workspace.
 
 This slice is prototype-first. The immediate deliverable is a repository-owned mock in `docs/prototypes/` that matches the visual vocabulary of the existing song reader, song list, and planning workspace prototypes before any implementation plan is written.
 
@@ -13,13 +13,13 @@ This slice is prototype-first. The immediate deliverable is a repository-owned m
 The repository already has clear durable rules for song data:
 
 - ChordPro source is canonical
-- structured metadata lives in dedicated song fields
+- derived song metadata can be indexed in the database for fast lookup
 - the reader already has runtime transpose and capo behavior
 - song CRUD already defines backend-enforced authorization, sync metadata, and local-first write rules
 
 What is missing is a coherent editing surface that makes those rules understandable during day-to-day use. Today the user would have to infer too much from separate surfaces:
 
-- title and metadata editing are not visually grouped with the song source
+- title and metadata are not clearly shown as derived from the ChordPro source
 - song-owned transpose/capo settings are not clearly distinguished from reader runtime behavior
 - the relationship between stored settings and live preview is not explicit
 - the design language is not yet aligned with the existing prototype set under `docs/prototypes/`
@@ -27,9 +27,8 @@ What is missing is a coherent editing surface that makes those rules understanda
 ## Scope
 
 - Define the song editing workspace layout and hierarchy.
-- Support title editing.
-- Support editing of existing structured song metadata fields.
 - Support canonical ChordPro source editing.
+- Show derived title and metadata summary fields that refresh from the source.
 - Support song-owned transpose and capo settings as part of the stored song model.
 - Show a live preview or feedback panel that reflects the resulting reader state.
 - Add a repository-owned mock under `docs/prototypes/` that follows the existing prototype conventions.
@@ -51,7 +50,7 @@ The editor should feel like a workspace, not a stack of unrelated form controls.
 The user should be able to answer these questions immediately:
 
 1. What song am I editing?
-2. Which values are canonical song data?
+2. What does the ChordPro source currently resolve to?
 3. Which values are stored settings versus reader runtime behavior?
 4. What will the reader look like after I save?
 
@@ -67,17 +66,17 @@ The editor should use the same prototype language as the rest of the repo:
 
 ### Canonical Song Data
 
-The editing surface must present the song's stored data as the primary editable source of truth.
+The editing surface must treat the ChordPro source as the primary editable source of truth.
 
-Required song data surfaces:
+Required source-aware surfaces:
 
-- title
-- artist
-- key signature
-- tempo
-- tags
-- ChordPro source
-- other existing structured metadata fields already represented by the song model
+- ChordPro source editor
+- derived song title
+- derived song metadata summary
+- derived key, tempo, and tag display where available
+- other existing structured values that can be regenerated from the source
+
+The derived summary fields are read-only in this slice. If the user changes title, artist, tags, or similar values, that edit happens by changing the corresponding ChordPro source directives or metadata blocks.
 
 ### Song-Owned Transpose And Capo
 
@@ -94,7 +93,7 @@ The UI must make that separation explicit:
 
 The editor must make the source relationship obvious:
 
-- title and metadata are structured song fields
+- title and metadata are derived song values produced from the ChordPro source
 - ChordPro source is canonical text source
 - transpose and capo settings are song-level settings that affect the reader preview
 
@@ -106,19 +105,21 @@ If a later implementation decides that any additional field must be persisted or
 
 The preferred layout is a three-surface workspace:
 
-- left: song summary and metadata overview
-- center: canonical edit form and source editor
+- left: derived song summary and metadata overview
+- center: canonical ChordPro source editor
 - right: live preview and transpose/capo feedback
 
-This layout gives the editor a stable mental model: edit on one side, verify effect on the other.
+This layout gives the editor a stable mental model: source in the middle, derived summary on one side, effect on the other.
 
 ### Responsive Behavior
 
 The mock should demonstrate responsive behavior that follows the existing prototype style:
 
 - wide: all three surfaces visible
-- tablet: surfaces can collapse or stack, but the canonical edit and preview relationship must remain understandable
+- tablet: switchable surface tabs for `Overview`, `Source`, and `Preview`
 - compact: a single-column progression with the same content order
+
+Tablet mode should default to `Source` and allow the user to switch between the derived summary, source editor, and preview without losing context.
 
 ## State Model
 
@@ -162,16 +163,15 @@ Create and maintain a prototype companion in `docs/prototypes/` using the existi
 
 The prototype should include reviewer controls matching the rest of the repo:
 
-- screen: detail, editor, preview
+- screen: overview, source, preview
 - layout: tablet, wide, compact
 - theme: standard, high contrast, black
 - state: default, loading, empty song, read-only, unauthorized, pending mutation, conflict, validation error, parse warning, offline cached
 
 The prototype should show:
 
-- title editing
-- structured metadata editing
-- source editing
+- derived summary display for title and metadata
+- source editing with syntax-highlight-ready styling
 - song-level transpose and capo editing
 - live preview that reflects the effective result of the stored settings
 - save, cancel, and error feedback
@@ -179,8 +179,8 @@ The prototype should show:
 ## Acceptance Criteria
 
 1. The spec clearly separates stored song-level transpose/capo from reader runtime transpose/capo.
-2. Title, metadata, source, transpose, and capo all appear within one coherent workspace.
-3. The workspace shows a clear relationship between editable song data and preview output.
+2. The workspace treats ChordPro as canonical and derived title/metadata as read-only output in this slice.
+3. The workspace shows a clear relationship between source, derived summary, and preview output.
 4. The prototype follows the existing `docs/prototypes/` visual vocabulary.
 5. The prototype supports layout, theme, screen, and state review controls.
 6. The spec does not introduce new backend authorization rules.
@@ -191,6 +191,7 @@ The prototype should show:
 
 - Review the mock in browser against the existing prototype set.
 - Validate the editing hierarchy on wide, tablet, and compact layouts.
+- Validate tablet surface switching across `Overview`, `Source`, and `Preview`.
 - Validate the state switcher against normal, read-only, unauthorized, pending, conflict, and error scenarios.
 - Validate that the preview communicates the effect of stored settings without collapsing into the reader runtime control model.
 
