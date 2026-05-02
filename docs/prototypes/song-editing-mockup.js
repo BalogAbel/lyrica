@@ -18,6 +18,12 @@ const cancelButton = document.getElementById("cancel-button");
 
 const sourceInput = document.getElementById("source-input");
 const sourceHighlight = document.getElementById("source-highlight");
+const transposeDownButton = document.getElementById("transpose-down");
+const transposeUpButton = document.getElementById("transpose-up");
+const transposeValue = document.getElementById("transpose-value");
+const capoDownButton = document.getElementById("capo-down");
+const capoUpButton = document.getElementById("capo-up");
+const capoValue = document.getElementById("capo-value");
 
 const derivedTitle = document.getElementById("derived-title");
 const derivedArtist = document.getElementById("derived-artist");
@@ -49,8 +55,7 @@ let syncScrollTimer = null;
 
 const stateMap = {
   default: {
-    status:
-      '<span class="badge ok">ChordPro is canonical</span><span class="badge">Derived fields refresh on save</span>',
+    status: "",
     sourceValue: DEFAULT_SOURCE,
     title: null,
     copy: null,
@@ -205,6 +210,37 @@ function parseChordPro(source) {
   return result;
 }
 
+function getDirectiveRange(source, directiveName) {
+  const directive = new RegExp(`^\\s*\\{${directiveName}:\\s*([^}]*)\\}\\s*$`, "mi");
+  const match = source.match(directive);
+  if (!match || match.index == null) {
+    return null;
+  }
+
+  const start = match.index;
+  const end = start + match[0].length;
+  return { start, end, value: match[1].trim() };
+}
+
+function upsertDirective(source, directiveName, value) {
+  const lines = source.split(/\r?\n/);
+  const directiveLine = `{${directiveName}: ${value}}`;
+  const index = lines.findIndex((line) => new RegExp(`^\\s*\\{${directiveName}:`).test(line));
+
+  if (index >= 0) {
+    lines[index] = directiveLine;
+    return lines.join("\n");
+  }
+
+  const insertAt = lines.findIndex((line) => line.trim().length === 0);
+  if (insertAt >= 0) {
+    lines.splice(insertAt, 0, directiveLine);
+    return lines.join("\n");
+  }
+
+  return `${directiveLine}\n\n${source}`;
+}
+
 function parseChordParts(chord) {
   const match = chord.match(/^([A-G])([#b]?)(.*)$/);
   if (!match) {
@@ -242,6 +278,19 @@ function transposeChord(chord, semitoneOffset) {
 
 function formatSignedNumber(value) {
   return value > 0 ? `+${value}` : String(value);
+}
+
+function syncSourceControls(parsed) {
+  transposeValue.textContent = `Transpose ${formatSignedNumber(parsed.transpose)}`;
+  capoValue.textContent = `Capo ${parsed.capo}`;
+  capoDownButton.disabled = parsed.capo <= 0;
+}
+
+function adjustDirective(name, delta, clamp = null) {
+  const parsed = parseChordPro(sourceInput.value);
+  const nextValue = clamp == null ? parsed[name] + delta : Math.max(clamp, parsed[name] + delta);
+  sourceInput.value = upsertDirective(sourceInput.value, name, nextValue);
+  renderSource();
 }
 
 function renderHighlightedSource(source) {
@@ -326,7 +375,6 @@ function updateDerivedSummary(parsed) {
   previewBadges.innerHTML = `
     <span class="badge">Transpose ${formatSignedNumber(parsed.transpose)}</span>
     <span class="badge">Capo ${parsed.capo}</span>
-    <span class="badge">Derived from source</span>
   `;
 }
 
@@ -394,22 +442,28 @@ function renderSource() {
   const parsed = parseChordPro(source);
 
   updateDerivedSummary(parsed);
+  syncSourceControls(parsed);
   renderPreviewLines(parsed);
 
   if (parsed.warnings.length > 0 || body.dataset.state === "parse-warning") {
     const warningList = parsed.warnings.length > 0 ? parsed.warnings.join(" · ") : "Recoverable parse warning";
-    statusBar.innerHTML = `
-      <span class="badge ok">ChordPro is canonical</span>
-      <span class="badge warn">${warningList}</span>
-    `;
-  }
-
-  if (body.dataset.state === "offline-cached") {
-    previewBadges.innerHTML = `
-      <span class="badge">Transpose ${formatSignedNumber(parsed.transpose)}</span>
-      <span class="badge">Capo ${parsed.capo}</span>
-      <span class="badge">Offline cached</span>
-    `;
+    statusBar.innerHTML = `<span class="badge warn">${warningList}</span>`;
+  } else if (body.dataset.state === "offline-cached") {
+    statusBar.innerHTML = '<span class="badge">Offline cached</span>';
+  } else if (body.dataset.state === "pending") {
+    statusBar.innerHTML = '<span class="badge warn">Local mutation pending</span>';
+  } else if (body.dataset.state === "conflict") {
+    statusBar.innerHTML = '<span class="badge warn">Conflict needs review</span>';
+  } else if (body.dataset.state === "unauthorized") {
+    statusBar.innerHTML = '<span class="badge warn">Write access denied</span>';
+  } else if (body.dataset.state === "read-only") {
+    statusBar.innerHTML = '<span class="badge">Read only</span>';
+  } else if (body.dataset.state === "empty") {
+    statusBar.innerHTML = '<span class="badge warn">Empty song</span>';
+  } else if (body.dataset.state === "loading") {
+    statusBar.innerHTML = '<span class="badge">Loading song...</span>';
+  } else {
+    statusBar.innerHTML = "";
   }
 }
 
@@ -443,6 +497,22 @@ stateSelect.addEventListener("change", applyState);
 sourceInput.addEventListener("input", renderSource);
 sourceInput.addEventListener("scroll", syncHighlightScroll);
 
+transposeDownButton.addEventListener("click", () => {
+  adjustDirective("transpose", -1);
+});
+
+transposeUpButton.addEventListener("click", () => {
+  adjustDirective("transpose", 1);
+});
+
+capoDownButton.addEventListener("click", () => {
+  adjustDirective("capo", -1, 0);
+});
+
+capoUpButton.addEventListener("click", () => {
+  adjustDirective("capo", 1, 0);
+});
+
 saveButton.addEventListener("click", () => {
   if (body.dataset.state === "validation-error") {
     stateSelect.value = "parse-warning";
@@ -451,13 +521,11 @@ saveButton.addEventListener("click", () => {
   }
 
   if (body.dataset.state === "conflict") {
-    statusBar.innerHTML =
-      '<span class="badge ok">ChordPro is canonical</span><span class="badge warn">Keep/discard decision required</span>';
+    statusBar.innerHTML = '<span class="badge warn">Keep/discard decision required</span>';
     return;
   }
 
-  statusBar.innerHTML =
-    '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Saved locally</span>';
+  statusBar.innerHTML = '<span class="badge ok">Saved locally</span>';
 });
 
 cancelButton.addEventListener("click", () => {
@@ -469,11 +537,9 @@ cancelButton.addEventListener("click", () => {
 
 statePrimaryButton.addEventListener("click", () => {
   if (body.dataset.state === "conflict") {
-    statusBar.innerHTML =
-      '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Kept local version</span>';
+    statusBar.innerHTML = '<span class="badge ok">Kept local version</span>';
   } else if (body.dataset.state === "pending") {
-    statusBar.innerHTML =
-      '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Sync requested</span>';
+    statusBar.innerHTML = '<span class="badge ok">Sync requested</span>';
   }
 });
 
@@ -481,8 +547,7 @@ stateSecondaryButton.addEventListener("click", () => {
   if (body.dataset.state === "conflict") {
     sourceInput.value = DEFAULT_SOURCE;
     renderSource();
-    statusBar.innerHTML =
-      '<span class="badge ok">ChordPro is canonical</span><span class="badge">Remote version restored</span>';
+    statusBar.innerHTML = '<span class="badge">Remote version restored</span>';
   }
 });
 

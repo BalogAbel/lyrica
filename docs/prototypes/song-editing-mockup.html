@@ -30,7 +30,6 @@
             <select id="layout-select">
               <option value="wide">Wide</option>
               <option value="tablet">Tablet</option>
-              <option value="compact">Compact</option>
             </select>
           </label>
           <label>
@@ -75,10 +74,7 @@
             </div>
           </header>
 
-          <div class="status-bar" id="status-bar">
-            <span class="badge ok">ChordPro is canonical</span>
-            <span class="badge">Derived fields refresh on save</span>
-          </div>
+          <div class="status-bar" id="status-bar"></div>
 
           <nav class="view-tabs" aria-label="Editor views">
             <button class="tab active" type="button" data-screen="overview">Overview</button>
@@ -93,7 +89,6 @@
                   <p class="panel-label">Derived summary</p>
                   <h3>Overview</h3>
                 </div>
-                <span class="pill" id="derived-pill">ChordPro-derived</span>
               </header>
               <div class="summary-grid" id="summary-grid">
                 <article class="summary-card">
@@ -129,15 +124,21 @@
                   <p class="panel-label">Canonical source</p>
                   <h3>ChordPro source</h3>
                 </div>
-                <span class="pill">Syntax highlight ready</span>
+                <div class="source-controls" aria-label="Song settings">
+                  <div class="stepper">
+                    <button id="transpose-down" type="button">-</button>
+                    <span id="transpose-value">Transpose +1</span>
+                    <button id="transpose-up" type="button">+</button>
+                  </div>
+                  <div class="stepper">
+                    <button id="capo-down" type="button">-</button>
+                    <span id="capo-value">Capo 2</span>
+                    <button id="capo-up" type="button">+</button>
+                  </div>
+                </div>
               </header>
 
               <div class="editor-frame">
-                <div class="editor-toolbar">
-                  <span class="badge">Live parse</span>
-                  <span class="badge">Autosize textarea</span>
-                  <span class="badge">Monospace</span>
-                </div>
                 <div class="source-editor" id="source-editor">
                   <pre class="source-highlight" id="source-highlight" aria-hidden="true"></pre>
                   <textarea
@@ -166,7 +167,6 @@
                   <p class="panel-label">Reader preview</p>
                   <h3>Effective output</h3>
                 </div>
-                <span class="pill" id="preview-pill">Live preview</span>
               </header>
 
               <div class="preview-shell" id="preview-shell">
@@ -176,7 +176,6 @@
                   <div class="preview-badges" id="preview-badges">
                     <span class="badge">Transpose +1</span>
                     <span class="badge">Capo 2</span>
-                    <span class="badge">Derived from source</span>
                   </div>
                 </div>
 
