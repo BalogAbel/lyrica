@@ -483,6 +483,10 @@ body[data-layout="tablet"] .workspace {
   grid-template-columns: 1fr;
 }
 
+body[data-layout="tablet"] .panel {
+  display: none;
+}
+
 body[data-layout="tablet"] .view-tabs {
   display: flex;
 }
