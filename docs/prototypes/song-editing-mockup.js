@@ -1,0 +1,491 @@
+const body = document.body;
+const screenSelect = document.getElementById("screen-select");
+const layoutSelect = document.getElementById("layout-select");
+const themeSelect = document.getElementById("theme-select");
+const stateSelect = document.getElementById("state-select");
+
+const tabs = Array.from(document.querySelectorAll(".tab"));
+const statusBar = document.getElementById("status-bar");
+const stateCard = document.getElementById("state-card");
+const stateTitle = document.getElementById("state-title");
+const stateCopy = document.getElementById("state-copy");
+const stateActions = document.getElementById("state-actions");
+const statePrimaryButton = document.getElementById("state-primary-button");
+const stateSecondaryButton = document.getElementById("state-secondary-button");
+
+const saveButton = document.getElementById("save-button");
+const cancelButton = document.getElementById("cancel-button");
+
+const sourceInput = document.getElementById("source-input");
+const sourceHighlight = document.getElementById("source-highlight");
+
+const derivedTitle = document.getElementById("derived-title");
+const derivedArtist = document.getElementById("derived-artist");
+const derivedKey = document.getElementById("derived-key");
+const derivedTempo = document.getElementById("derived-tempo");
+const derivedTags = document.getElementById("derived-tags");
+const derivedSettings = document.getElementById("derived-settings");
+
+const previewTitle = document.getElementById("preview-title");
+const previewSubtitle = document.getElementById("preview-subtitle");
+const previewBadges = document.getElementById("preview-badges");
+const readerDirective = document.getElementById("reader-directive");
+const readerLines = document.getElementById("reader-lines");
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const NOTE_INDEX = new Map(NOTE_NAMES.map((name, index) => [name, index]));
+const FLAT_ENHARMONICS = new Map([
+  ["Ab", "G#"],
+  ["Bb", "A#"],
+  ["Cb", "B"],
+  ["Db", "C#"],
+  ["Eb", "D#"],
+  ["Fb", "E"],
+  ["Gb", "F#"],
+]);
+
+const DEFAULT_SOURCE = sourceInput.value;
+let syncScrollTimer = null;
+
+const stateMap = {
+  default: {
+    status:
+      '<span class="badge ok">ChordPro is canonical</span><span class="badge">Derived fields refresh on save</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: null,
+    copy: null,
+  },
+  loading: {
+    status: '<span class="badge">Loading song...</span>',
+    sourceValue: "",
+    title: "Loading",
+    copy: "Loading canonical ChordPro source and derived summary fields.",
+  },
+  empty: {
+    status: '<span class="badge warn">Empty song</span>',
+    sourceValue: "",
+    title: "Empty song",
+    copy: "No ChordPro source loaded yet.",
+  },
+  "read-only": {
+    status: '<span class="badge">Read only</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Read only",
+    copy: "This song can be viewed but not edited.",
+  },
+  unauthorized: {
+    status: '<span class="badge warn">Write access denied</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Unauthorized",
+    copy: "Backend rejected write access for this organization.",
+  },
+  pending: {
+    status: '<span class="badge warn">Local mutation pending</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Pending mutation",
+    copy: "Saved locally. Waiting for sync with backend.",
+    primaryLabel: "Sync now",
+    secondaryLabel: "Keep editing",
+  },
+  conflict: {
+    status: '<span class="badge warn">Conflict needs review</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Conflict",
+    copy: "Local source diverged from canonical server state.",
+    primaryLabel: "Keep mine",
+    secondaryLabel: "Discard mine",
+  },
+  "validation-error": {
+    status: '<span class="badge warn">Validation error</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Validation error",
+    copy: "Fix ChordPro syntax before saving.",
+    primaryLabel: "Review source",
+    secondaryLabel: "Cancel",
+  },
+  "parse-warning": {
+    status: '<span class="badge warn">Parse warning</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Parse warning",
+    copy: "Source parsed with recoverable warnings.",
+  },
+  "offline-cached": {
+    status: '<span class="badge">Offline cached</span>',
+    sourceValue: DEFAULT_SOURCE,
+    title: "Offline cached",
+    copy: "Showing last synced source from local cache.",
+  },
+};
+
+function escapeHtml(text) {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function normalizeKey(name) {
+  return name.trim().toLowerCase();
+}
+
+function parseIntOrNull(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseChordPro(source) {
+  const result = {
+    title: "",
+    artist: "",
+    key: "",
+    tempo: "",
+    tags: [],
+    transpose: 0,
+    capo: 0,
+    bodyLines: [],
+    warnings: [],
+  };
+
+  const lines = source.split(/\r?\n/);
+  for (const line of lines) {
+    const directiveMatch = line.match(/^\s*\{([^:}]+):\s*(.*?)\s*\}\s*$/);
+    if (directiveMatch) {
+      const key = normalizeKey(directiveMatch[1]);
+      const value = directiveMatch[2].trim();
+      switch (key) {
+        case "title":
+          result.title = value;
+          break;
+        case "artist":
+          result.artist = value;
+          break;
+        case "key":
+          result.key = value;
+          break;
+        case "tempo":
+          result.tempo = value;
+          break;
+        case "tags":
+          result.tags = value
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean);
+          break;
+        case "transpose":
+          result.transpose = parseIntOrNull(value) ?? 0;
+          if (!/^-?\d+$/.test(value)) {
+            result.warnings.push(`Invalid transpose value: ${value}`);
+          }
+          break;
+        case "capo":
+          result.capo = Math.max(0, parseIntOrNull(value) ?? 0);
+          if (!/^-?\d+$/.test(value)) {
+            result.warnings.push(`Invalid capo value: ${value}`);
+          }
+          break;
+        default:
+          if (key.startsWith("comment")) {
+            result.bodyLines.push({ type: "comment", text: value });
+          } else {
+            result.warnings.push(`Unsupported directive: ${directiveMatch[1]}`);
+          }
+      }
+      continue;
+    }
+
+    if (line.trim() === "") {
+      result.bodyLines.push({ type: "blank" });
+      continue;
+    }
+
+    result.bodyLines.push({ type: "text", text: line });
+  }
+
+  return result;
+}
+
+function parseChordParts(chord) {
+  const match = chord.match(/^([A-G])([#b]?)(.*)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, root, accidental, suffix] = match;
+  const noteName = accidental === "b" ? FLAT_ENHARMONICS.get(`${root}b`) : `${root}${accidental}`;
+  const index = NOTE_INDEX.get(noteName);
+  if (index == null) {
+    return null;
+  }
+
+  return { index, suffix };
+}
+
+function transposeSingleChord(chord, semitoneOffset) {
+  const parts = parseChordParts(chord);
+  if (parts == null) {
+    return chord;
+  }
+
+  const nextIndex = (parts.index + semitoneOffset + 120) % 12;
+  return `${NOTE_NAMES[nextIndex]}${parts.suffix}`;
+}
+
+function transposeChord(chord, semitoneOffset) {
+  const [mainChord, bassChord] = chord.split("/");
+  const main = transposeSingleChord(mainChord, semitoneOffset);
+  if (bassChord == null) {
+    return main;
+  }
+  return `${main}/${transposeSingleChord(bassChord, semitoneOffset)}`;
+}
+
+function formatSignedNumber(value) {
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function renderHighlightedSource(source) {
+  const lines = source.split(/\r?\n/);
+  return lines
+    .map((line) => {
+      if (!line.trim()) {
+        return "<span class=\"line\">&nbsp;</span>";
+      }
+
+      const escaped = escapeHtml(line);
+      const directive = escaped.match(/^(\s*)(\{[^}]+\})(\s*)$/);
+      if (directive) {
+        const [, leading, content, trailing] = directive;
+        const inner = content
+          .replace(/^\{([^:}]+):/, (match, name) => {
+            const key = escapeHtml(name);
+            return `<span class="directive">{</span><span class="directive-key">${key}</span><span class="directive">:</span>`;
+          })
+          .replace(/\}$/, '<span class="directive">}</span>');
+        return `<span class="line">${leading}${inner}${trailing}</span>`;
+      }
+
+      const highlighted = escaped
+        .replace(/\[[^\]]+\]/g, (match) => `<span class="chord-token">${match}</span>`)
+        .replace(/(#.*)$/g, '<span class="comment-token">$1</span>');
+      return `<span class="line">${highlighted}</span>`;
+    })
+    .join("");
+}
+
+function renderPreviewLines(parsed) {
+  const transpose = parsed.transpose;
+  const capo = parsed.capo;
+  const rendered = [];
+
+  if (capo > 0) {
+    readerDirective.hidden = false;
+    readerDirective.textContent = `Capo ${capo}`;
+  } else {
+    readerDirective.hidden = true;
+  }
+
+  for (const line of parsed.bodyLines) {
+    if (line.type === "blank") {
+      rendered.push("<p class=\"reader-empty\">&nbsp;</p>");
+      continue;
+    }
+
+    if (line.type === "comment") {
+      rendered.push(`<p class="reader-comment">${escapeHtml(line.text)}</p>`);
+      continue;
+    }
+
+    const html = escapeHtml(line.text).replace(/\[([^\]]+)\]/g, (_match, chord) => {
+      const transposed = transposeChord(chord, transpose - capo);
+      return `<span class="chord">${escapeHtml(transposed)}</span>`;
+    });
+    rendered.push(`<p>${html}</p>`);
+  }
+
+  readerLines.innerHTML = rendered.join("");
+}
+
+function updateDerivedSummary(parsed) {
+  const title = parsed.title || "Untitled song";
+  const artist = parsed.artist || "Unknown artist";
+  const key = parsed.key || "—";
+  const tempo = parsed.tempo ? `${parsed.tempo} bpm` : "—";
+  const tags = parsed.tags.length > 0 ? parsed.tags.join(", ") : "—";
+  const settings = `Transpose ${formatSignedNumber(parsed.transpose)} · Capo ${parsed.capo}`;
+
+  derivedTitle.textContent = title;
+  derivedArtist.textContent = artist;
+  derivedKey.textContent = key;
+  derivedTempo.textContent = tempo;
+  derivedTags.textContent = tags;
+  derivedSettings.textContent = settings;
+
+  previewTitle.textContent = title;
+  previewSubtitle.textContent = `${artist} · Key ${key} · Tempo ${tempo}`;
+  previewBadges.innerHTML = `
+    <span class="badge">Transpose ${formatSignedNumber(parsed.transpose)}</span>
+    <span class="badge">Capo ${parsed.capo}</span>
+    <span class="badge">Derived from source</span>
+  `;
+}
+
+function applyScreen() {
+  const screen = body.dataset.screen;
+  screenSelect.value = screen;
+  for (const tab of tabs) {
+    tab.classList.toggle("active", tab.dataset.screen === screen);
+  }
+}
+
+function setStateCard(model) {
+  if (!model.title) {
+    stateCard.hidden = true;
+    stateActions.hidden = true;
+    return;
+  }
+
+  stateTitle.textContent = model.title;
+  stateCopy.textContent = model.copy;
+  stateCard.hidden = false;
+
+  const hasActions = Boolean(model.primaryLabel || model.secondaryLabel);
+  stateActions.hidden = !hasActions;
+  if (hasActions) {
+    statePrimaryButton.textContent = model.primaryLabel || "Save";
+    stateSecondaryButton.textContent = model.secondaryLabel || "Cancel";
+  }
+}
+
+function applyState() {
+  const state = stateSelect.value;
+  body.dataset.state = state;
+  const model = stateMap[state] || stateMap.default;
+
+  statusBar.innerHTML = model.status;
+  setStateCard(model);
+
+  sourceInput.value = model.sourceValue;
+  sourceInput.disabled = state === "loading" || state === "read-only" || state === "empty";
+
+  saveButton.disabled = state === "loading" || state === "read-only" || state === "unauthorized";
+  cancelButton.disabled = state === "loading";
+
+  if (state === "conflict") {
+    saveButton.textContent = "Keep mine";
+    cancelButton.textContent = "Discard mine";
+  } else if (state === "pending") {
+    saveButton.textContent = "Sync now";
+    cancelButton.textContent = "Keep editing";
+  } else if (state === "validation-error") {
+    saveButton.textContent = "Review";
+    cancelButton.textContent = "Cancel";
+  } else {
+    saveButton.textContent = "Save";
+    cancelButton.textContent = "Cancel";
+  }
+
+  renderSource();
+}
+
+function renderSource() {
+  const source = sourceInput.value;
+  sourceHighlight.innerHTML = renderHighlightedSource(source);
+  const parsed = parseChordPro(source);
+
+  updateDerivedSummary(parsed);
+  renderPreviewLines(parsed);
+
+  if (parsed.warnings.length > 0 || body.dataset.state === "parse-warning") {
+    const warningList = parsed.warnings.length > 0 ? parsed.warnings.join(" · ") : "Recoverable parse warning";
+    statusBar.innerHTML = `
+      <span class="badge ok">ChordPro is canonical</span>
+      <span class="badge warn">${warningList}</span>
+    `;
+  }
+
+  if (body.dataset.state === "offline-cached") {
+    previewBadges.innerHTML = `
+      <span class="badge">Transpose ${formatSignedNumber(parsed.transpose)}</span>
+      <span class="badge">Capo ${parsed.capo}</span>
+      <span class="badge">Offline cached</span>
+    `;
+  }
+}
+
+function syncControls() {
+  body.dataset.layout = layoutSelect.value;
+  body.dataset.theme = themeSelect.value;
+  body.dataset.screen = screenSelect.value;
+  applyScreen();
+}
+
+function syncHighlightScroll() {
+  window.clearTimeout(syncScrollTimer);
+  syncScrollTimer = window.setTimeout(() => {
+    sourceHighlight.scrollTop = sourceInput.scrollTop;
+    sourceHighlight.scrollLeft = sourceInput.scrollLeft;
+  }, 0);
+}
+
+for (const tab of tabs) {
+  tab.addEventListener("click", () => {
+    screenSelect.value = tab.dataset.screen;
+    syncControls();
+  });
+}
+
+screenSelect.addEventListener("change", syncControls);
+layoutSelect.addEventListener("change", syncControls);
+themeSelect.addEventListener("change", syncControls);
+stateSelect.addEventListener("change", applyState);
+
+sourceInput.addEventListener("input", renderSource);
+sourceInput.addEventListener("scroll", syncHighlightScroll);
+
+saveButton.addEventListener("click", () => {
+  if (body.dataset.state === "validation-error") {
+    stateSelect.value = "parse-warning";
+    applyState();
+    return;
+  }
+
+  if (body.dataset.state === "conflict") {
+    statusBar.innerHTML =
+      '<span class="badge ok">ChordPro is canonical</span><span class="badge warn">Keep/discard decision required</span>';
+    return;
+  }
+
+  statusBar.innerHTML =
+    '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Saved locally</span>';
+});
+
+cancelButton.addEventListener("click", () => {
+  stateSelect.value = "default";
+  applyState();
+  sourceInput.value = DEFAULT_SOURCE;
+  renderSource();
+});
+
+statePrimaryButton.addEventListener("click", () => {
+  if (body.dataset.state === "conflict") {
+    statusBar.innerHTML =
+      '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Kept local version</span>';
+  } else if (body.dataset.state === "pending") {
+    statusBar.innerHTML =
+      '<span class="badge ok">ChordPro is canonical</span><span class="badge ok">Sync requested</span>';
+  }
+});
+
+stateSecondaryButton.addEventListener("click", () => {
+  if (body.dataset.state === "conflict") {
+    sourceInput.value = DEFAULT_SOURCE;
+    renderSource();
+    statusBar.innerHTML =
+      '<span class="badge ok">ChordPro is canonical</span><span class="badge">Remote version restored</span>';
+  }
+});
+
+syncControls();
+applyState();
+renderSource();
