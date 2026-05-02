@@ -118,34 +118,39 @@
               </div>
             </aside>
 
-            <section class="panel source-panel">
+            <section class="panel source-panel" id="canonical-panel">
               <header class="panel-header">
                 <div>
                   <p class="panel-label">Canonical source</p>
-                  <h3>ChordPro source</h3>
+                  <h3 id="canonical-panel-title">ChordPro source</h3>
                 </div>
-                <div class="source-controls" aria-label="Song settings">
-                  <div class="stepper">
-                    <button id="transpose-down" type="button">-</button>
-                    <span id="transpose-value">Transpose +1</span>
-                    <button id="transpose-up" type="button">+</button>
-                  </div>
-                  <div class="stepper">
-                    <button id="capo-down" type="button">-</button>
-                    <span id="capo-value">Capo 2</span>
-                    <button id="capo-up" type="button">+</button>
-                  </div>
+                <div class="panel-switcher" aria-label="Canonical panel mode">
+                  <button class="switch active" type="button" data-canonical-view="source">Source</button>
+                  <button class="switch" type="button" data-canonical-view="preview">Preview</button>
                 </div>
               </header>
 
-              <div class="editor-frame">
-                <div class="source-editor" id="source-editor">
-                  <pre class="source-highlight" id="source-highlight" aria-hidden="true"></pre>
-                  <textarea
-                    id="source-input"
-                    aria-label="ChordPro source editor"
-                    spellcheck="false"
-                  >{title: Heart of Worship}
+              <div class="canonical-body">
+                <div class="source-view" id="source-view">
+                  <div class="source-controls" aria-label="Song settings">
+                    <div class="stepper">
+                      <button id="transpose-down" type="button">-</button>
+                      <span id="transpose-value">Transpose +1</span>
+                      <button id="transpose-up" type="button">+</button>
+                    </div>
+                    <div class="stepper">
+                      <button id="capo-down" type="button">-</button>
+                      <span id="capo-value">Capo 2</span>
+                      <button id="capo-up" type="button">+</button>
+                    </div>
+                  </div>
+                  <div class="source-editor" id="source-editor">
+                    <pre class="source-highlight" id="source-highlight" aria-hidden="true"></pre>
+                    <textarea
+                      id="source-input"
+                      aria-label="ChordPro source editor"
+                      spellcheck="false"
+                    >{title: Heart of Worship}
 {artist: Matt Redman}
 {key: D}
 {tempo: 72}
@@ -159,52 +164,44 @@
 [Bm]And I simply come
 [G]Longing just to bring</textarea>
                 </div>
-              </div>
-            </section>
+                <div class="preview-view" id="preview-view" hidden>
+                  <div class="preview-shell">
+                    <div class="preview-meta">
+                      <p class="preview-title" id="preview-title">Heart of Worship</p>
+                      <p class="preview-subtitle" id="preview-subtitle">Matt Redman · Key D · Tempo 72 bpm</p>
+                      <div class="preview-badges" id="preview-badges"></div>
+                    </div>
 
-            <aside class="panel preview-panel">
-              <header class="panel-header">
-                <div>
-                  <p class="panel-label">Reader preview</p>
-                  <h3>Effective output</h3>
-                </div>
-              </header>
-
-              <div class="preview-shell" id="preview-shell">
-                <div class="preview-meta">
-                  <p class="preview-title" id="preview-title">Heart of Worship</p>
-                  <p class="preview-subtitle" id="preview-subtitle">Matt Redman · Key D · Tempo 72 bpm</p>
-                  <div class="preview-badges" id="preview-badges"></div>
-                </div>
-
-                <div class="reader-stack">
-                  <div class="reader-directive-card" id="reader-directive-card">
-                    <span class="reader-directive" id="reader-directive">Capo 2</span>
-                  </div>
-                  <div class="reader-grid" id="reader-grid">
-                    <article class="section-card">
-                      <p class="section-label">Verse 1</p>
-                      <div class="section-lines" id="reader-lines">
-                        <div class="line-row">
-                          <div class="segment">
-                            <div class="chord-row"><span class="chord">Em</span></div>
-                            <div class="lyric-row">When the music fades</div>
-                          </div>
-                          <div class="segment">
-                            <div class="chord-row"><span class="chord">B</span></div>
-                            <div class="lyric-row">And all is stripped away</div>
-                          </div>
-                          <div class="segment">
-                            <div class="chord-row"><span class="chord">C#m</span></div>
-                            <div class="lyric-row">And I simply come</div>
-                          </div>
-                          <div class="segment">
-                            <div class="chord-row"><span class="chord">A</span></div>
-                            <div class="lyric-row">Longing just to bring</div>
-                          </div>
-                        </div>
+                    <div class="reader-stack">
+                      <div class="reader-directive-card" id="reader-directive-card">
+                        <span class="reader-directive" id="reader-directive">Capo 2</span>
                       </div>
-                    </article>
+                      <div class="reader-grid" id="reader-grid">
+                        <article class="section-card">
+                          <p class="section-label">Verse 1</p>
+                          <div class="section-lines" id="reader-lines">
+                            <div class="line-row">
+                              <div class="segment">
+                                <div class="chord-row"><span class="chord">Em</span></div>
+                                <div class="lyric-row">When the music fades</div>
+                              </div>
+                              <div class="segment">
+                                <div class="chord-row"><span class="chord">B</span></div>
+                                <div class="lyric-row">And all is stripped away</div>
+                              </div>
+                              <div class="segment">
+                                <div class="chord-row"><span class="chord">C#m</span></div>
+                                <div class="lyric-row">And I simply come</div>
+                              </div>
+                              <div class="segment">
+                                <div class="chord-row"><span class="chord">A</span></div>
+                                <div class="lyric-row">Longing just to bring</div>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

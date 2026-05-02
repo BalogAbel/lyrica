@@ -5,6 +5,11 @@ const themeSelect = document.getElementById("theme-select");
 const stateSelect = document.getElementById("state-select");
 
 const tabs = Array.from(document.querySelectorAll(".tab"));
+const canonicalPanel = document.getElementById("canonical-panel");
+const canonicalPanelTitle = document.getElementById("canonical-panel-title");
+const canonicalSwitches = Array.from(
+  document.querySelectorAll("[data-canonical-view]"),
+);
 const statusBar = document.getElementById("status-bar");
 const stateCard = document.getElementById("state-card");
 const stateTitle = document.getElementById("state-title");
@@ -38,6 +43,8 @@ const previewBadges = document.getElementById("preview-badges");
 const readerDirectiveCard = document.getElementById("reader-directive-card");
 const readerDirective = document.getElementById("reader-directive");
 const readerGrid = document.getElementById("reader-grid");
+const sourceView = document.getElementById("source-view");
+const previewView = document.getElementById("preview-view");
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const NOTE_INDEX = new Map(NOTE_NAMES.map((name, index) => [name, index]));
@@ -463,6 +470,21 @@ function applyScreen() {
   for (const tab of tabs) {
     tab.classList.toggle("active", tab.dataset.screen === screen);
   }
+  const canonicalView = screen === "preview" ? "preview" : "source";
+  applyCanonicalView(canonicalView);
+}
+
+function applyCanonicalView(canonicalView) {
+  const isPreview = canonicalView === "preview";
+  canonicalPanelTitle.textContent = isPreview ? "Preview" : "ChordPro source";
+  sourceView.hidden = isPreview;
+  previewView.hidden = !isPreview;
+  for (const switchButton of canonicalSwitches) {
+    switchButton.classList.toggle(
+      "active",
+      switchButton.dataset.canonicalView === canonicalView,
+    );
+  }
 }
 
 function setStateCard(model) {
@@ -564,6 +586,13 @@ function syncHighlightScroll() {
 for (const tab of tabs) {
   tab.addEventListener("click", () => {
     screenSelect.value = tab.dataset.screen;
+    syncControls();
+  });
+}
+
+for (const switchButton of canonicalSwitches) {
+  switchButton.addEventListener("click", () => {
+    screenSelect.value = switchButton.dataset.canonicalView;
     syncControls();
   });
 }
