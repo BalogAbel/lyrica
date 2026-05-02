@@ -109,9 +109,7 @@ class SongCatalogController extends ChangeNotifier {
             sessionStatus: CatalogSessionStatus.expired,
           ),
         );
-        _invalidateRefreshWork();
-        _stopRefreshScheduler();
-        _verifiedEmptyMembershipSeen = false;
+        _resetSessionLifecycle();
         return;
       }
       if (_isConnectivityFailure(error)) {
@@ -208,6 +206,7 @@ class SongCatalogController extends ChangeNotifier {
           hasCachedCatalog: false,
         ),
       );
+      _resetSessionLifecycle();
       return;
     }
 
@@ -282,9 +281,7 @@ class SongCatalogController extends ChangeNotifier {
             hasCachedCatalog: false,
           ),
         );
-        _invalidateRefreshWork();
-        _stopRefreshScheduler();
-        _verifiedEmptyMembershipSeen = false;
+        _resetSessionLifecycle();
         return;
       }
 
@@ -311,9 +308,7 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   Future<void> handleExplicitSignOut() async {
-    _invalidateRefreshWork();
-    _stopRefreshScheduler();
-    _verifiedEmptyMembershipSeen = false;
+    _resetSessionLifecycle();
     final userId =
         _state.context?.userId ??
         _authSessionReader()?.userId ??
@@ -325,9 +320,7 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   void handleSessionExpired() {
-    _invalidateRefreshWork();
-    _stopRefreshScheduler();
-    _verifiedEmptyMembershipSeen = false;
+    _resetSessionLifecycle();
     _setState(
       const CatalogSnapshotState.initial().copyWith(
         sessionStatus: CatalogSessionStatus.expired,
@@ -433,6 +426,12 @@ class SongCatalogController extends ChangeNotifier {
   void _stopRefreshScheduler() {
     _refreshTimer?.cancel();
     _refreshTimer = null;
+  }
+
+  void _resetSessionLifecycle() {
+    _invalidateRefreshWork();
+    _stopRefreshScheduler();
+    _verifiedEmptyMembershipSeen = false;
   }
 
   @override

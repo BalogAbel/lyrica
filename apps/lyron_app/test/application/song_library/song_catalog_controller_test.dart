@@ -389,13 +389,21 @@ void main() {
           refreshedAt: DateTime.utc(2026, 3, 25, 10),
         );
 
+        final foregroundState = _TestAppForegroundState();
+        var sessionVerifierCalls = 0;
+
         final controller = SongCatalogController(
           store: store,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
           organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.expired,
+          sessionVerifier: () async {
+            sessionVerifierCalls += 1;
+            return CatalogSessionStatus.expired;
+          },
+          foregroundState: foregroundState,
+          refreshInterval: const Duration(milliseconds: 1),
         );
 
         await controller.refreshCatalog();
@@ -407,6 +415,11 @@ void main() {
         );
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
         expect(controller.state.hasCachedCatalog, isFalse);
+        expect(sessionVerifierCalls, 1);
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(sessionVerifierCalls, 1);
       },
     );
 
