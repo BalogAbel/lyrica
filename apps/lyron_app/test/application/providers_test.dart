@@ -19,6 +19,7 @@ import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
+import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -26,6 +27,7 @@ import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
+import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -331,6 +333,105 @@ void main() {
           organizationId: 'org-1',
         ),
         isEmpty,
+      );
+    },
+  );
+
+  test(
+    'session expired clears active song context and blocks cached reads until re-sign-in',
+    () async {
+      final authRepository = _ControllableAuthRepository();
+      final authController = AppAuthController(authRepository);
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final foregroundState = _TestAppForegroundState();
+      final remoteRepository = SupabaseSongRepository.testing(
+        listSongsRows: () async => const [
+          {
+            'id': 'song-1',
+            'slug': 'cached-song',
+            'title': 'Cached Song',
+            'version': 1,
+          },
+        ],
+        getSongRow: (id) async => const {
+          'id': 'song-1',
+          'slug': 'cached-song',
+          'chordpro_source': '{title: Cached Song}',
+        },
+      );
+
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          songCatalogStoreProvider.overrideWithValue(songStore),
+          supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+          catalogSessionVerifierProvider.overrideWithValue(
+            () async => CatalogSessionStatus.verified,
+          ),
+          activeOrganizationReaderProvider.overrideWithValue(
+            () async => 'org-1',
+          ),
+          appForegroundStateProvider.overrideWithValue(foregroundState),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await songDatabase.close();
+      });
+
+      await container.read(songCatalogControllerProvider).refreshCatalog();
+
+      expect(
+        container.read(activeCatalogContextProvider),
+        const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+      expect(
+        await container.read(songLibraryListProvider.future),
+        hasLength(1),
+      );
+
+      authRepository.emitSession(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(activeCatalogContextProvider), isNull);
+      expect(await container.read(songLibraryListProvider.future), isEmpty);
+      expect(
+        await songStore.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        hasLength(1),
+      );
+
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      await container.read(songCatalogControllerProvider).refreshCatalog();
+
+      expect(
+        container.read(activeCatalogContextProvider),
+        const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+      expect(
+        await container.read(songLibraryListProvider.future),
+        hasLength(1),
       );
     },
   );
@@ -696,6 +797,539 @@ void main() {
       );
     },
   );
+
+  test(
+    'accepted plan create/edit writes reconcile into the real local projection when refreshPlanning fails',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final database = PlanningLocalDatabase.inMemory();
+      final localStore = DriftPlanningLocalStore(database);
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: const [],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalDatabaseProvider.overrideWithValue(database),
+          planningRemoteRefreshRepositoryProvider.overrideWithValue(
+            const _FailingPlanningRemoteRefreshRepository(),
+          ),
+          planningMutationRemoteRepositoryProvider.overrideWithValue(
+            const _AcceptedWriteFallbackPlanningMutationRemoteRepository(),
+          ),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          planningSyncStateProvider.overrideWithValue(
+            const PlanningSyncState(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              accessStatus: PlanningAccessStatus.signedIn,
+              refreshStatus: PlanningRefreshStatus.idle,
+              hasLocalPlanningData: true,
+              lastRefreshedAt: null,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await database.close();
+      });
+
+      await container
+          .read(planningSyncControllerProvider)
+          .handleActiveContextChanged(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            refresh: false,
+          );
+
+      final writeService = container.read(planningWriteServiceProvider);
+      final createdPlan = await writeService.createPlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanCreateDraft(
+          name: 'Weekend Service',
+          description: 'Draft',
+        ),
+      );
+
+      var plans = await container.read(planningRepositoryProvider).listPlans();
+      expect(plans, hasLength(1));
+      expect(plans.single.id, createdPlan.aggregateId);
+      expect(plans.single.name, 'Weekend Service Accepted');
+      expect(plans.single.description, 'Draft Accepted');
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.editPlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: PlanEditDraft(
+          planId: createdPlan.aggregateId,
+          name: 'Weekend Service Revised',
+          description: 'Draft revised',
+        ),
+      );
+
+      plans = await container.read(planningRepositoryProvider).listPlans();
+      expect(plans.single.id, createdPlan.aggregateId);
+      expect(plans.single.name, 'Weekend Service Revised Accepted');
+      expect(plans.single.description, 'Draft revised Accepted');
+      await _expectNoPendingPlanningMutations(container);
+    },
+  );
+
+  test(
+    'accepted session create/rename/delete/reorder writes reconcile into the real local projection when refreshPlanning fails',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final database = PlanningLocalDatabase.inMemory();
+      final localStore = DriftPlanningLocalStore(database);
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            description: 'Draft',
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 5, 1),
+            version: 1,
+          ),
+        ],
+        sessions: [
+          CachedSessionRecord(
+            id: 'session-a',
+            planId: 'plan-1',
+            slug: 'welcome',
+            position: 10,
+            name: 'Welcome',
+            version: 1,
+          ),
+          CachedSessionRecord(
+            id: 'session-b',
+            planId: 'plan-1',
+            slug: 'announcements',
+            position: 20,
+            name: 'Announcements',
+            version: 1,
+          ),
+        ],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalDatabaseProvider.overrideWithValue(database),
+          planningRemoteRefreshRepositoryProvider.overrideWithValue(
+            const _FailingPlanningRemoteRefreshRepository(),
+          ),
+          planningMutationRemoteRepositoryProvider.overrideWithValue(
+            const _AcceptedWriteFallbackPlanningMutationRemoteRepository(),
+          ),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          planningSyncStateProvider.overrideWithValue(
+            const PlanningSyncState(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              accessStatus: PlanningAccessStatus.signedIn,
+              refreshStatus: PlanningRefreshStatus.idle,
+              hasLocalPlanningData: true,
+              lastRefreshedAt: null,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await database.close();
+      });
+
+      await container
+          .read(planningSyncControllerProvider)
+          .handleActiveContextChanged(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            refresh: false,
+          );
+
+      final writeService = container.read(planningWriteServiceProvider);
+      await writeService.createSession(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const SessionCreateDraft(planId: 'plan-1', name: 'Closing'),
+      );
+
+      var detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      final createdSession = detail.sessions.singleWhere(
+        (session) => session.slug == 'closing-accepted',
+      );
+      expect(createdSession.name, 'Closing Accepted');
+      expect(
+        detail.sessions.map((session) => session.id),
+        orderedEquals(['session-a', 'session-b', createdSession.id]),
+      );
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.renameSession(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: SessionRenameDraft(
+          sessionId: createdSession.id,
+          planId: 'plan-1',
+          name: 'Closing Revised',
+        ),
+      );
+
+      detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      expect(
+        detail.sessions
+            .firstWhere((session) => session.id == createdSession.id)
+            .name,
+        'Closing Revised Accepted',
+      );
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.reorderSessions(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: SessionReorderDraft(
+          planId: 'plan-1',
+          orderedSessionIds: [createdSession.id, 'session-b', 'session-a'],
+        ),
+      );
+
+      detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      expect(
+        detail.sessions.map((session) => session.id),
+        orderedEquals([createdSession.id, 'session-b', 'session-a']),
+      );
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.deleteSession(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const SessionDeleteDraft(
+          sessionId: 'session-a',
+          planId: 'plan-1',
+        ),
+      );
+
+      detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      expect(
+        detail.sessions.map((session) => session.id),
+        orderedEquals([createdSession.id, 'session-b']),
+      );
+      expect(
+        detail.sessions.map((session) => session.name),
+        orderedEquals(const ['Closing Revised Accepted', 'Announcements']),
+      );
+      await _expectNoPendingPlanningMutations(container);
+    },
+  );
+
+  test(
+    'accepted session item create/delete/reorder writes reconcile into the real local projection when refreshPlanning fails',
+    () async {
+      final authController = AppAuthController(_SignedInAuthRepository());
+      await authController.signIn(
+        email: 'demo@lyron.local',
+        password: 'secret',
+      );
+      final database = PlanningLocalDatabase.inMemory();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final localStore = DriftPlanningLocalStore(database);
+      final songStore = DriftSongCatalogStore(songDatabase);
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            description: 'Draft',
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 5, 1),
+            version: 1,
+          ),
+        ],
+        sessions: [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            slug: 'welcome',
+            position: 10,
+            name: 'Welcome',
+            version: 1,
+          ),
+        ],
+        items: [
+          CachedSessionItemRecord(
+            id: 'item-a',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 10,
+            songId: 'song-1',
+            songTitle: 'Alpha',
+          ),
+          CachedSessionItemRecord(
+            id: 'item-b',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 20,
+            songId: 'song-2',
+            songTitle: 'Beta',
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-3', title: 'Gamma')],
+        sources: const [SongSource(id: 'song-3', source: '{title: Gamma}')],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWithValue(authController),
+          planningLocalDatabaseProvider.overrideWithValue(database),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningRemoteRefreshRepositoryProvider.overrideWithValue(
+            const _FailingPlanningRemoteRefreshRepository(),
+          ),
+          planningMutationRemoteRepositoryProvider.overrideWithValue(
+            const _AcceptedWriteFallbackPlanningMutationRemoteRepository(),
+          ),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          planningSyncStateProvider.overrideWithValue(
+            const PlanningSyncState(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              accessStatus: PlanningAccessStatus.signedIn,
+              refreshStatus: PlanningRefreshStatus.idle,
+              hasLocalPlanningData: true,
+              lastRefreshedAt: null,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        authController.dispose();
+        await database.close();
+        await songDatabase.close();
+      });
+
+      await container
+          .read(planningSyncControllerProvider)
+          .handleActiveContextChanged(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            refresh: false,
+          );
+
+      final writeService = container.read(planningWriteServiceProvider);
+      await writeService.addSongSessionItem(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const SessionItemCreateSongDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-3',
+        ),
+      );
+
+      var detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      final createdItem = detail.sessions.single.items.singleWhere(
+        (item) => item.song.id == 'song-3',
+      );
+      expect(createdItem.song.title, 'Gamma Accepted');
+      expect(
+        detail.sessions.single.items.map((item) => item.id),
+        orderedEquals(['item-a', 'item-b', createdItem.id]),
+      );
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.reorderSessionItems(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: SessionItemReorderDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          orderedSessionItemIds: [createdItem.id, 'item-b', 'item-a'],
+        ),
+      );
+
+      detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      expect(
+        detail.sessions.single.items.map((item) => item.id),
+        orderedEquals([createdItem.id, 'item-b', 'item-a']),
+      );
+      await _expectNoPendingPlanningMutations(container);
+
+      await writeService.deleteSessionItem(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: SessionItemDeleteDraft(
+          sessionItemId: 'item-b',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+
+      detail = await container
+          .read(planningRepositoryProvider)
+          .getPlanDetail('plan-1');
+      expect(
+        detail.sessions.single.items.map((item) => item.id),
+        orderedEquals([createdItem.id, 'item-a']),
+      );
+      expect(
+        detail.sessions.single.items.map((item) => item.song.title),
+        orderedEquals(const ['Gamma Accepted', 'Alpha']),
+      );
+      await _expectNoPendingPlanningMutations(container);
+    },
+  );
+}
+
+Future<void> _expectNoPendingPlanningMutations(
+  ProviderContainer container,
+) async {
+  expect(
+    await container
+        .read(planningMutationStoreProvider)
+        .readPendingMutations(userId: 'user-1', organizationId: 'org-1'),
+    isEmpty,
+  );
+  expect(
+    await container
+        .read(planningMutationStoreProvider)
+        .hasUnsyncedMutations(userId: 'user-1'),
+    isFalse,
+  );
+}
+
+class _FailingPlanningRemoteRefreshRepository
+    implements PlanningRemoteRefreshRepository {
+  const _FailingPlanningRemoteRefreshRepository();
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+  }) async {
+    throw Exception('offline');
+  }
+}
+
+class _AcceptedWriteFallbackPlanningMutationRemoteRepository
+    implements PlanningMutationRemoteRepository {
+  const _AcceptedWriteFallbackPlanningMutationRemoteRepository();
+
+  @override
+  Future<PlanningMutationRecord> syncMutation({
+    required String organizationId,
+    required PlanningMutationRecord record,
+  }) async {
+    switch (record.kind) {
+      case PlanningMutationKind.planCreate:
+        return record.copyWith(
+          slug: '${record.slug}-accepted',
+          name: '${record.name} Accepted',
+          description: '${record.description} Accepted',
+        );
+      case PlanningMutationKind.planEdit:
+        return record.copyWith(
+          name: '${record.name} Accepted',
+          description: '${record.description} Accepted',
+        );
+      case PlanningMutationKind.sessionCreate:
+        return record.copyWith(
+          slug: '${record.slug}-accepted',
+          name: '${record.name} Accepted',
+        );
+      case PlanningMutationKind.sessionRename:
+        return record.copyWith(name: '${record.name} Accepted');
+      case PlanningMutationKind.sessionDelete:
+      case PlanningMutationKind.sessionReorder:
+        return record;
+      case PlanningMutationKind.sessionItemCreateSong:
+        return record.copyWith(songTitle: '${record.songTitle} Accepted');
+      case PlanningMutationKind.sessionItemDelete:
+      case PlanningMutationKind.sessionItemReorder:
+        return record;
+    }
+  }
 }
 
 class _SignedInAuthRepository implements AuthRepository {

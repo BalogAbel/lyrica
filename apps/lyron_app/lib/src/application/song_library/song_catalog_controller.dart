@@ -103,13 +103,15 @@ class SongCatalogController extends ChangeNotifier {
       organizationId = await _resolveOrganizationId();
     } catch (error) {
       if (_isAuthorizationFailure(error)) {
-        _verifiedEmptyMembershipSeen = false;
         _setStateIfCurrent(
           generation,
           const CatalogSnapshotState.initial().copyWith(
             sessionStatus: CatalogSessionStatus.expired,
           ),
         );
+        _invalidateRefreshWork();
+        _stopRefreshScheduler();
+        _verifiedEmptyMembershipSeen = false;
         return;
       }
       if (_isConnectivityFailure(error)) {
@@ -269,6 +271,23 @@ class SongCatalogController extends ChangeNotifier {
         ),
       );
     } catch (error) {
+      if (_isAuthorizationFailure(error)) {
+        _setStateIfCurrent(
+          generation,
+          _state.copyWith(
+            clearContext: true,
+            connectionStatus: CatalogConnectionStatus.unavailable,
+            refreshStatus: CatalogRefreshStatus.failed,
+            sessionStatus: CatalogSessionStatus.expired,
+            hasCachedCatalog: false,
+          ),
+        );
+        _invalidateRefreshWork();
+        _stopRefreshScheduler();
+        _verifiedEmptyMembershipSeen = false;
+        return;
+      }
+
       final connectivityFailure = _isConnectivityFailure(error);
 
       _setStateIfCurrent(
