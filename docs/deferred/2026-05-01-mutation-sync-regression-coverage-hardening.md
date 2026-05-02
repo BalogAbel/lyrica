@@ -1,6 +1,6 @@
 # Mutation sync regression coverage hardening
 
-Status: Deferred
+Status: Resolved
 
 Classification: P2
 
@@ -24,15 +24,19 @@ Verified commands:
 - `bash scripts/tests/planning-write-contract-test.sh`
 - `bash scripts/tests/song-crud-write-contract-test.sh`
 
-## Gaps
+## Resolution
 
-- Planning accepted-write fallback is tested at controller callback level, but not through full provider/local-store integration for every mutation kind.
-- Song pending mutation persistence across Drift database reopen is not explicitly tested.
+The repository now defines and verifies the covered regression paths with provider/local-store and file-backed Drift reopen tests.
 
-## Required future tests
+Verified coverage:
 
 - Planning refresh failure after an accepted write updates the actual local projection for plan, session, session-item, and reorder paths.
 - Song pending create, update, and delete mutations survive Drift database reopen.
+
+Verified commands:
+
+- `cd apps/lyron_app && flutter test test/application/providers_test.dart`
+- `cd apps/lyron_app && flutter test test/offline/song_catalog/song_catalog_store_test.dart`
 
 ## Timing
 

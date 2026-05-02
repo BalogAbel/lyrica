@@ -34,6 +34,12 @@ Current foundation baseline:
 - capability code stability tests in Flutter
 - offline policy tests in Flutter
 
+Active local-first regression coverage includes:
+
+- Song session-expiry cache policy regression coverage for active catalog context clearing, cached read blocking, persisted cache row retention, and re-sign-in restoration.
+- Provider/local-store accepted-write fallback regression coverage for planning mutations when remote refresh fails.
+- Song pending mutation persistence across Drift reopen for pending create, pending update, pending delete, and overlay replay behavior.
+
 ### Widget Tests
 
 Cover:

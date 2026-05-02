@@ -305,6 +305,264 @@ void main() {
     );
 
     test(
+      'reopens pending create mutations with durable overlay reads',
+      () async {
+        await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'song-catalog-store-test-pending-create',
+          );
+          addTearDown(() async {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          });
+          final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+
+          final firstDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          final firstStore = DriftSongCatalogStore(firstDatabase);
+
+          await firstStore.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-local-1',
+              slug: 'local-song',
+              title: 'Local Song',
+              source: '{title: Local Song}',
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          );
+          await firstDatabase.close();
+
+          final secondDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          addTearDown(secondDatabase.close);
+          final secondStore = DriftSongCatalogStore(secondDatabase);
+
+          expect(
+            await secondStore.readSongMutations(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              syncStatuses: const [SongSyncStatus.pendingCreate],
+            ),
+            hasLength(1),
+          );
+          expect(
+            await secondStore.readActiveSummaries(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            const [
+              SongSummary(
+                id: 'song-local-1',
+                title: 'Local Song',
+                slug: 'local-song',
+              ),
+            ],
+          );
+          final reopenedSource = await secondStore.readActiveSource(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-local-1',
+          );
+          expect(reopenedSource?.id, 'song-local-1');
+          expect(reopenedSource?.source, '{title: Local Song}');
+        });
+      },
+    );
+
+    test(
+      'reopens pending update mutations with durable overlay reads',
+      () async {
+        await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'song-catalog-store-test-pending-update',
+          );
+          addTearDown(() async {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          });
+          final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+
+          final firstDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          final firstStore = DriftSongCatalogStore(firstDatabase);
+
+          await firstStore.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [
+              SongSummary(id: 'song-1', title: 'Alpha', slug: 'alpha'),
+            ],
+            sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+            refreshedAt: DateTime.utc(2026, 3, 26, 10),
+          );
+          await firstStore.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-1',
+              slug: 'alpha-edited',
+              title: 'Alpha Edited',
+              source: '{title: Alpha Edited}',
+              syncStatus: SongSyncStatus.pendingUpdate,
+              baseVersion: 7,
+              syncErrorContext: 'offline while editing',
+            ),
+          );
+          await firstDatabase.close();
+
+          final secondDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          addTearDown(secondDatabase.close);
+          final secondStore = DriftSongCatalogStore(secondDatabase);
+
+          expect(
+            await secondStore.readSongMutations(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              syncStatuses: const [SongSyncStatus.pendingUpdate],
+            ),
+            hasLength(1),
+          );
+          expect(
+            await secondStore.readActiveSummaryBySlug(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songSlug: 'alpha',
+            ),
+            isNull,
+          );
+          expect(
+            await secondStore.readActiveSummaryBySlug(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songSlug: 'alpha-edited',
+            ),
+            const SongSummary(
+              id: 'song-1',
+              title: 'Alpha Edited',
+              slug: 'alpha-edited',
+            ),
+          );
+          final reopenedSource = await secondStore.readActiveSource(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          );
+          expect(reopenedSource?.source, '{title: Alpha Edited}');
+          final reopenedMutation = await secondStore.readSongMutationBySongId(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          );
+          expect(reopenedMutation?.baseVersion, 7);
+          expect(reopenedMutation?.syncErrorContext, 'offline while editing');
+        });
+      },
+    );
+
+    test(
+      'reopens pending delete mutations with durable sync replay rows',
+      () async {
+        await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'song-catalog-store-test-pending-delete',
+          );
+          addTearDown(() async {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          });
+          final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+
+          final firstDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          final firstStore = DriftSongCatalogStore(firstDatabase);
+
+          await firstStore.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [
+              SongSummary(id: 'song-1', title: 'Alpha', slug: 'alpha'),
+            ],
+            sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+            refreshedAt: DateTime.utc(2026, 3, 26, 10),
+          );
+          await firstStore.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              source: '{title: Alpha pending delete}',
+              syncStatus: SongSyncStatus.pendingDelete,
+              baseVersion: 2,
+              syncErrorContext: 'dependency check deferred',
+            ),
+          );
+          await firstDatabase.close();
+
+          final secondDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          addTearDown(secondDatabase.close);
+          final secondStore = DriftSongCatalogStore(secondDatabase);
+
+          expect(
+            await secondStore.readSongMutations(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              syncStatuses: const [SongSyncStatus.pendingDelete],
+            ),
+            hasLength(1),
+          );
+          expect(
+            await secondStore.readActiveSummaries(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            isEmpty,
+          );
+          expect(
+            await secondStore.readActiveSummaryBySlug(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songSlug: 'alpha',
+            ),
+            isNull,
+          );
+          expect(
+            await secondStore.readActiveSource(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-1',
+            ),
+            isNull,
+          );
+          final reopenedMutation = await secondStore.readSongMutationBySongId(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          );
+          expect(reopenedMutation?.baseVersion, 2);
+          expect(
+            reopenedMutation?.syncErrorContext,
+            'dependency check deferred',
+          );
+        });
+      },
+    );
+
+    test(
       'overlays local mutation states while hiding pending delete rows from normal reads',
       () async {
         await store.replaceActiveSnapshot(

@@ -413,16 +413,23 @@ void main() {
     test(
       'authorization failure while resolving the active organization degrades to expired access instead of throwing',
       () async {
+        final foregroundState = _TestAppForegroundState();
+        var organizationCalls = 0;
         final controller = SongCatalogController(
           store: store,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => throw const PostgrestException(
-            message: 'permission denied',
-            code: '42501',
-          ),
+          organizationReader: () async {
+            organizationCalls += 1;
+            throw const PostgrestException(
+              message: 'permission denied',
+              code: '42501',
+            );
+          },
           sessionVerifier: () async => CatalogSessionStatus.verified,
+          foregroundState: foregroundState,
+          refreshInterval: const Duration(milliseconds: 1),
         );
 
         await expectLater(controller.refreshCatalog(), completes);
@@ -433,6 +440,59 @@ void main() {
           controller.state.connectionStatus,
           CatalogConnectionStatus.unavailable,
         );
+        expect(organizationCalls, 1);
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(organizationCalls, 1);
+      },
+    );
+
+    test(
+      'authorization failure while refreshing the song catalog expires the session and stops refresh retries',
+      () async {
+        final foregroundState = _TestAppForegroundState();
+        final delayedRepository = _DelayedSongRepository();
+        AppAuthSession? session;
+
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: delayedRepository,
+          authSessionReader: () => session,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          foregroundState: foregroundState,
+          refreshInterval: const Duration(milliseconds: 1),
+        );
+        addTearDown(controller.dispose);
+
+        session = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+        controller.handleSessionAvailable();
+
+        final refreshFuture = controller.refreshCatalog();
+        await delayedRepository.listSongsStarted.future;
+        expect(delayedRepository.listSongsCalls, 1);
+
+        delayedRepository.failWith(
+          const PostgrestException(message: 'permission denied', code: '403'),
+        );
+        await refreshFuture;
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.unavailable,
+        );
+        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(delayedRepository.listSongsCalls, 1);
+
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(delayedRepository.listSongsCalls, 1);
       },
     );
 
@@ -820,6 +880,12 @@ class _DelayedSongRepository implements SongRepository {
     _sources = sources;
     if (!_songsCompleter.isCompleted) {
       _songsCompleter.complete(songs);
+    }
+  }
+
+  void failWith(Object error) {
+    if (!_songsCompleter.isCompleted) {
+      _songsCompleter.completeError(error);
     }
   }
 }

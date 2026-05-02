@@ -1,6 +1,6 @@
 # Song session-expiry cache policy test and documentation hardening
 
-Status: Deferred
+Status: Resolved
 
 Classification: P2
 
@@ -15,21 +15,21 @@ Current behavior:
 - Planning deletes persisted local planning data on both explicit sign-out and session expiry.
 - Offline or unverifiable auth/session state still allows cached song fallback for the last authenticated user context.
 
-## Risk
+## Resolution
 
-This is not a proven unsafe access path.
+The repository now defines and verifies the session-expiry song cache policy with regression tests.
 
-The risk is regression or ambiguity around the distinction between:
-
-- preserving persisted song cache rows after session expiry; and
-- blocking active cached song access while the app is in `sessionExpired`.
-
-## Required future tests
+Verified coverage:
 
 - `sessionExpired` clears the song active catalog context.
-- Persisted song cache remains after session expiry, or is intentionally deleted if the policy changes.
-- Re-sign-in after expiry can reuse the persisted song cache only after `signedIn` and auth context are restored.
-- Provider/read path cannot access cached songs while auth state is `sessionExpired`.
+- Persisted song cache rows remain in the store after session expiry.
+- Provider/read paths cannot access cached songs while auth state is `sessionExpired`.
+- Re-sign-in restores the auth boundary before cached song data becomes readable again.
+
+Verified commands:
+
+- `cd apps/lyron_app && flutter test test/application/song_library/song_catalog_controller_test.dart`
+- `cd apps/lyron_app && flutter test test/application/providers_test.dart`
 
 ## Documentation
 
