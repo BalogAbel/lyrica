@@ -381,34 +381,72 @@ select:disabled {
   color: var(--muted);
 }
 
-.reader-card {
+.reader-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.reader-directive-card {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.reader-directive {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.reader-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.section-card {
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--surface);
   padding: 16px;
 }
 
-.reader-directive {
+.section-label {
   margin: 0 0 12px;
-  color: var(--accent);
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-family: "Fraunces", Georgia, serif;
 }
 
-.reader-lines {
+.section-lines {
   display: grid;
   gap: 10px;
-  font-size: calc(1rem * var(--reader-scale));
-  line-height: 1.8;
 }
 
-.reader-lines p {
-  margin: 0;
+.line-row {
+  display: grid;
+  gap: 10px;
+}
+
+.segment {
+  display: grid;
+  gap: 2px;
+}
+
+.chord-row {
+  min-height: 20px;
+}
+
+.lyric-row {
+  font-size: calc(1rem * var(--reader-scale));
+  line-height: 1.45;
 }
 
 .chord {
   display: inline-block;
   min-width: 3.1rem;
-  margin-right: 8px;
   padding: 2px 8px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 14%, transparent);

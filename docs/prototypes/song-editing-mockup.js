@@ -35,8 +35,9 @@ const derivedSettings = document.getElementById("derived-settings");
 const previewTitle = document.getElementById("preview-title");
 const previewSubtitle = document.getElementById("preview-subtitle");
 const previewBadges = document.getElementById("preview-badges");
+const readerDirectiveCard = document.getElementById("reader-directive-card");
 const readerDirective = document.getElementById("reader-directive");
-const readerLines = document.getElementById("reader-lines");
+const readerGrid = document.getElementById("reader-grid");
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const NOTE_INDEX = new Map(NOTE_NAMES.map((name, index) => [name, index]));
@@ -210,6 +211,21 @@ function parseChordPro(source) {
   return result;
 }
 
+function parseSectionLabel(text) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const labeled = trimmed.match(/^(verse|chorus|bridge|intro|outro)\s*(\d+)?$/i);
+  if (labeled) {
+    const label = labeled[1][0].toUpperCase() + labeled[1].slice(1).toLowerCase();
+    return labeled[2] ? `${label} ${labeled[2]}` : label;
+  }
+
+  return trimmed;
+}
+
 function getDirectiveRange(source, directiveName) {
   const directive = new RegExp(`^\\s*\\{${directiveName}:\\s*([^}]*)\\}\\s*$`, "mi");
   const match = source.match(directive);
@@ -322,37 +338,100 @@ function renderHighlightedSource(source) {
     .join("");
 }
 
+function parseLyricSegments(lineText, transpose, capo) {
+  const chordMatches = [...lineText.matchAll(/\[([^\]]+)\]/g)];
+  if (chordMatches.length === 0) {
+    return [
+      {
+        chord: null,
+        text: lineText.trimEnd(),
+      },
+    ];
+  }
+
+  return chordMatches.map((match, index) => {
+    const nextMatch = chordMatches[index + 1];
+    const text = lineText.slice(
+      match.index + match[0].length,
+      nextMatch ? nextMatch.index : lineText.length,
+    );
+    return {
+      chord: transposeChord(match[1], transpose - capo),
+      text,
+    };
+  });
+}
+
 function renderPreviewLines(parsed) {
-  const transpose = parsed.transpose;
-  const capo = parsed.capo;
-  const rendered = [];
+  const sections = [];
+  let currentSection = { label: "Verse 1", lines: [] };
 
-  if (capo > 0) {
-    readerDirective.hidden = false;
-    readerDirective.textContent = `Capo ${capo}`;
+  if (parsed.capo > 0) {
+    readerDirectiveCard.hidden = false;
+    readerDirective.textContent = `Capo ${parsed.capo}`;
   } else {
-    readerDirective.hidden = true;
+    readerDirectiveCard.hidden = true;
   }
 
-  for (const line of parsed.bodyLines) {
-    if (line.type === "blank") {
-      rendered.push("<p class=\"reader-empty\">&nbsp;</p>");
+  for (const entry of parsed.bodyLines) {
+    if (entry.type === "comment") {
+      const label = parseSectionLabel(entry.text);
+      if (currentSection.lines.length > 0 || currentSection.label) {
+        sections.push(currentSection);
+      }
+      currentSection = {
+        label: label || "Unlabeled",
+        lines: [],
+      };
       continue;
     }
 
-    if (line.type === "comment") {
-      rendered.push(`<p class="reader-comment">${escapeHtml(line.text)}</p>`);
+    if (entry.type === "blank") {
       continue;
     }
 
-    const html = escapeHtml(line.text).replace(/\[([^\]]+)\]/g, (_match, chord) => {
-      const transposed = transposeChord(chord, transpose - capo);
-      return `<span class="chord">${escapeHtml(transposed)}</span>`;
-    });
-    rendered.push(`<p>${html}</p>`);
+    currentSection.lines.push(entry.text);
   }
 
-  readerLines.innerHTML = rendered.join("");
+  if (currentSection.lines.length > 0 || currentSection.label) {
+    sections.push(currentSection);
+  }
+
+  if (sections.length === 0) {
+    readerGrid.innerHTML = "";
+    return;
+  }
+
+  readerGrid.innerHTML = sections
+    .map((section) => {
+      const lines = section.lines
+        .map((lineText) => {
+          const segments = parseLyricSegments(lineText, parsed.transpose, parsed.capo);
+          return `
+            <div class="line-row">
+              ${segments
+                .map(
+                  (segment) => `
+                    <div class="segment">
+                      <div class="chord-row">${segment.chord ? `<span class="chord">${escapeHtml(segment.chord)}</span>` : "&nbsp;"}</div>
+                      <div class="lyric-row">${escapeHtml(segment.text || "&nbsp;")}</div>
+                    </div>
+                  `,
+                )
+                .join("")}
+            </div>
+          `;
+        })
+        .join("");
+
+      return `
+        <article class="section-card">
+          <p class="section-label">${escapeHtml(section.label)}</p>
+          <div class="section-lines">${lines}</div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function updateDerivedSummary(parsed) {
