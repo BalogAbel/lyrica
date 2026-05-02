@@ -4,120 +4,125 @@
 
 ## Goal
 
-Rendezze a song editing feluletet ugy, hogy a title, metadata, chord source, transpose, es capo szerkesztes egy koherens, preview-kepes workspace legyen. A slice celja a vizualis es workflow irany tisztazasa egy repository-owned mockon keresztul, nem a vegleges Flutter implementacio.
+Define the visual and workflow direction for the song editing surface so title editing, structured metadata editing, chord source editing, and song-owned transpose/capo settings feel like one coherent workspace.
+
+This slice is prototype-first. The immediate deliverable is a repository-owned mock in `docs/prototypes/` that matches the visual vocabulary of the existing song reader, song list, and planning workspace prototypes before any implementation plan is written.
 
 ## Problem
 
-A jelenlegi song domain mar kezeli a canonical ChordPro forrast, a strukturalis metadata mezoket, es a reader oldali transpose/capo viselkedest, de a szerkesztesi felulet nincs ugyanilyen tiszta modon megszervezve.
+The repository already has clear durable rules for song data:
 
-Ez tobb problemat okoz:
+- ChordPro source is canonical
+- structured metadata lives in dedicated song fields
+- the reader already has runtime transpose and capo behavior
+- song CRUD already defines backend-enforced authorization, sync metadata, and local-first write rules
 
-- a title es metadata szerkesztes nincs egyertelmuen elvalasztva a chord source szerkesztestol
-- a song-owned transpose es capo ertekek es a reader runtime transpose/capo nem latszanak egymas mellett
-- a felulet kontextusa nem mutatja tisztan, mi canonical song data es mi csak preview vagy runtime viselkedes
-- a jelenlegi mock-vocabularyhoz illeszkedo editing surface hianyzik, ezert a design beszede ad hoc marad
+What is missing is a coherent editing surface that makes those rules understandable during day-to-day use. Today the user would have to infer too much from separate surfaces:
+
+- title and metadata editing are not visually grouped with the song source
+- song-owned transpose/capo settings are not clearly distinguished from reader runtime behavior
+- the relationship between stored settings and live preview is not explicit
+- the design language is not yet aligned with the existing prototype set under `docs/prototypes/`
 
 ## Scope
 
-- Definialja a song edit workspace vizualis szerkezetet.
-- Lefedi a title szerkesztest.
-- Lefedi az egyeb song metadata szerkeszteset.
-- Lefedi a canonical chord source szerkesztest.
-- Lefedi a songhoz kotott, ket-szintu transpose es capo modellt.
-- Lefedi a live preview / reader-feedback reszt, ahol latszik az effektive transpose es capo.
-- Letrehoz egy repository-owned mockot a meglovo `docs/prototypes/` mintajara.
-- Megorzi a jelenlegi backend-enforced authorization hatarat.
+- Define the song editing workspace layout and hierarchy.
+- Support title editing.
+- Support editing of existing structured song metadata fields.
+- Support canonical ChordPro source editing.
+- Support song-owned transpose and capo settings as part of the stored song model.
+- Show a live preview or feedback panel that reflects the resulting reader state.
+- Add a repository-owned mock under `docs/prototypes/` that follows the existing prototype conventions.
+- Preserve the backend-enforced authorization boundary for any future implementation.
 
 ## Non-Goals
 
+- No backend schema or policy changes in this slice.
 - No new authorization model.
-- No new backend policy slice.
 - No real-time collaborative editing.
-- No rich visual chord editor in this slice.
-- No reader redesign beyond the preview needed to validate song settings.
-- No final component decomposition for Flutter implementation until the mock es spec elfogadott.
+- No rich visual chord editor.
+- No redesign of the song reader beyond the preview needed to evaluate editing changes.
+- No implementation plan until the mock and spec are reviewed.
 
 ## Product Direction
 
-A song editing felulet legyen workspace, ne egymasra pakolt form mezohalmaz.
+The editor should feel like a workspace, not a stack of unrelated form controls.
 
-A usernek ezt kell gyorsan ertenie:
+The user should be able to answer these questions immediately:
 
-1. mit szerkeszt most
-2. melyik adat canonical
-3. melyik ertek csak preview vagy runtime
-4. hogyan hat a song szintu transpose/capo a readerre
+1. What song am I editing?
+2. Which values are canonical song data?
+3. Which values are stored settings versus reader runtime behavior?
+4. What will the reader look like after I save?
 
-A feluletnek a meglovo mockok nyelvet kell kovetnie:
+The editor should use the same prototype language as the rest of the repo:
 
-- topbar + reviewer controls
+- top bar with reviewer controls
 - surface-based layout
-- badge / pill alapu metadata
-- state switcher a fobb szemelyes latvany- es workflow-szcenariokhoz
+- badges and pills for compact metadata
+- a state switcher for important UI scenarios
+- calm, operational presentation instead of decorative chrome
 
 ## Editing Model
 
 ### Canonical Song Data
 
-A szerkesztes a song-owned adatokat kezeli:
+The editing surface must present the song's stored data as the primary editable source of truth.
+
+Required song data surfaces:
 
 - title
 - artist
 - key signature
 - tempo
 - tags
-- chordpro source
-- egyeb, mar letezo strukturalt metadata mezok
+- ChordPro source
+- other existing structured metadata fields already represented by the song model
 
-### Two-Level Transpose And Capo
+### Song-Owned Transpose And Capo
 
-Ez a slice ket szintet kulonit el:
+This slice treats transpose and capo as song-owned settings that belong to the stored song record, while the reader can still apply its own runtime adjustments later.
 
-- song-owned base values
-- reader runtime values
+The UI must make that separation explicit:
 
-Az editor csak a song-owned base values szerkeszteset vegzi.
-A runtime transpose/capo nem valtozik itt direktben, csak preview-ban latszik, hogy a song mentett ertekei milyen reader viselkedest eredmenyeznek.
+- stored song-level transpose and capo are editable in the song editor
+- reader runtime transpose and capo remain a separate concern
+- live preview shows the effective result of the stored song settings
+- the editor must not present runtime controls as if they were persisted song settings
 
-UI szabalyok:
+### Source Relationship
 
-- a song-level transpose es capo lathato, szerkesztheto, es canonical song settingkent jelenik meg
-- a reader preview az effective ertekeket mutatja, nem a belso delta-t
-- a feluletnek el kell valasztania a "stored setting" es a "resulting reader state" fogalmat
+The editor must make the source relationship obvious:
 
-### Source And Metadata Relationship
+- title and metadata are structured song fields
+- ChordPro source is canonical text source
+- transpose and capo settings are song-level settings that affect the reader preview
 
-A feluletnek tisztanak kell maradnia abban, hogy:
-
-- a title / metadata mezok strukturalt song data
-- a chordpro source a canonical szoveges forras
-- a transpose / capo beallitasok a songhoz kotottek, de a preview az olvaso oldali ertekekre utal
-
-Ha a forras es a strukturalt mezok kozott szinkron kell, azt a kesobbi implementacios tervnek kell pontositania. Ez a spec csak a vizualis es szerkesztesi modellt rogzi.
+If a later implementation decides that any additional field must be persisted or derived, that decision must be documented in the repository rather than left implicit in the mock.
 
 ## Layout Direction
 
 ### Recommended Shape
 
-A javasolt elrendezes egy haromreszes workspace:
+The preferred layout is a three-surface workspace:
 
-- bal oldalt song summary es metadata
-- kozepen canonical edit form / source editor
-- jobb oldalt live reader preview vagy transpose/capo feedback panel
+- left: song summary and metadata overview
+- center: canonical edit form and source editor
+- right: live preview and transpose/capo feedback
 
-Ez a felosztas azert jo, mert egyszerre mutatja a szerkesztett adatot es a hatasat.
+This layout gives the editor a stable mental model: edit on one side, verify effect on the other.
 
 ### Responsive Behavior
 
-Wide es tablet layoutnak ugyanazt a mental modellt kell tartani:
+The mock should demonstrate responsive behavior that follows the existing prototype style:
 
-- wide: teljes harom oszlopos workspace
-- tablet: a kulso panelek osszecsukhatok vagy alacsonyabb prioritasuak, de a canonical edit + preview kapcsolat maradjon lathato
-- compact: a workspace egy oszlopban, szekvencialis panelokkal menjen tovabb
+- wide: all three surfaces visible
+- tablet: surfaces can collapse or stack, but the canonical edit and preview relationship must remain understandable
+- compact: a single-column progression with the same content order
 
 ## State Model
 
-A mocknak es kesobbi UI-nak ezekre a states-re kell tudnia reagalni:
+The mock and eventual UI should be able to express these states:
 
 - default
 - loading
@@ -132,55 +137,69 @@ A mocknak es kesobbi UI-nak ezekre a states-re kell tudnia reagalni:
 
 ### State Meanings
 
-- `read-only`: a song megnyithato, de edit disabled
-- `unauthorized`: backend-enforced write deny
-- `pending mutation`: local-first valtozas var syncre
-- `conflict`: canonical backend state eltert a local edit baseline-tol
-- `validation error`: form vagy source hibas
-- `parse warning`: a source valid, de reader preview figyelmeztet
+- `read-only`: the song can be viewed but not edited
+- `unauthorized`: backend-enforced write access is denied
+- `pending mutation`: local-first change is waiting for sync
+- `conflict`: local changes diverged from the canonical server state
+- `validation error`: the form or source is invalid
+- `parse warning`: source is valid, but preview data includes a warning
 
-## Mock Requirements
+## Architecture Constraints
 
-Kell egy repository-owned prototype a `docs/prototypes/` mappaban, ugyanazzal a mintaival, mint a tobbi mock:
+- Presentation must stay within repository-owned prototypes and docs until implementation planning begins.
+- Any eventual implementation must keep backend-enforced authorization as the source of truth.
+- The editor must not introduce a second song-write state machine in the UI.
+- The editor must not redefine canonical song data semantics already described in `docs/domain/domain-model.md` and `docs/specs/2026-04-05-song-crud.md`.
+- If implementation work discovers a durable product or architecture decision, that decision must be mirrored in repository docs in the same change.
+
+## Prototype Requirements
+
+Create and maintain a prototype companion in `docs/prototypes/` using the existing prototype conventions:
 
 - `song-editing-mockup.html`
 - `song-editing-mockup.css`
 - `song-editing-mockup.js`
 
-A mock tartalmazza:
+The prototype should include reviewer controls matching the rest of the repo:
 
-- reviewer controls
-- screen switch a detail/edit/preview szemlelethez
-- layout switch wide/tablet/compact
-- theme switch standard/high-contrast/black
-- state switch a fenti state modelhez
-- edit form title, metadata, source, transpose, capo mezokkel
-- live preview panel, ami mutatja az effective transpose/capo eredmenyet
-- clear save/cancel/save-error visszajelzes
+- screen: detail, editor, preview
+- layout: tablet, wide, compact
+- theme: standard, high contrast, black
+- state: default, loading, empty song, read-only, unauthorized, pending mutation, conflict, validation error, parse warning, offline cached
 
-## Implementation Boundaries
+The prototype should show:
 
-- A slice nem vezet be uj auth szabalyokat.
-- A slice nem valtoztat backend ownership modelt.
-- A slice nem oldja meg a teljes chord source editor engine-t.
-- A slice nem keveri ossze a runtime reader controlokat a song-level edit mezokkel.
+- title editing
+- structured metadata editing
+- source editing
+- song-level transpose and capo editing
+- live preview that reflects the effective result of the stored settings
+- save, cancel, and error feedback
 
 ## Acceptance Criteria
 
-1. A spec tisztan kulon kezeli a song-level base transpose/capo es a reader runtime transpose/capo szerepet.
-2. A title, metadata, chord source, transpose, es capo egy workspace-ben latszik.
-3. A felulet canonical edit es preview kapcsolatot mutat, nem csak mezoket.
-4. A mock illeszkedik a meglovo `docs/prototypes/` vizualis nyelvhez.
-5. A mock tud state es layout valtasokat.
-6. A song edit UI nem allit fel uj backend auth vagy write szabalyokat.
-7. A kesobbi implementacios plan a spec alapjan meg tudja kulonboztetni a presentation-only es a durable domain valtozasokat.
+1. The spec clearly separates stored song-level transpose/capo from reader runtime transpose/capo.
+2. Title, metadata, source, transpose, and capo all appear within one coherent workspace.
+3. The workspace shows a clear relationship between editable song data and preview output.
+4. The prototype follows the existing `docs/prototypes/` visual vocabulary.
+5. The prototype supports layout, theme, screen, and state review controls.
+6. The spec does not introduce new backend authorization rules.
+7. The spec does not contradict the existing song domain model or song CRUD slice.
+8. Any future implementation can translate the spec into a concrete plan without inventing missing product decisions.
+
+## Validation Notes
+
+- Review the mock in browser against the existing prototype set.
+- Validate the editing hierarchy on wide, tablet, and compact layouts.
+- Validate the state switcher against normal, read-only, unauthorized, pending, conflict, and error scenarios.
+- Validate that the preview communicates the effect of stored settings without collapsing into the reader runtime control model.
 
 ## Documentation Impact
 
-Ez a slice frissiti:
+This slice must update:
 
 - `docs/prototypes/song-editing-mockup.html`
 - `docs/prototypes/song-editing-mockup.css`
 - `docs/prototypes/song-editing-mockup.js`
-- `docs/plans/` az implementacios tervvel
-- `docs/domain/domain-model.md` csak akkor, ha a vegleges implementacios terv uj, tartos song-mezot vagy uj transzpose/capo tarolasi szabalyat vezet be
+- `docs/plans/` once the implementation plan is written
+- `docs/domain/domain-model.md` only if the eventual implementation introduces a durable schema or semantics change for song editing settings
