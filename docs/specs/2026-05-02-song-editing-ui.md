@@ -58,7 +58,6 @@ The editor should use the same prototype language as the rest of the repo:
 
 - top bar with reviewer controls
 - surface-based layout
-- badges and pills for compact metadata
 - a state switcher for important UI scenarios
 - calm, operational presentation instead of decorative chrome
 
@@ -103,21 +102,19 @@ If a later implementation decides that any additional field must be persisted or
 
 ### Recommended Shape
 
-The preferred layout is a three-surface workspace:
+The preferred layout is a two-surface workspace:
 
 - left: derived song summary and metadata overview
-- center: canonical ChordPro source editor
-- right: live preview and transpose/capo feedback
+- right: canonical ChordPro source editor with an internal Source / Preview toggle
 
-This layout gives the editor a stable mental model: source in the middle, derived summary on one side, effect on the other.
+This layout gives the editor a stable mental model: derived data on one side, source in the main editing block, preview available without leaving that block.
 
 ### Responsive Behavior
 
 The mock should demonstrate responsive behavior that follows the existing prototype style:
 
-- wide: all three surfaces visible
+- wide: both main surfaces visible, with the source block offering Source / Preview toggle
 - tablet: switchable surface tabs for `Overview`, `Source`, and `Preview`
-- compact: a single-column progression with the same content order
 
 Tablet mode should default to `Source` and allow the user to switch between the derived summary, source editor, and preview without losing context.
 
@@ -164,16 +161,16 @@ Create and maintain a prototype companion in `docs/prototypes/` using the existi
 The prototype should include reviewer controls matching the rest of the repo:
 
 - screen: overview, source, preview
-- layout: tablet, wide, compact
+- layout: tablet, wide
 - theme: standard, high contrast, black
 - state: default, loading, empty song, read-only, unauthorized, pending mutation, conflict, validation error, parse warning, offline cached
 
 The prototype should show:
 
 - derived summary display for title and metadata
-- source editing with syntax-highlight-ready styling
+- source editing
 - song-level transpose and capo editing
-- live preview that reflects the effective result of the stored settings
+- preview that reflects the effective result of the stored settings
 - save, cancel, and error feedback
 
 ## Acceptance Criteria
@@ -190,7 +187,7 @@ The prototype should show:
 ## Validation Notes
 
 - Review the mock in browser against the existing prototype set.
-- Validate the editing hierarchy on wide, tablet, and compact layouts.
+- Validate the editing hierarchy on wide and tablet layouts.
 - Validate tablet surface switching across `Overview`, `Source`, and `Preview`.
 - Validate the state switcher against normal, read-only, unauthorized, pending, conflict, and error scenarios.
 - Validate that the preview communicates the effect of stored settings without collapsing into the reader runtime control model.
