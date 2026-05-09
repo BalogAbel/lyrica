@@ -75,4 +75,35 @@ void main() {
     expect(controller.state.source, isNot(contains('{transpose: 4}')));
     expect(controller.state.source, isNot(contains('{capo: 4}')));
   });
+
+  test(
+    'new transpose and capo directives are inserted before section comments',
+    () {
+      final controller = SongEditorController(
+        source: '''
+{title: Heart of Worship}
+{subtitle: When the music fades}
+{key: D}
+
+{comment:<Intro>}
+[D]When the music fades
+''',
+      );
+
+      controller.transposeUp();
+      controller.capoUp();
+
+      final source = controller.state.source;
+      final transposeIndex = source.indexOf('{transpose: 1}');
+      final capoIndex = source.indexOf('{capo: 1}');
+      final commentIndex = source.indexOf('{comment:<Intro>}');
+
+      expect(transposeIndex, isNonNegative);
+      expect(capoIndex, isNonNegative);
+      expect(commentIndex, isNonNegative);
+      expect(transposeIndex, lessThan(commentIndex));
+      expect(capoIndex, lessThan(commentIndex));
+      expect(transposeIndex, lessThan(capoIndex));
+    },
+  );
 }

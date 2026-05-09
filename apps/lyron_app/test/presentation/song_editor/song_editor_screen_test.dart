@@ -127,6 +127,40 @@ Line two
     expect(find.textContaining('Transpose +1 · Capo 1'), findsOneWidget);
   });
 
+  testWidgets('dirty back asks before discarding edits', (tester) async {
+    await _pumpScreen(tester, const Size(1440, 1200));
+
+    await tester.enterText(find.byType(TextField), '''
+{title: Changed Song}
+[D]Changed line
+''');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('song-editor-back-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard changes?'), findsOneWidget);
+    expect(find.text('You have unsaved song edits.'), findsOneWidget);
+    expect(find.text('Keep editing'), findsOneWidget);
+    expect(find.text('Discard'), findsOneWidget);
+  });
+
+  testWidgets('dirty cancel asks before discarding edits', (tester) async {
+    await _pumpScreen(tester, const Size(1440, 1200));
+
+    await tester.enterText(find.byType(TextField), '''
+{title: Changed Song}
+[D]Changed line
+''');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Discard changes?'), findsOneWidget);
+    expect(find.text('You have unsaved song edits.'), findsOneWidget);
+  });
+
   testWidgets('tablet layout uses overview, source, and preview tabs', (
     tester,
   ) async {

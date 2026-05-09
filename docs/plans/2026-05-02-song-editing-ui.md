@@ -209,3 +209,45 @@ If implementation work changes any durable rule, update the repository docs in t
 ### Rollback plan
 
 If the slice goes sideways, revert the editor route and editor presentation files first, then keep the prototype and docs as the stable reference point for a smaller follow-up slice.
+
+### Task 5: Add unsaved change protection
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/presentation/song_editor/song_editor_screen.dart`
+- Add: `apps/lyron_app/lib/src/presentation/song_editor/browser_unsaved_changes_guard.dart`
+- Add: `apps/lyron_app/lib/src/presentation/song_editor/browser_unsaved_changes_guard_stub.dart`
+- Add: `apps/lyron_app/lib/src/presentation/song_editor/browser_unsaved_changes_guard_web.dart`
+- Modify: `apps/lyron_app/lib/src/shared/app_strings.dart`
+- Modify: `apps/lyron_app/test/presentation/song_editor/song_editor_screen_test.dart`
+- Modify: `apps/lyron_app/test/router/song_editor_route_test.dart` if route-level back/cancel coverage needs the router
+
+- [x] **Step 1: Write failing tests for dirty leave behavior**
+
+Cover:
+
+- dirty back shows a discard confirmation before leaving
+- dirty cancel shows a discard confirmation before leaving
+- clean back/cancel still leave without confirmation
+- save still persists and returns without discard confirmation
+
+Run:
+
+```bash
+flutter test apps/lyron_app/test/presentation/song_editor/song_editor_screen_test.dart apps/lyron_app/test/router/song_editor_route_test.dart
+```
+
+Expected: FAIL until the guard is implemented.
+
+- [x] **Step 2: Implement the dirty leave guard**
+
+Use one confirmation path for Back, Cancel, and route pop/browser back.
+
+Do not add a confirmation before Save.
+
+- [x] **Step 3: Add Flutter Web reload/tab-close protection**
+
+Use a conditional web hook so non-web builds keep using a no-op implementation.
+
+- [x] **Step 4: Re-run verification**
+
+Run the editor screen and route tests plus formatting.

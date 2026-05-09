@@ -15,19 +15,16 @@ import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.da
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
-import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/lyric_segment.dart';
-import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyron_app/src/domain/song/song_section.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_providers.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/slug_route_resolvers.dart';
-import 'package:lyron_app/src/presentation/song_editor/song_editor_providers.dart';
-import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
@@ -346,6 +343,7 @@ void main() {
     final store = await _pumpEditorAndReturnToSongView(
       tester,
       actionLabel: 'Cancel',
+      confirmDiscard: true,
       editedSource: '''
 {title: Heart of Worship}
 {artist: Matt Redman}
@@ -529,6 +527,7 @@ Future<_RecordingSongMutationStore> _pumpEditorAndReturnToSongView(
   String? editedSource,
   SongMutationRecord? existingRecord,
   bool expectSongViewReturn = true,
+  bool confirmDiscard = false,
 }) async {
   final repository = _TestAuthRepository(
     restoredSession: const AppAuthSession(
@@ -671,6 +670,12 @@ Future<_RecordingSongMutationStore> _pumpEditorAndReturnToSongView(
 
   await tester.tap(find.text(actionLabel));
   await tester.pumpAndSettle();
+
+  if (confirmDiscard) {
+    expect(find.text(AppStrings.songEditorDiscardChangesTitle), findsOneWidget);
+    await tester.tap(find.text(AppStrings.songEditorDiscardAction));
+    await tester.pumpAndSettle();
+  }
 
   if (expectSongViewReturn) {
     expect(find.text('Reader Song'), findsWidgets);

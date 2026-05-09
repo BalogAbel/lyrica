@@ -3,9 +3,8 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.da
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
 class SongEditorProjection {
-  SongEditorProjection({required SongEditorState state})
-    : state = state,
-      summaryTitle = state.parsedSong.title.trim().isEmpty
+  SongEditorProjection({required this.state})
+    : summaryTitle = state.parsedSong.title.trim().isEmpty
           ? 'Untitled song'
           : state.parsedSong.title.trim(),
       summaryArtist = state.parsedSong.artist.trim().isEmpty

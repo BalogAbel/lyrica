@@ -20,6 +20,10 @@ class AppStrings {
   static const songDeleteAction = 'Delete song';
   static const songSaveAction = 'Save';
   static const songCancelAction = 'Cancel';
+  static const songEditorDiscardChangesTitle = 'Discard changes?';
+  static const songEditorDiscardChangesMessage = 'You have unsaved song edits.';
+  static const songEditorKeepEditingAction = 'Keep editing';
+  static const songEditorDiscardAction = 'Discard';
   static const songTitleLabel = 'Title';
   static const songSourceLabel = 'ChordPro source';
   static const unsyncedSignOutTitle = 'Discard unsynced changes?';
