@@ -97,7 +97,8 @@ String _upsertDirective(
   bool clampAtZero = false,
 }) {
   final adjustedValue = clampAtZero && value < 0 ? 0 : value;
-  final lines = source.split(RegExp(r'\r?\n'));
+  final lineEnding = _detectLineEnding(source);
+  final lines = source.split(RegExp(r'\r\n?|\n'));
   final directive = '{$directiveName: $adjustedValue}';
   final regex = RegExp('^\\s*\\{\\s*$directiveName\\s*:', caseSensitive: false);
   final firstLyricIndex = _firstLyricLineIndex(lines);
@@ -118,7 +119,7 @@ String _upsertDirective(
         lines.removeAt(index);
       }
     }
-    return lines.join('\n');
+    return lines.join(lineEnding);
   }
 
   for (final index in matchingIndices.reversed) {
@@ -133,7 +134,17 @@ String _upsertDirective(
     lines.add(directive);
   }
 
-  return lines.join('\n');
+  return lines.join(lineEnding);
+}
+
+String _detectLineEnding(String source) {
+  if (source.contains('\r\n')) {
+    return '\r\n';
+  }
+  if (source.contains('\r')) {
+    return '\r';
+  }
+  return '\n';
 }
 
 int _baseDirectiveInsertionIndex(List<String> lines) {

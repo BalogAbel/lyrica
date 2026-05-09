@@ -7,6 +7,7 @@ void main() {
     final controller = SongEditorController(
       source: '''
 {title: Heart of Worship}
+{subtitle: When the music fades}
 {artist: Matt Redman}
 {key: D}
 {tempo: 72}
@@ -27,6 +28,7 @@ void main() {
     expect(projection.summaryTags, 'worship, acoustic');
     expect(projection.summaryTranspose, '+1');
     expect(projection.summaryCapo, '2');
+    expect(projection.preview.subtitle, 'When the music fades');
   });
 
   test('preview reflects the stored transpose and capo settings only', () {

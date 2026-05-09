@@ -107,7 +107,7 @@ void main() {
     },
   );
 
-  test('directive updates normalize CRLF line endings', () {
+  test('directive updates preserve CRLF line endings', () {
     final controller = SongEditorController(
       source:
           '{title: Heart of Worship}\r\n'
@@ -117,8 +117,8 @@ void main() {
 
     controller.transposeUp();
 
-    expect(controller.state.source, contains('{transpose: 1}\n'));
-    expect(controller.state.source, isNot(contains('\r')));
+    expect(controller.state.source, contains('{transpose: 1}\r\n'));
+    expect(controller.state.source, contains('\r\n{comment:<Intro>}\r\n'));
   });
 
   test('directive updates match case-insensitive names and spaced colons', () {

@@ -28,6 +28,7 @@ class SongEditorState {
 class SongEditorParsedSong {
   SongEditorParsedSong({
     required this.title,
+    required this.subtitle,
     required this.artist,
     required this.sourceKey,
     required this.tempoBpm,
@@ -41,6 +42,7 @@ class SongEditorParsedSong {
        diagnostics = List.unmodifiable(diagnostics);
 
   final String title;
+  final String? subtitle;
   final String artist;
   final String? sourceKey;
   final int? tempoBpm;
@@ -53,7 +55,11 @@ class SongEditorParsedSong {
   ParsedSong toReaderSong() {
     return ParsedSong(
       title: title,
+      subtitle: subtitle,
+      artist: artist,
       sourceKey: sourceKey,
+      tempoBpm: tempoBpm,
+      tags: tags,
       baseTranspose: baseTranspose,
       baseCapo: baseCapo,
       sections: sections,
@@ -70,6 +76,7 @@ SongEditorParsedSong _parseSongEditorSource(String source) {
 
   return SongEditorParsedSong(
     title: parsedSong.title,
+    subtitle: parsedSong.subtitle,
     artist: parsedSong.artist ?? '',
     sourceKey: parsedSong.sourceKey,
     tempoBpm: parsedSong.tempoBpm,
