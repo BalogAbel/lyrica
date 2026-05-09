@@ -106,4 +106,39 @@ void main() {
       expect(transposeIndex, lessThan(capoIndex));
     },
   );
+
+  test('directive updates normalize CRLF line endings', () {
+    final controller = SongEditorController(
+      source:
+          '{title: Heart of Worship}\r\n'
+          '{comment:<Intro>}\r\n'
+          '[D]When the music fades\r\n',
+    );
+
+    controller.transposeUp();
+
+    expect(controller.state.source, contains('{transpose: 1}\n'));
+    expect(controller.state.source, isNot(contains('\r')));
+  });
+
+  test('directive updates match case-insensitive names and spaced colons', () {
+    final controller = SongEditorController(
+      source: '''
+{title: Heart of Worship}
+{Transpose : 2}
+{CAPO : 3}
+[D]When the music fades
+''',
+    );
+
+    controller.transposeUp();
+    controller.capoDown();
+
+    expect(controller.state.parsedSong.baseTranspose, 3);
+    expect(controller.state.parsedSong.baseCapo, 2);
+    expect(controller.state.source, contains('{transpose: 3}'));
+    expect(controller.state.source, contains('{capo: 2}'));
+    expect(controller.state.source, isNot(contains('{Transpose : 2}')));
+    expect(controller.state.source, isNot(contains('{CAPO : 3}')));
+  });
 }

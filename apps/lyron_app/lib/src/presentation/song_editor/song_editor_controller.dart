@@ -1,4 +1,5 @@
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_directives.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 
 class SongEditorController {
@@ -52,7 +53,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'transpose',
-        value: _currentDirectiveInt(_state.source, 'transpose') + 1,
+        value: currentPreLyricDirectiveInt(_state.source, 'transpose') + 1,
       ),
     );
   }
@@ -62,7 +63,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'transpose',
-        value: _currentDirectiveInt(_state.source, 'transpose') - 1,
+        value: currentPreLyricDirectiveInt(_state.source, 'transpose') - 1,
       ),
     );
   }
@@ -72,7 +73,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'capo',
-        value: _currentDirectiveInt(_state.source, 'capo') + 1,
+        value: currentPreLyricDirectiveInt(_state.source, 'capo') + 1,
       ),
     );
   }
@@ -82,26 +83,11 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'capo',
-        value: _currentDirectiveInt(_state.source, 'capo') - 1,
+        value: currentPreLyricDirectiveInt(_state.source, 'capo') - 1,
         clampAtZero: true,
       ),
     );
   }
-}
-
-int _currentDirectiveInt(String source, String directiveName) {
-  for (final line in ChordproLineScanner().scan(source)) {
-    if (line.kind == ChordproLineKind.lyric) {
-      break;
-    }
-
-    if (line.kind == ChordproLineKind.directive &&
-        line.directiveName == directiveName) {
-      return int.tryParse(line.directiveValue?.trim() ?? '') ?? 0;
-    }
-  }
-
-  return 0;
 }
 
 String _upsertDirective(
@@ -111,9 +97,9 @@ String _upsertDirective(
   bool clampAtZero = false,
 }) {
   final adjustedValue = clampAtZero && value < 0 ? 0 : value;
-  final lines = source.split('\n');
+  final lines = source.split(RegExp(r'\r?\n'));
   final directive = '{$directiveName: $adjustedValue}';
-  final regex = RegExp('^\\s*\\{$directiveName:');
+  final regex = RegExp('^\\s*\\{\\s*$directiveName\\s*:', caseSensitive: false);
   final firstLyricIndex = _firstLyricLineIndex(lines);
   final insertionIndex = _baseDirectiveInsertionIndex(lines);
   final matchingIndices = <int>[

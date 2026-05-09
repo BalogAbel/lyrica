@@ -127,6 +127,32 @@ Line two
     expect(find.textContaining('Transpose +1 · Capo 1'), findsOneWidget);
   });
 
+  testWidgets('transpose and capo controls preserve source cursor location', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      const Size(1440, 1200),
+      initialSource: '''
+{title: Heart of Worship}
+{comment:<Intro>}
+[D]When the music fades
+''',
+    );
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    final controller = textField.controller!;
+    final lyricOffset = controller.text.indexOf('[D]When');
+    controller.selection = TextSelection.collapsed(offset: lyricOffset);
+
+    await tester.tap(find.byKey(const ValueKey('transpose-increase')));
+    await tester.pumpAndSettle();
+
+    expect(
+      controller.text.substring(controller.selection.baseOffset),
+      startsWith('[D]When'),
+    );
+  });
+
   testWidgets('dirty back asks before discarding edits', (tester) async {
     await _pumpScreen(tester, const Size(1440, 1200));
 
