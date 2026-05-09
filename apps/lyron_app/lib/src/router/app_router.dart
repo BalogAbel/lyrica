@@ -104,6 +104,12 @@ GoRouter createAppRouter({
         builder: (context, state) =>
             SongSlugRouteResolver(songSlug: state.pathParameters['songSlug']!),
       ),
+      GoRoute(
+        path: AppRoutes.songEditor.path,
+        builder: (context, state) => SongEditorSlugRouteResolver(
+          songSlug: state.pathParameters['songSlug']!,
+        ),
+      ),
     ],
   );
 }

@@ -331,6 +331,7 @@ The first product slice adds app-local song-reading concepts that sit at the rep
 - `SongSummary` is the minimal list projection with `id` and `title`.
 - `SongSource` returns the raw ChordPro source for a song ID.
 - `ParsedSong`, `SongSection`, `SongLine`, and `LyricSegment` model the parsed reader document.
+- `ParsedSong` also carries ChordPro-derived metadata used by the reader and editor slices, including `artist`, `tempoBpm`, `tags`, `sourceKey`, `baseTranspose`, and `baseCapo`.
 - `ParseDiagnostic` records warning or error context for parser output.
 - `SongReaderResult` pairs a parsed song with derived warning state for the reader UI.
 

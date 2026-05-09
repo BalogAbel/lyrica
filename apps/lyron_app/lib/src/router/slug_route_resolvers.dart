@@ -5,6 +5,8 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_providers.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -42,6 +44,46 @@ class SongSlugRouteResolver extends ConsumerWidget {
         }
 
         return SongReaderScreen(songId: song.id);
+      },
+    );
+  }
+}
+
+class SongEditorSlugRouteResolver extends ConsumerWidget {
+  const SongEditorSlugRouteResolver({super.key, required this.songSlug});
+
+  final String songSlug;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalogState = ref.watch(catalogSnapshotStateProvider);
+    if (catalogState.context == null &&
+        catalogState.refreshStatus == CatalogRefreshStatus.refreshing) {
+      return const _RouteStateScaffold(
+        message: AppStrings.songReaderLoadingMessage,
+      );
+    }
+
+    final songAsync = ref.watch(songEditorRouteDataProvider(songSlug));
+    return songAsync.when(
+      loading: () => const _RouteStateScaffold(
+        message: AppStrings.songReaderLoadingMessage,
+      ),
+      error: (error, stackTrace) => const _RouteStateScaffold(
+        message: AppStrings.songReaderLoadFailureMessage,
+      ),
+      data: (song) {
+        if (song == null) {
+          return const _RouteStateScaffold(
+            message: AppStrings.routeNotFoundMessage,
+          );
+        }
+
+        return SongEditorScreen(
+          songId: song.songId,
+          songSlug: song.songSlug,
+          initialSource: song.source,
+        );
       },
     );
   }

@@ -7,6 +7,7 @@ enum AppRoutes {
   planSessionSongReader(
     '/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug',
   ),
+  songEditor('/songs/:songSlug/edit'),
   songReader('/songs/:songSlug');
 
   const AppRoutes(this.path);

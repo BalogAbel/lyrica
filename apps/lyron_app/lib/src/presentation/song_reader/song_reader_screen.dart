@@ -412,48 +412,24 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return trimmed;
   }
 
-  Future<void> _editSong(BuildContext context, SongReaderResult result) async {
+  Future<void> _editSong(BuildContext context) async {
     final activeContext = ref.read(activeCatalogContextProvider);
     if (activeContext == null) {
       return;
     }
-    final currentSource = await ref
+    final songSummary = await ref
         .read(songLibraryServiceProvider)
-        .getSongSource(context: activeContext, songId: widget.songId);
+        .getSongSummaryById(context: activeContext, songId: widget.songId);
     if (!context.mounted) {
       return;
     }
 
-    final draft = await showDialog<(String, String)>(
-      context: context,
-      builder: (context) => _SongEditDialog(
-        initialTitle: result.song.title,
-        initialSource: currentSource.source,
-      ),
-    );
-
-    if (draft == null) {
+    final songSlug = songSummary?.slug;
+    if (songSlug == null || songSlug.isEmpty) {
       return;
     }
 
-    try {
-      await ref
-          .read(songLibraryServiceProvider)
-          .updateSong(
-            context: activeContext,
-            songId: widget.songId,
-            title: draft.$1,
-            chordproSource: draft.$2,
-          );
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
-      ref.invalidate(songLibraryReaderProvider(widget.songId));
-    } on SongConflictResolutionRequiredException {
-      if (!context.mounted) {
-        return;
-      }
-      await _showConflictResolutionRequiredDialog(context);
-    }
+    context.push(AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug));
   }
 
   Future<void> _deleteSong(BuildContext context) async {
@@ -613,7 +589,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                     );
                     break;
                   case _SongReaderOverflowAction.edit:
-                    unawaited(_editSong(context, readerResult));
+                    unawaited(_editSong(context));
                     break;
                   case _SongReaderOverflowAction.delete:
                     unawaited(_deleteSong(context));
@@ -845,80 +821,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 ),
         ),
       ),
-    );
-  }
-}
-
-class _SongEditDialog extends StatefulWidget {
-  const _SongEditDialog({
-    required this.initialTitle,
-    required this.initialSource,
-  });
-
-  final String initialTitle;
-  final String initialSource;
-
-  @override
-  State<_SongEditDialog> createState() => _SongEditDialogState();
-}
-
-class _SongEditDialogState extends State<_SongEditDialog> {
-  late final TextEditingController _titleController;
-  late final TextEditingController _sourceController;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.initialTitle);
-    _sourceController = TextEditingController(text: widget.initialSource);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _sourceController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text(AppStrings.songEditAction),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: AppStrings.songTitleLabel,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _sourceController,
-              minLines: 4,
-              maxLines: null,
-              decoration: const InputDecoration(
-                labelText: AppStrings.songSourceLabel,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text(AppStrings.songCancelAction),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(
-            context,
-          ).pop((_titleController.text.trim(), _sourceController.text)),
-          child: const Text(AppStrings.songSaveAction),
-        ),
-      ],
     );
   }
 }
