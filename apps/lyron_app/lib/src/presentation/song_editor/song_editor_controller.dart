@@ -1,5 +1,5 @@
-import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 
 class SongEditorController {
   SongEditorController({
@@ -115,6 +115,7 @@ String _upsertDirective(
   final directive = '{$directiveName: $adjustedValue}';
   final regex = RegExp('^\\s*\\{$directiveName:');
   final firstLyricIndex = _firstLyricLineIndex(lines);
+  final insertionIndex = _baseDirectiveInsertionIndex(lines);
   final matchingIndices = <int>[
     for (var index = 0; index < lines.length; index += 1)
       if (regex.hasMatch(lines[index])) index,
@@ -138,8 +139,8 @@ String _upsertDirective(
     lines.removeAt(index);
   }
 
-  if (firstLyricIndex < lines.length) {
-    lines.insert(firstLyricIndex, directive);
+  if (insertionIndex < lines.length) {
+    lines.insert(insertionIndex, directive);
   } else if (source.trim().isEmpty) {
     return directive;
   } else {
@@ -147,6 +148,44 @@ String _upsertDirective(
   }
 
   return lines.join('\n');
+}
+
+int _baseDirectiveInsertionIndex(List<String> lines) {
+  var lastMetadataIndex = -1;
+  for (var index = 0; index < lines.length; index += 1) {
+    final trimmed = lines[index].trim();
+    if (trimmed.isEmpty) {
+      continue;
+    }
+
+    final line = ChordproLineScanner().scan(trimmed).first;
+    if (line.kind == ChordproLineKind.lyric) {
+      return lastMetadataIndex >= 0 ? lastMetadataIndex + 1 : index;
+    }
+
+    if (_isEditorMetadataDirective(line.directiveName)) {
+      lastMetadataIndex = index;
+      continue;
+    }
+
+    return lastMetadataIndex >= 0 ? lastMetadataIndex + 1 : index;
+  }
+
+  return lastMetadataIndex >= 0 ? lastMetadataIndex + 1 : lines.length;
+}
+
+bool _isEditorMetadataDirective(String? directiveName) {
+  return switch (directiveName) {
+    'title' ||
+    'subtitle' ||
+    'artist' ||
+    'key' ||
+    'tempo' ||
+    'tags' ||
+    'transpose' ||
+    'capo' => true,
+    _ => false,
+  };
 }
 
 int _firstLyricLineIndex(List<String> lines) {

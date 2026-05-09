@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
-import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 
 final class SongEditorRouteData {
   const SongEditorRouteData({

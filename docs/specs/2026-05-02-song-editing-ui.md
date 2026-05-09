@@ -98,6 +98,19 @@ The editor must make the source relationship obvious:
 
 If a later implementation decides that any additional field must be persisted or derived, that decision must be documented in the repository rather than left implicit in the mock.
 
+### Unsaved Change Protection
+
+The editor must protect dirty source edits from accidental loss:
+
+- `Save` persists the current source and returns to the song reader without an additional confirmation.
+- `Cancel` asks for confirmation before discarding dirty edits.
+- editor back navigation asks for confirmation before discarding dirty edits.
+- route pop / browser back navigation uses the same discard confirmation when dirty.
+- browser reload or tab close should use the platform-native unsaved changes warning where Flutter Web supports it.
+- clean editor state can leave immediately without confirmation.
+
+Confirmation copy should make the destructive action clear: the user can keep editing or discard local edits.
+
 ## Layout Direction
 
 ### Recommended Shape

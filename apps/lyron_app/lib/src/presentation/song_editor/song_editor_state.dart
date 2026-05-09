@@ -1,6 +1,4 @@
-import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_section.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
