@@ -4,6 +4,8 @@
 
 **Goal:** Implement the ChordPro-first song editing surface that matches the approved prototype: derived summary on the left, canonical source on the right, Source / Preview toggle inside the canonical block, and tablet tabs for `Overview`, `Source`, and `Preview`.
 
+Status: Implemented
+
 **Assumptions:** The repository already treats ChordPro source as canonical, with derived song fields refreshed from that source. No backend authorization changes are part of this slice. The mock in `docs/prototypes/song-editing-mockup.*` is the visual and interaction reference.
 
 **Architecture:** Add a dedicated song editor presentation slice that reuses the existing song/domain parsing rules instead of inventing a second write model. The editor should parse ChordPro locally, show derived summary output, and keep capo / transpose adjustments inside the canonical source workflow. Keep reader runtime behavior separate from song-owned settings.
@@ -22,7 +24,7 @@
 - Add: `apps/lyron_app/test/router/song_editor_route_test.dart`
 - Add: `apps/lyron_app/test/presentation/song_editor/song_editor_screen_test.dart`
 
-- [ ] **Step 1: Write route tests for the new editor entry point**
+- [x] **Step 1: Write route tests for the new editor entry point**
 
 Cover:
 
@@ -38,13 +40,13 @@ flutter test apps/lyron_app/test/router/song_editor_route_test.dart
 
 Expected: FAIL because the route and screen do not exist yet.
 
-- [ ] **Step 2: Add a song editor route and resolver**
+- [x] **Step 2: Add a song editor route and resolver**
 
 Add a dedicated route for the editor using the same slug-resolution pattern as the reader.
 
 Keep the route surface limited to the editor shell; do not reuse reader widgets directly.
 
-- [ ] **Step 3: Build the editor screen shell**
+- [x] **Step 3: Build the editor screen shell**
 
 Add the first-pass screen structure:
 
@@ -53,7 +55,7 @@ Add the first-pass screen structure:
 - save / cancel actions
 - state switcher surfaces for the mock states already documented in the spec
 
-- [ ] **Step 4: Re-run the route and screen tests**
+- [x] **Step 4: Re-run the route and screen tests**
 
 Run:
 
@@ -74,7 +76,7 @@ Expected: PASS once the route and shell are wired.
 - Modify: `apps/lyron_app/lib/src/domain/song/parsed_song.dart` if the editor needs additional parsed fields already implied by the spec
 - Modify: `apps/lyron_app/lib/src/infrastructure/song_library/chordpro/chordpro_parser.dart` only if the editor needs parser support that the reader slice does not already expose
 
-- [ ] **Step 1: Write failing tests for ChordPro-first editing behavior**
+- [x] **Step 1: Write failing tests for ChordPro-first editing behavior**
 
 Cover:
 
@@ -91,7 +93,7 @@ flutter test apps/lyron_app/test/presentation/song_editor/song_editor_controller
 
 Expected: FAIL until the editor controller and projection exist.
 
-- [ ] **Step 2: Add editor state and controller**
+- [x] **Step 2: Add editor state and controller**
 
 Model the editor around:
 
@@ -102,7 +104,7 @@ Model the editor around:
 
 Keep the user-facing write path limited to the source text and its source directives.
 
-- [ ] **Step 3: Add projection logic for the summary and preview views**
+- [x] **Step 3: Add projection logic for the summary and preview views**
 
 Projection should map the parsed song into:
 
@@ -113,7 +115,7 @@ Projection should map the parsed song into:
 
 Avoid duplicating the reader runtime state machine in the editor.
 
-- [ ] **Step 4: Re-run the editor state tests**
+- [x] **Step 4: Re-run the editor state tests**
 
 Run:
 
@@ -130,7 +132,7 @@ Expected: PASS.
 - Modify: `apps/lyron_app/lib/src/presentation/song_editor/song_editor_screen.dart`
 - Add: `apps/lyron_app/test/presentation/song_editor/widgets/song_editor_*_test.dart`
 
-- [ ] **Step 1: Add tests for wide and tablet behavior**
+- [x] **Step 1: Add tests for wide and tablet behavior**
 
 Cover:
 
@@ -147,7 +149,7 @@ flutter test apps/lyron_app/test/presentation/song_editor/song_editor_screen_tes
 
 Expected: FAIL until responsive shell behavior is implemented.
 
-- [ ] **Step 2: Build the responsive panels**
+- [x] **Step 2: Build the responsive panels**
 
 Implement the layout so it matches the prototype:
 
@@ -155,13 +157,13 @@ Implement the layout so it matches the prototype:
 - tablet: `Overview`, `Source`, `Preview` tabs
 - no compact mode in this slice
 
-- [ ] **Step 3: Align preview styling with the reader**
+- [x] **Step 3: Align preview styling with the reader**
 
 Make the preview panel feel like the current song reader rather than a generic text preview.
 
 Use the existing reader visuals as the reference point, not a fresh style system.
 
-- [ ] **Step 4: Re-run the responsive UI tests**
+- [x] **Step 4: Re-run the responsive UI tests**
 
 Run:
 
@@ -178,7 +180,7 @@ Expected: PASS.
 - Modify: `docs/domain/domain-model.md` only if implementation forces a durable semantic change
 - Add or modify: any new editor docs required by the implementation
 
-- [ ] **Step 1: Verify the prototype and Flutter implementation against each other**
+- [x] **Step 1: Verify the prototype and Flutter implementation against each other**
 
 Check that the implemented editor still matches the prototype decisions:
 
@@ -187,11 +189,11 @@ Check that the implemented editor still matches the prototype decisions:
 - canonical source with Source / Preview toggle
 - tablet tabs only, no compact mode
 
-- [ ] **Step 2: Run the relevant test slice**
+- [x] **Step 2: Run the relevant test slice**
 
 Use the smallest meaningful test set that covers the editor route, controller, projection, and screen behavior before merging.
 
-- [ ] **Step 3: Mirror any durable product decision into docs**
+- [x] **Step 3: Mirror any durable product decision into docs**
 
 If implementation work changes any durable rule, update the repository docs in the same change instead of leaving the decision in chat.
 

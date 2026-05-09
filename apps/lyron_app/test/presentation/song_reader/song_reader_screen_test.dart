@@ -34,6 +34,7 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expan
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
+import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
@@ -167,9 +168,10 @@ void main() {
 
   Widget buildRoutedApp({
     required SongReaderResult result,
+    SongLibraryService? songLibraryService,
     String initialLocation = '/songs/$songId',
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
-      context: null,
+      context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
       connectionStatus: CatalogConnectionStatus.online,
       refreshStatus: CatalogRefreshStatus.idle,
       sessionStatus: CatalogSessionStatus.verified,
@@ -187,6 +189,12 @@ void main() {
           builder: (context, state) =>
               SongReaderScreen(songId: state.pathParameters['songId']!),
         ),
+        GoRoute(
+          path: AppRoutes.songEditor.path,
+          builder: (context, state) => SongEditorSlugRouteResolver(
+            songSlug: state.pathParameters['songSlug']!,
+          ),
+        ),
       ],
     );
 
@@ -194,6 +202,8 @@ void main() {
       overrides: [
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        if (songLibraryService != null)
+          songLibraryServiceProvider.overrideWithValue(songLibraryService),
         songLibraryListProvider.overrideWith(
           (ref) async => const [SongSummary(id: songId, title: 'Reader Song')],
         ),
@@ -674,13 +684,14 @@ void main() {
     expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
   });
 
-  testWidgets('editing a conflicted row shows the explicit resolution dialog', (
-    tester,
-  ) async {
+  testWidgets('edit action opens the song editor route', (tester) async {
     await tester.pumpWidget(
-      buildApp(
+      buildRoutedApp(
         result: buildResult(),
-        songLibraryService: _ConflictRejectingSongLibraryService(),
+        songLibraryService: SongLibraryService(
+          _ReaderFakeSongRepository(),
+          _ReaderFakeSongRepository(),
+        ),
         catalogState: const CatalogSnapshotState(
           context: ActiveCatalogContext(
             userId: 'user-1',
@@ -700,14 +711,15 @@ void main() {
     await tester.tap(find.text(AppStrings.songEditAction));
     await tester.pumpAndSettle();
 
-    final sourceField = tester.widget<TextField>(find.byType(TextField).last);
-    expect(sourceField.maxLines, isNull);
+    expect(find.text('Edit song'), findsOneWidget);
+    expect(find.text('Canonical source'), findsOneWidget);
+    expect(find.byType(SongReaderScreen), findsNothing);
 
-    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.tap(find.byKey(const ValueKey('song-editor-back-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.songConflictTitle), findsOneWidget);
-    expect(find.text(AppStrings.songConflictMessage), findsOneWidget);
+    expect(find.text('Reader Song'), findsWidgets);
+    expect(find.text('Edit song'), findsNothing);
   });
 
   testWidgets(

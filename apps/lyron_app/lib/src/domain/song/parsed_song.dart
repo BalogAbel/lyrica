@@ -10,17 +10,24 @@ class ParsedSong {
   ParsedSong({
     required this.title,
     this.subtitle,
+    this.artist,
     this.sourceKey,
+    this.tempoBpm,
+    List<String> tags = const [],
     this.baseTranspose = 0,
     this.baseCapo = 0,
     required List<SongSection> sections,
     required List<ParseDiagnostic> diagnostics,
-  }) : sections = List.unmodifiable(sections),
+  }) : tags = List.unmodifiable(tags),
+       sections = List.unmodifiable(sections),
        diagnostics = List.unmodifiable(diagnostics);
 
   final String title;
   final String? subtitle;
+  final String? artist;
   final String? sourceKey;
+  final int? tempoBpm;
+  final List<String> tags;
   final int baseTranspose;
   final int baseCapo;
   final List<SongSection> sections;
@@ -31,7 +38,10 @@ class ParsedSong {
     return other is ParsedSong &&
         other.title == title &&
         other.subtitle == subtitle &&
+        other.artist == artist &&
         other.sourceKey == sourceKey &&
+        other.tempoBpm == tempoBpm &&
+        _listEquals(other.tags, tags) &&
         other.baseTranspose == baseTranspose &&
         other.baseCapo == baseCapo &&
         _listEquals(other.sections, sections) &&
@@ -42,7 +52,10 @@ class ParsedSong {
   int get hashCode => Object.hash(
     title,
     subtitle,
+    artist,
     sourceKey,
+    tempoBpm,
+    Object.hashAll(tags),
     baseTranspose,
     baseCapo,
     Object.hashAll(sections),

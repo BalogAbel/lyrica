@@ -10,7 +10,10 @@ class ChordproParser {
   ParsedSong parse(String source) {
     var title = '';
     String? subtitle;
+    String? artist;
     String? sourceKey;
+    int? tempoBpm;
+    var tags = const <String>[];
     var baseTranspose = 0;
     var baseCapo = 0;
     var hasSeenSongContent = false;
@@ -40,6 +43,8 @@ class ChordproParser {
           title = line.directiveValue ?? '';
         } else if (directiveName == 'subtitle') {
           subtitle = line.directiveValue;
+        } else if (directiveName == 'artist') {
+          artist = line.directiveValue?.trim();
         } else if (directiveName == 'key') {
           if (!hasSeenSongContent) {
             final normalizedKey = line.directiveValue?.trim();
@@ -95,6 +100,15 @@ class ChordproParser {
               baseTranspose = parsedTranspose;
             }
           }
+        } else if (directiveName == 'tempo') {
+          tempoBpm = _parseDirectiveInteger(
+            directiveValue: line.directiveValue,
+            directiveName: directiveName,
+            lineNumber: line.lineNumber,
+            diagnostics: diagnostics,
+          );
+        } else if (directiveName == 'tags') {
+          tags = _parseTags(line.directiveValue);
         } else if (directiveName == 'comment') {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);
@@ -150,7 +164,10 @@ class ChordproParser {
     return ParsedSong(
       title: title,
       subtitle: subtitle,
+      artist: artist,
       sourceKey: sourceKey,
+      tempoBpm: tempoBpm,
+      tags: tags,
       baseTranspose: baseTranspose,
       baseCapo: baseCapo,
       sections: sections
@@ -276,6 +293,19 @@ class ChordproParser {
     }
 
     return segments;
+  }
+
+  List<String> _parseTags(String? directiveValue) {
+    if (directiveValue == null) {
+      return const [];
+    }
+
+    final normalized = directiveValue
+        .split(',')
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toList(growable: false);
+    return List.unmodifiable(normalized);
   }
 
   int? _parseDirectiveInteger({
