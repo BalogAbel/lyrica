@@ -1,6 +1,6 @@
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
+import 'package:lyron_app/src/presentation/song_editor/song_editor_directives.dart';
 
 enum SongEditorCanonicalViewMode { source, preview }
 
@@ -65,8 +65,8 @@ class SongEditorParsedSong {
 SongEditorParsedSong _parseSongEditorSource(String source) {
   final parser = ChordproParser();
   final parsedSong = parser.parse(source);
-  final transpose = _currentDirectiveInt(source, 'transpose');
-  final capo = _currentDirectiveInt(source, 'capo');
+  final transpose = currentPreLyricDirectiveInt(source, 'transpose');
+  final capo = currentPreLyricDirectiveInt(source, 'capo');
 
   return SongEditorParsedSong(
     title: parsedSong.title,
@@ -79,19 +79,4 @@ SongEditorParsedSong _parseSongEditorSource(String source) {
     sections: parsedSong.sections,
     diagnostics: parsedSong.diagnostics,
   );
-}
-
-int _currentDirectiveInt(String source, String directiveName) {
-  for (final line in ChordproLineScanner().scan(source)) {
-    if (line.kind == ChordproLineKind.lyric) {
-      break;
-    }
-
-    if (line.kind == ChordproLineKind.directive &&
-        line.directiveName == directiveName) {
-      return int.tryParse(line.directiveValue?.trim() ?? '') ?? 0;
-    }
-  }
-
-  return 0;
 }

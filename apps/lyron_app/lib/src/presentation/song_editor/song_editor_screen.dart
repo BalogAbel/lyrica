@@ -92,34 +92,69 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
   void _transposeDown() {
     setState(() {
+      final previousSource = _sourceController.text;
+      final previousSelection = _sourceController.selection;
       _controller.transposeDown();
-      _sourceController.text = _controller.state.source;
+      _syncSourceControllerText(
+        previousSource: previousSource,
+        previousSelection: previousSelection,
+      );
       _setDirty(true);
     });
   }
 
   void _transposeUp() {
     setState(() {
+      final previousSource = _sourceController.text;
+      final previousSelection = _sourceController.selection;
       _controller.transposeUp();
-      _sourceController.text = _controller.state.source;
+      _syncSourceControllerText(
+        previousSource: previousSource,
+        previousSelection: previousSelection,
+      );
       _setDirty(true);
     });
   }
 
   void _capoDown() {
     setState(() {
+      final previousSource = _sourceController.text;
+      final previousSelection = _sourceController.selection;
       _controller.capoDown();
-      _sourceController.text = _controller.state.source;
+      _syncSourceControllerText(
+        previousSource: previousSource,
+        previousSelection: previousSelection,
+      );
       _setDirty(true);
     });
   }
 
   void _capoUp() {
     setState(() {
+      final previousSource = _sourceController.text;
+      final previousSelection = _sourceController.selection;
       _controller.capoUp();
-      _sourceController.text = _controller.state.source;
+      _syncSourceControllerText(
+        previousSource: previousSource,
+        previousSelection: previousSelection,
+      );
       _setDirty(true);
     });
+  }
+
+  void _syncSourceControllerText({
+    required String previousSource,
+    required TextSelection previousSelection,
+  }) {
+    final nextSource = _controller.state.source;
+    _sourceController.value = TextEditingValue(
+      text: nextSource,
+      selection: _preserveSelectionAfterSourceRewrite(
+        previousSource: previousSource,
+        nextSource: nextSource,
+        previousSelection: previousSelection,
+      ),
+    );
   }
 
   void _commitChanges() {
@@ -269,6 +304,64 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
         _controller.setCanonicalViewMode(SongEditorCanonicalViewMode.preview);
       }
     });
+  }
+
+  TextSelection _preserveSelectionAfterSourceRewrite({
+    required String previousSource,
+    required String nextSource,
+    required TextSelection previousSelection,
+  }) {
+    if (!previousSelection.isValid) {
+      return TextSelection.collapsed(offset: nextSource.length);
+    }
+
+    final prefixLength = _sharedPrefixLength(previousSource, nextSource);
+    final suffixLength = _sharedSuffixLength(
+      previousSource,
+      nextSource,
+      prefixLength,
+    );
+    final previousChangedEnd = previousSource.length - suffixLength;
+    final nextChangedEnd = nextSource.length - suffixLength;
+    final delta = nextSource.length - previousSource.length;
+
+    int mapOffset(int offset) {
+      if (offset <= prefixLength) {
+        return offset;
+      }
+      if (offset >= previousChangedEnd) {
+        return (offset + delta).clamp(0, nextSource.length);
+      }
+      return nextChangedEnd.clamp(0, nextSource.length);
+    }
+
+    return TextSelection(
+      baseOffset: mapOffset(previousSelection.baseOffset),
+      extentOffset: mapOffset(previousSelection.extentOffset),
+      affinity: previousSelection.affinity,
+      isDirectional: previousSelection.isDirectional,
+    );
+  }
+
+  int _sharedPrefixLength(String left, String right) {
+    final maxLength = left.length < right.length ? left.length : right.length;
+    var index = 0;
+    while (index < maxLength &&
+        left.codeUnitAt(index) == right.codeUnitAt(index)) {
+      index += 1;
+    }
+    return index;
+  }
+
+  int _sharedSuffixLength(String left, String right, int prefixLength) {
+    final maxLength = left.length < right.length ? left.length : right.length;
+    var count = 0;
+    while (count < maxLength - prefixLength &&
+        left.codeUnitAt(left.length - count - 1) ==
+            right.codeUnitAt(right.length - count - 1)) {
+      count += 1;
+    }
+    return count;
   }
 
   @override
