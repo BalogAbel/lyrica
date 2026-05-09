@@ -199,12 +199,14 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       return;
     }
 
+    final songId = widget.songId;
+    final songViewLocation = _songViewLocation();
     final service = ref.read(songLibraryServiceProvider);
     final projection = SongEditorProjection(state: _controller.state);
     try {
       await service.updateSong(
         context: activeContext,
-        songId: widget.songId,
+        songId: songId,
         title: projection.summaryTitle,
         chordproSource: _controller.state.source,
       );
@@ -222,9 +224,9 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
     ref.invalidate(songLibraryListProvider);
     ref.invalidate(songMutationEntriesProvider);
-    ref.invalidate(songLibraryReaderProvider(widget.songId));
+    ref.invalidate(songLibraryReaderProvider(songId));
     _commitChanges();
-    context.replace(_songViewLocation());
+    context.replace(songViewLocation);
   }
 
   Future<void> _showConflictResolutionRequiredDialog(BuildContext context) {
