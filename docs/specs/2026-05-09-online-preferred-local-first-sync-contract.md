@@ -88,9 +88,9 @@ The unified manual sync implementation should:
 - leave domain-specific recovery actions visible for conflicts, authorization denials, and dependency-blocked mutations
 - avoid hiding failed or conflicted work behind a single generic error state
 
-## Song Local State Contract
+## Generic Local Lifecycle Patterns
 
-Song state in this contract means the durable state of a known local song record. It does not include records that are not present in the local authenticated cache.
+Entity state in this contract means the durable state of a known local record or local ordering intent. It does not include records that are not present in the local authenticated cache.
 
 Sync activity, connectivity, and freshness are separate dimensions:
 
@@ -98,74 +98,150 @@ Sync activity, connectivity, and freshness are separate dimensions:
 - `connectivity`: online, offline, or unknown
 - `freshness`: fresh, stale, or offline cached
 
-Syncing is not a song lifecycle state. It is transient activity over one or more durable local states.
+Syncing is not an entity lifecycle state. It is transient activity over one or more durable local states.
 
-### Song States
+Retryable network, timeout, or temporary backend failures do not change entity state. They remain sync metadata on the current pending local state.
 
-- `Created`: a new locally-created song that has not been accepted by the backend. It appears in normal song UI with pending status.
-- `Synced`: a local copy of a backend-accepted song state. It may be stale; the state only means there is no known local divergence.
-- `Edited`: a previously backend-accepted song with local edits that have not been accepted by the backend. The edited version appears in normal song UI with pending status.
-- `Removed`: a local delete intent. The song is hidden from normal song lists, route lookup, and reader surfaces, but the record may remain visible in sync or recovery surfaces until backend acceptance or discard.
-- `CreatedConflict`: a created song is blocked by a non-retryable create rejection. The exact rejection reasons remain implementation-specific for now; examples include backend validation, authorization, or slug/title collision.
-- `EditedConflict`: an edited song is blocked by update rejection, such as version conflict, authorization denial, remote deletion, or another non-retryable backend rejection.
-- `RemovedConflict`: a local delete intent is blocked by delete rejection, such as version conflict, authorization denial, dependency blocking, or another non-retryable backend rejection.
+### Item Lifecycle Pattern
 
-Retryable network, timeout, or temporary backend failures do not change the song state. They remain sync metadata on the current `Created`, `Edited`, or `Removed` record.
+The item lifecycle applies to user-visible records that can be created locally, loaded from backend refresh, edited, removed, and recovered through intent-specific conflict states.
 
-### Song State Diagram
+Generic item states:
+
+- `Created`: a new locally-created item that has not been accepted by the backend. It appears in normal UI with pending status unless entity-specific rules say otherwise.
+- `Synced`: a local copy of a backend-accepted item state. It may be stale; the state only means there is no known local divergence.
+- `Edited`: a previously backend-accepted item with local edits that have not been accepted by the backend. The edited version appears in normal UI with pending status.
+- `Removed`: a local remove intent. The item is hidden from normal UI, but the record may remain visible in sync or recovery surfaces until backend acceptance or discard.
+- `CreatedConflict`: a created item is blocked by a non-retryable create rejection. Exact rejection reasons can stay entity-specific.
+- `EditedConflict`: an edited item is blocked by update rejection, such as version conflict, authorization denial, remote deletion, or another non-retryable backend rejection.
+- `RemovedConflict`: a local remove intent is blocked by remove rejection, such as version conflict, authorization denial, dependency blocking, or another non-retryable backend rejection.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Synced: backend refresh loads song
-    [*] --> Created: user creates song locally
+    [*] --> Synced: backend refresh loads item
+    [*] --> Created: user creates item locally
 
     Created --> Synced: create accepted
     Created --> CreatedConflict: create rejected
     Created --> [*]: discard create
 
-    Synced --> Edited: edit song
+    Synced --> Edited: edit item
     Edited --> Synced: update accepted or discard edit
     Edited --> EditedConflict: update rejected
 
-    Synced --> Removed: delete song
-    Removed --> [*]: delete accepted or already deleted remotely
-    Removed --> RemovedConflict: delete rejected
-    Removed --> Synced: undo or discard delete
+    Synced --> Removed: remove item
+    Removed --> [*]: remove accepted or already removed remotely
+    Removed --> RemovedConflict: remove rejected
+    Removed --> Synced: undo or discard remove
 
     CreatedConflict --> Created: edit conflicted draft
     CreatedConflict --> [*]: discard create
 
-    EditedConflict --> Edited: edit conflicted song
+    EditedConflict --> Edited: edit conflicted item
     EditedConflict --> Synced: explicit overwrite accepted or discard edit
 
-    RemovedConflict --> Synced: discard delete
-    RemovedConflict --> [*]: explicit delete accepted
+    RemovedConflict --> Synced: discard remove
+    RemovedConflict --> [*]: explicit remove accepted
 ```
 
 Same-state events are intentionally omitted from the diagram:
 
 - editing a `Created` draft keeps it `Created`
-- editing an `Edited` song before backend acceptance keeps it `Edited`
+- editing an `Edited` item before backend acceptance keeps it `Edited`
 - rejected explicit overwrite keeps an `EditedConflict` in `EditedConflict`
-- rejected explicit delete keeps a `RemovedConflict` in `RemovedConflict`
+- rejected explicit remove keeps a `RemovedConflict` in `RemovedConflict`
 
-### Song Discard Semantics
-
-Discard actions are intent-specific:
+Generic discard actions are intent-specific:
 
 - `discard create`: the local created record is removed from the authenticated cache.
 - `discard edit`: the local edited version is replaced by the backend-accepted or restored canonical local state.
-- `discard delete`: the local delete intent is cleared, the song returns to `Synced`, and the song becomes visible in normal song UI again.
+- `discard remove`: the local remove intent is cleared, the item returns to `Synced`, and the item becomes visible in normal UI again.
 
-### Song Conflict Recovery Rules
+Generic conflict recovery rules:
 
-Create conflicts are resolved by editing the conflicted draft into a new `Created` intent or discarding the local create. There is no explicit overwrite path for create conflicts because no backend-accepted song exists yet.
+- Create conflicts are resolved by editing the conflicted draft into a new `Created` intent or discarding the local create. There is no explicit overwrite path for create conflicts because no backend-accepted item exists yet.
+- Edit conflicts may be resolved by editing the conflicted item into a new `Edited` intent, discarding the edit, or using an explicit backend-authorized overwrite path. The item only returns to `Synced` through explicit overwrite after the backend accepts that overwrite.
+- Remove conflicts may be resolved by discarding the remove intent or using an explicit backend-authorized remove path. The record only leaves local state after the backend accepts the explicit remove.
 
-Edit conflicts may be resolved by editing the conflicted song into a new `Edited` intent, discarding the edit, or using an explicit backend-authorized overwrite path. The song only returns to `Synced` through explicit overwrite after the backend accepts that overwrite.
+### Reorder Lifecycle Pattern
 
-Remove conflicts may be resolved by discarding the delete or using an explicit backend-authorized delete path. The record only leaves local state after the backend accepts the explicit delete.
+The reorder lifecycle applies to sibling collection ordering, not item editing. Reorder is a local intent over a collection such as sessions within one plan or session items within one session.
 
-Open decision: song delete dependency policy. The current delete-blocking behavior may be too strict if any historical plan or session item references the song. A later implementation slice must decide whether deletion should only be blocked by future or active planning usage, whether historical references should retain tombstone song titles, and how dependency-blocked delete recovery should work.
+Generic reorder states:
+
+- `Synced`: the local order reflects a backend-accepted order.
+- `Reordered`: a local order intent exists and has not been accepted by the backend.
+- `ReorderConflict`: a local order intent is blocked by reorder rejection, such as base-order conflict, authorization denial, changed sibling set, or another non-retryable backend rejection.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Synced: backend refresh loads order
+
+    Synced --> Reordered: reorder locally
+    Reordered --> Synced: reorder accepted or discard order
+    Reordered --> ReorderConflict: reorder rejected
+
+    ReorderConflict --> Reordered: reorder again
+    ReorderConflict --> Synced: explicit reorder overwrite accepted or discard order
+```
+
+Reorder overwrite rule:
+
+The local order wins for siblings known to the local reorder intent. Backend siblings not present in the local reorder intent are preserved and appended deterministically. Reorder overwrite must not delete siblings; deletion requires a separate remove intent.
+
+## Entity Mapping
+
+### Song
+
+Songs use the item lifecycle pattern.
+
+Song-specific rules:
+
+- `Created` songs appear in normal song UI with pending status.
+- `Edited` songs show the local edited version in normal song UI with pending status.
+- `Removed` songs are hidden from normal song lists, route lookup, and reader surfaces.
+- `CreatedConflict` may represent backend validation, authorization, slug/title collision, or another non-retryable create rejection. The exact create rejection taxonomy is not finalized in this contract.
+- Existing song CRUD remote-deletion recovery remains valid: edited songs that were deleted remotely require explicit recovery rather than silent loss of local edits.
+
+### Plan
+
+Plans use the item lifecycle pattern. Plans also own a reorder lifecycle for their session order.
+
+Plan-specific rules:
+
+- `Removed` plan means local intent to delete the plan and its full hierarchy.
+- Backend-accepted plan delete removes the plan, its sessions, and its session items.
+- Any plan may be deleted, including past plans and future plans.
+- Plan session order uses the reorder lifecycle pattern and represents ordering of sessions within one plan.
+- Plan create or edit rejection recovery can be driven by editing the conflicted draft or plan; slug/name collision recovery UI remains an implementation detail.
+
+### Session
+
+Sessions use the item lifecycle pattern. Sessions also own a reorder lifecycle for their session item order.
+
+Session-specific rules:
+
+- Session create, rename, and delete map to `Created`, `Edited`, and `Removed`.
+- Session item order uses the reorder lifecycle pattern and represents ordering of session items within one session.
+- Session delete policy is not finalized in this contract.
+
+### Session Item
+
+Session items use the item lifecycle pattern for add-song and remove-song intent.
+
+Session-item-specific rules:
+
+- Adding a song to a session maps to `Created`.
+- Removing a song from a session maps to `Removed`.
+- There is no `Edited` branch for session items in the current product model because session items do not yet have editable user-facing fields.
+- Duplicate-song, song-unavailable, and deleted-song recovery policies remain entity-specific implementation decisions.
+
+## Open Decisions
+
+- Song delete dependency policy: current delete-blocking behavior may be too strict if any historical plan or session item references the song. A later implementation slice must decide whether deletion should only be blocked by future or active planning usage, whether historical references should retain tombstone song titles, and how dependency-blocked delete recovery should work.
+- Standalone session delete policy: a later planning slice must decide whether directly deleting a non-empty session removes all session items with it, requires an empty session, or uses another recovery model. This does not reopen the plan-delete decision; backend-accepted plan delete removes the full plan hierarchy.
+- Session item edit branch: the current model omits `Edited` for session items; a future slice that adds editable session-item fields must opt that entity into the edit branch.
+- Create rejection taxonomy: created item conflicts can include validation, authorization, and slug/name collisions. Detailed user-facing recovery copy can be defined in implementation slices.
 
 ## Implementation Slice 1: Contract And Status Model
 
