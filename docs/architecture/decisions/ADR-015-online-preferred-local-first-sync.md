@@ -21,7 +21,7 @@ For Lyron:
 - UI reads come from repository-owned local projections or merged local-first views.
 - Online refresh improves freshness but does not become required for core preparation work when usable local state exists.
 - Local write intent remains durable until backend acceptance, explicit discard, conflict resolution, or explicit sign-out cleanup.
-- Entity lifecycle state is separate from sync activity, connectivity, and freshness. For songs, syncing is transient activity over durable local states such as created, synced, edited, removed, and intent-specific conflict states.
+- Entity lifecycle state is separate from sync activity, connectivity, and freshness. Item-style entities use created, synced, edited, removed, and intent-specific conflict states; reorder-style collection intents use synced, reordered, and reorder-conflict states. Syncing is transient activity over these durable local states.
 - Manual sync should converge all active-organization local work, not only the current screen's data.
 - Offline-to-online and foreground/resume events should trigger refresh and pending mutation sync where platform signals are available.
 - Realtime subscription events are invalidation triggers only.
