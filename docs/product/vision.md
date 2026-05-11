@@ -7,10 +7,11 @@ Lyron Chords helps worship and music teams prepare, organize, and run services w
 ## Product Principles
 
 1. Offline operation is a first-class requirement.
-2. Operational simplicity matters more than exposing raw domain complexity.
-3. Canonical data formats must remain durable and portable.
-4. Collaboration must work across devices without making users think about infrastructure.
-5. Authorization must preserve organizational boundaries and editing safety.
+2. Online availability should improve freshness and collaboration without making core preparation work depend on connectivity.
+3. Operational simplicity matters more than exposing raw domain complexity.
+4. Canonical data formats must remain durable and portable.
+5. Collaboration must work across devices without making users think about infrastructure.
+6. Authorization must preserve organizational boundaries and editing safety.
 
 ## MVP Outcomes
 
@@ -22,6 +23,7 @@ Lyron Chords helps worship and music teams prepare, organize, and run services w
 - The next planned offline mutation slice validates that songs can be fully managed (Create, Update, Delete) locally and safely synchronized to the backend utilizing optimistic concurrency control, manual conflict resolution, and UUID v4 primary keys.
 - The first executable planning slice validates a simplified `plan -> session -> session_items` hierarchy with real seeded Supabase data and a minimal signed-in read-only plan list/detail flow.
 - The current planning write slice validates that plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder are recorded locally first, rendered through merged planning views immediately, persisted across restart, and cleared on explicit sign-out when they remain unsynced.
+- The next sync-contract slice defines Lyron as online-preferred, offline-safe, and local-first: online state should refresh and converge quickly, while offline or failed refresh states must preserve usable local projections and durable local write intent.
 - The architecture preserves the repository, parser, and offline boundaries needed for later offline editing, sync, and planning workflows.
 - Android, iOS, and Web share a coherent product model and workflow vocabulary.
 - If durable offline desktop use becomes important later, it should be addressed through Flutter desktop rather than expanding the browser slice beyond best-effort offline relaunch.
@@ -47,4 +49,5 @@ The domain model remains expressive internally, while the UI presents guided act
 - Group-scoped workflows narrow access inside an organization but never bypass organization scope.
 - ChordPro remains the canonical editable song representation, while attachments stay supplemental.
 - The MVP favors stable, inspectable workflows over automation-heavy collaboration features.
+- Realtime or subscription-driven freshness may be used as an online optimization, but UI state should still flow through repository-owned local projections and backend-authorized refresh paths.
 - Explicit sign-out must remove authenticated cached song and planning access instead of leaving a device-global local archive.
