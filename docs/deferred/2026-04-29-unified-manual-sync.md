@@ -6,7 +6,7 @@ Originating slice:
 
 ## Status
 
-Deferred.
+Pulled into planned follow-up scope by `docs/specs/2026-05-09-online-preferred-local-first-sync-contract.md`.
 
 ## Deferred Item
 
@@ -18,7 +18,7 @@ entry point lives in the song-library surface and is song-queue oriented. That
 means a user can reasonably expect "sync" to flush all pending local work, but
 planning mutations are not clearly covered by that action.
 
-Future work should decide and implement a unified manual sync contract:
+The online-preferred local-first sync contract decides the product direction for unified manual sync. Follow-up implementation should:
 
 - expose sync affordances consistently across relevant app surfaces
 - make one manual sync action flush all pending local mutation queues, including
@@ -31,7 +31,8 @@ Future work should decide and implement a unified manual sync contract:
 
 ## Planning Note
 
-Do not treat the song-list sync button as the app-wide manual sync contract
-until this deferred item is resolved. Any future slice that changes sync
-controls, sync status presentation, or local mutation queue orchestration should
-pull this item into scope or explicitly supersede it.
+Do not treat the current song-list sync button as the app-wide manual sync
+contract until the follow-up unified sync/freshness implementation replaces or
+wraps it. The follow-up should use one active-organization manual sync command
+for song and planning queues while leaving domain-specific conflict,
+authorization-denied, and dependency-blocked recovery actions visible.
