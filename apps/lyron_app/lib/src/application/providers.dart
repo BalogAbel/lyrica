@@ -612,4 +612,3 @@ final catalogSnapshotStateProvider = Provider.autoDispose<CatalogSnapshotState>(
     return ref.watch(songCatalogControllerProvider).state;
   },
 );
-

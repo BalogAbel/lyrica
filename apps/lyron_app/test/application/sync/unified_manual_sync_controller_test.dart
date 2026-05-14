@@ -27,37 +27,39 @@ void main() {
       expect(result.anyFailure, isFalse);
     });
 
-    test('coalesces concurrent calls into single in-flight + one queued rerun',
-        () async {
-      var runCount = 0;
-      final completer = <Completer<void>>[];
-      final controller = UnifiedManualSyncController(
-        activeContextReader: _ctx,
-        syncSongMutations: (_) async {
-          runCount++;
-          final c = Completer<void>();
-          completer.add(c);
-          await c.future;
-        },
-        refreshSongCatalog: () async {},
-        syncPlanningMutations: (_) async {},
-        refreshPlanning: () async {},
-      );
+    test(
+      'coalesces concurrent calls into single in-flight + one queued rerun',
+      () async {
+        var runCount = 0;
+        final completer = <Completer<void>>[];
+        final controller = UnifiedManualSyncController(
+          activeContextReader: _ctx,
+          syncSongMutations: (_) async {
+            runCount++;
+            final c = Completer<void>();
+            completer.add(c);
+            await c.future;
+          },
+          refreshSongCatalog: () async {},
+          syncPlanningMutations: (_) async {},
+          refreshPlanning: () async {},
+        );
 
-      final first = controller.syncNow();
-      // Allow the first run to start before queuing.
-      await Future<void>.delayed(Duration.zero);
-      final second = controller.syncNow();
-      final third = controller.syncNow();
+        final first = controller.syncNow();
+        // Allow the first run to start before queuing.
+        await Future<void>.delayed(Duration.zero);
+        final second = controller.syncNow();
+        final third = controller.syncNow();
 
-      completer[0].complete();
-      await Future<void>.delayed(Duration.zero);
-      // Queued rerun started; complete it.
-      completer[1].complete();
+        completer[0].complete();
+        await Future<void>.delayed(Duration.zero);
+        // Queued rerun started; complete it.
+        completer[1].complete();
 
-      await Future.wait([first, second, third]);
-      expect(runCount, 2);
-    });
+        await Future.wait([first, second, third]);
+        expect(runCount, 2);
+      },
+    );
 
     test('catalog refresh failure does not skip planning sync', () async {
       final calls = <String>[];
@@ -78,19 +80,21 @@ void main() {
       expect(result.planningSyncFailed, isFalse);
     });
 
-    test('planning refresh failure surfaces in result without throwing',
-        () async {
-      final controller = UnifiedManualSyncController(
-        activeContextReader: _ctx,
-        syncSongMutations: (_) async {},
-        refreshSongCatalog: () async {},
-        syncPlanningMutations: (_) async {},
-        refreshPlanning: () async => throw StateError('refresh failed'),
-      );
-      final result = await controller.syncNow();
-      expect(result.planningRefreshFailed, isTrue);
-      expect(result.anyFailure, isTrue);
-    });
+    test(
+      'planning refresh failure surfaces in result without throwing',
+      () async {
+        final controller = UnifiedManualSyncController(
+          activeContextReader: _ctx,
+          syncSongMutations: (_) async {},
+          refreshSongCatalog: () async {},
+          syncPlanningMutations: (_) async {},
+          refreshPlanning: () async => throw StateError('refresh failed'),
+        );
+        final result = await controller.syncNow();
+        expect(result.planningRefreshFailed, isTrue);
+        expect(result.anyFailure, isTrue);
+      },
+    );
 
     test('skips run when no active context exists', () async {
       var ran = false;

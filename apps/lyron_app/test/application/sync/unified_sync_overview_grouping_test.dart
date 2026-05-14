@@ -97,23 +97,27 @@ void main() {
         ),
       ]);
       expect(overview.planRows.single.title, 'fallback-slug');
-      expect(overview.planRows.single.reasonCode,
-          UnifiedSyncReasonCode.dependencyBlocked);
+      expect(
+        overview.planRows.single.reasonCode,
+        UnifiedSyncReasonCode.dependencyBlocked,
+      );
     });
 
-    test('orphan session item mutation groups under recoverable fallback row',
-        () {
-      final overview = _compute([
-        _mut(
-          aggregateId: 'si-1',
-          kind: PlanningMutationKind.sessionItemCreateSong,
-          planId: 'missing-plan',
-        ),
-      ]);
-      expect(overview.planRows, hasLength(1));
-      expect(overview.planRows.single.planId, 'missing-plan');
-      expect(overview.planRows.single.nestedSummaries, ['song added']);
-    });
+    test(
+      'orphan session item mutation groups under recoverable fallback row',
+      () {
+        final overview = _compute([
+          _mut(
+            aggregateId: 'si-1',
+            kind: PlanningMutationKind.sessionItemCreateSong,
+            planId: 'missing-plan',
+          ),
+        ]);
+        expect(overview.planRows, hasLength(1));
+        expect(overview.planRows.single.planId, 'missing-plan');
+        expect(overview.planRows.single.nestedSummaries, ['song added']);
+      },
+    );
 
     test('planTitles map takes precedence over mutation name', () {
       final overview = _compute(
@@ -148,8 +152,9 @@ void main() {
           planId: 'plan-1',
         ),
       ]);
-      expect(overview.planRows.single.nestedSummaries,
-          ['session order changed']);
+      expect(overview.planRows.single.nestedSummaries, [
+        'session order changed',
+      ]);
     });
   });
 }

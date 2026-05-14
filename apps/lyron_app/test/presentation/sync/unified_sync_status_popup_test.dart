@@ -23,7 +23,10 @@ UnifiedSyncOverview _overview({
   );
 }
 
-Future<void> _pumpPopup(WidgetTester tester, UnifiedSyncOverview overview) async {
+Future<void> _pumpPopup(
+  WidgetTester tester,
+  UnifiedSyncOverview overview,
+) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [unifiedSyncOverviewProvider.overrideWithValue(overview)],
@@ -38,8 +41,9 @@ void main() {
     expect(find.text(AppStrings.unifiedSyncEmptyMessage), findsOneWidget);
   });
 
-  testWidgets('song row + plan conflict row render with Sync now button',
-      (tester) async {
+  testWidgets('song row + plan conflict row render with Sync now button', (
+    tester,
+  ) async {
     final overview = _overview(
       status: UnifiedSyncHeaderStatus.conflict,
       songs: const [
@@ -68,8 +72,9 @@ void main() {
     expect(find.text(AppStrings.unifiedSyncReasonConflict), findsOneWidget);
   });
 
-  testWidgets('authorization_denied row renders specific reason chip',
-      (tester) async {
+  testWidgets('authorization_denied row renders specific reason chip', (
+    tester,
+  ) async {
     final overview = _overview(
       status: UnifiedSyncHeaderStatus.conflict,
       plans: const [
@@ -83,12 +88,15 @@ void main() {
       ],
     );
     await _pumpPopup(tester, overview);
-    expect(find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
-        findsOneWidget);
+    expect(
+      find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('dependency_blocked row renders specific reason chip',
-      (tester) async {
+  testWidgets('dependency_blocked row renders specific reason chip', (
+    tester,
+  ) async {
     final overview = _overview(
       status: UnifiedSyncHeaderStatus.conflict,
       plans: const [
@@ -102,12 +110,15 @@ void main() {
       ],
     );
     await _pumpPopup(tester, overview);
-    expect(find.text(AppStrings.unifiedSyncReasonDependencyBlocked),
-        findsOneWidget);
+    expect(
+      find.text(AppStrings.unifiedSyncReasonDependencyBlocked),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('remote_missing row renders specific reason chip',
-      (tester) async {
+  testWidgets('remote_missing row renders specific reason chip', (
+    tester,
+  ) async {
     final overview = _overview(
       status: UnifiedSyncHeaderStatus.conflict,
       plans: const [
@@ -121,12 +132,15 @@ void main() {
       ],
     );
     await _pumpPopup(tester, overview);
-    expect(find.text(AppStrings.unifiedSyncReasonRemoteMissing),
-        findsOneWidget);
+    expect(
+      find.text(AppStrings.unifiedSyncReasonRemoteMissing),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('sync_failed song row renders retryable reason chip',
-      (tester) async {
+  testWidgets('sync_failed song row renders retryable reason chip', (
+    tester,
+  ) async {
     final overview = _overview(
       status: UnifiedSyncHeaderStatus.unsynced,
       songs: const [

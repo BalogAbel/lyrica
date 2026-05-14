@@ -18,7 +18,10 @@ CatalogSnapshotState _catalog({
   bool hasCached = true,
 }) {
   return CatalogSnapshotState(
-    context: const ActiveCatalogContext(userId: _userId, organizationId: _orgId),
+    context: const ActiveCatalogContext(
+      userId: _userId,
+      organizationId: _orgId,
+    ),
     connectionStatus: connection,
     refreshStatus: refresh,
     sessionStatus: CatalogSessionStatus.verified,
@@ -103,8 +106,10 @@ void main() {
       expect(overview.headerStatus, UnifiedSyncHeaderStatus.unsynced);
       expect(overview.hasUnsyncedWork, isTrue);
       expect(overview.songRows.single.severity, UnifiedSyncRowSeverity.pending);
-      expect(overview.songRows.single.reasonCode,
-          UnifiedSyncReasonCode.pendingLocal);
+      expect(
+        overview.songRows.single.reasonCode,
+        UnifiedSyncReasonCode.pendingLocal,
+      );
     });
 
     test('planning conflict yields red conflict', () {
@@ -119,8 +124,10 @@ void main() {
         ],
       );
       expect(overview.headerStatus, UnifiedSyncHeaderStatus.conflict);
-      expect(overview.planRows.single.reasonCode,
-          UnifiedSyncReasonCode.conflict);
+      expect(
+        overview.planRows.single.reasonCode,
+        UnifiedSyncReasonCode.conflict,
+      );
     });
 
     test('red wins over yellow when mixed', () {
@@ -139,15 +146,17 @@ void main() {
       expect(overview.hasUnsyncedWork, isTrue);
     });
 
-    test('offline cached with no pending stays green and reports offline freshness',
-        () {
-      final overview = _compute(
-        catalog: _catalog(connection: CatalogConnectionStatus.offlineCached),
-      );
-      expect(overview.headerStatus, UnifiedSyncHeaderStatus.synced);
-      expect(overview.connectivity, UnifiedSyncConnectivity.offline);
-      expect(overview.freshness, UnifiedSyncFreshness.offlineCached);
-    });
+    test(
+      'offline cached with no pending stays green and reports offline freshness',
+      () {
+        final overview = _compute(
+          catalog: _catalog(connection: CatalogConnectionStatus.offlineCached),
+        );
+        expect(overview.headerStatus, UnifiedSyncHeaderStatus.synced);
+        expect(overview.connectivity, UnifiedSyncConnectivity.offline);
+        expect(overview.freshness, UnifiedSyncFreshness.offlineCached);
+      },
+    );
 
     test('catalog refreshing flags activity', () {
       final overview = _compute(
@@ -177,35 +186,45 @@ void main() {
           ),
         ],
       );
-      expect(overview.planRows.single.reasonCode,
-          UnifiedSyncReasonCode.authorizationDenied);
-      expect(overview.planRows.single.severity,
-          UnifiedSyncRowSeverity.conflict);
+      expect(
+        overview.planRows.single.reasonCode,
+        UnifiedSyncReasonCode.authorizationDenied,
+      );
+      expect(
+        overview.planRows.single.severity,
+        UnifiedSyncRowSeverity.conflict,
+      );
     });
 
     test('synced song entries are filtered from rows', () {
       final overview = _compute(
-        songs: [_song(id: 's1', title: 'Synced song', status: SongSyncStatus.synced)],
+        songs: [
+          _song(id: 's1', title: 'Synced song', status: SongSyncStatus.synced),
+        ],
       );
       expect(overview.songRows, isEmpty);
       expect(overview.headerStatus, UnifiedSyncHeaderStatus.synced);
     });
 
-    test('song conflict with dependency_blocked code maps to conflict severity',
-        () {
-      final overview = _compute(
-        songs: [
-          _song(
-            id: 's1',
-            title: 'Blocked',
-            status: SongSyncStatus.conflict,
-            errorCode: SongMutationSyncErrorCode.dependencyBlocked,
-          ),
-        ],
-      );
-      expect(overview.songRows.single.reasonCode,
-          UnifiedSyncReasonCode.dependencyBlocked);
-      expect(overview.headerStatus, UnifiedSyncHeaderStatus.conflict);
-    });
+    test(
+      'song conflict with dependency_blocked code maps to conflict severity',
+      () {
+        final overview = _compute(
+          songs: [
+            _song(
+              id: 's1',
+              title: 'Blocked',
+              status: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.dependencyBlocked,
+            ),
+          ],
+        );
+        expect(
+          overview.songRows.single.reasonCode,
+          UnifiedSyncReasonCode.dependencyBlocked,
+        );
+        expect(overview.headerStatus, UnifiedSyncHeaderStatus.conflict);
+      },
+    );
   });
 }

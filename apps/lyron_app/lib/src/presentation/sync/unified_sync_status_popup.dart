@@ -40,9 +40,7 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
                     key: const ValueKey('unified-sync-popup-sync-now'),
                     onPressed: () {
                       unawaited(
-                        ref
-                            .read(unifiedManualSyncControllerProvider)
-                            .syncNow(),
+                        ref.read(unifiedManualSyncControllerProvider).syncNow(),
                       );
                     },
                     icon: const Icon(Icons.sync),
@@ -119,9 +117,15 @@ class _SongRowTile extends StatelessWidget {
 
   String _songStateLabel(Object state) {
     final name = state.toString();
-    if (name.contains('pendingCreate')) return AppStrings.unifiedSyncSongStateCreated;
-    if (name.contains('pendingUpdate')) return AppStrings.unifiedSyncSongStateEdited;
-    if (name.contains('pendingDelete')) return AppStrings.unifiedSyncSongStateRemoved;
+    if (name.contains('pendingCreate')) {
+      return AppStrings.unifiedSyncSongStateCreated;
+    }
+    if (name.contains('pendingUpdate')) {
+      return AppStrings.unifiedSyncSongStateEdited;
+    }
+    if (name.contains('pendingDelete')) {
+      return AppStrings.unifiedSyncSongStateRemoved;
+    }
     if (name.contains('conflict')) {
       return AppStrings.unifiedSyncSongStateEditedConflict;
     }
@@ -146,8 +150,10 @@ class _PlanRowTile extends StatelessWidget {
           for (final entry in row.nestedSummaries)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text('• $entry',
-                  style: Theme.of(context).textTheme.bodySmall),
+              child: Text(
+                '• $entry',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
         ],
       ),

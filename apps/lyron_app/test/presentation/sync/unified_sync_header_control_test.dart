@@ -6,8 +6,10 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-UnifiedSyncOverview _overview(UnifiedSyncHeaderStatus status,
-    {bool hasUnsyncedWork = false}) {
+UnifiedSyncOverview _overview(
+  UnifiedSyncHeaderStatus status, {
+  bool hasUnsyncedWork = false,
+}) {
   return UnifiedSyncOverview(
     headerStatus: status,
     activity: UnifiedSyncActivity.idle,
@@ -22,9 +24,7 @@ UnifiedSyncOverview _overview(UnifiedSyncHeaderStatus status,
 Future<void> _pump(WidgetTester tester, UnifiedSyncOverview overview) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        unifiedSyncOverviewProvider.overrideWithValue(overview),
-      ],
+      overrides: [unifiedSyncOverviewProvider.overrideWithValue(overview)],
       child: const MaterialApp(
         home: Scaffold(
           appBar: null,
@@ -42,14 +42,18 @@ void main() {
   });
 
   testWidgets('renders Unsynced label for yellow status', (tester) async {
-    await _pump(tester,
-        _overview(UnifiedSyncHeaderStatus.unsynced, hasUnsyncedWork: true));
+    await _pump(
+      tester,
+      _overview(UnifiedSyncHeaderStatus.unsynced, hasUnsyncedWork: true),
+    );
     expect(find.text(AppStrings.unifiedSyncUnsyncedLabel), findsOneWidget);
   });
 
   testWidgets('renders Conflict label for red status', (tester) async {
-    await _pump(tester,
-        _overview(UnifiedSyncHeaderStatus.conflict, hasUnsyncedWork: true));
+    await _pump(
+      tester,
+      _overview(UnifiedSyncHeaderStatus.conflict, hasUnsyncedWork: true),
+    );
     expect(find.text(AppStrings.unifiedSyncConflictLabel), findsOneWidget);
   });
 }

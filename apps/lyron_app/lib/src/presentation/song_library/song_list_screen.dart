@@ -413,8 +413,9 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final hasUnsyncedChanges =
-        ref.read(unifiedSyncOverviewProvider).hasUnsyncedWork;
+    final hasUnsyncedChanges = ref
+        .read(unifiedSyncOverviewProvider)
+        .hasUnsyncedWork;
     if (!context.mounted) {
       return;
     }

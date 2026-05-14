@@ -1,6 +1,6 @@
 # Unified Sync And Freshness UX Implementation Plan
 
-> Status: In progress
+> Status: Implemented
 
 > **For agentic workers:** Implements Slice 2 of docs/specs/2026-05-09-online-preferred-local-first-sync-contract.md. TDD discipline applies. Each step is one action; mark each checkbox as it completes. Authorization stays backend-enforced; sync activity, connectivity, and freshness remain separate dimensions.
 
@@ -34,7 +34,7 @@
 - Create: `apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart`
 - Test: `apps/lyron_app/test/application/sync/unified_sync_overview_test.dart`
 
-- [ ] **Step 1: Write the failing aggregator test**
+- [x] **Step 1: Write the failing aggregator test**
 
 Test plain function `computeUnifiedSyncOverview` against a matrix of inputs: no pending work → green; one pending song create → yellow; one planning conflict → red; mixed yellow+red → red; offline cached with no pending → green with offline freshness flag; refreshing while clean → green with syncing activity flag; authorization denied on planning row → red.
 
@@ -44,7 +44,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_sync_overview_te
 ```
 Expected: FAIL (file missing).
 
-- [ ] **Step 2: Implement `UnifiedSyncOverview` and `computeUnifiedSyncOverview`**
+- [x] **Step 2: Implement `UnifiedSyncOverview` and `computeUnifiedSyncOverview`**
 
 Create the value type:
 
@@ -83,7 +83,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_sync_overview_te
 ```
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart \
@@ -97,7 +97,7 @@ git commit -m "feat(sync): add unified sync overview model"
 - Modify: `apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart`
 - Test: `apps/lyron_app/test/application/sync/unified_sync_overview_grouping_test.dart`
 
-- [ ] **Step 1: Write the failing grouping test**
+- [x] **Step 1: Write the failing grouping test**
 
 Cases:
 1. plan create + session create under same plan → one plan row, nested "plan added", "session added".
@@ -111,13 +111,13 @@ cd apps/lyron_app && flutter test test/application/sync/unified_sync_overview_gr
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Implement grouping helper**
+- [x] **Step 2: Implement grouping helper**
 
 Extend `computeUnifiedSyncOverview` to accept `Map<String, String> planTitles` and group planning mutations by `planId ?? aggregateId` for plan_create rows. Title precedence: `planTitles[planId]` → `mutation.name` (set on plan_create / plan_edit drafts) → `mutation.slug` → `originSnapshot['name'] as String?` (the `PlanningMutationRecord.originSnapshot` map already carries the pre-edit plan name when present) → `aggregateId` fallback. Build nested entries describing intent (`plan edited`, `session added`, `session removed`, `session order changed`, `song added`, `song removed`, `song order changed`).
 
 Run the test; expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart \
@@ -131,7 +131,7 @@ git commit -m "feat(sync): group planning mutations into plan-level popup rows"
 - Create: `apps/lyron_app/lib/src/application/sync/unified_manual_sync_controller.dart`
 - Test: `apps/lyron_app/test/application/sync/unified_manual_sync_controller_test.dart`
 
-- [ ] **Step 1: Write the failing controller test**
+- [x] **Step 1: Write the failing controller test**
 
 Inject fake `SongMutationSyncController`, fake `SongCatalogController`, fake `PlanningMutationSyncController`, fake `PlanningSyncController`. Assert:
 1. `syncNow()` calls song mutation sync → catalog refresh → planning mutation sync → planning refresh, in order, with the active organization id.
@@ -145,7 +145,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_manual_sync_cont
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Implement controller**
+- [x] **Step 2: Implement controller**
 
 ```dart
 class UnifiedManualSyncController extends ChangeNotifier {
@@ -163,7 +163,7 @@ Each step swallows step-local exceptions and records them in fields exposed for 
 
 Run the test; expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/sync/unified_manual_sync_controller.dart \
@@ -177,7 +177,7 @@ git commit -m "feat(sync): add unified manual sync controller"
 - Modify: `apps/lyron_app/lib/src/application/providers.dart`
 - Test: `apps/lyron_app/test/application/sync/unified_sync_providers_test.dart`
 
-- [ ] **Step 1: Write provider wiring test**
+- [x] **Step 1: Write provider wiring test**
 
 Build a `ProviderContainer` with overrides for catalog state, song mutation entries, planning sync state, planning mutation entries; read `unifiedSyncOverviewProvider` and `unifiedManualSyncControllerProvider`; assert overview matches expected aggregation and controller is non-null.
 
@@ -187,7 +187,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_sync_providers_t
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Add providers**
+- [x] **Step 2: Add providers**
 
 Append to `providers.dart`:
 
@@ -215,7 +215,7 @@ Add `planningPlanTitlesProvider` (returning `AsyncValue<Map<String,String>>`) th
 
 Run the test; expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/providers.dart \
@@ -230,7 +230,7 @@ git commit -m "feat(sync): wire unified sync providers"
 - Test: `apps/lyron_app/test/application/sync/online_transition_detector_test.dart`
 - Modify: `apps/lyron_app/lib/src/application/providers.dart`
 
-- [ ] **Step 1: Write failing detector test**
+- [x] **Step 1: Write failing detector test**
 
 Drive a `OnlineTransitionDetector` with synthetic catalog/planning state changes. Assert it triggers `onTransitionToOnline` exactly once when:
 - catalog status flips `offlineCached` → `online`, OR
@@ -244,13 +244,13 @@ cd apps/lyron_app && flutter test test/application/sync/online_transition_detect
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Implement detector**
+- [x] **Step 2: Implement detector**
 
 `OnlineTransitionDetector` accepts callbacks/streams for the two states and a synchronous getter for "has unsynced work". It is a plain class with `update(catalog, planning)` and emits an `onTransitionToOnline` callback. No Flutter dependency.
 
 Run test; expected: PASS.
 
-- [ ] **Step 3: Wire detector into providers**
+- [x] **Step 3: Wire detector into providers**
 
 Add `onlineTransitionDetectorProvider` that listens to `catalogSnapshotStateProvider` and `planningSyncStateProvider`, hands transitions to `UnifiedManualSyncController.syncNow()`.
 
@@ -260,7 +260,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_sync_providers_t
 ```
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/sync/online_transition_detector.dart \
@@ -276,7 +276,7 @@ git commit -m "feat(sync): trigger unified sync on offline-to-online transition"
 - Test: `apps/lyron_app/test/application/sync/foreground_sync_listener_test.dart`
 - Modify: `apps/lyron_app/lib/src/application/providers.dart`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Drive a stream emitting `false → true` (background → foreground) and assert the listener calls `syncNow()` exactly once per transition to foreground when an authenticated organization exists, and skips when signed-out.
 
@@ -286,17 +286,17 @@ cd apps/lyron_app && flutter test test/application/sync/foreground_sync_listener
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Implement listener**
+- [x] **Step 2: Implement listener**
 
 `ForegroundSyncListener` subscribes to `AppForegroundState.watchForeground()`, debounces back-to-foreground events, and calls a `Future<void> Function()` `onResume`. Disposable.
 
 Run test; expected: PASS.
 
-- [ ] **Step 3: Wire provider**
+- [x] **Step 3: Wire provider**
 
 Add `foregroundSyncListenerProvider` that calls `unifiedManualSyncControllerProvider.syncNow()` on resume and watches `appAuthControllerProvider` to gate signed-out state.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/sync/foreground_sync_listener.dart \
@@ -314,7 +314,7 @@ git commit -m "feat(sync): refresh on app foreground resume"
 - Test: `apps/lyron_app/test/presentation/sync/unified_sync_header_control_test.dart`
 - Test: `apps/lyron_app/test/presentation/sync/unified_sync_status_popup_test.dart`
 
-- [ ] **Step 1: Write header control widget test**
+- [x] **Step 1: Write header control widget test**
 
 Three pumps with overridden `unifiedSyncOverviewProvider`:
 - synced → label `Synced`, green semantic color.
@@ -328,13 +328,13 @@ cd apps/lyron_app && flutter test test/presentation/sync/unified_sync_header_con
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Implement header control**
+- [x] **Step 2: Implement header control**
 
 `UnifiedSyncHeaderControl` is a `ConsumerWidget` rendering a colored badge + label + secondary connectivity/freshness icon, wrapped in an `InkWell` that opens the popup. No authorization logic.
 
 Run test; expected: PASS.
 
-- [ ] **Step 3: Write popup test**
+- [x] **Step 3: Write popup test**
 
 Cases:
 - synced overview → popup shows empty-state copy, no rows listed.
@@ -350,13 +350,13 @@ cd apps/lyron_app && flutter test test/presentation/sync/unified_sync_status_pop
 ```
 Expected: FAIL.
 
-- [ ] **Step 4: Implement popup**
+- [x] **Step 4: Implement popup**
 
 `UnifiedSyncStatusPopup` is a `ConsumerWidget` rendered via `showDialog` returning a `Dialog`. Shows: header counts, `Sync now` triggering `unifiedManualSyncControllerProvider.syncNow()`, song rows (title + state chip + retry where retryable), plan rows (title + reason chip + nested mutation list + per-row recovery actions). Synced rows are omitted.
 
 Run popup test; expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/presentation/sync/unified_sync_header_control.dart \
@@ -377,7 +377,7 @@ git commit -m "feat(sync): add header sync control and status popup"
 - Modify: `apps/lyron_app/lib/src/presentation/planning/widgets/planning_workspace_shell.dart` (accept optional `headerSyncControl` slot)
 - Test: `apps/lyron_app/test/presentation/sync/header_visibility_test.dart`
 
-- [ ] **Step 1: Write header visibility test**
+- [x] **Step 1: Write header visibility test**
 
 Pump each non-reader surface (`SongListScreen`, `SongEditorScreen`, `PlanListScreen`, `PlanDetailScreen`) inside a ProviderScope with a signed-in active organization and assert `find.byType(UnifiedSyncHeaderControl)` returns exactly one widget. Pump `SongReaderScreen` and the session-scoped reader and assert the control is absent.
 
@@ -387,25 +387,25 @@ cd apps/lyron_app && flutter test test/presentation/sync/header_visibility_test.
 ```
 Expected: FAIL.
 
-- [ ] **Step 2: Mount the control on song library**
+- [x] **Step 2: Mount the control on song library**
 
 In `song_list_screen.dart`, replace the existing top `IconButton(Icons.sync)` action with `UnifiedSyncHeaderControl` rendered in the `AppBar.actions` slot. Delete the now-unused `_syncNow`/`_runQueuedSync` private helpers and route the previous in-screen logic through `unifiedManualSyncControllerProvider`. Keep `_CatalogStatusSurface` and `_MutationStatusSurface` (inline badges remain per spec).
 
-- [ ] **Step 3: Mount the control on song editor**
+- [x] **Step 3: Mount the control on song editor**
 
 Add `UnifiedSyncHeaderControl` to the song editor app bar `actions` block. The spec's "future song create/edit workspace surfaces" line refers to surfaces that do not yet exist; once a dedicated song-create workspace ships, mounting follows the same pattern. No new surface is introduced in this slice.
 
-- [ ] **Step 4: Mount the control on planning surfaces**
+- [x] **Step 4: Mount the control on planning surfaces**
 
 Extend `PlanningWorkspaceShell` with an optional `headerSyncControl` widget rendered in the header row. Mount `UnifiedSyncHeaderControl` from `plan_list_screen.dart` and `plan_detail_screen.dart` via that slot.
 
-- [ ] **Step 5: Verify reader surfaces stay clean**
+- [x] **Step 5: Verify reader surfaces stay clean**
 
 Confirm `song_reader_screen.dart` and session-scoped reader do not import the unified header control.
 
 Run header visibility test; expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/presentation \
@@ -419,7 +419,7 @@ git commit -m "feat(sync): mount header sync control on non-reader workspaces"
 - Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
 - Test: `apps/lyron_app/test/presentation/song_library/song_list_signout_test.dart`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Override `unifiedSyncOverviewProvider` with `hasUnsyncedWork=true` and assert the sign-out flow shows the unsynced warning dialog. Override with `hasUnsyncedWork=false` and assert sign-out proceeds without the dialog. (Test the existing key strings.)
 
@@ -429,13 +429,13 @@ cd apps/lyron_app && flutter test test/presentation/song_library/song_list_signo
 ```
 Expected: FAIL or already-passing-but-via-old-providers — adjust to drive the unified provider only.
 
-- [ ] **Step 2: Switch `_signOut` to read `unifiedSyncOverviewProvider.hasUnsyncedWork`**
+- [x] **Step 2: Switch `_signOut` to read `unifiedSyncOverviewProvider.hasUnsyncedWork`**
 
 Remove the two ad-hoc `await ref.read(hasUnsynced…Provider.future)` reads. Keep the dialog copy intact.
 
 Run test; expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart \
@@ -449,7 +449,7 @@ git commit -m "feat(sync): use unified overview for sign-out warning"
 - Create: `apps/lyron_app/test/application/sync/unified_manual_sync_song_only_test.dart`
 - Create: `apps/lyron_app/test/application/sync/unified_manual_sync_planning_only_test.dart`
 
-- [ ] **Step 1: Song-only queue test**
+- [x] **Step 1: Song-only queue test**
 
 Seed only pending song mutations (no planning work). `syncNow()` calls song mutation sync + catalog refresh, leaves planning controllers untouched (asserted via call counts on fakes), and final overview status reflects only song outcomes.
 
@@ -459,7 +459,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_manual_sync_song
 ```
 Expected: PASS after Task 3 + Task 4.
 
-- [ ] **Step 2: Planning-only queue test**
+- [x] **Step 2: Planning-only queue test**
 
 Seed only pending planning mutations. `syncNow()` calls planning mutation sync + planning refresh, song sync attempted but no-ops on empty queue. Final overview status reflects planning outcomes only.
 
@@ -469,7 +469,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_manual_sync_plan
 ```
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/test/application/sync/unified_manual_sync_song_only_test.dart \
@@ -482,7 +482,7 @@ git commit -m "test(sync): cover song-only and planning-only manual sync queues"
 **Files:**
 - Create: `apps/lyron_app/test/application/sync/unified_manual_sync_mixed_queue_test.dart`
 
-- [ ] **Step 1: Write failing scenario test**
+- [x] **Step 1: Write failing scenario test**
 
 Drive in-memory Drift stores + fake remote with:
 - one song create, one song edit conflict
@@ -496,7 +496,7 @@ cd apps/lyron_app && flutter test test/application/sync/unified_manual_sync_mixe
 ```
 Expected: FAIL → PASS after wiring.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add apps/lyron_app/test/application/sync/unified_manual_sync_mixed_queue_test.dart
@@ -509,11 +509,11 @@ git commit -m "test(sync): cover mixed song and planning sync queue"
 - Create: `apps/lyron_app/test/application/sync/online_transition_reconnect_test.dart`
 - Create: `apps/lyron_app/test/application/sync/refresh_failure_preservation_test.dart`
 
-- [ ] **Step 1: Write reconnect test**
+- [x] **Step 1: Write reconnect test**
 
 Start with catalog `offlineCached`, pending song mutations, planning `offline`. Flip both to online; assert the detector triggers `syncNow()` exactly once and the pending mutations are dispatched.
 
-- [ ] **Step 2: Write refresh-failure preservation test**
+- [x] **Step 2: Write refresh-failure preservation test**
 
 Seed local catalog + planning projection. Force remote refresh to throw. Trigger `syncNow()`. Assert: prior local projections remain visible, `UnifiedSyncOverview.freshness == stale`, `headerStatus` unchanged from prior aggregate (red/yellow not promoted by refresh failure alone).
 
@@ -523,7 +523,7 @@ cd apps/lyron_app && flutter test test/application/sync/online_transition_reconn
 ```
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/test/application/sync
@@ -537,7 +537,7 @@ git commit -m "test(sync): cover reconnect trigger and refresh-failure preservat
 - Modify: `docs/testing/testing-strategy.md`
 - Modify: `docs/deferred/2026-04-29-unified-manual-sync.md` (status note → Implemented; reference this plan)
 
-- [ ] **Step 1: Architecture update**
+- [x] **Step 1: Architecture update**
 
 Add a short paragraph under "Data Flow" describing the unified sync overview + manual sync command + foreground/online-transition triggers, the header control scope (authenticated non-reader workspaces), and that reader surfaces stay free of header-level sync UI.
 
@@ -546,7 +546,7 @@ Verify:
 rg -n "UnifiedSync|unified sync|header sync control" docs/architecture/architecture.md
 ```
 
-- [ ] **Step 2: Testing strategy update**
+- [x] **Step 2: Testing strategy update**
 
 Add bullets under unit/widget/integration tests for: unified overview aggregation, header status precedence, popup grouping, manual sync orchestration ordering, reconnect trigger, foreground refresh trigger, refresh-failure projection preservation, sign-out warning via unified provider.
 
@@ -555,7 +555,7 @@ Verify:
 rg -n "unified sync" docs/testing/testing-strategy.md
 ```
 
-- [ ] **Step 3: Update deferred note**
+- [x] **Step 3: Update deferred note**
 
 Change `docs/deferred/2026-04-29-unified-manual-sync.md` status to `Implemented` and reference `docs/plans/2026-05-14-unified-sync-freshness-ux.md`.
 
@@ -564,7 +564,7 @@ Verify:
 rg -n "Implemented|2026-05-14-unified-sync-freshness-ux" docs/deferred/2026-04-29-unified-manual-sync.md
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/architecture/architecture.md docs/testing/testing-strategy.md docs/deferred/2026-04-29-unified-manual-sync.md
@@ -573,7 +573,7 @@ git commit -m "docs(sync): record unified sync slice in architecture, testing, d
 
 ### Task 13: Full local verification
 
-- [ ] **Step 1: Run repository verify script**
+- [x] **Step 1: Run repository verify script**
 
 Run:
 ```bash
@@ -581,11 +581,11 @@ Run:
 ```
 Expected: green. Fix any failure surfaced by the gate before continuing.
 
-- [ ] **Step 2: Mark this plan Implemented**
+- [x] **Step 2: Mark this plan Implemented**
 
 Update the status line of this file to `Status: Implemented` and tick all checkboxes.
 
-- [ ] **Step 3: Final commit**
+- [x] **Step 3: Final commit**
 
 ```bash
 git add docs/plans/2026-05-14-unified-sync-freshness-ux.md

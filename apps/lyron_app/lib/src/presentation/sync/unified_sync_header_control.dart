@@ -13,7 +13,9 @@ class UnifiedSyncHeaderControl extends StatelessWidget {
     try {
       ProviderScope.containerOf(context, listen: false);
     } catch (_) {
-      return const SizedBox.shrink(key: ValueKey('unified-sync-header-control'));
+      return const SizedBox.shrink(
+        key: ValueKey('unified-sync-header-control'),
+      );
     }
     return const _UnifiedSyncHeaderControlBody();
   }
@@ -42,19 +44,13 @@ class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
               Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
               Text(label, style: TextStyle(color: color)),
               if (secondary != null) ...[
                 const SizedBox(width: 6),
-                Text(
-                  secondary,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+                Text(secondary, style: Theme.of(context).textTheme.bodySmall),
               ],
             ],
           ),
