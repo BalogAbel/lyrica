@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
@@ -17,18 +19,41 @@ final planningPlanTitlesProvider = Provider.autoDispose<Map<String, String>>((
   return {for (final summary in summaries) summary.id: summary.name};
 });
 
+T _safeWatch<T>(T Function() read, T fallback) {
+  try {
+    return read();
+  } catch (_) {
+    return fallback;
+  }
+}
+
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,
 ) {
-  final catalog = ref.watch(catalogSnapshotStateProvider);
-  final songEntries =
-      ref.watch(songMutationEntriesProvider).valueOrNull ??
-          const <SongMutationRecord>[];
-  final planning = ref.watch(planningSyncStateProvider);
-  final planningEntries =
-      ref.watch(planningMutationEntriesProvider).valueOrNull ??
-          const <PlanningMutationRecord>[];
-  final planTitles = ref.watch(planningPlanTitlesProvider);
+  final catalog = _safeWatch(
+    () => ref.watch(catalogSnapshotStateProvider),
+    const CatalogSnapshotState.initial(),
+  );
+  final songEntries = _safeWatch(
+    () =>
+        ref.watch(songMutationEntriesProvider).valueOrNull ??
+        const <SongMutationRecord>[],
+    const <SongMutationRecord>[],
+  );
+  final planning = _safeWatch(
+    () => ref.watch(planningSyncStateProvider),
+    const PlanningSyncState.initial(),
+  );
+  final planningEntries = _safeWatch(
+    () =>
+        ref.watch(planningMutationEntriesProvider).valueOrNull ??
+        const <PlanningMutationRecord>[],
+    const <PlanningMutationRecord>[],
+  );
+  final planTitles = _safeWatch(
+    () => ref.watch(planningPlanTitlesProvider),
+    const <String, String>{},
+  );
   return computeUnifiedSyncOverview(
     UnifiedSyncOverviewInputs(
       catalog: catalog,

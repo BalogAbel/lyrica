@@ -18,6 +18,7 @@
 *.iml
 .vscode/
 .worktrees/
+.claude/
 
 # Supabase local state
 supabase/.temp/

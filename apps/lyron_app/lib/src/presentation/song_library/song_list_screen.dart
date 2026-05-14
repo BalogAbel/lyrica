@@ -8,8 +8,9 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
-import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -27,8 +28,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
   late final TextEditingController _searchController;
   List<SongMutationRecord>? _cachedMutationEntries;
   String? _cachedMutationEntriesOrganizationId;
-  Future<void>? _syncInFlight;
-  var _syncQueued = false;
 
   @override
   void initState() {
@@ -96,9 +95,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     final catalogState = ref.watch(catalogSnapshotStateProvider);
     final browseState = ref.watch(songLibraryBrowseControllerProvider);
     final mutationEntriesAsync = ref.watch(songMutationEntriesProvider);
-    final isRefreshing =
-        catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
-    final isSyncing = _syncInFlight != null;
     final isResolvingCatalogContext =
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
@@ -121,15 +117,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
       appBar: AppBar(
         title: const Text(AppStrings.appName),
         actions: [
-          IconButton(
-            onPressed: isRefreshing || isSyncing
-                ? null
-                : () {
-                    unawaited(_syncNow());
-                  },
-            icon: const Icon(Icons.sync),
-            tooltip: AppStrings.songCatalogRefreshAction,
-          ),
+          const UnifiedSyncHeaderControl(),
           TextButton(
             onPressed: () {
               unawaited(_createSong(context, ref));
@@ -399,49 +387,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         : null;
   }
 
-  Future<void> _syncNow() {
-    if (_syncInFlight != null) {
-      _syncQueued = true;
-      return _syncInFlight!;
-    }
-
-    final future = _runQueuedSync();
-    setState(() {
-      _syncInFlight = future;
-    });
-    return future;
-  }
-
-  Future<void> _runQueuedSync() async {
-    try {
-      do {
-        _syncQueued = false;
-        final context = ref.read(activeCatalogContextProvider);
-        if (context != null) {
-          await ref
-              .read(songMutationSyncControllerProvider)
-              .syncPendingSongs(
-                SongMutationContext(
-                  userId: context.userId,
-                  organizationId: context.organizationId,
-                ),
-              );
-          ref.invalidate(songMutationEntriesProvider);
-        }
-        await ref.read(songCatalogControllerProvider).refreshCatalog();
-        ref.invalidate(songLibraryListProvider);
-      } while (_syncQueued);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _syncInFlight = null;
-        });
-      } else {
-        _syncInFlight = null;
-      }
-    }
-  }
-
   Future<void> _createSong(BuildContext context, WidgetRef ref) async {
     final activeContext = ref.read(activeCatalogContextProvider);
     if (activeContext == null) {
@@ -468,14 +413,8 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final hasUnsyncedSongChanges = await ref.read(
-      hasUnsyncedSongMutationsProvider.future,
-    );
-    final hasUnsyncedPlanningChanges = await ref.read(
-      hasUnsyncedPlanningMutationsProvider.future,
-    );
     final hasUnsyncedChanges =
-        hasUnsyncedSongChanges || hasUnsyncedPlanningChanges;
+        ref.read(unifiedSyncOverviewProvider).hasUnsyncedWork;
     if (!context.mounted) {
       return;
     }

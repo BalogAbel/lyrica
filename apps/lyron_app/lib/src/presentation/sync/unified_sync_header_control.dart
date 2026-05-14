@@ -5,8 +5,22 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-class UnifiedSyncHeaderControl extends ConsumerWidget {
+class UnifiedSyncHeaderControl extends StatelessWidget {
   const UnifiedSyncHeaderControl({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      ProviderScope.containerOf(context, listen: false);
+    } catch (_) {
+      return const SizedBox.shrink(key: ValueKey('unified-sync-header-control'));
+    }
+    return const _UnifiedSyncHeaderControlBody();
+  }
+}
+
+class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
+  const _UnifiedSyncHeaderControlBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -14,38 +28,35 @@ class UnifiedSyncHeaderControl extends ConsumerWidget {
     final (label, color) = _labelAndColor(context, overview.headerStatus);
     final secondary = _secondaryText(overview);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Tooltip(
-        message: AppStrings.unifiedSyncTooltip,
-        child: InkWell(
-          key: const ValueKey('unified-sync-header-control'),
-          onTap: () => UnifiedSyncStatusPopup.show(context),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
+    return Tooltip(
+      message: AppStrings.unifiedSyncTooltip,
+      child: InkWell(
+        key: const ValueKey('unified-sync-header-control'),
+        onTap: () => UnifiedSyncStatusPopup.show(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 8),
-                Text(label, style: TextStyle(color: color)),
-                if (secondary != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    secondary,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+              ),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(color: color)),
+              if (secondary != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  secondary,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

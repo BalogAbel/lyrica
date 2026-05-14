@@ -12,6 +12,7 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanListScreen extends ConsumerWidget {
@@ -24,6 +25,7 @@ class PlanListScreen extends ConsumerWidget {
 
     return PlanningWorkspaceShell(
       title: AppStrings.planListTitle,
+      headerSyncControl: const UnifiedSyncHeaderControl(),
       leading: context.canPop()
           ? BackButton(
               onPressed: () {

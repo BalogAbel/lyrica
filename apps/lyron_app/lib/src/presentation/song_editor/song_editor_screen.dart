@@ -11,6 +11,7 @@ import 'package:lyron_app/src/presentation/song_editor/song_editor_projection.da
 import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -541,6 +542,7 @@ class _TopBar extends StatelessWidget {
           runSpacing: 8,
           alignment: WrapAlignment.end,
           children: [
+            const UnifiedSyncHeaderControl(),
             FilledButton.tonal(
               onPressed: canCancel ? onCancel : null,
               child: const Text('Cancel'),

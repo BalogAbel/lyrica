@@ -9,6 +9,7 @@ class PlanningWorkspaceShell extends StatelessWidget {
     this.actions = const [],
     this.leading,
     this.statusSurface,
+    this.headerSyncControl,
     this.maxWidth = 960,
   });
 
@@ -18,6 +19,7 @@ class PlanningWorkspaceShell extends StatelessWidget {
   final Widget? leading;
   final Widget body;
   final Widget? statusSurface;
+  final Widget? headerSyncControl;
   final double maxWidth;
 
   @override
@@ -35,7 +37,10 @@ class PlanningWorkspaceShell extends StatelessWidget {
                   _WorkspaceHeader(
                     title: title,
                     subtitle: subtitle,
-                    actions: actions,
+                    actions: [
+                      ?headerSyncControl,
+                      ...actions,
+                    ],
                     leading: leading,
                   ),
                   if (statusSurface != null) ...[

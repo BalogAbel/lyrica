@@ -10,11 +10,13 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_contro
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -83,6 +85,9 @@ void main() {
             userId: 'user-1',
             organizationId: 'org-1',
           ),
+        ),
+        unifiedSyncOverviewProvider.overrideWithValue(
+          const UnifiedSyncOverview.initial(),
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
