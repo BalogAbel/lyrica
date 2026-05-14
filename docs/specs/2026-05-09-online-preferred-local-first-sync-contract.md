@@ -88,6 +88,75 @@ The unified manual sync implementation should:
 - leave domain-specific recovery actions visible for conflicts, authorization denials, and dependency-blocked mutations
 - avoid hiding failed or conflicted work behind a single generic error state
 
+## Unified Header Sync UX Contract
+
+Authenticated non-reader workspaces should show one consistent sync status control in the header. This replaces separate screen-specific top-level sync banners and makes the current local sync state visible without forcing users to inspect each list.
+
+Surfaces that should show the header sync control:
+
+- song library
+- song editor and future song create/edit workspace surfaces
+- plan list
+- plan detail
+- future authenticated management or editing surfaces
+
+The song reader should not show the header sync control. Reader surfaces should stay focused on reading and presenting songs; sync may continue in the background, but the reader should not spend header space on global operational status.
+
+### Header Status Colors
+
+Use three primary sync colors:
+
+- Green `Synced`: no known local divergence and no unresolved sync issue.
+- Yellow `Unsynced`: local work exists that has not been accepted by the backend.
+- Red `Conflict`: at least one local item or order intent needs user action or targeted recovery.
+
+The header status is aggregated across active-organization song and planning work. Red wins over yellow, and yellow wins over green.
+
+Status mapping:
+
+- Green `Synced`: no durable local `Created`, `Edited`, `Removed`, or `Reordered` intent exists, and no conflict state exists.
+- Yellow `Unsynced`: one or more `Created`, `Edited`, `Removed`, or `Reordered` states exist. Retryable network, timeout, or temporary backend failures remain yellow because the local intent is still retryable.
+- Red `Conflict`: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents authorization denied, dependency blocked, remote missing, or another non-retryable rejection.
+
+Connectivity and freshness are secondary status dimensions. Offline cached data may still show green if there is no known local divergence or unresolved sync issue. Until the follow-up online implementation slice changes this behavior, offline or stale status should be shown as secondary text or iconography rather than changing the primary green/yellow/red sync color.
+
+### Header Status Popup
+
+Clicking or tapping the header sync control should open a compact popup or sheet with the non-synced details. Synced items are not listed.
+
+The popup should show:
+
+- a grouped summary of unsynced and conflict counts
+- a global `Sync now` action
+- song-level rows for unsynced or conflicted songs
+- plan-level rows for unsynced or conflicted planning work
+- domain-specific recovery actions where available
+
+Song rows should list the song title and item state, such as `Created`, `Edited`, `Removed`, `CreatedConflict`, `EditedConflict`, or `RemovedConflict`.
+
+Planning rows should be grouped by plan. Session, session item, and reorder mutations should not appear as top-level popup rows because users experience them as part of plan editing. A plan row may expose a short nested detail list, such as `plan edited`, `session added`, `session removed`, `session order changed`, `song added`, `song removed`, or `song order changed`.
+
+Planning popup grouping should use the best available identity in this order:
+
+1. current merged plan title when available
+2. mutation name or slug
+3. preserved origin snapshot title
+4. stable aggregate id as the last resort
+
+Failed plan creates should appear as their own plan-level rows. Mutations for sessions or session items whose parent plan is unavailable must still appear under a recoverable plan-level fallback row instead of disappearing from the popup.
+
+The popup should not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: version conflict, authorization denied, dependency blocked, remote missing, or non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
+
+Retry may appear for retryable unsynced rows as well as recovery rows where retry is meaningful. Non-retryable conflict rows should prefer explicit recovery actions such as discard, explicit overwrite, explicit remove, or explicit reorder overwrite.
+
+### Inline Status Responsibility
+
+Inline row badges remain useful for locating the affected song or plan in the current screen. They should be secondary to the header sync control:
+
+- the header sync control answers "is this workspace fully synced?"
+- the popup answers "what is not synced?"
+- inline badges answer "where is this item affected in the current view?"
+
 ## Generic Local Lifecycle Patterns
 
 Entity state in this contract means the durable state of a known local record or local ordering intent. It does not include records that are not present in the local authenticated cache.
@@ -267,6 +336,8 @@ Expected deliverables:
 - one manual sync command for active-organization song and planning work
 - automatic refresh/sync on offline-to-online transition where platform connectivity signals are available
 - refresh on foreground/resume through the existing foreground lifecycle boundary
+- one header sync control for authenticated non-reader workspaces with green synced, yellow unsynced, and red conflict states
+- a header popup or sheet that lists only non-synced song rows and plan-grouped planning rows
 - status surfaces that distinguish fresh, stale, offline cached, pending local, syncing, retryable failure, conflict, authorization denied, and dependency blocked
 - focused tests for song-only, planning-only, mixed pending queues, reconnect, refresh failure preservation, and sign-out warnings
 
