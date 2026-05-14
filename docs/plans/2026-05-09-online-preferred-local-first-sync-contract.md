@@ -100,7 +100,7 @@ Verify:
 git diff -- docs/specs/2026-05-09-online-preferred-local-first-sync-contract.md docs/architecture/decisions/ADR-015-online-preferred-local-first-sync.md docs/plans/2026-05-09-online-preferred-local-first-sync-contract.md docs/product/vision.md docs/architecture/architecture.md docs/deferred/2026-04-29-unified-manual-sync.md
 ```
 
-- [ ] **Step 3: Commit after review**
+- [x] **Step 3: Commit after review**
 
 After the user approves the written contract:
 
