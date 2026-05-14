@@ -34,6 +34,17 @@ Current foundation baseline:
 - capability code stability tests in Flutter
 - offline policy tests in Flutter
 
+Unified sync coverage includes:
+
+- `UnifiedSyncOverview` aggregator unit tests for header status precedence (red wins over yellow wins over green), reason-code mapping (`pending_local`, `sync_failed`, `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`), and plan-level grouping including failed plan creates, orphan session-item fallback rows, and the `planTitles` → mutation name → slug → origin snapshot title precedence chain.
+- `UnifiedManualSyncController` unit tests for in-order song-sync → catalog-refresh → planning-sync → planning-refresh execution, single-flight semantics with a coalesced queued rerun, and step-isolated failure reporting via `UnifiedManualSyncRunResult`.
+- Song-only, planning-only, and mixed-queue unified sync tests for the manual command.
+- `OnlineTransitionDetector` unit tests for catalog and planning offline-to-online transitions, including `triggerWhenClean=false` suppression when no unsynced work exists.
+- `ForegroundSyncListener` unit test for resume-only firing.
+- Header sync control widget tests for green/yellow/red label and color, and popup widget tests for empty state, song row + plan conflict row rendering, `Sync now` button, and specific reason chips for `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, and `sync_failed`.
+- Sign-out warning routing through `unifiedSyncOverviewProvider.hasUnsyncedWork` instead of the legacy per-domain providers.
+- Refresh-failure preservation test confirming a failed catalog refresh keeps the header green and surfaces `stale` freshness without changing the primary header color.
+
 Active local-first regression coverage includes:
 
 - Song session-expiry cache policy regression coverage for active catalog context clearing, cached read blocking, persisted cache row retention, and re-sign-in restoration.

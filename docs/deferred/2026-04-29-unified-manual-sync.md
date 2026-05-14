@@ -6,7 +6,7 @@ Originating slice:
 
 ## Status
 
-Status: Pulled into planned follow-up scope; partially superseded by docs/specs/2026-05-09-online-preferred-local-first-sync-contract.md
+Status: Implemented; superseded by docs/plans/2026-05-14-unified-sync-freshness-ux.md
 
 ## Deferred Item
 
