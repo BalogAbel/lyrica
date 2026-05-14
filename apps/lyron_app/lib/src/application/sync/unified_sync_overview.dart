@@ -112,7 +112,9 @@ class UnifiedSyncOverviewInputs {
   final bool planningSyncing;
 }
 
-UnifiedSyncOverview computeUnifiedSyncOverview(UnifiedSyncOverviewInputs input) {
+UnifiedSyncOverview computeUnifiedSyncOverview(
+  UnifiedSyncOverviewInputs input,
+) {
   final songRows = _buildSongRows(input.songEntries);
   final planRows = _buildPlanRows(
     entries: input.planningEntries,
@@ -253,9 +255,7 @@ List<UnifiedSyncPlanRow> _buildPlanRows({
       entries: groupEntries,
       planTitles: planTitles,
     );
-    final nested = groupEntries
-        .map(_nestedSummaryFor)
-        .toList(growable: false);
+    final nested = groupEntries.map(_nestedSummaryFor).toList(growable: false);
     final firstWithMessage = groupEntries.firstWhere(
       (e) => e.errorMessage != null,
       orElse: () => groupEntries.first,
@@ -314,7 +314,9 @@ String _planTitle({
   return planId;
 }
 
-UnifiedSyncReasonCode _reasonFromPlanGroup(List<PlanningMutationRecord> entries) {
+UnifiedSyncReasonCode _reasonFromPlanGroup(
+  List<PlanningMutationRecord> entries,
+) {
   UnifiedSyncReasonCode? worst;
   for (final entry in entries) {
     final reason = _reasonFromPlanningEntry(entry);
@@ -397,4 +399,3 @@ String _nestedSummaryFor(PlanningMutationRecord entry) {
     PlanningMutationKind.sessionItemReorder => 'song order changed',
   };
 }
-

@@ -14,49 +14,50 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 
 void main() {
   test(
-      'unifiedSyncOverviewProvider aggregates overridden catalog and song state',
-      () async {
-    final container = ProviderContainer(
-      overrides: [
-        catalogSnapshotStateProvider.overrideWithValue(
-          const CatalogSnapshotState(
-            context: ActiveCatalogContext(userId: 'u', organizationId: 'o'),
-            connectionStatus: CatalogConnectionStatus.online,
-            refreshStatus: CatalogRefreshStatus.idle,
-            sessionStatus: CatalogSessionStatus.verified,
-            hasCachedCatalog: true,
-          ),
-        ),
-        planningSyncStateProvider.overrideWithValue(
-          const PlanningSyncState.initial(),
-        ),
-        songMutationEntriesProvider.overrideWith(
-          (ref) async => <SongMutationRecord>[
-            SongMutationRecord(
-              id: 's',
-              organizationId: 'o',
-              slug: 's',
-              title: 'Song',
-              chordproSource: '',
-              version: 1,
-              baseVersion: null,
-              syncStatus: SongSyncStatus.pendingCreate,
+    'unifiedSyncOverviewProvider aggregates overridden catalog and song state',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(userId: 'u', organizationId: 'o'),
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
             ),
-          ],
-        ),
-        planningMutationEntriesProvider.overrideWith((ref) async => const []),
-        planningPlanListProvider.overrideWith((ref) async => const []),
-      ],
-    );
-    addTearDown(container.dispose);
+          ),
+          planningSyncStateProvider.overrideWithValue(
+            const PlanningSyncState.initial(),
+          ),
+          songMutationEntriesProvider.overrideWith(
+            (ref) async => <SongMutationRecord>[
+              SongMutationRecord(
+                id: 's',
+                organizationId: 'o',
+                slug: 's',
+                title: 'Song',
+                chordproSource: '',
+                version: 1,
+                baseVersion: null,
+                syncStatus: SongSyncStatus.pendingCreate,
+              ),
+            ],
+          ),
+          planningMutationEntriesProvider.overrideWith((ref) async => const []),
+          planningPlanListProvider.overrideWith((ref) async => const []),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    // Resolve FutureProviders before reading the synchronous overview.
-    await container.read(songMutationEntriesProvider.future);
-    await container.read(planningMutationEntriesProvider.future);
-    await container.read(planningPlanListProvider.future);
+      // Resolve FutureProviders before reading the synchronous overview.
+      await container.read(songMutationEntriesProvider.future);
+      await container.read(planningMutationEntriesProvider.future);
+      await container.read(planningPlanListProvider.future);
 
-    final overview = container.read(unifiedSyncOverviewProvider);
-    expect(overview.headerStatus, UnifiedSyncHeaderStatus.unsynced);
-    expect(overview.songRows.single.title, 'Song');
-  });
+      final overview = container.read(unifiedSyncOverviewProvider);
+      expect(overview.headerStatus, UnifiedSyncHeaderStatus.unsynced);
+      expect(overview.songRows.single.title, 'Song');
+    },
+  );
 }

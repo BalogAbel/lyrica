@@ -37,10 +37,7 @@ class PlanningWorkspaceShell extends StatelessWidget {
                   _WorkspaceHeader(
                     title: title,
                     subtitle: subtitle,
-                    actions: [
-                      ?headerSyncControl,
-                      ...actions,
-                    ],
+                    actions: [?headerSyncControl, ...actions],
                     leading: leading,
                   ),
                   if (statusSurface != null) ...[

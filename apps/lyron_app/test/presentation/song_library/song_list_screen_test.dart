@@ -142,11 +142,11 @@ void main() {
           hasUnsyncedPlanningMutationsProvider.overrideWith(
             (ref) async => hasUnsyncedPlanningMutations,
           ),
-        if (hasUnsyncedChanges != null ||
-            hasUnsyncedPlanningMutations != null)
+        if (hasUnsyncedChanges != null || hasUnsyncedPlanningMutations != null)
           unifiedSyncOverviewProvider.overrideWithValue(
             UnifiedSyncOverview(
-              headerStatus: (hasUnsyncedChanges == true ||
+              headerStatus:
+                  (hasUnsyncedChanges == true ||
                       hasUnsyncedPlanningMutations == true)
                   ? UnifiedSyncHeaderStatus.unsynced
                   : UnifiedSyncHeaderStatus.synced,
@@ -155,7 +155,8 @@ void main() {
               freshness: UnifiedSyncFreshness.fresh,
               songRows: const [],
               planRows: const [],
-              hasUnsyncedWork: hasUnsyncedChanges == true ||
+              hasUnsyncedWork:
+                  hasUnsyncedChanges == true ||
                   hasUnsyncedPlanningMutations == true,
             ),
           ),

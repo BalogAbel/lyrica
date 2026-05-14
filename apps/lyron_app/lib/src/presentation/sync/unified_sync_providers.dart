@@ -54,6 +54,22 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     () => ref.watch(planningPlanTitlesProvider),
     const <String, String>{},
   );
+
+  // Drive the offline-to-online detector from changes seen by the overview
+  // itself. This keeps the trigger wiring on the same active-organization
+  // boundary that already feeds the header control, and avoids attaching
+  // listeners at app boot before any signed-in workspace surface is mounted.
+  try {
+    ref.read(onlineTransitionDetectorProvider)
+      ..updateCatalog(catalog)
+      ..updatePlanning(planning);
+    // Reading the foreground listener boots its lifecycle subscription.
+    ref.read(foregroundSyncListenerProvider);
+  } catch (_) {
+    // Tests that do not wire the supporting providers can ignore the
+    // trigger plumbing; widget rendering must not depend on it.
+  }
+
   return computeUnifiedSyncOverview(
     UnifiedSyncOverviewInputs(
       catalog: catalog,
@@ -112,28 +128,25 @@ final unifiedManualSyncControllerProvider =
 final onlineTransitionDetectorProvider = Provider<OnlineTransitionDetector>((
   ref,
 ) {
-  final detector = OnlineTransitionDetector(
+  return OnlineTransitionDetector(
     onTransitionToOnline: () {
-      ref.read(unifiedManualSyncControllerProvider).syncNow();
+      Future.microtask(() {
+        ref.read(unifiedManualSyncControllerProvider).syncNow();
+      });
     },
-    triggerWhenClean: false,
-    hasUnsyncedWorkReader: () =>
-        ref.read(unifiedSyncOverviewProvider).hasUnsyncedWork,
+    // The underlying controllers already single-flight, dedup, and short-
+    // circuit when there is nothing to sync, so firing on every reconnect
+    // remains cheap and avoids reading the overview (which would create a
+    // cycle through this provider).
+    triggerWhenClean: true,
   );
-
-  ref.listen(catalogSnapshotStateProvider, (_, next) {
-    detector.updateCatalog(next);
-  });
-  ref.listen(planningSyncStateProvider, (_, next) {
-    detector.updatePlanning(next);
-  });
-  return detector;
 });
 
 final foregroundSyncListenerProvider = Provider<ForegroundSyncListener>((ref) {
   final listener = ForegroundSyncListener(
     foregroundState: ref.watch(appForegroundStateProvider),
     onResume: () async {
+      await Future.microtask(() {});
       await ref.read(unifiedManualSyncControllerProvider).syncNow();
     },
   );
