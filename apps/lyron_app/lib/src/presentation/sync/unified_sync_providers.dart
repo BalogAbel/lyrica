@@ -3,6 +3,8 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
+import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
@@ -82,3 +84,35 @@ final unifiedManualSyncControllerProvider =
       ref.onDispose(controller.dispose);
       return controller;
     });
+
+final onlineTransitionDetectorProvider = Provider<OnlineTransitionDetector>((
+  ref,
+) {
+  final detector = OnlineTransitionDetector(
+    onTransitionToOnline: () {
+      ref.read(unifiedManualSyncControllerProvider).syncNow();
+    },
+    triggerWhenClean: false,
+    hasUnsyncedWorkReader: () =>
+        ref.read(unifiedSyncOverviewProvider).hasUnsyncedWork,
+  );
+
+  ref.listen(catalogSnapshotStateProvider, (_, next) {
+    detector.updateCatalog(next);
+  });
+  ref.listen(planningSyncStateProvider, (_, next) {
+    detector.updatePlanning(next);
+  });
+  return detector;
+});
+
+final foregroundSyncListenerProvider = Provider<ForegroundSyncListener>((ref) {
+  final listener = ForegroundSyncListener(
+    foregroundState: ref.watch(appForegroundStateProvider),
+    onResume: () async {
+      await ref.read(unifiedManualSyncControllerProvider).syncNow();
+    },
+  );
+  ref.onDispose(listener.dispose);
+  return listener;
+});
