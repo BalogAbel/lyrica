@@ -171,4 +171,35 @@ class AppStrings {
   static const songLibraryFlowHeading = 'Mock song catalog in progress';
   static const songLibraryFlowSummary =
       'This shell anchors the tablet-first song reader slice';
+  static const unifiedSyncSyncedLabel = 'Synced';
+  static const unifiedSyncUnsyncedLabel = 'Unsynced';
+  static const unifiedSyncConflictLabel = 'Conflict';
+  static const unifiedSyncTooltip = 'Workspace sync status';
+  static const unifiedSyncNowAction = 'Sync now';
+  static const unifiedSyncPopupTitle = 'Workspace sync';
+  static const unifiedSyncEmptyMessage =
+      'All local changes are synced with the server.';
+  static const unifiedSyncSongsHeading = 'Songs';
+  static const unifiedSyncPlansHeading = 'Plans';
+  static const unifiedSyncSongStateCreated = 'Created';
+  static const unifiedSyncSongStateEdited = 'Edited';
+  static const unifiedSyncSongStateRemoved = 'Removed';
+  static const unifiedSyncSongStateCreatedConflict = 'Created (conflict)';
+  static const unifiedSyncSongStateEditedConflict = 'Edited (conflict)';
+  static const unifiedSyncSongStateRemovedConflict = 'Removed (conflict)';
+  static const unifiedSyncReasonPendingLocal = 'pending_local';
+  static const unifiedSyncReasonSyncFailed = 'sync_failed';
+  static const unifiedSyncReasonConflict = 'conflict';
+  static const unifiedSyncReasonAuthorizationDenied = 'authorization_denied';
+  static const unifiedSyncReasonDependencyBlocked = 'dependency_blocked';
+  static const unifiedSyncReasonRemoteMissing = 'remote_missing';
+  static const unifiedSyncReasonUnknown = 'unknown';
+  static const unifiedSyncFreshnessFresh = 'fresh';
+  static const unifiedSyncFreshnessStale = 'stale';
+  static const unifiedSyncFreshnessOfflineCached = 'offline_cached';
+  static const unifiedSyncFreshnessUnknown = 'freshness unknown';
+  static const unifiedSyncConnectivityOnline = 'online';
+  static const unifiedSyncConnectivityOffline = 'offline';
+  static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
+  static const unifiedSyncActivitySyncing = 'syncing';
 }
