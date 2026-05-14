@@ -47,6 +47,7 @@ Use these terms consistently in specs, UI copy, models, and tests:
 - `conflict`: backend state and local intent diverged and require explicit user choice.
 - `authorization_denied`: backend rejected a mutation because the user lacks the required capability.
 - `dependency_blocked`: backend or local policy rejected a mutation because related data prevents it.
+- `remote_missing`: backend reported that the target record no longer exists.
 
 ## Freshness And Sync Triggers
 
@@ -116,7 +117,7 @@ Status mapping:
 
 - Green `Synced`: no durable local `Created`, `Edited`, `Removed`, or `Reordered` intent exists, and no conflict state exists.
 - Yellow `Unsynced`: one or more `Created`, `Edited`, `Removed`, or `Reordered` states exist. Retryable network, timeout, or temporary backend failures remain yellow because the local intent is still retryable.
-- Red `Conflict`: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents authorization denied, dependency blocked, remote missing, or another non-retryable rejection.
+- Red `Conflict`: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection.
 
 Connectivity and freshness are secondary status dimensions. Offline cached data may still show green if there is no known local divergence or unresolved sync issue. Until the follow-up online implementation slice changes this behavior, offline or stale status should be shown as secondary text or iconography rather than changing the primary green/yellow/red sync color.
 
@@ -145,7 +146,7 @@ Planning popup grouping should use the best available identity in this order:
 
 Failed plan creates should appear as their own plan-level rows. Mutations for sessions or session items whose parent plan is unavailable must still appear under a recoverable plan-level fallback row instead of disappearing from the popup.
 
-The popup should not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: version conflict, authorization denied, dependency blocked, remote missing, or non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
+The popup should not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
 
 Retry may appear for retryable unsynced rows as well as recovery rows where retry is meaningful. Non-retryable conflict rows should prefer explicit recovery actions such as discard, explicit overwrite, explicit remove, or explicit reorder overwrite.
 
