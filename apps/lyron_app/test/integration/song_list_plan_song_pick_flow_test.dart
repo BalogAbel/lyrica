@@ -11,6 +11,7 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -20,6 +21,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -80,6 +82,9 @@ void main() {
                 userId: 'user-1',
                 organizationId: 'org-1',
               ),
+            ),
+            unifiedSyncOverviewProvider.overrideWithValue(
+              const UnifiedSyncOverview.initial(),
             ),
           ],
           child: Builder(

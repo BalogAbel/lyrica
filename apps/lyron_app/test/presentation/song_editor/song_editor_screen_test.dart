@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -237,11 +240,18 @@ Future<void> _pumpScreen(
   addTearDown(tester.view.resetPhysicalSize);
 
   await tester.pumpWidget(
-    MaterialApp(
-      home: SongEditorScreen(
-        songId: 'song-1',
-        songSlug: 'egy-ut',
-        initialSource: initialSource,
+    ProviderScope(
+      overrides: [
+        unifiedSyncOverviewProvider.overrideWithValue(
+          const UnifiedSyncOverview.initial(),
+        ),
+      ],
+      child: MaterialApp(
+        home: SongEditorScreen(
+          songId: 'song-1',
+          songSlug: 'egy-ut',
+          initialSource: initialSource,
+        ),
       ),
     ),
   );
