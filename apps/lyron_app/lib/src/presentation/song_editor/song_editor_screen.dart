@@ -29,10 +29,10 @@ class SongEditorScreen extends ConsumerStatefulWidget {
        _isCreating = false;
 
   const SongEditorScreen.create({super.key})
-      : _songId = null,
-        _songSlug = null,
-        _initialSource = null,
-        _isCreating = true;
+    : _songId = null,
+      _songSlug = null,
+      _initialSource = null,
+      _isCreating = true;
 
   final String? _songId;
   final String? _songSlug;
@@ -577,10 +577,7 @@ class _TopBar extends StatelessWidget {
                   tooltip: 'Back',
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
+                Text(title, style: Theme.of(context).textTheme.headlineMedium),
               ],
             ),
           ],
