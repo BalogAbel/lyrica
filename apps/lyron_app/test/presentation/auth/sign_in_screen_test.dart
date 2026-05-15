@@ -40,8 +40,9 @@ void main() {
     expect(repository.lastPassword, 'LyronDemo123!');
   });
 
-  testWidgets('sign-in fields are empty when no dart-defines are set',
-      (tester) async {
+  testWidgets('sign-in fields are empty when no dart-defines are set', (
+    tester,
+  ) async {
     final repository = _StubAuthRepository();
     final controller = AppAuthController(repository);
     await controller.restoreSession();
@@ -59,10 +60,12 @@ void main() {
     );
     await tester.pump();
 
-    final emailField =
-        tester.widget<TextFormField>(find.byType(TextFormField).at(0));
-    final passwordField =
-        tester.widget<TextFormField>(find.byType(TextFormField).at(1));
+    final emailField = tester.widget<TextFormField>(
+      find.byType(TextFormField).at(0),
+    );
+    final passwordField = tester.widget<TextFormField>(
+      find.byType(TextFormField).at(1),
+    );
 
     expect(emailField.controller?.text, isEmpty);
     expect(passwordField.controller?.text, isEmpty);
