@@ -76,24 +76,10 @@ class PlanListScreen extends ConsumerWidget {
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final plan = plans[index];
-              final inlineStatus = planningInlineMutationStatusFor(
-                mutationsAsync.valueOrNull?.where(
-                      (entry) =>
-                          entry.aggregateId == plan.id ||
-                          entry.planId == plan.id,
-                    ) ??
-                    const <PlanningMutationRecord>[],
-              );
 
               return ListTile(
                 title: Text(plan.name),
                 subtitle: _PlanSummarySubtitle(plan: plan),
-                trailing: inlineStatus == null
-                    ? null
-                    : PlanningInlineMutationStatusBadge(
-                        key: ValueKey('plan-row-status-${plan.id}'),
-                        status: inlineStatus,
-                      ),
                 onTap: () =>
                     context.push(PlanningRoutes.planDetailLocation(plan.slug)),
               );

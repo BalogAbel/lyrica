@@ -104,35 +104,15 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             plan: detail.plan,
             sessions: sessions,
           );
-          final planInlineStatus = planningInlineMutationStatusFor(
-            mutationEntries.where(
-              (entry) =>
-                  entry.aggregateId == detail.plan.id &&
-                  (entry.kind == PlanningMutationKind.planCreate ||
-                      entry.kind == PlanningMutationKind.planEdit),
-            ),
-          );
           return ReorderableListView.builder(
             buildDefaultDragHandles: false,
             padding: EdgeInsets.zero,
             header: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      detail.plan.name,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    if (planInlineStatus != null)
-                      PlanningInlineMutationStatusBadge(
-                        key: ValueKey('plan-local-status-${detail.plan.id}'),
-                        status: planInlineStatus,
-                      ),
-                  ],
+                Text(
+                  detail.plan.name,
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 if ((detail.plan.description ?? '').isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -514,12 +494,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final planDetail = widget.planDetail;
     final session = widget.session;
     final items = _orderedItems(session);
-    final inlineStatus = planningInlineMutationStatusFor(
-      widget.mutationEntries.where(
-        (entry) =>
-            entry.aggregateId == session.id || entry.sessionId == session.id,
-      ),
-    );
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
     ref.listen(activePlanningContextProvider, (previous, next) {
@@ -549,21 +523,9 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
             Row(
               children: [
                 Expanded(
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        session.name,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (inlineStatus != null)
-                        PlanningInlineMutationStatusBadge(
-                          key: ValueKey('session-local-status-${session.id}'),
-                          status: inlineStatus,
-                        ),
-                    ],
+                  child: Text(
+                    session.name,
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
                 ReorderableDelayedDragStartListener(
