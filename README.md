@@ -147,7 +147,7 @@ After `./scripts/supabase.sh start` and `./scripts/db-reset.sh`, provision the l
 Documented demo credentials:
 
 - email: `demo@lyron.local`
-- password: `Lyron ChordsDemo123!`
+- password: `LyronDemo123!`
 
 For the simplest end-to-end local app run, use:
 

@@ -38,7 +38,7 @@ For ADB-managed Android devices, including wireless targets whose Flutter id loo
 Documented demo credentials:
 
 - email: `demo@lyron.local`
-- password: `Lyron ChordsDemo123!`
+- password: `LyronDemo123!`
 
 ## Structure
 
