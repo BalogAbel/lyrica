@@ -1,6 +1,6 @@
 import 'package:lyron_app/src/domain/song/song_line.dart';
 
-enum SongSectionKind { verse, chorus, bridge, other }
+enum SongSectionKind { verse, chorus, bridge, other, unknown, tab }
 
 class SongSection {
   SongSection({

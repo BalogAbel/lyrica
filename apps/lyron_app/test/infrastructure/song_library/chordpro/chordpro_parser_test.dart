@@ -376,4 +376,9 @@ Line two
     final song = parser.parse('{title:T}\n{comment:<Verse>}\n[A]Hello\n');
     expect(song.sections.single.lines.single, isA<LyricLine>());
   });
+
+  test('SongSectionKind has unknown and tab values', () {
+    expect(SongSectionKind.values, contains(SongSectionKind.unknown));
+    expect(SongSectionKind.values, contains(SongSectionKind.tab));
+  });
 }
