@@ -19,8 +19,9 @@ void main() {
               kind: SongSectionKind.other,
               label: 'Unlabeled',
               number: null,
+              isUnknown: false,
               lines: [
-                SongReaderLineProjection(
+                SongReaderLyricLineProjection(
                   segments: const [
                     SongReaderSegmentProjection(
                       displayChord: 'E',
@@ -53,8 +54,9 @@ void main() {
               kind: SongSectionKind.verse,
               label: 'Verse',
               number: 1,
+              isUnknown: false,
               lines: [
-                SongReaderLineProjection(
+                SongReaderLyricLineProjection(
                   segments: const [
                     SongReaderSegmentProjection(
                       displayChord: null,
@@ -102,10 +104,11 @@ void main() {
                     kind: intro.kind,
                     label: intro.label,
                     number: intro.number,
+                    isUnknown: false,
                     lines: intro.lines
                         .whereType<LyricLine>()
                         .map(
-                          (line) => SongReaderLineProjection(
+                          (line) => SongReaderLyricLineProjection(
                             segments: line.segments
                                 .map(
                                   (segment) => SongReaderSegmentProjection(
