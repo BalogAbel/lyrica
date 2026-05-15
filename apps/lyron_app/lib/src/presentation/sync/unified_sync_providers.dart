@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -130,9 +132,11 @@ final onlineTransitionDetectorProvider = Provider<OnlineTransitionDetector>((
 ) {
   return OnlineTransitionDetector(
     onTransitionToOnline: () {
-      Future.microtask(() {
-        ref.read(unifiedManualSyncControllerProvider).syncNow();
-      });
+      unawaited(
+        Future.microtask(() {
+          ref.read(unifiedManualSyncControllerProvider).syncNow();
+        }),
+      );
     },
     // The underlying controllers already single-flight, dedup, and short-
     // circuit when there is nothing to sync, so firing on every reconnect
