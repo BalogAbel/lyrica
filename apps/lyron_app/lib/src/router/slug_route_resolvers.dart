@@ -79,7 +79,7 @@ class SongEditorSlugRouteResolver extends ConsumerWidget {
           );
         }
 
-        return SongEditorScreen(
+        return SongEditorScreen.edit(
           songId: song.songId,
           songSlug: song.songSlug,
           initialSource: song.source,

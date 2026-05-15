@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -227,6 +228,36 @@ Line two
       findsOneWidget,
     );
   });
+
+  testWidgets('create mode renders with New song title', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+        ],
+        child: const MaterialApp(
+          home: SongEditorScreen.create(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songCreateTitle), findsOneWidget);
+    expect(find.text(AppStrings.songEditAction), findsNothing);
+  });
+
+  testWidgets('edit mode renders with Edit song title', (tester) async {
+    await _pumpScreen(tester, const Size(1440, 1200));
+    expect(find.text(AppStrings.songEditAction), findsOneWidget);
+    expect(find.text(AppStrings.songCreateTitle), findsNothing);
+  });
 }
 
 Future<void> _pumpScreen(
@@ -247,7 +278,7 @@ Future<void> _pumpScreen(
         ),
       ],
       child: MaterialApp(
-        home: SongEditorScreen(
+        home: SongEditorScreen.edit(
           songId: 'song-1',
           songSlug: 'egy-ut',
           initialSource: initialSource,
