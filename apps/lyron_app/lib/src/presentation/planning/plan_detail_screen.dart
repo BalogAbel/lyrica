@@ -42,8 +42,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final ref = this.ref;
     final detailAsync = ref.watch(planningPlanDetailProvider(planId));
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
-    final mutationEntries =
-        mutationsAsync.valueOrNull ?? const <PlanningMutationRecord>[];
 
     return PlanningWorkspaceShell(
       title: AppStrings.planDetailTitle,
@@ -142,7 +140,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                 planDetail: orderedDetail,
                 session: session,
                 sessionIndex: index,
-                mutationEntries: mutationEntries,
               );
             },
           );
@@ -457,13 +454,11 @@ class _SessionCard extends ConsumerStatefulWidget {
     required this.planDetail,
     required this.session,
     required this.sessionIndex,
-    required this.mutationEntries,
   });
 
   final PlanDetail planDetail;
   final SessionSummary session;
   final int sessionIndex;
-  final List<PlanningMutationRecord> mutationEntries;
 
   @override
   ConsumerState<_SessionCard> createState() => _SessionCardState();
