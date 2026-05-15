@@ -92,7 +92,6 @@ Run from the repository root:
 
 ```bash
 ./scripts/bootstrap-app.sh
-./scripts/run-app.sh
 ./scripts/run-authenticated-app.sh
 ./scripts/manual-validation/setup-local-first.sh
 ./scripts/manual-validation/reset-validation-state.sh
