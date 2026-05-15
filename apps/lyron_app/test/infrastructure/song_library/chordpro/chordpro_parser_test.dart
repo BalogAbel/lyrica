@@ -403,4 +403,66 @@ Line two
     expect(song.subtitle, 'Sub');
     expect(song.diagnostics, isEmpty);
   });
+
+  test('{start_of_verse}/{end_of_verse} creates a verse section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_verse}\n[A]Line\n{end_of_verse}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.verse);
+    expect(song.sections.single.label, 'Verse');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{start_of_bridge}/{end_of_bridge} creates a bridge section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_bridge}\n[A]Line\n{end_of_bridge}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.bridge);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{start_of_verse: Verse 1} uses label override', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_verse: Verse 1}\n[A]Line\n{end_of_verse}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.verse);
+    expect(song.sections.single.label, 'Verse 1');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{start_of_chorus: Refrén} uses label override', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_chorus: Refrén}\n[A]Line\n{end_of_chorus}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.chorus);
+    expect(song.sections.single.label, 'Refrén');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{start_of_tab}/{end_of_tab} creates a tab section with TabBlock', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_tab}\ne|---0---\nB|---1---\n{end_of_tab}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.tab);
+    expect(song.sections.single.lines, hasLength(1));
+    expect(song.sections.single.lines[0], isA<TabBlock>());
+    final tab = song.sections.single.lines[0] as TabBlock;
+    expect(tab.rawLines, ['e|---0---', 'B|---1---']);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{start_of_prechorus} creates an unknown section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_prechorus}\n[A]Line\n{end_of_prechorus}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.unknown);
+    expect(song.sections.single.label, 'prechorus');
+    expect(song.diagnostics, isEmpty);
+  });
 }
