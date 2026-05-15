@@ -150,7 +150,8 @@ UnifiedSyncOverview computeUnifiedSyncOverview(
 
   final freshness = switch (input.catalog.connectionStatus) {
     CatalogConnectionStatus.online =>
-      input.catalog.refreshStatus == CatalogRefreshStatus.failed
+      input.catalog.refreshStatus == CatalogRefreshStatus.failed ||
+              input.planning.refreshStatus == PlanningRefreshStatus.failed
           ? UnifiedSyncFreshness.stale
           : UnifiedSyncFreshness.fresh,
     CatalogConnectionStatus.offlineCached => UnifiedSyncFreshness.offlineCached,
