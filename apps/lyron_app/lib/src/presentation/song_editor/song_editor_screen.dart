@@ -319,7 +319,20 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     if (!context.mounted) {
       return;
     }
-    _returnToSongView(context);
+
+    _cancelChanges();
+
+    if (widget._isCreating) {
+      context.go(AppRoutes.home.path);
+      return;
+    }
+
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+
+    context.replace(_songViewLocation());
   }
 
   void _setCanonicalView(SongEditorCanonicalViewMode mode) {

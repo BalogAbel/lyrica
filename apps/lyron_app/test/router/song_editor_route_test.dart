@@ -291,7 +291,7 @@ void main() {
         ),
         GoRoute(
           path: '/songs/:songSlug/edit',
-          builder: (context, state) => SongEditorScreen(
+          builder: (context, state) => SongEditorScreen.edit(
             songId: 'song-1',
             songSlug: state.pathParameters['songSlug']!,
             initialSource: source,
