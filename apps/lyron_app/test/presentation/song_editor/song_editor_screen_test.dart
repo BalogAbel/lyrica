@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/song_library/song_library_service.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
+import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
@@ -258,6 +264,64 @@ Line two
     expect(find.text(AppStrings.songEditAction), findsOneWidget);
     expect(find.text(AppStrings.songCreateTitle), findsNothing);
   });
+
+  testWidgets('create mode save calls createSong and navigates to reader', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final service = _RecordingEditorSongLibraryService();
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.songCreate.path,
+      routes: [
+        GoRoute(
+          path: AppRoutes.songCreate.path,
+          builder: (context, state) => const SongEditorScreen.create(),
+        ),
+        GoRoute(
+          path: AppRoutes.songReader.path,
+          builder: (context, state) {
+            final slug = state.pathParameters['songSlug']!;
+            return Material(child: Text('reader:$slug'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          songLibraryServiceProvider.overrideWithValue(service),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Edit the source to make the screen dirty, then save
+    await tester.enterText(find.byType(TextField), '{title: New Creation}');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(service.createCalledWith?.title, 'New Creation');
+    expect(find.textContaining('reader:'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpScreen(
@@ -292,4 +356,38 @@ Future<void> _pumpScreen(
 Future<void> _resizeViewport(WidgetTester tester, Size physicalSize) async {
   tester.view.physicalSize = physicalSize;
   await tester.pumpAndSettle();
+}
+
+class _RecordingEditorSongLibraryService extends Fake
+    implements SongLibraryService {
+  ({String title, String chordproSource})? createCalledWith;
+
+  @override
+  Future<SongMutationRecord> createSong({
+    required ActiveCatalogContext context,
+    required String title,
+    required String chordproSource,
+  }) async {
+    createCalledWith = (title: title, chordproSource: chordproSource);
+    return SongMutationRecord(
+      id: 'new-id',
+      organizationId: context.organizationId,
+      slug: 'new-creation',
+      title: title,
+      chordproSource: chordproSource,
+      version: 1,
+      baseVersion: null,
+      syncStatus: SongSyncStatus.pendingCreate,
+    );
+  }
+
+  @override
+  Future<SongMutationRecord> updateSong({
+    required ActiveCatalogContext context,
+    required String songId,
+    required String title,
+    required String chordproSource,
+  }) async {
+    throw StateError('updateSong must not be called in create mode');
+  }
 }

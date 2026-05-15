@@ -213,14 +213,32 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       return;
     }
 
-    final songId = widget._songId;
-    if (songId == null) {
-      _returnToSongView(context);
-      return;
-    }
-    final songViewLocation = _songViewLocation();
     final service = ref.read(songLibraryServiceProvider);
     final projection = SongEditorProjection(state: _controller.state);
+
+    if (widget._isCreating) {
+      final record = await service.createSong(
+        context: activeContext,
+        title: projection.summaryTitle,
+        chordproSource: _controller.state.source,
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      ref.invalidate(songLibraryListProvider);
+      ref.invalidate(songMutationEntriesProvider);
+      _commitChanges();
+      context.replace(
+        AppRoutes.songReader.path.replaceFirst(':songSlug', record.slug),
+      );
+      return;
+    }
+
+    final songId = widget._songId!;
+    final songViewLocation = _songViewLocation();
+
     try {
       await service.updateSong(
         context: activeContext,
