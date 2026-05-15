@@ -248,9 +248,7 @@ Line two
             const UnifiedSyncOverview.initial(),
           ),
         ],
-        child: const MaterialApp(
-          home: SongEditorScreen.create(),
-        ),
+        child: const MaterialApp(home: SongEditorScreen.create()),
       ),
     );
     await tester.pumpAndSettle();
@@ -278,8 +276,7 @@ Line two
       routes: [
         GoRoute(
           path: AppRoutes.home.path,
-          builder: (context, state) =>
-              const Material(child: Text('song-list')),
+          builder: (context, state) => const Material(child: Text('song-list')),
         ),
         GoRoute(
           path: AppRoutes.songCreate.path,
@@ -322,8 +319,7 @@ Line two
       routes: [
         GoRoute(
           path: AppRoutes.home.path,
-          builder: (context, state) =>
-              const Material(child: Text('song-list')),
+          builder: (context, state) => const Material(child: Text('song-list')),
         ),
         GoRoute(
           path: AppRoutes.songCreate.path,
