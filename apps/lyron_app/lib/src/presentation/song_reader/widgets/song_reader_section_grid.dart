@@ -238,18 +238,31 @@ class SongReaderSectionGrid extends StatelessWidget {
             .floor()
             .clamp(12, 140);
     var linesHeight = 0.0;
-    for (final line in section.lines) {
-      final text = line.segments.map((segment) => segment.text).join();
-      final lyricLength = text.trimRight().length;
-      final hasChord =
-          viewMode == SongReaderViewMode.chordsAndLyrics &&
-          line.segments.any((segment) => segment.displayChord != null);
-      final wrapCount = lyricLength == 0
-          ? 1
-          : (lyricLength / charsPerLine).ceil().clamp(1, 14);
-      final chordRowHeight = hasChord ? (_chordRowHeight * sharedFontScale) : 0;
-      final lyricRowsHeight = wrapCount * (_lyricRowHeight * sharedFontScale);
-      linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
+    for (final item in section.lines) {
+      switch (item) {
+        case SongReaderLyricLineProjection():
+          final text = item.segments.map((segment) => segment.text).join();
+          final lyricLength = text.trimRight().length;
+          final hasChord =
+              viewMode == SongReaderViewMode.chordsAndLyrics &&
+              item.segments.any((segment) => segment.displayChord != null);
+          final wrapCount = lyricLength == 0
+              ? 1
+              : (lyricLength / charsPerLine).ceil().clamp(1, 14);
+          final chordRowHeight =
+              hasChord ? (_chordRowHeight * sharedFontScale) : 0;
+          final lyricRowsHeight = wrapCount * (_lyricRowHeight * sharedFontScale);
+          linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
+        case SongReaderCommentProjection():
+          linesHeight += _lyricRowHeight * sharedFontScale + _lineGap;
+        case SongReaderTabProjection():
+          linesHeight +=
+              item.rawLines.length * (_lyricRowHeight * sharedFontScale) +
+              _lineGap +
+              16;
+        case SongReaderDirectiveProjection():
+          linesHeight += _directiveLineHeight;
+      }
     }
     return headerHeight + linesHeight + _sectionGap;
   }

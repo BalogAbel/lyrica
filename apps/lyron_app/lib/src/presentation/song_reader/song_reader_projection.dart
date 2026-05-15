@@ -38,6 +38,7 @@ class SongReaderProjection {
                  kind: section.kind,
                  label: section.label,
                  number: section.number,
+                 isUnknown: section.kind == SongSectionKind.unknown,
                  lines: List.unmodifiable(
                    section.lines
                        .map((line) => _projectLine(line, state, song, transposeChord))
@@ -99,26 +100,49 @@ String _transposeChord(String chord, int semitoneOffset) {
   return ChordSymbol.parse(chord).transpose(semitoneOffset).displayName;
 }
 
+sealed class SongReaderSectionItemProjection {
+  const SongReaderSectionItemProjection();
+}
+
+class SongReaderLyricLineProjection extends SongReaderSectionItemProjection {
+  SongReaderLyricLineProjection({
+    required List<SongReaderSegmentProjection> segments,
+  }) : segments = List.unmodifiable(segments);
+
+  final List<SongReaderSegmentProjection> segments;
+}
+
+class SongReaderCommentProjection extends SongReaderSectionItemProjection {
+  const SongReaderCommentProjection({required this.text});
+  final String text;
+}
+
+class SongReaderTabProjection extends SongReaderSectionItemProjection {
+  SongReaderTabProjection({required List<String> rawLines})
+      : rawLines = List.unmodifiable(rawLines);
+  final List<String> rawLines;
+}
+
+class SongReaderDirectiveProjection extends SongReaderSectionItemProjection {
+  const SongReaderDirectiveProjection({required this.name, this.value});
+  final String name;
+  final String? value;
+}
+
 class SongReaderSectionProjection {
   SongReaderSectionProjection({
     required this.kind,
     required this.label,
     required this.number,
-    required List<SongReaderLineProjection> lines,
+    required this.isUnknown,
+    required List<SongReaderSectionItemProjection> lines,
   }) : lines = List.unmodifiable(lines);
 
   final SongSectionKind kind;
   final String label;
   final int? number;
-  final List<SongReaderLineProjection> lines;
-}
-
-class SongReaderLineProjection {
-  SongReaderLineProjection({
-    required List<SongReaderSegmentProjection> segments,
-  }) : segments = List.unmodifiable(segments);
-
-  final List<SongReaderSegmentProjection> segments;
+  final bool isUnknown;
+  final List<SongReaderSectionItemProjection> lines;
 }
 
 class SongReaderSegmentProjection {
@@ -131,14 +155,14 @@ class SongReaderSegmentProjection {
   final String text;
 }
 
-SongReaderLineProjection _projectLine(
+SongReaderSectionItemProjection _projectLine(
   SongLine line,
   SongReaderState state,
   ParsedSong song,
   SongChordTransposer transposeChord,
 ) {
   return switch (line) {
-    LyricLine() => SongReaderLineProjection(
+    LyricLine() => SongReaderLyricLineProjection(
         segments: List.unmodifiable(
           line.segments
               .map(
@@ -155,7 +179,9 @@ SongReaderLineProjection _projectLine(
               .toList(growable: false),
         ),
       ),
-    CommentLine() || TabBlock() || DirectiveLine() =>
-      SongReaderLineProjection(segments: const []),
+    CommentLine() => SongReaderCommentProjection(text: line.text),
+    TabBlock() => SongReaderTabProjection(rawLines: line.rawLines),
+    DirectiveLine() =>
+      SongReaderDirectiveProjection(name: line.name, value: line.value),
   };
 }

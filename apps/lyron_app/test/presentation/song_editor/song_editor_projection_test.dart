@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_controller.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 
 void main() {
   test('derives the summary from ChordPro source metadata', () {
@@ -53,7 +54,7 @@ void main() {
     expect(projection.preview.effectiveTranspose, 1);
     expect(projection.preview.effectiveCapo, 2);
     expect(
-      projection.preview.sections.first.lines.first.segments.first.displayChord,
+      (projection.preview.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'C#',
     );
     expect(projection.preview.capoDirectiveText, 'Capo 2');

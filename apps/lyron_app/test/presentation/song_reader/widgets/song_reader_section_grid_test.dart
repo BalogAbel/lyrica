@@ -20,24 +20,28 @@ void main() {
                   kind: SongSectionKind.verse,
                   label: 'Section A',
                   number: null,
+                  isUnknown: false,
                   lines: [],
                 ),
                 SongReaderSectionProjection(
                   kind: SongSectionKind.verse,
                   label: 'Section B',
                   number: null,
+                  isUnknown: false,
                   lines: [],
                 ),
                 SongReaderSectionProjection(
                   kind: SongSectionKind.verse,
                   label: 'Section C',
                   number: null,
+                  isUnknown: false,
                   lines: [],
                 ),
                 SongReaderSectionProjection(
                   kind: SongSectionKind.verse,
                   label: 'Section D',
                   number: null,
+                  isUnknown: false,
                   lines: [],
                 ),
               ],
@@ -74,12 +78,14 @@ void main() {
                     kind: SongSectionKind.verse,
                     label: 'Section A',
                     number: null,
+                    isUnknown: false,
                     lines: [],
                   ),
                   SongReaderSectionProjection(
                     kind: SongSectionKind.verse,
                     label: 'Section B',
                     number: null,
+                    isUnknown: false,
                     lines: [],
                   ),
                 ],
@@ -112,9 +118,10 @@ void main() {
           kind: SongSectionKind.verse,
           label: label,
           number: null,
+          isUnknown: false,
           lines: [
             for (var index = 0; index < 3; index += 1)
-              SongReaderLineProjection(
+              SongReaderLyricLineProjection(
                 segments: const [
                   SongReaderSegmentProjection(
                     displayChord: 'E',
@@ -159,9 +166,10 @@ void main() {
           kind: SongSectionKind.verse,
           label: label,
           number: null,
+          isUnknown: false,
           lines: [
             for (var index = 0; index < 4; index += 1)
-              SongReaderLineProjection(
+              SongReaderLyricLineProjection(
                 segments: const [
                   SongReaderSegmentProjection(
                     displayChord: 'E',
@@ -218,8 +226,9 @@ void main() {
                   kind: SongSectionKind.other,
                   label: 'Unlabeled',
                   number: null,
+                  isUnknown: false,
                   lines: [
-                    SongReaderLineProjection(
+                    SongReaderLyricLineProjection(
                       segments: const [
                         SongReaderSegmentProjection(
                           displayChord: 'E',
@@ -233,8 +242,9 @@ void main() {
                   kind: SongSectionKind.verse,
                   label: 'Verse',
                   number: 1,
+                  isUnknown: false,
                   lines: [
-                    SongReaderLineProjection(
+                    SongReaderLyricLineProjection(
                       segments: const [
                         SongReaderSegmentProjection(
                           displayChord: null,
@@ -273,9 +283,10 @@ void main() {
         kind: SongSectionKind.verse,
         label: label,
         number: null,
+        isUnknown: false,
         lines: [
           for (var index = 0; index < lineCount; index += 1)
-            SongReaderLineProjection(
+            SongReaderLyricLineProjection(
               segments: [
                 SongReaderSegmentProjection(
                   displayChord: null,
@@ -337,12 +348,14 @@ void main() {
                   kind: SongSectionKind.verse,
                   label: 'Verse',
                   number: 1,
+                  isUnknown: false,
                   lines: const [],
                 ),
                 SongReaderSectionProjection(
                   kind: SongSectionKind.chorus,
                   label: 'Chorus',
                   number: 1,
+                  isUnknown: false,
                   lines: const [],
                 ),
               ],

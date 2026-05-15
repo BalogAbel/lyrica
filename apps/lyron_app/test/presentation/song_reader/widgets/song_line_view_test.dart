@@ -8,7 +8,7 @@ void main() {
   testWidgets(
     'does not insert layout gaps into lyric text at chord boundaries',
     (tester) async {
-      final line = SongReaderLineProjection(
+      final line = SongReaderLyricLineProjection(
         segments: [
           const SongReaderSegmentProjection(displayChord: 'A', text: 'Hel'),
           const SongReaderSegmentProjection(
@@ -38,7 +38,7 @@ void main() {
   );
 
   testWidgets('applies shared font scale to lyric text size', (tester) async {
-    final line = SongReaderLineProjection(
+    final line = SongReaderLyricLineProjection(
       segments: const [
         SongReaderSegmentProjection(displayChord: null, text: 'Hello'),
       ],
@@ -80,7 +80,7 @@ void main() {
   testWidgets('renders chord-only segments without empty lyric placeholders', (
     tester,
   ) async {
-    final line = SongReaderLineProjection(
+    final line = SongReaderLyricLineProjection(
       segments: const [
         SongReaderSegmentProjection(displayChord: 'E', text: ''),
         SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),
@@ -112,7 +112,7 @@ void main() {
   testWidgets('preserves whitespace lyric segments used for chord alignment', (
     tester,
   ) async {
-    final line = SongReaderLineProjection(
+    final line = SongReaderLyricLineProjection(
       segments: const [
         SongReaderSegmentProjection(displayChord: 'A', text: '   '),
         SongReaderSegmentProjection(displayChord: 'E', text: 'Hello'),
@@ -140,7 +140,7 @@ void main() {
   });
 
   testWidgets('collapses chord-only lines in lyrics only mode', (tester) async {
-    final line = SongReaderLineProjection(
+    final line = SongReaderLyricLineProjection(
       segments: const [
         SongReaderSegmentProjection(displayChord: 'E', text: ''),
         SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),

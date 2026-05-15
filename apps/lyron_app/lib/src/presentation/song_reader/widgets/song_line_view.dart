@@ -13,7 +13,7 @@ class SongLineView extends StatelessWidget {
     required this.sharedFontScale,
   });
 
-  final SongReaderLineProjection line;
+  final SongReaderLyricLineProjection line;
   final SongReaderViewMode viewMode;
   final double sharedFontScale;
 

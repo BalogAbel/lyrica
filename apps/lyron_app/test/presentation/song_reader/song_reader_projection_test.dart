@@ -43,7 +43,7 @@ void main() {
     expect(projection.effectiveTranspose, 2);
     expect(projection.effectiveCapo, 2);
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'A',
     );
     expect(projection.sharedFontScale, 1.0);
@@ -57,7 +57,7 @@ void main() {
 
     expect(projection.viewMode, SongReaderViewMode.lyricsOnly);
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       isNull,
     );
   });
@@ -71,7 +71,7 @@ void main() {
     );
 
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'B',
     );
     expect(
@@ -80,6 +80,7 @@ void main() {
           kind: SongSectionKind.bridge,
           label: 'Bridge',
           number: null,
+          isUnknown: false,
           lines: const [],
         ),
       ),
@@ -102,7 +103,7 @@ void main() {
     }, returnsNormally);
 
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'not-a-real-chord',
     );
     final projFirstLine = song.sections.first.lines.first as LyricLine;
@@ -121,7 +122,7 @@ void main() {
     );
 
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'B',
     );
     expect(projection.isCapoDirectiveVisible, false);
@@ -138,7 +139,7 @@ void main() {
       expect(projection.effectiveTranspose, 1);
       expect(projection.effectiveCapo, 3);
       expect(
-        projection.sections.first.lines.first.segments.first.displayChord,
+        (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
         'G',
       );
       expect(projection.isCapoDirectiveVisible, true);
@@ -155,7 +156,7 @@ void main() {
     expect(projection.effectiveCapo, 0);
     expect(projection.capoDirectiveText, isNull);
     expect(
-      projection.sections.first.lines.first.segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
       'B',
     );
   });
