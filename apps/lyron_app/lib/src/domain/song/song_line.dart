@@ -1,6 +1,8 @@
 import 'package:lyron_app/src/domain/song/lyric_segment.dart';
 
-sealed class SongLine {}
+sealed class SongLine {
+  const SongLine();
+}
 
 class LyricLine extends SongLine {
   LyricLine({required List<LyricSegment> segments})
@@ -17,7 +19,7 @@ class LyricLine extends SongLine {
 }
 
 class CommentLine extends SongLine {
-  CommentLine({required this.text});
+  const CommentLine({required this.text}) : super();
   final String text;
 
   @override
@@ -41,7 +43,7 @@ class TabBlock extends SongLine {
 }
 
 class DirectiveLine extends SongLine {
-  DirectiveLine({required this.name, this.value});
+  const DirectiveLine({required this.name, this.value}) : super();
   final String name;
   final String? value;
 
