@@ -174,6 +174,16 @@ void main() {
       expect(overview.headerStatus, UnifiedSyncHeaderStatus.synced);
     });
 
+    test('planning refresh failed while online flags stale freshness', () {
+      final overview = _compute(
+        planning: const PlanningSyncState.initial().copyWith(
+          refreshStatus: PlanningRefreshStatus.failed,
+        ),
+      );
+      expect(overview.freshness, UnifiedSyncFreshness.stale);
+      expect(overview.headerStatus, UnifiedSyncHeaderStatus.synced);
+    });
+
     test('authorization_denied planning row yields red conflict severity', () {
       final overview = _compute(
         plans: [
