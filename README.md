@@ -179,7 +179,6 @@ On macOS with Colima, the repository keeps local Supabase analytics disabled in 
 ./scripts/supabase-start.sh
 ./scripts/db-reset.sh
 ./scripts/db-seed.sh
-./scripts/run-app.sh
 ./scripts/run-authenticated-app.sh
 ./scripts/run-ci-locally.sh
 ./scripts/backend-write-contracts.sh
