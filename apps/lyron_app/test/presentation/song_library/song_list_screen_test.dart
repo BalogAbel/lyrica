@@ -88,6 +88,11 @@ void main() {
               const Material(child: Text('plans:list')),
         ),
         GoRoute(
+          path: AppRoutes.songCreate.path,
+          builder: (context, state) =>
+              const Material(child: Text('create-screen')),
+        ),
+        GoRoute(
           path: '/songs/:songSlug',
           builder: (context, state) {
             final songSlug = state.pathParameters['songSlug']!;
@@ -1137,17 +1142,14 @@ void main() {
     expect(events, ['planning-sign-out', 'auth-sign-out']);
   });
 
-  testWidgets('create action opens the song editor and saves locally', (
+  testWidgets('create action navigates to the song create screen', (
     tester,
   ) async {
-    final service = _RecordingSongLibraryService();
-
     await tester.pumpWidget(
       buildApp(
         songs: const [
           SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
         ],
-        songLibraryService: service,
         catalogState: const CatalogSnapshotState(
           context: ActiveCatalogContext(
             userId: 'user-1',
@@ -1165,20 +1167,8 @@ void main() {
     await tester.tap(find.text(AppStrings.songCreateAction));
     await tester.pumpAndSettle();
 
-    final titleField = find.byKey(const ValueKey('song-editor-title-field'));
-    final sourceField = find.byKey(const ValueKey('song-editor-source-field'));
-    expect(titleField, findsOneWidget);
-    expect(sourceField, findsOneWidget);
-
-    final sourceFieldWidget = tester.widget<TextField>(sourceField);
-    expect(sourceFieldWidget.maxLines, isNull);
-
-    await tester.enterText(titleField, 'New Song');
-    await tester.enterText(sourceField, '{title: New Song}');
-    await tester.tap(find.text(AppStrings.songSaveAction));
-    await tester.pumpAndSettle();
-
-    expect(service.createdTitle, 'New Song');
+    expect(find.text('create-screen'), findsOneWidget);
+    expect(find.byKey(const ValueKey('song-editor-title-field')), findsNothing);
   });
 
   testWidgets('shows conflict actions for conflicted song mutations', (

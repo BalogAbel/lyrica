@@ -392,24 +392,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     if (activeContext == null) {
       return;
     }
-
-    final draft = await showDialog<_SongEditorDraft>(
-      context: context,
-      builder: (context) => const _SongEditorDialog(),
-    );
-    if (draft == null) {
-      return;
-    }
-
-    await ref
-        .read(songLibraryServiceProvider)
-        .createSong(
-          context: activeContext,
-          title: draft.title,
-          chordproSource: draft.source,
-        );
-    ref.invalidate(songMutationEntriesProvider);
-    ref.invalidate(songLibraryListProvider);
+    context.push(AppRoutes.songCreate.path);
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
@@ -608,81 +591,6 @@ class _MutationStatusSurface extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SongEditorDraft {
-  const _SongEditorDraft({required this.title, required this.source});
-
-  final String title;
-  final String source;
-}
-
-class _SongEditorDialog extends StatefulWidget {
-  const _SongEditorDialog();
-
-  @override
-  State<_SongEditorDialog> createState() => _SongEditorDialogState();
-}
-
-class _SongEditorDialogState extends State<_SongEditorDialog> {
-  late final TextEditingController _titleController = TextEditingController();
-  late final TextEditingController _sourceController = TextEditingController();
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _sourceController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text(AppStrings.songCreateAction),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const ValueKey('song-editor-title-field'),
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: AppStrings.songTitleLabel,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('song-editor-source-field'),
-              controller: _sourceController,
-              minLines: 4,
-              maxLines: null,
-              decoration: const InputDecoration(
-                labelText: AppStrings.songSourceLabel,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text(AppStrings.songCancelAction),
-        ),
-        FilledButton(
-          onPressed: () {
-            Navigator.of(context).pop(
-              _SongEditorDraft(
-                title: _titleController.text.trim(),
-                source: _sourceController.text,
-              ),
-            );
-          },
-          child: const Text(AppStrings.songSaveAction),
-        ),
-      ],
     );
   }
 }
