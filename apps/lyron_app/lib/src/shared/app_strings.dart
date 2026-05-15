@@ -17,6 +17,7 @@ class AppStrings {
   static const songMutationSyncAction = 'Sync changes';
   static const songCreateAction = 'Add song';
   static const songEditAction = 'Edit song';
+  static const songCreateTitle = 'New song';
   static const songDeleteAction = 'Delete song';
   static const songSaveAction = 'Save';
   static const songCancelAction = 'Cancel';
