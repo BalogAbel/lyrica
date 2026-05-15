@@ -18,7 +18,7 @@ class ChordproNormalizer {
   };
 
   String normalize(String source) {
-    final lines = source.split('\n');
+    final lines = source.split(RegExp(r'\r?\n'));
     final result = StringBuffer();
     for (var i = 0; i < lines.length; i++) {
       result.write(_normalizeLine(lines[i]));
