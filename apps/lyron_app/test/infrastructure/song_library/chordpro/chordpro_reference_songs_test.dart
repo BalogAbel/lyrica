@@ -47,12 +47,7 @@ void main() {
         chorusFirstLine.segments.first.text,
         startsWith('A forrás'),
       );
-      expect(song.diagnostics, hasLength(1));
-      expect(song.diagnostics.single.context, 'comment:// (Pintér Béla)');
-      expect(
-        song.diagnostics.single.message,
-        'Unsupported comment content: // (Pintér Béla)',
-      );
+      expect(song.diagnostics, isEmpty);
     },
   );
 
@@ -102,15 +97,7 @@ void main() {
     );
     expect(song.sections[3].number, 2);
     expect(song.sections[5].kind, SongSectionKind.bridge);
-    expect(song.diagnostics, hasLength(1));
-    expect(
-      song.diagnostics.single.context,
-      'comment:// This Is Our God | Hillsong',
-    );
-    expect(
-      song.diagnostics.single.message,
-      'Unsupported comment content: // This Is Our God | Hillsong',
-    );
+    expect(song.diagnostics, isEmpty);
   });
 
   test('parses Egy út with all supported section types', () {
@@ -124,7 +111,6 @@ void main() {
       'Verse',
       'Chorus',
       'Bridge',
-      'Unlabeled',
     ]);
     expect(song.sections[0].number, 1);
     expect(song.sections[1].number, 2);
@@ -157,17 +143,15 @@ void main() {
     expect(song.sections[3].kind, SongSectionKind.bridge);
     final bridgeFirstLine = song.sections[3].lines.first as LyricLine;
     expect(bridgeFirstLine.segments.first.leadingChord, 'B');
-    expect(song.sections[4].kind, SongSectionKind.other);
-    final unlabeled2Line = song.sections[4].lines.single as LyricLine;
-    expect(unlabeled2Line.segments.single.leadingChord, 'B');
-    expect(song.diagnostics, hasLength(3));
+    // #-prefixed and //-prefixed comment directives now appear as CommentLine in Bridge
     expect(
-      song.diagnostics.map((diagnostic) => diagnostic.context).toList(),
-      containsAll(<Object>[
-        'comment:#Jonathan Douglass, Joel Houston (Hillsong)',
-        'comment:#Hegedűs Róbert (Dics-Suli 2006)',
-        'comment://',
+      song.sections[3].lines.whereType<CommentLine>().map((c) => c.text).toList(),
+      containsAll(<String>[
+        '#Jonathan Douglass, Joel Houston (Hillsong)',
+        '#Hegedűs Róbert (Dics-Suli 2006)',
+        '//',
       ]),
     );
+    expect(song.diagnostics, isEmpty);
   });
 }

@@ -126,23 +126,20 @@ class ChordproParser {
         } else if (directiveName == 'comment') {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);
-          if (parsedSection == null) {
-            currentSection = null;
-            diagnostics.add(
-              ParseDiagnostic(
-                severity: ParseDiagnosticSeverity.warning,
-                message: 'Unsupported comment content: $commentValue',
-                line: ParseDiagnosticLineMetadata(
-                  lineNumber: line.lineNumber,
-                  columnNumber: 1,
-                ),
-                context: 'comment:$commentValue',
-              ),
+          if (parsedSection != null) {
+            if (!_isSameSection(currentSection, parsedSection)) {
+              sections.add(parsedSection);
+              currentSection = parsedSection;
+              hasSeenSongContent = true;
+            }
+          } else {
+            // Not a section header — inline comment line.
+            final targetSection = _ensurePreambleOrCurrentSection(
+              sections: sections,
+              currentSection: currentSection,
             );
-          } else if (!_isSameSection(currentSection, parsedSection)) {
-            sections.add(parsedSection);
-            currentSection = parsedSection;
-            hasSeenSongContent = true;
+            currentSection = targetSection;
+            targetSection.lines.add(CommentLine(text: commentValue));
           }
         } else if (directiveName.startsWith('start_of_')) {
           hasSeenSongContent = true;
@@ -200,16 +197,13 @@ class ChordproParser {
           hasSeenSongContent = true;
           currentSection = null;
         } else {
-          diagnostics.add(
-            ParseDiagnostic(
-              severity: ParseDiagnosticSeverity.warning,
-              message: 'Unsupported directive: $directiveName',
-              line: ParseDiagnosticLineMetadata(
-                lineNumber: line.lineNumber,
-                columnNumber: 1,
-              ),
-              context: line.raw.trim(),
-            ),
+          final targetSection = _ensurePreambleOrCurrentSection(
+            sections: sections,
+            currentSection: currentSection,
+          );
+          currentSection = targetSection;
+          targetSection.lines.add(
+            DirectiveLine(name: directiveName, value: line.directiveValue?.trim()),
           );
         }
       }
@@ -229,6 +223,19 @@ class ChordproParser {
           .toList(growable: false),
       diagnostics: diagnostics,
     );
+  }
+
+  _SectionBuilder _ensurePreambleOrCurrentSection({
+    required List<_SectionBuilder> sections,
+    required _SectionBuilder? currentSection,
+  }) {
+    if (currentSection != null) return currentSection;
+    final preamble = _SectionBuilder(
+      kind: SongSectionKind.other,
+      label: 'Unlabeled',
+    );
+    sections.add(preamble);
+    return preamble;
   }
 
   _SectionBuilder _ensureSection({
@@ -258,16 +265,14 @@ class ChordproParser {
 
   _SectionBuilder? _parseCommentSection(String directiveValue) {
     final normalizedValue = _normalizeCommentSectionValue(directiveValue);
-    final match = RegExp(
-      r'^([A-Za-z]+)(?:\s+(\d+))?$',
-    ).firstMatch(normalizedValue);
-    if (match == null) {
-      return null;
-    }
+    if (normalizedValue == null) return null;
 
-    final label = match.group(1)!;
+    final match = RegExp(r'^([A-Za-z]+)\s*(\d+)?$').firstMatch(normalizedValue);
+    if (match == null) return null;
+
+    final labelWord = match.group(1)!;
     final number = match.group(2) == null ? null : int.parse(match.group(2)!);
-    switch (label.toLowerCase()) {
+    switch (labelWord.toLowerCase()) {
       case 'verse':
         return _SectionBuilder(
           kind: SongSectionKind.verse,
@@ -281,29 +286,48 @@ class ChordproParser {
           number: number,
         );
       case 'bridge':
-        if (number != null) {
-          return null;
-        }
-        return _SectionBuilder(kind: SongSectionKind.bridge, label: 'Bridge');
+        return _SectionBuilder(
+          kind: SongSectionKind.bridge,
+          label: 'Bridge',
+          number: number,
+        );
       case 'intro':
-        if (number != null) {
-          return null;
-        }
-        return _SectionBuilder(kind: SongSectionKind.other, label: 'Intro');
+        return _SectionBuilder(
+          kind: SongSectionKind.other,
+          label: 'Intro',
+          number: number,
+        );
       default:
-        return null;
+        return _SectionBuilder(
+          kind: SongSectionKind.unknown,
+          label: labelWord,
+          number: number,
+        );
     }
   }
 
-  String _normalizeCommentSectionValue(String directiveValue) {
-    var normalized = directiveValue.trim();
+  String? _normalizeCommentSectionValue(String directiveValue) {
+    final trimmed = directiveValue.trim();
 
-    while ((normalized.startsWith('<') && normalized.endsWith('>')) ||
-        (normalized.startsWith('[') && normalized.endsWith(']'))) {
-      normalized = normalized.substring(1, normalized.length - 1).trim();
+    // Values with angle-bracket or square-bracket wrappers are section headers.
+    if ((trimmed.startsWith('<') && trimmed.endsWith('>')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      var normalized = trimmed.substring(1, trimmed.length - 1).trim();
+      // Unwrap additional layers if present.
+      while ((normalized.startsWith('<') && normalized.endsWith('>')) ||
+          (normalized.startsWith('[') && normalized.endsWith(']'))) {
+        normalized = normalized.substring(1, normalized.length - 1).trim();
+      }
+      return normalized;
     }
 
-    return normalized;
+    // Plain text without wrappers: treat as section header only if it looks
+    // like a bare word/number (no special characters like / or #).
+    if (!trimmed.contains('/') && !trimmed.contains('#')) {
+      return trimmed;
+    }
+
+    return null;
   }
 
   List<LyricSegment> _parseLyricLine(String rawLine) {
