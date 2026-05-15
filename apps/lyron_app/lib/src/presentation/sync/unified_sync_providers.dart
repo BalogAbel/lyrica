@@ -56,6 +56,10 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     () => ref.watch(planningPlanTitlesProvider),
     const <String, String>{},
   );
+  final isRunning = _safeWatch(
+    () => ref.watch(unifiedManualSyncControllerProvider).isRunning,
+    false,
+  );
 
   // Drive the offline-to-online detector from changes seen by the overview
   // itself. This keeps the trigger wiring on the same active-organization
@@ -79,12 +83,14 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
       planning: planning,
       planningEntries: planningEntries,
       planTitles: planTitles,
+      songSyncing: isRunning,
+      planningSyncing: isRunning,
     ),
   );
 });
 
 final unifiedManualSyncControllerProvider =
-    Provider.autoDispose<UnifiedManualSyncController>((ref) {
+    ChangeNotifierProvider.autoDispose<UnifiedManualSyncController>((ref) {
       final controller = UnifiedManualSyncController(
         activeContextReader: () {
           final c = ref.read(activeCatalogContextProvider);
@@ -123,7 +129,6 @@ final unifiedManualSyncControllerProvider =
           await ref.read(planningSyncControllerProvider).refreshPlanning();
         },
       );
-      ref.onDispose(controller.dispose);
       return controller;
     });
 
