@@ -12,8 +12,12 @@ class SignInScreen extends ConsumerStatefulWidget {
 }
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
-  final _emailController = TextEditingController(text: 'demo@lyron.local');
-  final _passwordController = TextEditingController(text: 'LyronDemo123!');
+  final _emailController = TextEditingController(
+    text: const String.fromEnvironment('DEMO_EMAIL'),
+  );
+  final _passwordController = TextEditingController(
+    text: const String.fromEnvironment('DEMO_PASSWORD'),
+  );
 
   @override
   void dispose() {
