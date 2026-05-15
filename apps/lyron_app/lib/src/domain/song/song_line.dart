@@ -1,34 +1,63 @@
 import 'package:lyron_app/src/domain/song/lyric_segment.dart';
 
-class SongLine {
-  SongLine({required List<LyricSegment> segments})
-    : segments = List.unmodifiable(segments);
+sealed class SongLine {}
+
+class LyricLine extends SongLine {
+  LyricLine({required List<LyricSegment> segments})
+      : segments = List.unmodifiable(segments);
 
   final List<LyricSegment> segments;
 
   @override
-  bool operator ==(Object other) {
-    return other is SongLine && _listEquals(other.segments, segments);
-  }
+  bool operator ==(Object other) =>
+      other is LyricLine && _listEquals(other.segments, segments);
 
   @override
   int get hashCode => Object.hashAll(segments);
 }
 
+class CommentLine extends SongLine {
+  CommentLine({required this.text});
+  final String text;
+
+  @override
+  bool operator ==(Object other) => other is CommentLine && other.text == text;
+
+  @override
+  int get hashCode => text.hashCode;
+}
+
+class TabBlock extends SongLine {
+  TabBlock({required List<String> rawLines})
+      : rawLines = List.unmodifiable(rawLines);
+  final List<String> rawLines;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TabBlock && _listEquals(other.rawLines, rawLines);
+
+  @override
+  int get hashCode => Object.hashAll(rawLines);
+}
+
+class DirectiveLine extends SongLine {
+  DirectiveLine({required this.name, this.value});
+  final String name;
+  final String? value;
+
+  @override
+  bool operator ==(Object other) =>
+      other is DirectiveLine && other.name == name && other.value == value;
+
+  @override
+  int get hashCode => Object.hash(name, value);
+}
+
 bool _listEquals<T>(List<T> left, List<T> right) {
-  if (identical(left, right)) {
-    return true;
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (var i = 0; i < left.length; i++) {
+    if (left[i] != right[i]) return false;
   }
-
-  if (left.length != right.length) {
-    return false;
-  }
-
-  for (var index = 0; index < left.length; index++) {
-    if (left[index] != right[index]) {
-      return false;
-    }
-  }
-
   return true;
 }

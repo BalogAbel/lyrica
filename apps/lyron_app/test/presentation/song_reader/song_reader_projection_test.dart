@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
@@ -14,7 +15,7 @@ ParsedSong _buildParsedSong({String leadingChord = 'A'}) {
         kind: SongSectionKind.verse,
         label: 'Verse',
         lines: [
-          SongLine(
+          LyricLine(
             segments: [
               LyricSegment(leadingChord: leadingChord, text: 'Hello'),
               LyricSegment(text: ' world'),
@@ -84,7 +85,8 @@ void main() {
       ),
       throwsUnsupportedError,
     );
-    expect(song.sections.first.lines.first.segments.first.leadingChord, 'A');
+    final firstLine = song.sections.first.lines.first as LyricLine;
+    expect(firstLine.segments.first.leadingChord, 'A');
   });
 
   test('preserves unsupported chord text without crashing projection', () {
@@ -103,8 +105,9 @@ void main() {
       projection.sections.first.lines.first.segments.first.displayChord,
       'not-a-real-chord',
     );
+    final projFirstLine = song.sections.first.lines.first as LyricLine;
     expect(
-      song.sections.first.lines.first.segments.first.leadingChord,
+      projFirstLine.segments.first.leadingChord,
       'not-a-real-chord',
     );
   });

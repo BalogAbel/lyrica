@@ -1,5 +1,6 @@
 import 'package:lyron_app/src/domain/song/chord_symbol.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -39,25 +40,7 @@ class SongReaderProjection {
                  number: section.number,
                  lines: List.unmodifiable(
                    section.lines
-                       .map(
-                         (line) => SongReaderLineProjection(
-                           segments: List.unmodifiable(
-                             line.segments
-                                 .map(
-                                   (segment) => SongReaderSegmentProjection(
-                                     displayChord: _displayChord(
-                                       segment.leadingChord,
-                                       state,
-                                       song,
-                                       transposeChord,
-                                     ),
-                                     text: segment.text,
-                                   ),
-                                 )
-                                 .toList(growable: false),
-                           ),
-                         ),
-                       )
+                       .map((line) => _projectLine(line, state, song, transposeChord))
                        .toList(growable: false),
                  ),
                ),
@@ -146,4 +129,33 @@ class SongReaderSegmentProjection {
 
   final String? displayChord;
   final String text;
+}
+
+SongReaderLineProjection _projectLine(
+  SongLine line,
+  SongReaderState state,
+  ParsedSong song,
+  SongChordTransposer transposeChord,
+) {
+  return switch (line) {
+    LyricLine() => SongReaderLineProjection(
+        segments: List.unmodifiable(
+          line.segments
+              .map(
+                (segment) => SongReaderSegmentProjection(
+                  displayChord: SongReaderProjection._displayChord(
+                    segment.leadingChord,
+                    state,
+                    song,
+                    transposeChord,
+                  ),
+                  text: segment.text,
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    CommentLine() || TabBlock() || DirectiveLine() =>
+      SongReaderLineProjection(segments: const []),
+  };
 }

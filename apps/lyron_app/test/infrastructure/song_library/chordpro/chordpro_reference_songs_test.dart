@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
 String _referenceSong(String fileName) {
@@ -30,17 +31,20 @@ void main() {
       ]);
       expect(song.sections.first.kind, SongSectionKind.other);
       expect(song.sections.first.lines, hasLength(2));
-      expect(song.sections.first.lines.first.segments.first.leadingChord, 'A');
+      final introFirstLine = song.sections.first.lines.first as LyricLine;
+      expect(introFirstLine.segments.first.leadingChord, 'A');
       expect(
-        song.sections.first.lines.first.segments.last.leadingChord,
+        introFirstLine.segments.last.leadingChord,
         'C#m/G#',
       );
-      expect(song.sections.first.lines.last.segments.single.text, '');
+      final introLastLine = song.sections.first.lines.last as LyricLine;
+      expect(introLastLine.segments.single.text, '');
       expect(song.sections[2].kind, SongSectionKind.chorus);
       expect(song.sections[2].lines, isNotEmpty);
-      expect(song.sections[2].lines.first.segments.first.leadingChord, null);
+      final chorusFirstLine = song.sections[2].lines.first as LyricLine;
+      expect(chorusFirstLine.segments.first.leadingChord, null);
       expect(
-        song.sections[2].lines.first.segments.first.text,
+        chorusFirstLine.segments.first.text,
         startsWith('A forrás'),
       );
       expect(song.diagnostics, hasLength(1));
@@ -71,26 +75,27 @@ void main() {
       'Bridge',
     ]);
     expect(song.sections[0].kind, SongSectionKind.other);
-    expect(song.sections[0].lines.first.segments.first.leadingChord, 'E');
+    final unlabeledFirstLine = song.sections[0].lines.first as LyricLine;
+    expect(unlabeledFirstLine.segments.first.leadingChord, 'E');
     expect(song.sections[1].number, 1);
     expect(song.sections[2].kind, SongSectionKind.chorus);
     expect(song.sections[2].number, 1);
     expect(song.sections[2].lines, isNotEmpty);
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.first.leadingChord == '(B)',
       ),
       isTrue,
     );
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) =>
             line.segments.any((segment) => segment.leadingChord == 'E/G#'),
       ),
       isTrue,
     );
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.any((segment) => segment.leadingChord == 'A'),
       ),
       isTrue,
@@ -126,33 +131,35 @@ void main() {
     expect(song.sections[2].kind, SongSectionKind.chorus);
     expect(song.sections[2].lines, isNotEmpty);
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.first.leadingChord == 'B',
       ),
       isTrue,
     );
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.any((segment) => segment.leadingChord == 'F#'),
       ),
       isTrue,
     );
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.first.leadingChord == 'G#m',
       ),
       isTrue,
     );
     expect(
-      song.sections[2].lines.any(
+      song.sections[2].lines.whereType<LyricLine>().any(
         (line) => line.segments.any((segment) => segment.leadingChord == '(B)'),
       ),
       isTrue,
     );
     expect(song.sections[3].kind, SongSectionKind.bridge);
-    expect(song.sections[3].lines.first.segments.first.leadingChord, 'B');
+    final bridgeFirstLine = song.sections[3].lines.first as LyricLine;
+    expect(bridgeFirstLine.segments.first.leadingChord, 'B');
     expect(song.sections[4].kind, SongSectionKind.other);
-    expect(song.sections[4].lines.single.segments.single.leadingChord, 'B');
+    final unlabeled2Line = song.sections[4].lines.single as LyricLine;
+    expect(unlabeled2Line.segments.single.leadingChord, 'B');
     expect(song.diagnostics, hasLength(3));
     expect(
       song.diagnostics.map((diagnostic) => diagnostic.context).toList(),
