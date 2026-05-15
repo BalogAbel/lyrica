@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -102,6 +103,7 @@ void main() {
                     label: intro.label,
                     number: intro.number,
                     lines: intro.lines
+                        .whereType<LyricLine>()
                         .map(
                           (line) => SongReaderLineProjection(
                             segments: line.segments

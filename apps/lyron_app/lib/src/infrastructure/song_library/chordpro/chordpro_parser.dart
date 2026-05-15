@@ -25,7 +25,7 @@ class ChordproParser {
       if (line.kind == ChordproLineKind.empty) {
         if (currentSection != null) {
           currentSection.lines.add(
-            SongLine(segments: const [LyricSegment(text: '')]),
+            LyricLine(segments: const [LyricSegment(text: '')]),
           );
         }
       } else if (line.kind == ChordproLineKind.lyric) {
@@ -36,7 +36,7 @@ class ChordproParser {
           kind: SongSectionKind.other,
           label: 'Unlabeled',
         );
-        currentSection.lines.add(SongLine(segments: _parseLyricLine(line.raw)));
+        currentSection.lines.add(LyricLine(segments: _parseLyricLine(line.raw)));
       } else {
         final directiveName = line.directiveName ?? '';
         if (directiveName == 'title') {

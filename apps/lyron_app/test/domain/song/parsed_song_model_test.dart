@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 
 void main() {
   test('parsed song preserves metadata, sections, lines, and diagnostics', () {
@@ -7,7 +8,7 @@ void main() {
       LyricSegment(leadingChord: 'A', text: 'A forrásnál'),
       LyricSegment(text: ' állok én'),
     ];
-    final lines = [SongLine(segments: segments)];
+    final List<SongLine> lines = [LyricLine(segments: segments)];
     final sections = [
       SongSection(kind: SongSectionKind.verse, label: 'Verse', lines: lines),
     ];
@@ -39,11 +40,12 @@ void main() {
     expect(song.sections.first.label, 'Verse');
     expect(song.sections.first.number, isNull);
     expect(song.sections.first.lines, hasLength(1));
-    expect(song.sections.first.lines.single.segments, hasLength(2));
-    expect(song.sections.first.lines.single.segments.first.leadingChord, 'A');
-    expect(song.sections.first.lines.single.segments.first.text, 'A forrásnál');
-    expect(song.sections.first.lines.single.segments.last.leadingChord, isNull);
-    expect(song.sections.first.lines.single.segments.last.text, ' állok én');
+    final singleLine = song.sections.first.lines.single as LyricLine;
+    expect(singleLine.segments, hasLength(2));
+    expect(singleLine.segments.first.leadingChord, 'A');
+    expect(singleLine.segments.first.text, 'A forrásnál');
+    expect(singleLine.segments.last.leadingChord, isNull);
+    expect(singleLine.segments.last.text, ' állok én');
     expect(song.diagnostics, hasLength(1));
     expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
     expect(song.diagnostics.single.message, 'Unknown directive');
@@ -62,11 +64,11 @@ void main() {
       throwsUnsupportedError,
     );
     expect(
-      () => song.sections.first.lines.add(SongLine(segments: [])),
+      () => song.sections.first.lines.add(LyricLine(segments: [])),
       throwsUnsupportedError,
     );
     expect(
-      () => song.sections.first.lines.first.segments.add(
+      () => (song.sections.first.lines.first as LyricLine).segments.add(
         LyricSegment(text: 'extra'),
       ),
       throwsUnsupportedError,
@@ -79,7 +81,7 @@ void main() {
         lines: const [],
       ),
     );
-    lines.add(SongLine(segments: []));
+    lines.add(LyricLine(segments: []));
     segments.add(LyricSegment(text: 'extra'));
     diagnostics.add(
       ParseDiagnostic(
@@ -91,7 +93,8 @@ void main() {
 
     expect(song.sections, hasLength(1));
     expect(song.sections.first.lines, hasLength(1));
-    expect(song.sections.first.lines.first.segments, hasLength(2));
+    final firstLine = song.sections.first.lines.first as LyricLine;
+    expect(firstLine.segments, hasLength(2));
     expect(song.diagnostics, hasLength(1));
     expect(
       () => song.diagnostics.add(
@@ -117,19 +120,19 @@ void main() {
     expect(lyricSegment.hashCode, matchingLyricSegment.hashCode);
     expect(lyricSegment, isNot(differentLyricSegment));
 
-    final songLine = SongLine(
+    final songLine = LyricLine(
       segments: [
         lyricSegment,
         LyricSegment(text: ' alone'),
       ],
     );
-    final matchingSongLine = SongLine(
+    final matchingSongLine = LyricLine(
       segments: [
         matchingLyricSegment,
         LyricSegment(text: ' alone'),
       ],
     );
-    final differentSongLine = SongLine(segments: [LyricSegment(text: 'alone')]);
+    final differentSongLine = LyricLine(segments: [LyricSegment(text: 'alone')]);
 
     expect(songLine, matchingSongLine);
     expect(songLine.hashCode, matchingSongLine.hashCode);

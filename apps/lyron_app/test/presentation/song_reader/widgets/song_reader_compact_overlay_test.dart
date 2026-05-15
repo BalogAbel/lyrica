@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
@@ -167,7 +168,7 @@ ParsedSong _buildSong({int baseCapo = 2}) {
         kind: SongSectionKind.verse,
         label: 'Verse',
         lines: [
-          SongLine(
+          LyricLine(
             segments: const [
               LyricSegment(leadingChord: 'G', text: 'Hello world'),
             ],

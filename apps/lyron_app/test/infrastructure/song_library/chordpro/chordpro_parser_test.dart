@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
 void main() {
@@ -41,33 +42,39 @@ Bridge line
       expect(song.sections[0].kind, SongSectionKind.verse);
       expect(song.sections[0].number, 1);
       expect(song.sections[0].lines, hasLength(3));
-      expect(song.sections[0].lines[0].segments, hasLength(2));
-      expect(song.sections[0].lines[0].segments[0].leadingChord, 'A');
-      expect(song.sections[0].lines[0].segments[0].text, 'Hello ');
-      expect(song.sections[0].lines[0].segments[1].leadingChord, 'F#m');
-      expect(song.sections[0].lines[0].segments[1].text, 'world');
-      expect(song.sections[0].lines[1].segments.single.text, '');
-      expect(song.sections[0].lines[2].segments.single.text, 'Plain text line');
+      final verse1line0 = song.sections[0].lines[0] as LyricLine;
+      expect(verse1line0.segments, hasLength(2));
+      expect(verse1line0.segments[0].leadingChord, 'A');
+      expect(verse1line0.segments[0].text, 'Hello ');
+      expect(verse1line0.segments[1].leadingChord, 'F#m');
+      expect(verse1line0.segments[1].text, 'world');
+      final verse1line1 = song.sections[0].lines[1] as LyricLine;
+      expect(verse1line1.segments.single.text, '');
+      final verse1line2 = song.sections[0].lines[2] as LyricLine;
+      expect(verse1line2.segments.single.text, 'Plain text line');
 
       expect(song.sections[1].kind, SongSectionKind.chorus);
       expect(song.sections[1].number, isNull);
       expect(song.sections[1].lines, hasLength(1));
-      expect(song.sections[1].lines.single.segments, hasLength(3));
-      expect(song.sections[1].lines.single.segments[0].leadingChord, '(B)');
-      expect(song.sections[1].lines.single.segments[0].text, ' Sing ');
-      expect(song.sections[1].lines.single.segments[1].leadingChord, 'E/G#');
-      expect(song.sections[1].lines.single.segments[1].text, 'to ');
-      expect(song.sections[1].lines.single.segments[2].leadingChord, 'F#m');
-      expect(song.sections[1].lines.single.segments[2].text, 'you');
+      final chorus1line = song.sections[1].lines.single as LyricLine;
+      expect(chorus1line.segments, hasLength(3));
+      expect(chorus1line.segments[0].leadingChord, '(B)');
+      expect(chorus1line.segments[0].text, ' Sing ');
+      expect(chorus1line.segments[1].leadingChord, 'E/G#');
+      expect(chorus1line.segments[1].text, 'to ');
+      expect(chorus1line.segments[2].leadingChord, 'F#m');
+      expect(chorus1line.segments[2].text, 'you');
 
       expect(song.sections[2].kind, SongSectionKind.other);
       expect(song.sections[2].label, 'Unlabeled');
+      final unlabeled1line = song.sections[2].lines.single as LyricLine;
       expect(
-        song.sections[2].lines.single.segments.single.text,
+        unlabeled1line.segments.single.text,
         'After chorus',
       );
       expect(song.sections[3].kind, SongSectionKind.bridge);
-      expect(song.sections[3].lines.single.segments.single.text, 'Bridge line');
+      final bridge1line = song.sections[3].lines.single as LyricLine;
+      expect(bridge1line.segments.single.text, 'Bridge line');
       expect(song.diagnostics, isEmpty);
     },
   );
@@ -85,9 +92,11 @@ Line two
 
     expect(song.sections, hasLength(2));
     expect(song.sections.first.label, 'Verse');
-    expect(song.sections.first.lines.single.segments.single.text, 'Line one');
+    final warnVerseLine = song.sections.first.lines.single as LyricLine;
+    expect(warnVerseLine.segments.single.text, 'Line one');
     expect(song.sections.last.label, 'Unlabeled');
-    expect(song.sections.last.lines.single.segments.single.text, 'Line two');
+    final warnUnlabeledLine = song.sections.last.lines.single as LyricLine;
+    expect(warnUnlabeledLine.segments.single.text, 'Line two');
     expect(song.diagnostics, hasLength(1));
     expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
     expect(song.diagnostics.single.context, 'comment:// Unsupported note');
@@ -114,10 +123,12 @@ Trailing line
 
       expect(song.sections, hasLength(2));
       expect(song.sections[0].label, 'Bridge');
-      expect(song.sections[0].lines.single.segments.single.text, 'Bridge line');
+      final bridgeLine = song.sections[0].lines.single as LyricLine;
+      expect(bridgeLine.segments.single.text, 'Bridge line');
       expect(song.sections[1].label, 'Unlabeled');
+      final trailingLine = song.sections[1].lines.single as LyricLine;
       expect(
-        song.sections[1].lines.single.segments.single.text,
+        trailingLine.segments.single.text,
         'Trailing line',
       );
       expect(song.diagnostics.single.context, 'comment:// footer note');
@@ -162,10 +173,12 @@ Line two
     expect(song.sections, hasLength(2));
     expect(song.sections[0].kind, SongSectionKind.verse);
     expect(song.sections[0].number, 1);
-    expect(song.sections[0].lines.single.segments.single.text, 'Line one');
+    final bracketVerseLine = song.sections[0].lines.single as LyricLine;
+    expect(bracketVerseLine.segments.single.text, 'Line one');
     expect(song.sections[1].kind, SongSectionKind.chorus);
     expect(song.sections[1].number, isNull);
-    expect(song.sections[1].lines.single.segments.single.text, 'Line two');
+    final bracketChorusLine = song.sections[1].lines.single as LyricLine;
+    expect(bracketChorusLine.segments.single.text, 'Line two');
     expect(song.diagnostics, isEmpty);
   });
 
@@ -357,4 +370,10 @@ Line two
       );
     },
   );
+
+  test('parsed lyric lines are LyricLine instances', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{comment:<Verse>}\n[A]Hello\n');
+    expect(song.sections.single.lines.single, isA<LyricLine>());
+  });
 }

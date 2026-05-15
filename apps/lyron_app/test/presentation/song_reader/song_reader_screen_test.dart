@@ -18,6 +18,7 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -60,7 +61,7 @@ void main() {
             label: 'Verse',
             number: 1,
             lines: [
-              SongLine(
+              LyricLine(
                 segments: [
                   const LyricSegment(leadingChord: 'F#m', text: 'Hello'),
                   const LyricSegment(text: ' world'),
@@ -73,7 +74,7 @@ void main() {
             label: 'Chorus',
             number: 2,
             lines: [
-              SongLine(
+              LyricLine(
                 segments: [
                   const LyricSegment(leadingChord: 'A', text: 'Sing'),
                   const LyricSegment(text: ' along'),
@@ -98,7 +99,7 @@ void main() {
             label: 'Verse',
             number: 1,
             lines: [
-              SongLine(
+              LyricLine(
                 segments: [
                   const LyricSegment(leadingChord: 'F#m', text: 'Hello'),
                 ],
@@ -124,7 +125,7 @@ void main() {
               number: sectionIndex,
               lines: [
                 for (var lineIndex = 0; lineIndex < 3; lineIndex += 1)
-                  SongLine(
+                  LyricLine(
                     segments: [
                       const LyricSegment(leadingChord: 'G', text: 'Line '),
                       LyricSegment(
