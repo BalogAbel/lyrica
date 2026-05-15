@@ -98,7 +98,7 @@ The plan list should help users choose the right plan and understand whether a p
 Required behavior:
 
 - show plan name, optional description, scheduled date when present, and lightweight operational status
-- do not invent plan lifecycle statuses such as `Ready` or `Draft`; plan-row badges should represent existing local-first/sync conditions such as local changes, conflict, or authorization denied
+- do not invent plan lifecycle statuses such as `Ready` or `Draft`; mutation status surfaces through `PlanningWorkspaceStatusSurface` and the unified sync header, not inline row badges
 - distinguish empty planning data from loading and retryable failure
 - surface pending or failed planning changes without replacing the list
 - keep create-plan available as a primary action

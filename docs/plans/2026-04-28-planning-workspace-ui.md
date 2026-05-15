@@ -25,10 +25,10 @@ Cover:
 
 - plan list still shows create-plan, loading, empty, retryable failure, and mutation-status surfaces
 - plan rows keep optional descriptions and scheduled dates visible in the subtitle
-- plan rows mark local pending, conflict, authorization-denied, or failed planning mutations inline
+- plan rows show name, description, and scheduled date; mutation status surfaces through the workspace action surface and unified sync header
 - plan detail shows a single route surface with a top-left back arrow when navigation can pop
 - plan detail keeps the plan scheduled date visible in the header when present
-- plan detail marks pending plan edits beside the plan header and pending session edits beside the session title
+- plan detail shows the plan name as a headline and session names as card titles without inline mutation chips
 - tablet layout keeps plan list and plan detail as separate surfaces instead of stacking them
 - plan detail shows a session-name edit icon and inline add-song entry point for each session
 - the session-name popup exposes a single text field prefilled with the current session name
