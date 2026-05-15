@@ -1658,32 +1658,6 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 }
 
-class _RecordingSongLibraryService extends SongLibraryService {
-  _RecordingSongLibraryService()
-    : super(_SongMutationTestRepository(), _SongMutationTestRepository());
-
-  String? createdTitle;
-
-  @override
-  Future<SongMutationRecord> createSong({
-    required ActiveCatalogContext context,
-    required String title,
-    required String chordproSource,
-  }) async {
-    createdTitle = title;
-    return SongMutationRecord(
-      id: 'created-song',
-      organizationId: context.organizationId,
-      slug: 'created-song',
-      title: title,
-      chordproSource: chordproSource,
-      version: 1,
-      baseVersion: null,
-      syncStatus: SongSyncStatus.pendingCreate,
-    );
-  }
-}
-
 class _ThrowingSongMutationSyncController extends SongMutationSyncController {
   _ThrowingSongMutationSyncController(this._error)
     : super(
