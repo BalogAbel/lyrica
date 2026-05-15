@@ -107,8 +107,14 @@ class ChordproParser {
             lineNumber: line.lineNumber,
             diagnostics: diagnostics,
           );
-        } else if (directiveName == 'tags') {
+        } else if (directiveName == 'tags' || directiveName == 'tag') {
           tags = _parseTags(line.directiveValue);
+        } else if (directiveName == 't') {
+          title = line.directiveValue ?? '';
+        } else if (directiveName == 'st') {
+          subtitle = line.directiveValue;
+        } else if (directiveName == 'meta') {
+          // silently ignored
         } else if (directiveName == 'comment') {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);

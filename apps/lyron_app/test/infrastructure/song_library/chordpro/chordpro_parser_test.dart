@@ -381,4 +381,26 @@ Line two
     expect(SongSectionKind.values, contains(SongSectionKind.unknown));
     expect(SongSectionKind.values, contains(SongSectionKind.tab));
   });
+
+  test('{tag:} singular is an alias for {tags:}', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{tag: Worship, Praise}\n');
+    expect(song.tags, ['Worship', 'Praise']);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{meta:} is silently ignored without a diagnostic', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{meta: key value}\n');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('parser accepts short aliases robustly (post-normalizer fallback)', () {
+    final parser = ChordproParser();
+    // {t:} and {st:} should be accepted even without normalizer running first
+    final song = parser.parse('{t:My Song}\n{st:Sub}\n');
+    expect(song.title, 'My Song');
+    expect(song.subtitle, 'Sub');
+    expect(song.diagnostics, isEmpty);
+  });
 }
