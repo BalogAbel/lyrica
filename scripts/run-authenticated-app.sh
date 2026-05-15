@@ -32,4 +32,6 @@ cd "$app_dir"
   --target lib/main.dart \
   --dart-define=SUPABASE_URL="$resolved_api_url" \
   --dart-define=SUPABASE_ANON_KEY="$ANON_KEY" \
+  --dart-define=DEMO_EMAIL="demo@lyron.local" \
+  --dart-define=DEMO_PASSWORD="LyronDemo123!" \
   "$@"
