@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -115,21 +116,14 @@ class _SongRowTile extends StatelessWidget {
     );
   }
 
-  String _songStateLabel(Object state) {
-    final name = state.toString();
-    if (name.contains('pendingCreate')) {
-      return AppStrings.unifiedSyncSongStateCreated;
-    }
-    if (name.contains('pendingUpdate')) {
-      return AppStrings.unifiedSyncSongStateEdited;
-    }
-    if (name.contains('pendingDelete')) {
-      return AppStrings.unifiedSyncSongStateRemoved;
-    }
-    if (name.contains('conflict')) {
-      return AppStrings.unifiedSyncSongStateEditedConflict;
-    }
-    return AppStrings.unifiedSyncSongStateEdited;
+  String _songStateLabel(SongSyncStatus state) {
+    return switch (state) {
+      SongSyncStatus.pendingCreate => AppStrings.unifiedSyncSongStateCreated,
+      SongSyncStatus.pendingDelete => AppStrings.unifiedSyncSongStateRemoved,
+      SongSyncStatus.conflict => AppStrings.unifiedSyncSongStateEditedConflict,
+      SongSyncStatus.pendingUpdate ||
+      SongSyncStatus.synced => AppStrings.unifiedSyncSongStateEdited,
+    };
   }
 }
 
