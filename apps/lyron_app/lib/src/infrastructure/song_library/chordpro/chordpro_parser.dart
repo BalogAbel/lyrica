@@ -24,9 +24,13 @@ class ChordproParser {
     for (final line in _lineScanner.scan(source)) {
       if (line.kind == ChordproLineKind.empty) {
         if (currentSection != null) {
-          currentSection.lines.add(
-            LyricLine(segments: const [LyricSegment(text: '')]),
-          );
+          if (currentSection.kind == SongSectionKind.tab) {
+            currentSection.appendTabLine('');
+          } else {
+            currentSection.lines.add(
+              LyricLine(segments: const [LyricSegment(text: '')]),
+            );
+          }
         }
       } else if (line.kind == ChordproLineKind.lyric) {
         hasSeenSongContent = true;
@@ -36,7 +40,11 @@ class ChordproParser {
           kind: SongSectionKind.other,
           label: 'Unlabeled',
         );
-        currentSection.lines.add(LyricLine(segments: _parseLyricLine(line.raw)));
+        if (currentSection.kind == SongSectionKind.tab) {
+          currentSection.appendTabLine(line.raw);
+        } else {
+          currentSection.lines.add(LyricLine(segments: _parseLyricLine(line.raw)));
+        }
       } else {
         final directiveName = line.directiveName ?? '';
         if (directiveName == 'title') {
@@ -136,21 +144,61 @@ class ChordproParser {
             currentSection = parsedSection;
             hasSeenSongContent = true;
           }
-        } else if (directiveName == 'start_of_chorus') {
+        } else if (directiveName.startsWith('start_of_')) {
           hasSeenSongContent = true;
-          if (currentSection?.kind != SongSectionKind.chorus) {
-            final chorusSection = _SectionBuilder(
-              kind: SongSectionKind.chorus,
-              label: 'Chorus',
-            );
-            sections.add(chorusSection);
-            currentSection = chorusSection;
+          final sectionType = directiveName.substring('start_of_'.length);
+          final labelOverride = line.directiveValue?.trim();
+
+          switch (sectionType) {
+            case 'chorus':
+              if (currentSection?.kind != SongSectionKind.chorus) {
+                final section = _SectionBuilder(
+                  kind: SongSectionKind.chorus,
+                  label: labelOverride ?? 'Chorus',
+                );
+                sections.add(section);
+                currentSection = section;
+              } else if (labelOverride != null) {
+                // already in chorus but label override provided — still create new section
+                final section = _SectionBuilder(
+                  kind: SongSectionKind.chorus,
+                  label: labelOverride,
+                );
+                sections.add(section);
+                currentSection = section;
+              }
+            case 'verse':
+              final section = _SectionBuilder(
+                kind: SongSectionKind.verse,
+                label: labelOverride ?? 'Verse',
+              );
+              sections.add(section);
+              currentSection = section;
+            case 'bridge':
+              final section = _SectionBuilder(
+                kind: SongSectionKind.bridge,
+                label: labelOverride ?? 'Bridge',
+              );
+              sections.add(section);
+              currentSection = section;
+            case 'tab':
+              final section = _SectionBuilder(
+                kind: SongSectionKind.tab,
+                label: 'Tab',
+              );
+              sections.add(section);
+              currentSection = section;
+            default:
+              final section = _SectionBuilder(
+                kind: SongSectionKind.unknown,
+                label: labelOverride ?? sectionType,
+              );
+              sections.add(section);
+              currentSection = section;
           }
-        } else if (directiveName == 'end_of_chorus') {
+        } else if (directiveName.startsWith('end_of_')) {
           hasSeenSongContent = true;
-          if (currentSection?.kind == SongSectionKind.chorus) {
-            currentSection = null;
-          }
+          currentSection = null;
         } else {
           diagnostics.add(
             ParseDiagnostic(
@@ -362,8 +410,17 @@ class _SectionBuilder {
   final String label;
   final int? number;
   final List<SongLine> lines = <SongLine>[];
+  final List<String> _pendingTabLines = <String>[];
+
+  void appendTabLine(String rawLine) {
+    _pendingTabLines.add(rawLine);
+  }
 
   SongSection build() {
-    return SongSection(kind: kind, label: label, number: number, lines: lines);
+    final builtLines = List<SongLine>.from(lines);
+    if (_pendingTabLines.isNotEmpty) {
+      builtLines.add(TabBlock(rawLines: List.unmodifiable(_pendingTabLines)));
+    }
+    return SongSection(kind: kind, label: label, number: number, lines: builtLines);
   }
 }
