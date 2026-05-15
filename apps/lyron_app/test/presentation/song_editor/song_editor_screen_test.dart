@@ -83,9 +83,9 @@ void main() {
       const Size(1440, 1200),
       initialSource: '''
 {title:Example Song}
+{key:}
 {comment:<Verse>}
 Line one
-{unknown:token}
 Line two
 ''',
     );

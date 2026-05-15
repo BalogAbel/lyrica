@@ -79,7 +79,7 @@ Bridge line
     },
   );
 
-  test('emits warnings for unsupported directives and keeps parsing', () {
+  test('{comment:// ...} creates a CommentLine in the current section without a diagnostic', () {
     final parser = ChordproParser();
 
     final song = parser.parse('''
@@ -90,26 +90,19 @@ Line one
 Line two
 ''');
 
-    expect(song.sections, hasLength(2));
-    expect(song.sections.first.label, 'Verse');
-    final warnVerseLine = song.sections.first.lines.single as LyricLine;
-    expect(warnVerseLine.segments.single.text, 'Line one');
-    expect(song.sections.last.label, 'Unlabeled');
-    final warnUnlabeledLine = song.sections.last.lines.single as LyricLine;
-    expect(warnUnlabeledLine.segments.single.text, 'Line two');
-    expect(song.diagnostics, hasLength(1));
-    expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
-    expect(song.diagnostics.single.context, 'comment:// Unsupported note');
-    expect(song.diagnostics.single.line.lineNumber, 4);
-    expect(song.diagnostics.single.line.columnNumber, 1);
-    expect(
-      song.diagnostics.single.message,
-      'Unsupported comment content: // Unsupported note',
-    );
+    expect(song.sections.single.label, 'Verse');
+    expect(song.sections.single.lines, hasLength(3));
+    expect(song.sections.single.lines[0], isA<LyricLine>());
+    expect((song.sections.single.lines[0] as LyricLine).segments.single.text, 'Line one');
+    expect(song.sections.single.lines[1], isA<CommentLine>());
+    expect((song.sections.single.lines[1] as CommentLine).text, '// Unsupported note');
+    expect(song.sections.single.lines[2], isA<LyricLine>());
+    expect((song.sections.single.lines[2] as LyricLine).segments.single.text, 'Line two');
+    expect(song.diagnostics, isEmpty);
   });
 
   test(
-    'unsupported comment content ends the active section before later lyrics',
+    '{comment:// ...} inside a section stays in the same section as a CommentLine',
     () {
       final parser = ChordproParser();
 
@@ -121,21 +114,19 @@ Bridge line
 Trailing line
 ''');
 
-      expect(song.sections, hasLength(2));
-      expect(song.sections[0].label, 'Bridge');
-      final bridgeLine = song.sections[0].lines.single as LyricLine;
+      expect(song.sections.single.label, 'Bridge');
+      expect(song.sections.single.lines, hasLength(3));
+      final bridgeLine = song.sections.single.lines[0] as LyricLine;
       expect(bridgeLine.segments.single.text, 'Bridge line');
-      expect(song.sections[1].label, 'Unlabeled');
-      final trailingLine = song.sections[1].lines.single as LyricLine;
-      expect(
-        trailingLine.segments.single.text,
-        'Trailing line',
-      );
-      expect(song.diagnostics.single.context, 'comment:// footer note');
+      expect(song.sections.single.lines[1], isA<CommentLine>());
+      expect((song.sections.single.lines[1] as CommentLine).text, '// footer note');
+      final trailingLine = song.sections.single.lines[2] as LyricLine;
+      expect(trailingLine.segments.single.text, 'Trailing line');
+      expect(song.diagnostics, isEmpty);
     },
   );
 
-  test('rejects numbered bridge and intro comment labels with warnings', () {
+  test('numbered bridge and intro comment labels are now accepted', () {
     final parser = ChordproParser();
 
     final song = parser.parse('''
@@ -146,17 +137,14 @@ Line one
 {comment:<Intro 2>}
 ''');
 
-    expect(song.sections, hasLength(1));
-    expect(song.sections.single.label, 'Verse');
-    expect(song.diagnostics, hasLength(2));
-    expect(song.diagnostics.map((diagnostic) => diagnostic.context).toList(), [
-      'comment:<Bridge 2>',
-      'comment:<Intro 2>',
-    ]);
-    expect(song.diagnostics.map((diagnostic) => diagnostic.message).toList(), [
-      'Unsupported comment content: <Bridge 2>',
-      'Unsupported comment content: <Intro 2>',
-    ]);
+    expect(song.sections, hasLength(3));
+    expect(song.sections[0].label, 'Verse');
+    expect(song.sections[1].kind, SongSectionKind.bridge);
+    expect(song.sections[1].number, 2);
+    expect(song.sections[2].kind, SongSectionKind.other);
+    expect(song.sections[2].label, 'Intro');
+    expect(song.sections[2].number, 2);
+    expect(song.diagnostics, isEmpty);
   });
 
   test('accepts common comment section variants without angle brackets', () {
@@ -281,7 +269,7 @@ Line two
   });
 
   test(
-    'keeps metadata open after unsupported directives before the first lyric',
+    'keeps metadata open after unknown directives before the first lyric',
     () {
       final parser = ChordproParser();
 
@@ -297,12 +285,12 @@ Line two
       expect(song.sourceKey, 'G');
       expect(song.baseCapo, 2);
       expect(song.baseTranspose, 4);
-      expect(song.diagnostics.single.context, '{foobar:ignore me}');
+      expect(song.diagnostics, isEmpty);
     },
   );
 
   test(
-    'keeps metadata open after malformed comments before the first lyric',
+    'keeps metadata open after comment lines before the first lyric',
     () {
       final parser = ChordproParser();
 
@@ -318,7 +306,7 @@ Line two
       expect(song.sourceKey, 'D');
       expect(song.baseCapo, 3);
       expect(song.baseTranspose, 1);
-      expect(song.diagnostics.single.context, 'comment:// note');
+      expect(song.diagnostics, isEmpty);
     },
   );
 
@@ -463,6 +451,90 @@ Line two
     );
     expect(song.sections.single.kind, SongSectionKind.unknown);
     expect(song.sections.single.label, 'prechorus');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('<Verse1> (no space before digit) is parsed as verse section number 1', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{comment:<Verse1>}\n[A]Line\n');
+    expect(song.sections.single.kind, SongSectionKind.verse);
+    expect(song.sections.single.number, 1);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('<Bridge 1> (numbered bridge) is parsed correctly', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{comment:<Bridge 1>}\n[A]Line\n');
+    expect(song.sections.single.kind, SongSectionKind.bridge);
+    expect(song.sections.single.number, 1);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('<PreChorus> creates an unknown section with label PreChorus', () {
+    final parser = ChordproParser();
+    final song = parser.parse('{title:T}\n{comment:<PreChorus>}\n[A]Line\n');
+    expect(song.sections.single.kind, SongSectionKind.unknown);
+    expect(song.sections.single.label, 'PreChorus');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{comment:// note} creates a CommentLine in current section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{comment:<Verse>}\n[A]Line\n{comment:// Note}\n',
+    );
+    expect(song.sections.single.lines, hasLength(2));
+    expect(song.sections.single.lines[1], isA<CommentLine>());
+    final comment = song.sections.single.lines[1] as CommentLine;
+    expect(comment.text, '// Note');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{comment:# Author} creates a CommentLine', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{comment:<Verse>}\n[A]Line\n{comment:#Szerző: Pintér}\n',
+    );
+    expect(song.sections.single.lines[1], isA<CommentLine>());
+    expect((song.sections.single.lines[1] as CommentLine).text, '#Szerző: Pintér');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('{comment: plain text} creates a CommentLine', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{comment:<Verse>}\n[A]Line\n{comment:Some remark}\n',
+    );
+    expect(song.sections.single.lines[1], isA<CommentLine>());
+    expect((song.sections.single.lines[1] as CommentLine).text, 'Some remark');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('unknown directive before any section goes into preamble section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{zoom-ipad: 1.9}\n{comment:<Verse>}\n[A]Line\n',
+    );
+    expect(song.sections, hasLength(2));
+    expect(song.sections[0].kind, SongSectionKind.other);
+    expect(song.sections[0].label, 'Unlabeled');
+    expect(song.sections[0].lines.single, isA<DirectiveLine>());
+    final directive = song.sections[0].lines.single as DirectiveLine;
+    expect(directive.name, 'zoom-ipad');
+    expect(directive.value, '1.9');
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('unknown directive inside a section becomes DirectiveLine in that section', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{comment:<Verse>}\n[A]Line\n{metronome:120}\n',
+    );
+    expect(song.sections.single.lines, hasLength(2));
+    expect(song.sections.single.lines[1], isA<DirectiveLine>());
+    final directive = song.sections.single.lines[1] as DirectiveLine;
+    expect(directive.name, 'metronome');
+    expect(directive.value, '120');
     expect(song.diagnostics, isEmpty);
   });
 }
