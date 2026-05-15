@@ -181,7 +181,7 @@ class ChordproParser {
             case 'tab':
               final section = _SectionBuilder(
                 kind: SongSectionKind.tab,
-                label: 'Tab',
+                label: labelOverride ?? 'Tab',
               );
               sections.add(section);
               currentSection = section;
@@ -229,7 +229,9 @@ class ChordproParser {
     required List<_SectionBuilder> sections,
     required _SectionBuilder? currentSection,
   }) {
-    if (currentSection != null) return currentSection;
+    if (currentSection != null && currentSection.kind != SongSectionKind.tab) {
+      return currentSection;
+    }
     final preamble = _SectionBuilder(
       kind: SongSectionKind.other,
       label: 'Unlabeled',
