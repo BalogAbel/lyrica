@@ -3,6 +3,7 @@ import 'package:lyron_app/src/application/song_library/song_catalog_read_reposit
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 
 class SongLibraryService {
   static const _maxCreateSlugRetries = 100;
@@ -17,6 +18,7 @@ class SongLibraryService {
   final SongCatalogReadRepository _repository;
   final SongMutationStore? _mutationStore;
   final SongIdGenerator _idGenerator;
+  final _normalizer = ChordproNormalizer();
 
   Future<List<SongSummary>> listSongs({required ActiveCatalogContext context}) {
     return _repository.listSongs(
@@ -64,6 +66,7 @@ class SongLibraryService {
     required String chordproSource,
   }) async {
     final mutationStore = _requireMutationStore();
+    final normalizedSource = _normalizer.normalize(chordproSource);
     final songId = _idGenerator();
 
     for (var attempt = 0; attempt < _maxCreateSlugRetries; attempt += 1) {
@@ -77,7 +80,7 @@ class SongLibraryService {
         organizationId: context.organizationId,
         slug: slug,
         title: title,
-        chordproSource: chordproSource,
+        chordproSource: normalizedSource,
         version: 1,
         baseVersion: null,
         syncStatus: SongSyncStatus.pendingCreate,
@@ -103,6 +106,7 @@ class SongLibraryService {
     required String chordproSource,
   }) async {
     final mutationStore = _requireMutationStore();
+    final normalizedSource = _normalizer.normalize(chordproSource);
     final existing = await mutationStore.readById(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -117,7 +121,7 @@ class SongLibraryService {
 
     final updated = existing.copyWith(
       title: title,
-      chordproSource: chordproSource,
+      chordproSource: normalizedSource,
       baseVersion: existing.version,
       syncStatus: existing.syncStatus == SongSyncStatus.pendingCreate
           ? SongSyncStatus.pendingCreate
