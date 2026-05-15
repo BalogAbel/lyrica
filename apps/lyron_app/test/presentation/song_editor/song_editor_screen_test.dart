@@ -265,6 +265,95 @@ Line two
     expect(find.text(AppStrings.songCreateTitle), findsNothing);
   });
 
+  testWidgets('create mode clean cancel navigates home without confirmation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.songCreate.path,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home.path,
+          builder: (context, state) =>
+              const Material(child: Text('song-list')),
+        ),
+        GoRoute(
+          path: AppRoutes.songCreate.path,
+          builder: (context, state) => const SongEditorScreen.create(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    // No discard dialog, and navigated to home (song list)
+    expect(find.text(AppStrings.songEditorDiscardChangesTitle), findsNothing);
+    expect(find.text('song-list'), findsOneWidget);
+  });
+
+  testWidgets('create mode dirty cancel shows discard confirmation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.songCreate.path,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home.path,
+          builder: (context, state) =>
+              const Material(child: Text('song-list')),
+        ),
+        GoRoute(
+          path: AppRoutes.songCreate.path,
+          builder: (context, state) => const SongEditorScreen.create(),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '{title: Draft Song}');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songEditorDiscardChangesTitle), findsOneWidget);
+  });
+
   testWidgets('create mode save calls createSong and navigates to reader', (
     tester,
   ) async {

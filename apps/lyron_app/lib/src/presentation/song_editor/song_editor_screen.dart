@@ -192,6 +192,11 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
   void _returnToSongView(BuildContext context) {
     _cancelChanges();
+    if (widget._isCreating) {
+      // Always navigate home; context.go works even without a prior history entry
+      context.go(AppRoutes.home.path);
+      return;
+    }
     context.replace(_songViewLocation());
   }
 
@@ -314,13 +319,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     if (!context.mounted) {
       return;
     }
-    _cancelChanges();
-    if (context.canPop()) {
-      context.pop();
-      return;
-    }
-
-    context.replace(_songViewLocation());
+    _returnToSongView(context);
   }
 
   void _setCanonicalView(SongEditorCanonicalViewMode mode) {
