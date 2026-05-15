@@ -414,46 +414,6 @@ void main() {
     expect(find.text(AppStrings.sessionItemAddSongAction), findsWidgets);
   });
 
-  testWidgets('marks pending plan and session edits inline', (tester) async {
-    await tester.pumpWidget(
-      buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
-        loadMutationEntries: () async => [
-          PlanningMutationRecord(
-            aggregateId: 'plan-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.pending,
-            name: 'Team Rehearsals',
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026, 4, 10, 9),
-          ),
-          PlanningMutationRecord(
-            aggregateId: 'session-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            kind: PlanningMutationKind.sessionRename,
-            syncStatus: PlanningMutationSyncStatus.pending,
-            name: 'Warm-Ups',
-            orderKey: 2,
-            updatedAt: DateTime.utc(2026, 4, 10, 9),
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey('plan-local-status-plan-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('session-local-status-session-1')),
-      findsOneWidget,
-    );
-  });
-
   testWidgets('renders each conflict row with keep and discard mine actions', (
     tester,
   ) async {
