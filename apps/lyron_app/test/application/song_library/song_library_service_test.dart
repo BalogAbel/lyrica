@@ -235,6 +235,55 @@ void main() {
       );
     },
   );
+
+  test('create normalizes chordpro source aliases before storing', () async {
+    final repository = _FakeSongRepository();
+    final service = SongLibraryService(repository, repository);
+
+    await service.createSong(
+      context: const ActiveCatalogContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+      title: 'Test',
+      chordproSource: '{t: Test}\n{soc}\n[A]Hello\n{eoc}\n',
+    );
+
+    expect(
+      repository.lastUpsertedRecord?.chordproSource,
+      '{title: Test}\n{start_of_chorus}\n[A]Hello\n{end_of_chorus}\n',
+    );
+  });
+
+  test('update normalizes chordpro source aliases before storing', () async {
+    final repository = _FakeSongRepository();
+    repository.songById = const SongMutationRecord(
+      id: 'song-1',
+      organizationId: 'org-1',
+      slug: 'test',
+      title: 'Test',
+      chordproSource: '{title: Test}',
+      version: 1,
+      baseVersion: 1,
+      syncStatus: SongSyncStatus.synced,
+    );
+    final service = SongLibraryService(repository, repository);
+
+    await service.updateSong(
+      context: const ActiveCatalogContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+      songId: 'song-1',
+      title: 'Test',
+      chordproSource: '{t: Test}\n{soc}\n[A]Hello\n{eoc}\n',
+    );
+
+    expect(
+      repository.lastUpsertedRecord?.chordproSource,
+      '{title: Test}\n{start_of_chorus}\n[A]Hello\n{end_of_chorus}\n',
+    );
+  });
 }
 
 class _FakeSongRepository
@@ -362,11 +411,14 @@ class _FakeSongRepository
     String? errorMessage,
   }) async {}
 
+  SongMutationRecord? lastUpsertedRecord;
+
   @override
   Future<void> upsertSong({
     required String userId,
     required SongMutationRecord record,
   }) async {
+    lastUpsertedRecord = record;
     upsertedSlugs.add(record.slug);
     if (rejectFirstUpsertWithSlugConflict) {
       rejectFirstUpsertWithSlugConflict = false;
