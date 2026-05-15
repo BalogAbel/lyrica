@@ -18,16 +18,26 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 enum _TabletTab { overview, source, preview }
 
 class SongEditorScreen extends ConsumerStatefulWidget {
-  const SongEditorScreen({
+  const SongEditorScreen.edit({
     super.key,
-    required this.songId,
-    required this.songSlug,
-    this.initialSource,
-  });
+    required String songId,
+    required String songSlug,
+    String? initialSource,
+  }) : _songId = songId,
+       _songSlug = songSlug,
+       _initialSource = initialSource,
+       _isCreating = false;
 
-  final String songId;
-  final String songSlug;
-  final String? initialSource;
+  const SongEditorScreen.create({super.key})
+      : _songId = null,
+        _songSlug = null,
+        _initialSource = null,
+        _isCreating = true;
+
+  final String? _songId;
+  final String? _songSlug;
+  final String? _initialSource;
+  final bool _isCreating;
 
   @override
   ConsumerState<SongEditorScreen> createState() => _SongEditorScreenState();
@@ -47,7 +57,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   @override
   void initState() {
     super.initState();
-    final seedSource = widget.initialSource ?? _sourceSample;
+    final seedSource = widget._initialSource ?? _sourceSample;
     _controller.setSource(seedSource);
     _sourceController = TextEditingController(text: seedSource);
     _savedSource = seedSource;
@@ -57,9 +67,9 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   @override
   void didUpdateWidget(covariant SongEditorScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final nextSource = widget.initialSource;
+    final nextSource = widget._initialSource;
     if (nextSource == null ||
-        nextSource == oldWidget.initialSource ||
+        nextSource == oldWidget._initialSource ||
         _isDirty) {
       return;
     }
@@ -174,7 +184,10 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   }
 
   String _songViewLocation() {
-    return AppRoutes.songReader.path.replaceFirst(':songSlug', widget.songSlug);
+    return AppRoutes.songReader.path.replaceFirst(
+      ':songSlug',
+      widget._songSlug ?? '',
+    );
   }
 
   void _returnToSongView(BuildContext context) {
@@ -200,7 +213,11 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       return;
     }
 
-    final songId = widget.songId;
+    final songId = widget._songId;
+    if (songId == null) {
+      _returnToSongView(context);
+      return;
+    }
     final songViewLocation = _songViewLocation();
     final service = ref.read(songLibraryServiceProvider);
     final projection = SongEditorProjection(state: _controller.state);
@@ -393,7 +410,9 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _TopBar(
-                          songId: widget.songId,
+                          title: widget._isCreating
+                              ? AppStrings.songCreateTitle
+                              : AppStrings.songEditAction,
                           onBack: () => unawaited(_handleBack(context)),
                           canCancel: true,
                           canSave: _isDirty,
@@ -495,7 +514,7 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
-    required this.songId,
+    required this.title,
     required this.onBack,
     required this.canCancel,
     required this.canSave,
@@ -503,7 +522,7 @@ class _TopBar extends StatelessWidget {
     required this.onCancel,
   });
 
-  final String songId;
+  final String title;
   final VoidCallback onBack;
   final bool canCancel;
   final bool canSave;
@@ -529,7 +548,7 @@ class _TopBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Edit song',
+                  title,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
               ],
