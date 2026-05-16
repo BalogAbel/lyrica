@@ -17,15 +17,8 @@ class ChordproNormalizer {
     'eot': 'end_of_tab',
   };
 
-  String normalize(String source) {
-    final lines = source.split(RegExp(r'\r?\n'));
-    final result = StringBuffer();
-    for (var i = 0; i < lines.length; i++) {
-      result.write(_normalizeLine(lines[i]));
-      if (i < lines.length - 1) result.write('\n');
-    }
-    return result.toString();
-  }
+  String normalize(String source) =>
+      source.split(RegExp(r'\r?\n')).map(_normalizeLine).join('\n');
 
   String _normalizeLine(String line) {
     final match = _aliasPattern.firstMatch(line);
