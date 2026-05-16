@@ -16,8 +16,8 @@ void main() {
               context: context,
               result: const ImportBatchResult(
                 successes: [
-                  ImportSuccess(title: 'Song A', source: ''),
-                  ImportSuccess(title: 'Song B', source: ''),
+                  ImportSuccess(title: 'Song A', source: '', filename: 'song_a.cho'),
+                  ImportSuccess(title: 'Song B', source: '', filename: 'song_b.cho'),
                 ],
                 duplicates: [],
                 errors: [],
