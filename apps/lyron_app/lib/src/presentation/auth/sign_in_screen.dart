@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+const _kRedirectUrl = 'io.lyron.app://auth/callback';
 
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
@@ -12,17 +14,11 @@ class SignInScreen extends ConsumerStatefulWidget {
 }
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
-  final _emailController = TextEditingController(
-    text: const String.fromEnvironment('DEMO_EMAIL'),
-  );
-  final _passwordController = TextEditingController(
-    text: const String.fromEnvironment('DEMO_PASSWORD'),
-  );
+  final _emailController = TextEditingController();
 
   @override
   void dispose() {
     _emailController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
@@ -37,54 +33,57 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           constraints: const BoxConstraints(maxWidth: 420),
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: ListenableBuilder(
-              listenable: controller,
-              builder: (context, child) {
-                final state = controller.state;
-                final isBusy = state.status == AppAuthStatus.initializing;
-
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      AppStrings.signInTitle,
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(AppStrings.signInSummary),
-                    if (state.status == AppAuthStatus.sessionExpired) ...[
-                      const SizedBox(height: 12),
-                      const Text(AppStrings.sessionExpiredMessage),
-                    ],
-                    const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(
-                        labelText: AppStrings.emailLabel,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: AppStrings.passwordLabel,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    // TODO(auth-invite-sso): rewrite SignInScreen for OAuth + magic link
-                    // Temporarily disabled — controller.signIn removed in this slice.
-                    FilledButton(
-                      onPressed: null,
-                      child: const Text(AppStrings.signInAction),
-                    ),
-                  ],
-                );
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  AppStrings.signInTitle,
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () => controller.signInWithOAuth(
+                    SignInMethod.google,
+                    redirectTo: _kRedirectUrl,
+                  ),
+                  child: const Text(AppStrings.continueWithGoogle),
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => controller.signInWithOAuth(
+                    SignInMethod.apple,
+                    redirectTo: _kRedirectUrl,
+                  ),
+                  child: const Text(AppStrings.continueWithApple),
+                ),
+                const SizedBox(height: 24),
+                const Divider(),
+                const SizedBox(height: 24),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: AppStrings.magicLinkLabel,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () async {
+                    final email = _emailController.text.trim();
+                    if (email.isEmpty) return;
+                    await controller.sendMagicLink(
+                      email: email,
+                      redirectTo: _kRedirectUrl,
+                    );
+                    if (!mounted) return;
+                    // ignore: use_build_context_synchronously
+                    Navigator.of(context).pushReplacementNamed(
+                      '/magic-link-sent',
+                    );
+                  },
+                  child: const Text(AppStrings.sendMagicLinkAction),
+                ),
+              ],
             ),
           ),
         ),

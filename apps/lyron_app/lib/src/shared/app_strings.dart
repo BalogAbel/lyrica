@@ -222,4 +222,29 @@ class AppStrings {
   static const songImportEmptyFileReason = 'Empty file';
   static const songImportSaveErrorPrefix = 'Save error';
   static const songImportUntitledFallback = 'Untitled Song';
+
+  // Auth invite-sso additions
+  static const continueWithGoogle = 'Continue with Google';
+  static const continueWithApple = 'Continue with Apple';
+  static const magicLinkLabel = 'Email for magic link';
+  static const sendMagicLinkAction = 'Send magic link';
+  static const magicLinkSentTitle = 'Check your inbox';
+  static const magicLinkSentMessage =
+      'We sent you a sign-in link. Open it on this device to continue.';
+  static const inviteRequiredTitle = 'Invitation required';
+  static const inviteRequiredMessage =
+      'Paste your invite link to join an organization.';
+  static const invitePasteLabel = 'Invite link';
+  static const inviteRedeemAction = 'Redeem invite';
+  static const inviteErrorNotFound = 'Invalid invite link.';
+  static const inviteErrorExpired = 'Invite expired. Ask for a new one.';
+  static const inviteErrorAlreadyRedeemed = 'Invite already used.';
+  static const inviteErrorAlreadyMember = 'You are already a member.';
+  static const accountTitle = 'Account';
+  static const deleteAccountAction = 'Delete account';
+  static const deleteAccountConfirmTitle = 'Delete account?';
+  static const deleteAccountConfirmMessage =
+      'Your account, memberships, and any pending offline changes will be removed permanently.';
+  static const deleteAccountConfirmAction = 'Delete permanently';
+  static const cancelAction = 'Cancel';
 }
