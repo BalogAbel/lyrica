@@ -25,6 +25,7 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_contro
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
@@ -1460,13 +1461,22 @@ class _TestAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _RecordingAuthRepository extends _TestAuthRepository {

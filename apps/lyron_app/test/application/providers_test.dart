@@ -23,6 +23,7 @@ import 'package:lyron_app/src/application/song_library/active_catalog_context.da
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -143,10 +144,7 @@ void main() {
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final planningDatabase = PlanningLocalDatabase.inMemory();
       final songDatabase = SongCatalogDatabase.inMemory();
       final planningStore = DriftPlanningLocalStore(planningDatabase);
@@ -242,10 +240,7 @@ void main() {
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final planningDatabase = PlanningLocalDatabase.inMemory();
       final songDatabase = SongCatalogDatabase.inMemory();
       final planningStore = DriftPlanningLocalStore(planningDatabase);
@@ -344,10 +339,7 @@ void main() {
     () async {
       final authRepository = _ControllableAuthRepository();
       final authController = AppAuthController(authRepository);
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final songDatabase = SongCatalogDatabase.inMemory();
       final songStore = DriftSongCatalogStore(songDatabase);
       final foregroundState = _TestAppForegroundState();
@@ -421,9 +413,9 @@ void main() {
         hasLength(1),
       );
 
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
+      await authController.signInWithOAuth(
+        SignInMethod.google,
+        redirectTo: 'lyron://auth',
       );
       await container.read(songCatalogControllerProvider).refreshCatalog();
 
@@ -444,10 +436,7 @@ void main() {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final database = PlanningLocalDatabase.inMemory();
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final catalogContextProvider = StateProvider<ActiveCatalogContext?>(
         (ref) => null,
       );
@@ -489,10 +478,7 @@ void main() {
     'planning providers re-read after the revision signal changes',
     () async {
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final repository = _MutablePlanningRepository(
         plans: [
           PlanSummary(
@@ -597,10 +583,7 @@ void main() {
     'planning write service sync invalidates cached planning providers through provider wiring',
     () async {
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final repository = _MutablePlanningRepository(
         plans: [
           PlanSummary(
@@ -729,10 +712,7 @@ void main() {
     () async {
       final authRepository = _ControllableAuthRepository();
       final authController = AppAuthController(authRepository);
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final database = PlanningLocalDatabase.inMemory();
       final baseStore = DriftPlanningLocalStore(database);
       final blockingStore = _BlockingDeletePlanningLocalStore(baseStore);
@@ -774,9 +754,9 @@ void main() {
       authRepository.emitSession(null);
       await blockingStore.deleteStarted.future;
 
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
+      await authController.signInWithOAuth(
+        SignInMethod.google,
+        redirectTo: 'lyron://auth',
       );
       await container
           .read(planningSyncControllerProvider)
@@ -804,10 +784,7 @@ void main() {
     'accepted plan create/edit writes reconcile into the real local projection when refreshPlanning fails',
     () async {
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final database = PlanningLocalDatabase.inMemory();
       final localStore = DriftPlanningLocalStore(database);
       await localStore.replaceActiveProjection(
@@ -905,10 +882,7 @@ void main() {
     'accepted session create/rename/delete/reorder writes reconcile into the real local projection when refreshPlanning fails',
     () async {
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final database = PlanningLocalDatabase.inMemory();
       final localStore = DriftPlanningLocalStore(database);
       await localStore.replaceActiveProjection(
@@ -1085,10 +1059,7 @@ void main() {
     'accepted session item create/delete/reorder writes reconcile into the real local projection when refreshPlanning fails',
     () async {
       final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.signIn(
-        email: 'demo@lyron.local',
-        password: 'secret',
-      );
+      await authController.restoreSession();
       final database = PlanningLocalDatabase.inMemory();
       final songDatabase = SongCatalogDatabase.inMemory();
       final localStore = DriftPlanningLocalStore(database);
@@ -1336,19 +1307,29 @@ class _AcceptedWriteFallbackPlanningMutationRemoteRepository
 
 class _SignedInAuthRepository implements AuthRepository {
   @override
-  Future<AppAuthSession?> restoreSession() async => null;
+  Future<AppAuthSession?> restoreSession() async =>
+      const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local');
 
   @override
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _ControllableAuthRepository implements AuthRepository {
@@ -1356,21 +1337,35 @@ class _ControllableAuthRepository implements AuthRepository {
       StreamController<AppAuthSession?>.broadcast();
 
   @override
-  Future<AppAuthSession?> restoreSession() async => null;
+  Future<AppAuthSession?> restoreSession() async =>
+      const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local');
 
   @override
   Stream<AppAuthSession?> watchSession() => _controller.stream;
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {
+    _controller.add(
+      const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+    );
+  }
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {
     _controller.add(null);
   }
+
+  @override
+  Future<void> deleteAccount() async {}
 
   void emitSession(AppAuthSession? session) {
     _controller.add(session);
