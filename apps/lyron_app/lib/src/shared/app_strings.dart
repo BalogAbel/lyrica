@@ -199,4 +199,26 @@ class AppStrings {
   static const unifiedSyncConnectivityOffline = 'offline';
   static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
   static const unifiedSyncActivitySyncing = 'syncing';
+
+  // ChordPro import
+  static const songImportAction = 'Import';
+  static const songImportPickerTitle = 'Import ChordPro files';
+  static const songImportDuplicateDialogTitle = 'Duplicate songs';
+  static const songImportDuplicateDialogMessage =
+      'Some files match songs already in your library. Choose how to handle each.';
+  static const songImportDuplicateOverwriteAction = 'Overwrite';
+  static const songImportDuplicateSkipAction = 'Skip';
+  static const songImportDuplicateOverwriteAllAction = 'Overwrite all';
+  static const songImportDuplicateSkipAllAction = 'Skip all';
+  static const songImportDuplicateConfirmAction = 'Continue';
+  static const songImportSummaryTitle = 'Import complete';
+  static const songImportSummaryImportedLabel = 'Imported';
+  static const songImportSummarySkippedLabel = 'Skipped';
+  static const songImportSummaryErrorsLabel = 'Errors';
+  static const songImportSummaryDoneAction = 'Kész';
+  static const songImportNoContextMessage = 'Sign in before importing songs.';
+  static const songImportReadErrorReason = 'Nem olvasható';
+  static const songImportUtf8ErrorReason = 'Nem UTF-8 fájl';
+  static const songImportEmptyFileReason = 'Üres fájl';
+  static const songImportSaveErrorPrefix = 'Mentési hiba';
 }
