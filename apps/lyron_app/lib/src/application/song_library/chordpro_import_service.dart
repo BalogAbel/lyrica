@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/song_catalog_read_reposit
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class ChordProImportService {
   const ChordProImportService({
@@ -59,7 +60,7 @@ class ChordProImportService {
 
     for (final file in files) {
       if (file.source.trim().isEmpty) {
-        errors.add(ImportError(filename: file.filename, reason: 'Üres fájl'));
+        errors.add(ImportError(filename: file.filename, reason: AppStrings.songImportEmptyFileReason));
         continue;
       }
 

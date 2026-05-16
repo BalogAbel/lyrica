@@ -92,22 +92,34 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     state = const ImportAnalysing();
 
     final fileInputs = <ImportFileInput>[];
+    final readErrors = <ImportError>[];
     for (final platformFile in picked.files) {
-      final source = await _readFile(platformFile);
-      fileInputs.add(
-        ImportFileInput(
-          filename: platformFile.name,
-          source: source ?? '',
-        ),
-      );
+      final (:source, :errorReason) = await _readFile(platformFile);
+      if (source == null) {
+        readErrors.add(
+          ImportError(
+            filename: platformFile.name,
+            reason: errorReason!,
+          ),
+        );
+      } else {
+        fileInputs.add(ImportFileInput(filename: platformFile.name, source: source));
+      }
     }
 
     ImportBatchResult analysisResult;
     try {
-      analysisResult = await _importService.analyse(
+      final partial = await _importService.analyse(
         context: context,
         files: fileInputs,
       );
+      analysisResult = readErrors.isEmpty
+          ? partial
+          : ImportBatchResult(
+              successes: partial.successes,
+              duplicates: partial.duplicates,
+              errors: [...partial.errors, ...readErrors],
+            );
     } catch (e) {
       state = ImportFailed(e.toString());
       return;
@@ -183,19 +195,25 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     state = ImportDone(result: finalResult, skippedCount: skippedCount);
   }
 
-  static Future<String?> _readFile(PlatformFile file) async {
+  static Future<({String? source, String? errorReason})> _readFile(PlatformFile file) async {
     try {
       if (file.bytes != null) {
-        return utf8.decode(file.bytes!, allowMalformed: false);
+        return (
+          source: utf8.decode(file.bytes!, allowMalformed: false),
+          errorReason: null,
+        );
       }
       if (file.path != null) {
-        return File(file.path!).readAsString();
+        return (
+          source: await File(file.path!).readAsString(),
+          errorReason: null,
+        );
       }
     } on FormatException {
-      return null;
+      return (source: null, errorReason: AppStrings.songImportUtf8ErrorReason);
     } catch (_) {
-      return null;
+      return (source: null, errorReason: AppStrings.songImportReadErrorReason);
     }
-    return null;
+    return (source: null, errorReason: AppStrings.songImportReadErrorReason);
   }
 }
