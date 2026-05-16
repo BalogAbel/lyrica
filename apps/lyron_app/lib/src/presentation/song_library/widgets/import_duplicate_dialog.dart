@@ -28,7 +28,10 @@ class _ImportDuplicateDialogState extends State<_ImportDuplicateDialog> {
   @override
   void initState() {
     super.initState();
-    _resolutions = List.filled(widget.duplicates.length, DuplicateResolution.skip);
+    _resolutions = List.filled(
+      widget.duplicates.length,
+      DuplicateResolution.skip,
+    );
   }
 
   void _applyAll(DuplicateResolution resolution) {
@@ -65,12 +68,16 @@ class _ImportDuplicateDialogState extends State<_ImportDuplicateDialog> {
               children: [
                 TextButton(
                   onPressed: () => _applyAll(DuplicateResolution.overwrite),
-                  child: const Text(AppStrings.songImportDuplicateOverwriteAllAction),
+                  child: const Text(
+                    AppStrings.songImportDuplicateOverwriteAllAction,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: () => _applyAll(DuplicateResolution.skip),
-                  child: const Text(AppStrings.songImportDuplicateSkipAllAction),
+                  child: const Text(
+                    AppStrings.songImportDuplicateSkipAllAction,
+                  ),
                 ),
               ],
             ),

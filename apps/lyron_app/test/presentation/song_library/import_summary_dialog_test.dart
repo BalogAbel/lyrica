@@ -16,8 +16,16 @@ void main() {
               context: context,
               result: const ImportBatchResult(
                 successes: [
-                  ImportSuccess(title: 'Song A', source: '', filename: 'song_a.cho'),
-                  ImportSuccess(title: 'Song B', source: '', filename: 'song_b.cho'),
+                  ImportSuccess(
+                    title: 'Song A',
+                    source: '',
+                    filename: 'song_a.cho',
+                  ),
+                  ImportSuccess(
+                    title: 'Song B',
+                    source: '',
+                    filename: 'song_b.cho',
+                  ),
                 ],
                 duplicates: [],
                 errors: [],
@@ -34,7 +42,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('2'), findsWidgets);
-    expect(find.text(AppStrings.songImportSummaryImportedLabel), findsOneWidget);
+    expect(
+      find.text(AppStrings.songImportSummaryImportedLabel),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows skipped count', (tester) async {

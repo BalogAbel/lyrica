@@ -47,7 +47,9 @@ void main() {
     expect(find.text('Holy, Holy, Holy'), findsWidgets);
   });
 
-  testWidgets('default resolution is skip; confirm returns skips', (tester) async {
+  testWidgets('default resolution is skip; confirm returns skips', (
+    tester,
+  ) async {
     List<ResolvedDuplicate>? result;
 
     await tester.pumpWidget(
@@ -96,13 +98,18 @@ void main() {
 
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(AppStrings.songImportDuplicateOverwriteAllAction));
+    await tester.tap(
+      find.text(AppStrings.songImportDuplicateOverwriteAllAction),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songImportDuplicateConfirmAction));
     await tester.pumpAndSettle();
 
     expect(result, hasLength(2));
-    expect(result!.every((r) => r.resolution == DuplicateResolution.overwrite), isTrue);
+    expect(
+      result!.every((r) => r.resolution == DuplicateResolution.overwrite),
+      isTrue,
+    );
   });
 
   testWidgets('per-item toggle changes individual resolution', (tester) async {
@@ -127,7 +134,9 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    final overwriteButtons = find.text(AppStrings.songImportDuplicateOverwriteAction);
+    final overwriteButtons = find.text(
+      AppStrings.songImportDuplicateOverwriteAction,
+    );
     await tester.tap(overwriteButtons.first);
     await tester.pumpAndSettle();
 

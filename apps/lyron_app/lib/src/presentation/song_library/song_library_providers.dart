@@ -281,11 +281,12 @@ final chordProImportServiceProvider = Provider<ChordProImportService>((ref) {
 });
 
 final chordProImportControllerProvider =
-    StateNotifierProvider.autoDispose<ChordProImportController, ChordProImportState>(
-  (ref) {
-    return ChordProImportController(
-      importService: ref.watch(chordProImportServiceProvider),
-      contextReader: () => ref.read(activeCatalogContextProvider),
-    );
-  },
-);
+    StateNotifierProvider.autoDispose<
+      ChordProImportController,
+      ChordProImportState
+    >((ref) {
+      return ChordProImportController(
+        importService: ref.watch(chordProImportServiceProvider),
+        contextReader: () => ref.read(activeCatalogContextProvider),
+      );
+    });
