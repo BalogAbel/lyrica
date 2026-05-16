@@ -8,7 +8,11 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
+import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
+import 'package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -113,11 +117,50 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
       );
     });
 
+    ref.listen<ChordProImportState>(chordProImportControllerProvider, (
+      previous,
+      next,
+    ) {
+      if (!mounted) return;
+      switch (next) {
+        case ImportAwaitingDuplicateResolution(:final result, :final successes):
+          unawaited(_resolveImportDuplicates(context, ref, result, successes));
+        case ImportDone(:final result, :final skippedCount):
+          unawaited(
+            showImportSummaryDialog(
+              context: context,
+              result: result,
+              skippedCount: skippedCount,
+            ).then((_) {
+              if (mounted) {
+                ref.invalidate(songLibraryListProvider);
+                ref.read(chordProImportControllerProvider.notifier).reset();
+              }
+            }),
+          );
+        case ImportFailed(:final message):
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+          ref.read(chordProImportControllerProvider.notifier).reset();
+        default:
+          break;
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.appName),
         actions: [
           const UnifiedSyncHeaderControl(),
+          TextButton(
+            onPressed: () {
+              unawaited(
+                ref.read(chordProImportControllerProvider.notifier).startImport(),
+              );
+            },
+            child: const Text(AppStrings.songImportAction),
+          ),
           TextButton(
             onPressed: () {
               unawaited(_createSong(context, ref));
@@ -428,6 +471,30 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     await ref.read(songCatalogControllerProvider).handleExplicitSignOut();
     await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
     await ref.read(appAuthControllerProvider).signOut();
+  }
+
+  Future<void> _resolveImportDuplicates(
+    BuildContext context,
+    WidgetRef ref,
+    ImportBatchResult result,
+    List<ImportSuccess> successes,
+  ) async {
+    if (!mounted) return;
+    final resolved = await showImportDuplicateDialog(
+      context: context,
+      duplicates: result.duplicates,
+    );
+    if (!mounted) return;
+    if (resolved == null) {
+      ref.read(chordProImportControllerProvider.notifier).reset();
+      return;
+    }
+    await ref
+        .read(chordProImportControllerProvider.notifier)
+        .commitWithResolutions(
+          successes: successes,
+          resolvedDuplicates: resolved,
+        );
   }
 }
 
