@@ -134,6 +134,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
             ).then((_) {
               if (mounted) {
                 ref.invalidate(songLibraryListProvider);
+                ref.invalidate(songMutationEntriesProvider);
                 ref.read(chordProImportControllerProvider.notifier).reset();
               }
             }),

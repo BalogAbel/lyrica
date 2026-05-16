@@ -55,7 +55,10 @@ class ChordProImportService {
         normalizedSource = _normalizer.normalize(file.source);
         final parsed = _parser.parse(normalizedSource);
         final rawTitle = parsed.title.trim();
-        title = rawTitle.isNotEmpty ? rawTitle : _stemOf(file.filename);
+        final stem = _stemOf(file.filename);
+        title = rawTitle.isNotEmpty
+            ? rawTitle
+            : (stem.isNotEmpty ? stem : AppStrings.songImportUntitledFallback);
       } catch (_) {
         errors.add(
           ImportError(
@@ -120,7 +123,10 @@ class ChordProImportService {
         committedSuccesses.add(success);
       } catch (e) {
         errors.add(
-          ImportError(filename: success.filename, reason: e.toString()),
+          ImportError(
+            filename: success.filename,
+            reason: '${AppStrings.songImportSaveErrorPrefix}: $e',
+          ),
         );
       }
     }
@@ -148,7 +154,7 @@ class ChordProImportService {
         errors.add(
           ImportError(
             filename: resolved.duplicate.filename,
-            reason: e.toString(),
+            reason: '${AppStrings.songImportSaveErrorPrefix}: $e',
           ),
         );
       }

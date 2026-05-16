@@ -221,4 +221,5 @@ class AppStrings {
   static const songImportUtf8ErrorReason = 'Invalid encoding';
   static const songImportEmptyFileReason = 'Empty file';
   static const songImportSaveErrorPrefix = 'Save error';
+  static const songImportUntitledFallback = 'Untitled Song';
 }
