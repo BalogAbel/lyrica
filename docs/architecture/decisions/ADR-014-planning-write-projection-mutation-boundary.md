@@ -25,6 +25,18 @@ Keep planning reads and planning writes as separate local data sets:
 - failed planning mutations move out of the normal read overlay and remain visible through explicit mutation-status UI
 - backend write RPCs remain the only authority for authorization, canonical slug acceptance, optimistic concurrency, duplicate-song enforcement, song-visibility checks, and empty-session delete enforcement
 
+## Mutation Compaction And Dependency Rules
+
+The persisted mutation model uses deterministic local compaction and parent-child dependency handling:
+
+- Create-then-edit of the same local plan or session collapses into one pending create with the latest local fields.
+- Create-then-delete of the same local plan or session annihilates the local mutation instead of emitting backend work for an entity the backend never accepted.
+- Multiple local edits to the same synchronized plan or session collapse into one pending update against the same synchronized base version until sync succeeds or conflict resolution intervenes.
+- Session mutations belonging to a locally created plan remain tied to that local plan identity and must not be synchronized ahead of the parent plan create.
+- If a local plan create is discarded or rejected permanently, its dependent local session mutations are discarded with it rather than left orphaned.
+- A session delete supersedes earlier pending session rename mutations for that same session.
+- The sync layer emits backend operations in parent-before-child order for creates and child-before-parent order for destructive operations when both aggregates are involved.
+
 ## Consequences
 
 - Local planning writes remain visible immediately and survive restart without mutating the synchronized projection in place.

@@ -13,6 +13,18 @@ Lyron Chords helps worship and music teams prepare, organize, and run services w
 5. Collaboration must work across devices without making users think about infrastructure.
 6. Authorization must preserve organizational boundaries and editing safety.
 
+## Sync Contract
+
+Lyron is **online-preferred, offline-safe, local-first**:
+
+- Online state refreshes and converges quickly when available.
+- Offline or failed-refresh states preserve usable local projections and durable local write intent.
+- Local writes survive app restart until accepted, discarded, or cleared by sign-out.
+- The UI distinguishes "saved locally" from "accepted by the backend" where that distinction matters.
+- Sync and refresh failures preserve the last usable local state rather than degrading to unavailability.
+
+The full sync contract is defined in [ADR-015](../architecture/decisions/ADR-015-online-preferred-local-first-sync.md). The sync UX contract (header status, manual sync, popup) is defined in [sync-ux-contract.md](sync-ux-contract.md).
+
 ## MVP Outcomes
 
 - Teams can sign in, browse a simple song list, and read ChordPro-backed songs on tablet-first layouts.

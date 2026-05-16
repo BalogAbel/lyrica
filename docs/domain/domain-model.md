@@ -285,6 +285,40 @@ Expected values:
 - Delete-sourced remote deletion is accepted convergence: the local pending delete is cleared because both sides already agree on deletion.
 - Planning-owned preserved titles remain the source of truth for tombstone copy until a later planning refresh replaces them with a new canonical row.
 
+## Entity Lifecycle States
+
+All sync-capable aggregates (songs, plans, sessions, session items) use the lifecycle patterns defined in [docs/architecture/state-machines.md](../architecture/state-machines.md).
+
+### Item Lifecycle States
+
+- `Created`: locally created, not yet accepted by the backend. Visible in normal UI with pending status.
+- `Synced`: local copy of a backend-accepted state. No known local divergence.
+- `Edited`: backend-accepted item with unaccepted local edits. Visible in normal UI with pending status.
+- `Removed`: local remove intent. Hidden from normal UI; remains in sync/recovery surfaces until backend acceptance or discard.
+- `CreatedConflict`: create blocked by non-retryable rejection.
+- `EditedConflict`: update blocked by non-retryable rejection (version conflict, authorization denial, remote deletion).
+- `RemovedConflict`: remove intent blocked by non-retryable rejection (dependency, authorization, version conflict).
+
+### Reorder Lifecycle States
+
+Applies to sibling collection ordering (session order within a plan, session item order within a session):
+
+- `Synced`: local order reflects backend-accepted order.
+- `Reordered`: local order intent not yet accepted by backend.
+- `ReorderConflict`: reorder rejected (base-order conflict, changed sibling set, authorization denial).
+
+### Sync Dimensions
+
+Entity state is separate from sync activity, connectivity, and freshness:
+
+- `sync_activity`: idle or running (transient — not an entity state)
+- `connectivity`: online, offline, or unknown
+- `freshness`: fresh, stale, or offline_cached
+
+Retryable network, timeout, or temporary backend failures do not change entity state. They remain sync metadata on the current pending local state.
+
+See [docs/domain/domain-vocabulary.md](domain-vocabulary.md) for full term definitions.
+
 ## Relationships
 
 - An organization has many groups.
