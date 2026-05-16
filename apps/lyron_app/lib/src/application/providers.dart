@@ -133,9 +133,7 @@ final activeOrganizationResolutionProvider =
 final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
   ref,
 ) {
-  final controller = AppAuthController(ref.read(authRepositoryProvider));
-  ref.onDispose(controller.dispose);
-  return controller;
+  return AppAuthController(ref.read(authRepositoryProvider));
 });
 
 final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {

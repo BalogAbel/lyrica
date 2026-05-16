@@ -45,7 +45,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,
@@ -133,7 +132,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -214,7 +212,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,
@@ -290,7 +287,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,

@@ -113,7 +113,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
     final router = createAppRouter(
       authController: controller,
       refreshListenable: controller,
@@ -169,7 +168,6 @@ void main() {
     final repository = _TestAuthRepository();
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
     final router = createAppRouter(
       authController: controller,
       refreshListenable: controller,
@@ -227,7 +225,6 @@ void main() {
     final repository = _TestAuthRepository();
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
     final router = createAppRouter(
       authController: controller,
       refreshListenable: controller,
@@ -277,7 +274,6 @@ void main() {
     final repository = _TestAuthRepository();
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
     final router = createAppRouter(
       authController: controller,
       refreshListenable: controller,
@@ -315,7 +311,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -377,7 +372,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -526,7 +520,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         isolatedSongCatalogProviderScope(
@@ -561,7 +554,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         isolatedSongCatalogProviderScope(
@@ -618,7 +610,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -741,7 +732,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,
@@ -835,7 +825,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         isolatedSongCatalogProviderScope(
@@ -902,7 +891,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         isolatedSongCatalogProviderScope(
@@ -957,7 +945,6 @@ void main() {
       final completer = Completer<AppAuthSession?>();
       final repository = _DelayedAuthRepository(completer.future);
       final controller = AppAuthController(repository);
-      addTearDown(controller.dispose);
       unawaited(controller.restoreSession());
       final router = createAppRouter(
         authController: controller,
@@ -1077,7 +1064,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,

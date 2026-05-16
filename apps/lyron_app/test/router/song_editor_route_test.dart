@@ -48,7 +48,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -142,7 +141,6 @@ void main() {
     );
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -424,7 +422,6 @@ void main() {
       );
       final controller = AppAuthController(repository);
       await controller.restoreSession();
-      addTearDown(controller.dispose);
 
       final router = createAppRouter(
         authController: controller,
@@ -465,7 +462,6 @@ void main() {
     final repository = _TestAuthRepository();
     final controller = AppAuthController(repository);
     await controller.restoreSession();
-    addTearDown(controller.dispose);
 
     final router = createAppRouter(
       authController: controller,
@@ -540,7 +536,6 @@ Future<_RecordingSongMutationStore> _pumpEditorAndReturnToSongView(
   );
   final controller = AppAuthController(repository);
   await controller.restoreSession();
-  addTearDown(controller.dispose);
 
   final router = createAppRouter(
     authController: controller,
