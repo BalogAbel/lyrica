@@ -12,6 +12,8 @@ class RedeemEffect {
     if (token == null) return;
 
     final controller = ref.read(redeemControllerProvider);
+    if (controller.state is RedeemStateInFlight) return;
+
     await controller.redeem(token);
 
     if (controller.state is RedeemStateSuccess) {

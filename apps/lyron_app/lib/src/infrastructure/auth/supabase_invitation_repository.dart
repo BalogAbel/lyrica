@@ -30,21 +30,10 @@ class SupabaseInvitationRepository implements InvitationRepository {
     try {
       final orgId = await _redeem(token);
       return RedeemSuccess(orgId);
-    } on Exception catch (e) {
-      final message = e.toString();
-      InvitationError mapped;
-      if (message.contains('invitation_not_found')) {
-        mapped = InvitationError.notFound;
-      } else if (message.contains('invitation_expired')) {
-        mapped = InvitationError.expired;
-      } else if (message.contains('invitation_already_redeemed')) {
-        mapped = InvitationError.alreadyRedeemed;
-      } else if (message.contains('already_member')) {
-        mapped = InvitationError.alreadyMember;
-      } else {
-        mapped = InvitationError.unknown;
-      }
-      return RedeemFailure(mapped);
+    } on PostgrestException catch (e) {
+      return RedeemFailure(invitationErrorFromMessage(e.message));
+    } on Exception {
+      return RedeemFailure(InvitationError.unknown);
     }
   }
 }
