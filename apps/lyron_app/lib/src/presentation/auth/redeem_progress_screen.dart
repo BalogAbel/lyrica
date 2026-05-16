@@ -43,10 +43,12 @@ class _RedeemProgressScreenState extends ConsumerState<RedeemProgressScreen> {
               Text(_messageFor(error)),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: () {
-                  ref.read(pendingInviteTokenControllerProvider).clear();
-                  context.go(AppRoutes.signIn.path);
-                },
+                onPressed: _isRetryableError(error)
+                    ? () => unawaited(RedeemEffect(ref).tryConsumePending())
+                    : () {
+                        ref.read(pendingInviteTokenControllerProvider).clear();
+                        context.go(AppRoutes.signIn.path);
+                      },
                 child: const Text(AppStrings.retryAction),
               ),
             ],
@@ -62,6 +64,11 @@ class _RedeemProgressScreenState extends ConsumerState<RedeemProgressScreen> {
     InvitationError.alreadyRedeemed => AppStrings.inviteErrorAlreadyRedeemed,
     InvitationError.alreadyMember => AppStrings.inviteErrorAlreadyMember,
     InvitationError.network ||
-    InvitationError.unknown => AppStrings.inviteErrorNotFound,
+    InvitationError.unknown => AppStrings.inviteErrorNetwork,
+  };
+
+  bool _isRetryableError(InvitationError error) => switch (error) {
+    InvitationError.network || InvitationError.unknown => true,
+    _ => false,
   };
 }

@@ -240,6 +240,8 @@ class AppStrings {
   static const inviteErrorExpired = 'Invite expired. Ask for a new one.';
   static const inviteErrorAlreadyRedeemed = 'Invite already used.';
   static const inviteErrorAlreadyMember = 'You are already a member.';
+  static const inviteErrorNetwork =
+      'Connection error. Check your network and try again.';
   static const accountTitle = 'Account';
   static const deleteAccountAction = 'Delete account';
   static const deleteAccountConfirmTitle = 'Delete account?';

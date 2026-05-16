@@ -24,7 +24,7 @@ class DeepLinkListener {
   }
 
   void _handle(Uri uri) {
-    final isHttpInvite = uri.path == '/invite';
+    final isHttpInvite = uri.path == '/invite' || uri.path == '/invite/';
     final isCustomSchemeCallback =
         uri.scheme == 'io.lyron.app' && uri.host == 'auth';
     if (isHttpInvite || isCustomSchemeCallback) {
