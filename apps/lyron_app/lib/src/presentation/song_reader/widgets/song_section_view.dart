@@ -39,20 +39,21 @@ class SongSectionView extends StatelessWidget {
         for (final item in section.lines) ...[
           switch (item) {
             SongReaderLyricLineProjection() => SongLineView(
-                line: item,
-                viewMode: viewMode,
-                sharedFontScale: sharedFontScale,
-              ),
+              line: item,
+              viewMode: viewMode,
+              sharedFontScale: sharedFontScale,
+            ),
             SongReaderCommentProjection() => CommentLineView(
-                projection: item,
-                sharedFontScale: sharedFontScale,
-              ),
+              projection: item,
+              sharedFontScale: sharedFontScale,
+            ),
             SongReaderTabProjection() => TabBlockView(
-                projection: item,
-                sharedFontScale: sharedFontScale,
-              ),
-            SongReaderDirectiveProjection() =>
-              DirectiveLineView(projection: item),
+              projection: item,
+              sharedFontScale: sharedFontScale,
+            ),
+            SongReaderDirectiveProjection() => DirectiveLineView(
+              projection: item,
+            ),
           },
           const SizedBox(height: 10),
         ],

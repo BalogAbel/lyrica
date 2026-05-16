@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 
 void main() {
   test('parsed song preserves metadata, sections, lines, and diagnostics', () {
@@ -132,7 +131,9 @@ void main() {
         LyricSegment(text: ' alone'),
       ],
     );
-    final differentSongLine = LyricLine(segments: [LyricSegment(text: 'alone')]);
+    final differentSongLine = LyricLine(
+      segments: [LyricSegment(text: 'alone')],
+    );
 
     expect(songLine, matchingSongLine);
     expect(songLine.hashCode, matchingSongLine.hashCode);
