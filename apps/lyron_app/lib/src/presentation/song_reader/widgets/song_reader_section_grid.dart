@@ -28,6 +28,7 @@ class SongReaderSectionGrid extends StatelessWidget {
   static const _chordRowHeight = 20.0;
   static const _lyricRowHeight = 24.0;
   static const _directiveLineHeight = 36.0;
+  static const _tabBlockVerticalPadding = 16.0;
   static const _columnHeightToleranceFactor = 1.15;
 
   @override
@@ -256,12 +257,17 @@ class SongReaderSectionGrid extends StatelessWidget {
               wrapCount * (_lyricRowHeight * sharedFontScale);
           linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
         case SongReaderCommentProjection():
-          linesHeight += _lyricRowHeight * sharedFontScale + _lineGap;
+          final commentLength = item.text.length;
+          final commentWrapCount = commentLength == 0
+              ? 1
+              : (commentLength / charsPerLine).ceil().clamp(1, 14);
+          linesHeight +=
+              commentWrapCount * (_lyricRowHeight * sharedFontScale) + _lineGap;
         case SongReaderTabProjection():
           linesHeight +=
               item.rawLines.length * (_lyricRowHeight * sharedFontScale) +
               _lineGap +
-              16;
+              _tabBlockVerticalPadding;
         case SongReaderDirectiveProjection():
           linesHeight += _directiveLineHeight;
       }
