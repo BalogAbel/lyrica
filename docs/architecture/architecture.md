@@ -38,6 +38,8 @@ Supabase provides:
 
 Authorization is backend-enforced. The Flutter client consumes capability results only for UX affordances.
 
+The authentication boundary is split into two concerns: provider-managed identity (Supabase Auth: Google, Apple, magic link) and database-enforced membership (the `invitations` + `memberships` tables and `redeem_invitation` RPC). A Supabase Auth session is necessary but not sufficient to access application data; the client must hold an active membership row obtained through `redeem_invitation`. The Flutter client cannot bypass this gate because the RPC runs as `security definer` in Postgres.
+
 Backend policy helpers are responsible for:
 
 - deriving organization membership scope from `auth.uid()`
