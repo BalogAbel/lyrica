@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "<APPLE_TEAM_ID>.io.lyron.app",
+        "paths": ["/invite/*", "/auth/callback/*"]
+      }
+    ]
+  }
+}
