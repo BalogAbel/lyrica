@@ -7,8 +7,8 @@ create table public.invitations (
     check (role_code in ('organization_admin', 'organization_member')),
   expires_at timestamptz not null,
   redeemed_at timestamptz,
-  redeemed_by uuid references auth.users(id),
-  issued_by uuid references auth.users(id),
+  redeemed_by uuid references auth.users(id) on delete set null,
+  issued_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default timezone('utc', now())
 );
 create index invitations_active_token_idx
