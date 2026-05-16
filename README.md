@@ -12,20 +12,6 @@ This repository is the canonical source of truth for:
 - Testing strategy and CI expectations
 - AI-assisted engineering rules and documentation obligations
 
-## Foundation Status
-
-- Monorepo with one Flutter app under `apps/lyron_app`
-- Supabase schema, RLS policies, and seed data under `supabase/`
-- MVP platforms: Android, iOS, and Web
-- Drift selected as the local store and sync-queue foundation
-- First executable product slice: authenticated tablet-first song list and reader backed by a local cache for the current authenticated user and active organization, refreshed from Supabase song summaries and raw ChordPro source
-- ChordPro defined as the canonical editable song format, with a documented supported subset for the first slice
-- Capability-based authorization enforced in Postgres, not in Flutter
-- Vendor-neutral specs and plans stored under `docs/specs/` and `docs/plans/`
-- Intentionally deferred slice follow-ups stored under `docs/deferred/`
-
-Desktop platforms are intentionally out of scope for the MVP, but the architecture must not block later support for macOS, Windows, or Linux.
-
 ## Repository Layout
 
 ```text
@@ -55,23 +41,17 @@ Desktop platforms are intentionally out of scope for the MVP, but the architectu
 ## Key Documents
 
 - [Product vision](docs/product/vision.md)
+- [Sync UX contract](docs/product/sync-ux-contract.md)
 - [Domain model](docs/domain/domain-model.md)
+- [Domain vocabulary](docs/domain/domain-vocabulary.md)
 - [Architecture](docs/architecture/architecture.md)
+- [Entity lifecycle state machines](docs/architecture/state-machines.md)
+- [Architectural decisions](docs/architecture/decisions/)
 - [Testing strategy](docs/testing/testing-strategy.md)
 - [Development workflow](docs/workflows/development-workflow.md)
 - [FreeShow integration boundary](docs/integrations/freeshow.md)
-- [Tablet-first song reader spec](docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md)
-- [Tablet-first song reader plan](docs/plans/2026-03-22-tablet-first-chordpro-song-reader.md)
-- [Authenticated song reading spec](docs/specs/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
-- [Authenticated song reading plan](docs/plans/2026-03-23-executable-local-supabase-authenticated-song-reading.md)
-- [Local-first cached authenticated song reading spec](docs/specs/2026-03-25-local-first-cached-authenticated-song-reading.md)
-- [Local-first cached authenticated song reading plan](docs/plans/2026-03-25-local-first-cached-authenticated-song-reading.md)
-- [First executable plan and session slice spec](docs/specs/2026-03-31-first-executable-plan-and-session-slice.md)
-- [First executable plan and session slice plan](docs/plans/2026-03-31-first-executable-plan-and-session-slice.md)
-- [Local-first planning read spec](docs/specs/2026-04-03-local-first-planning-read.md)
-- [Local-first planning read plan](docs/plans/2026-04-03-local-first-planning-read.md)
-- [Offline-first planning session and session-item edit spec](docs/specs/2026-04-11-offline-first-planning-session-and-session-item-edit.md)
-- [Local-first planning session and session-item edit plan](docs/plans/2026-04-11-local-first-planning-session-and-session-item-edit.md)
+- [Specs](docs/specs/) — implementation history
+- [Plans](docs/plans/) — implementation history
 
 ## Development Workflow
 
@@ -217,7 +197,6 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 
 ## Local Development Notes
 
-- The Flutter shell is intentionally thin. It exists to keep routing, provider wiring, and offline policy vocabulary executable while the first real product slices are still pending.
 - The current authenticated slice reads the active song catalog from a local Drift-backed cache for the current authenticated user and active organization. Supabase is used to verify session state and refresh the full visible catalog.
 - The current planning slice uses a normalized Drift projection for reads plus a persisted planning mutation store for local plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
 - Planning reads and writes are synchronized for the current active organization only, while write authorization and optimistic concurrency remain backend-owned RBAC decisions
