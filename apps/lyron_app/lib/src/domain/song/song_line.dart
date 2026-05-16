@@ -6,7 +6,7 @@ sealed class SongLine {
 
 class LyricLine extends SongLine {
   LyricLine({required List<LyricSegment> segments})
-      : segments = List.unmodifiable(segments);
+    : segments = List.unmodifiable(segments);
 
   final List<LyricSegment> segments;
 
@@ -31,7 +31,7 @@ class CommentLine extends SongLine {
 
 class TabBlock extends SongLine {
   TabBlock({required List<String> rawLines})
-      : rawLines = List.unmodifiable(rawLines);
+    : rawLines = List.unmodifiable(rawLines);
   final List<String> rawLines;
 
   @override

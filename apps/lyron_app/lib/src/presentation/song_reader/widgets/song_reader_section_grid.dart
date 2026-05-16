@@ -249,9 +249,11 @@ class SongReaderSectionGrid extends StatelessWidget {
           final wrapCount = lyricLength == 0
               ? 1
               : (lyricLength / charsPerLine).ceil().clamp(1, 14);
-          final chordRowHeight =
-              hasChord ? (_chordRowHeight * sharedFontScale) : 0;
-          final lyricRowsHeight = wrapCount * (_lyricRowHeight * sharedFontScale);
+          final chordRowHeight = hasChord
+              ? (_chordRowHeight * sharedFontScale)
+              : 0;
+          final lyricRowsHeight =
+              wrapCount * (_lyricRowHeight * sharedFontScale);
           linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
         case SongReaderCommentProjection():
           linesHeight += _lyricRowHeight * sharedFontScale + _lineGap;

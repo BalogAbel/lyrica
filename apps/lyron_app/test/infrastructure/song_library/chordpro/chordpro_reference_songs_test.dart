@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
 String _referenceSong(String fileName) {
@@ -33,20 +32,14 @@ void main() {
       expect(song.sections.first.lines, hasLength(2));
       final introFirstLine = song.sections.first.lines.first as LyricLine;
       expect(introFirstLine.segments.first.leadingChord, 'A');
-      expect(
-        introFirstLine.segments.last.leadingChord,
-        'C#m/G#',
-      );
+      expect(introFirstLine.segments.last.leadingChord, 'C#m/G#');
       final introLastLine = song.sections.first.lines.last as LyricLine;
       expect(introLastLine.segments.single.text, '');
       expect(song.sections[2].kind, SongSectionKind.chorus);
       expect(song.sections[2].lines, isNotEmpty);
       final chorusFirstLine = song.sections[2].lines.first as LyricLine;
       expect(chorusFirstLine.segments.first.leadingChord, null);
-      expect(
-        chorusFirstLine.segments.first.text,
-        startsWith('A forrás'),
-      );
+      expect(chorusFirstLine.segments.first.text, startsWith('A forrás'));
       expect(song.diagnostics, isEmpty);
     },
   );
@@ -145,7 +138,10 @@ void main() {
     expect(bridgeFirstLine.segments.first.leadingChord, 'B');
     // #-prefixed and //-prefixed comment directives now appear as CommentLine in Bridge
     expect(
-      song.sections[3].lines.whereType<CommentLine>().map((c) => c.text).toList(),
+      song.sections[3].lines
+          .whereType<CommentLine>()
+          .map((c) => c.text)
+          .toList(),
       containsAll(<String>[
         '#Jonathan Douglass, Joel Houston (Hillsong)',
         '#Hegedűs Róbert (Dics-Suli 2006)',

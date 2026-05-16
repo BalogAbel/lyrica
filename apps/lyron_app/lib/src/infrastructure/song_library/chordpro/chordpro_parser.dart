@@ -43,7 +43,9 @@ class ChordproParser {
         if (currentSection.kind == SongSectionKind.tab) {
           currentSection.appendTabLine(line.raw);
         } else {
-          currentSection.lines.add(LyricLine(segments: _parseLyricLine(line.raw)));
+          currentSection.lines.add(
+            LyricLine(segments: _parseLyricLine(line.raw)),
+          );
         }
       } else {
         final directiveName = line.directiveName ?? '';
@@ -123,7 +125,7 @@ class ChordproParser {
           subtitle = line.directiveValue;
         } else if (directiveName == 'meta') {
           // silently ignored
-        } else if (directiveName == 'comment') {
+        } else if (directiveName == 'comment' || directiveName == 'c') {
           final commentValue = line.directiveValue ?? '';
           final parsedSection = _parseCommentSection(commentValue);
           if (parsedSection != null) {
@@ -156,7 +158,6 @@ class ChordproParser {
                 sections.add(section);
                 currentSection = section;
               } else if (labelOverride != null) {
-                // already in chorus but label override provided — still create new section
                 final section = _SectionBuilder(
                   kind: SongSectionKind.chorus,
                   label: labelOverride,
@@ -203,7 +204,10 @@ class ChordproParser {
           );
           currentSection = targetSection;
           targetSection.lines.add(
-            DirectiveLine(name: directiveName, value: line.directiveValue?.trim()),
+            DirectiveLine(
+              name: directiveName,
+              value: line.directiveValue?.trim(),
+            ),
           );
         }
       }
@@ -229,7 +233,7 @@ class ChordproParser {
     required List<_SectionBuilder> sections,
     required _SectionBuilder? currentSection,
   }) {
-    if (currentSection != null && currentSection.kind != SongSectionKind.tab) {
+    if (currentSection != null) {
       return currentSection;
     }
     final preamble = _SectionBuilder(
@@ -436,17 +440,21 @@ class _SectionBuilder {
   final String label;
   final int? number;
   final List<SongLine> lines = <SongLine>[];
-  final List<String> _pendingTabLines = <String>[];
-
   void appendTabLine(String rawLine) {
-    _pendingTabLines.add(rawLine);
+    final last = lines.lastOrNull;
+    if (last is TabBlock) {
+      lines[lines.length - 1] = TabBlock(rawLines: [...last.rawLines, rawLine]);
+    } else {
+      lines.add(TabBlock(rawLines: [rawLine]));
+    }
   }
 
   SongSection build() {
-    final builtLines = List<SongLine>.from(lines);
-    if (_pendingTabLines.isNotEmpty) {
-      builtLines.add(TabBlock(rawLines: List.unmodifiable(_pendingTabLines)));
-    }
-    return SongSection(kind: kind, label: label, number: number, lines: builtLines);
+    return SongSection(
+      kind: kind,
+      label: label,
+      number: number,
+      lines: List.unmodifiable(lines),
+    );
   }
 }

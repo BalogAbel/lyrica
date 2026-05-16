@@ -18,7 +18,6 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_providers.dart';

@@ -1,6 +1,5 @@
 import 'package:lyron_app/src/domain/song/chord_symbol.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -41,7 +40,10 @@ class SongReaderProjection {
                  isUnknown: section.kind == SongSectionKind.unknown,
                  lines: List.unmodifiable(
                    section.lines
-                       .map((line) => _projectLine(line, state, song, transposeChord))
+                       .map(
+                         (line) =>
+                             _projectLine(line, state, song, transposeChord),
+                       )
                        .toList(growable: false),
                  ),
                ),
@@ -119,7 +121,7 @@ class SongReaderCommentProjection extends SongReaderSectionItemProjection {
 
 class SongReaderTabProjection extends SongReaderSectionItemProjection {
   SongReaderTabProjection({required List<String> rawLines})
-      : rawLines = List.unmodifiable(rawLines);
+    : rawLines = List.unmodifiable(rawLines);
   final List<String> rawLines;
 }
 
@@ -163,25 +165,27 @@ SongReaderSectionItemProjection _projectLine(
 ) {
   return switch (line) {
     LyricLine() => SongReaderLyricLineProjection(
-        segments: List.unmodifiable(
-          line.segments
-              .map(
-                (segment) => SongReaderSegmentProjection(
-                  displayChord: SongReaderProjection._displayChord(
-                    segment.leadingChord,
-                    state,
-                    song,
-                    transposeChord,
-                  ),
-                  text: segment.text,
+      segments: List.unmodifiable(
+        line.segments
+            .map(
+              (segment) => SongReaderSegmentProjection(
+                displayChord: SongReaderProjection._displayChord(
+                  segment.leadingChord,
+                  state,
+                  song,
+                  transposeChord,
                 ),
-              )
-              .toList(growable: false),
-        ),
+                text: segment.text,
+              ),
+            )
+            .toList(growable: false),
       ),
+    ),
     CommentLine() => SongReaderCommentProjection(text: line.text),
     TabBlock() => SongReaderTabProjection(rawLines: line.rawLines),
-    DirectiveLine() =>
-      SongReaderDirectiveProjection(name: line.name, value: line.value),
+    DirectiveLine() => SongReaderDirectiveProjection(
+      name: line.name,
+      value: line.value,
+    ),
   };
 }

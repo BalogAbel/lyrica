@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
-import 'package:lyron_app/src/domain/song/song_line.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
@@ -43,7 +42,10 @@ void main() {
     expect(projection.effectiveTranspose, 2);
     expect(projection.effectiveCapo, 2);
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'A',
     );
     expect(projection.sharedFontScale, 1.0);
@@ -57,7 +59,10 @@ void main() {
 
     expect(projection.viewMode, SongReaderViewMode.lyricsOnly);
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       isNull,
     );
   });
@@ -71,7 +76,10 @@ void main() {
     );
 
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'B',
     );
     expect(
@@ -103,14 +111,14 @@ void main() {
     }, returnsNormally);
 
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'not-a-real-chord',
     );
     final projFirstLine = song.sections.first.lines.first as LyricLine;
-    expect(
-      projFirstLine.segments.first.leadingChord,
-      'not-a-real-chord',
-    );
+    expect(projFirstLine.segments.first.leadingChord, 'not-a-real-chord');
   });
 
   test('piano mode shows sounding chords without capo subtraction', () {
@@ -122,7 +130,10 @@ void main() {
     );
 
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'B',
     );
     expect(projection.isCapoDirectiveVisible, false);
@@ -139,7 +150,10 @@ void main() {
       expect(projection.effectiveTranspose, 1);
       expect(projection.effectiveCapo, 3);
       expect(
-        (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+        (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+            .segments
+            .first
+            .displayChord,
         'G',
       );
       expect(projection.isCapoDirectiveVisible, true);
@@ -156,7 +170,10 @@ void main() {
     expect(projection.effectiveCapo, 0);
     expect(projection.capoDirectiveText, isNull);
     expect(
-      (projection.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'B',
     );
   });

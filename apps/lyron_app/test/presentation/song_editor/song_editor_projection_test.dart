@@ -54,7 +54,11 @@ void main() {
     expect(projection.preview.effectiveTranspose, 1);
     expect(projection.preview.effectiveCapo, 2);
     expect(
-      (projection.preview.sections.first.lines.first as SongReaderLyricLineProjection).segments.first.displayChord,
+      (projection.preview.sections.first.lines.first
+              as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
       'C#',
     );
     expect(projection.preview.capoDirectiveText, 'Capo 2');
