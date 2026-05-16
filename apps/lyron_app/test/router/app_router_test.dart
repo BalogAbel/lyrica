@@ -125,7 +125,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           activeCatalogContextProvider.overrideWithValue(
             const ActiveCatalogContext(
@@ -181,7 +181,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
@@ -240,7 +240,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           planningRepositoryProvider.overrideWithValue(
             _FakePlanningRepository(planDetail: _planDetailFixture()),
@@ -289,7 +289,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
         ],
         child: Consumer(
@@ -328,7 +328,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
@@ -393,7 +393,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
@@ -532,7 +532,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             planningPlanDetailBySlugProvider(
               'missing-plan',
@@ -567,7 +567,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             activeCatalogContextProvider.overrideWithValue(
               const ActiveCatalogContext(
@@ -632,7 +632,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           planningPlanListProvider.overrideWith(
             (ref) async => [
@@ -755,7 +755,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
@@ -841,7 +841,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             planningPlanListProvider.overrideWith(
               (ref) async => [
@@ -908,7 +908,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             planningPlanListProvider.overrideWith(
               (ref) async => [
@@ -971,7 +971,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             planningPlanListProvider.overrideWith(
               (ref) async => [
@@ -1090,7 +1090,7 @@ void main() {
         isolatedSongCatalogProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             activeCatalogContextProvider.overrideWithValue(
               const ActiveCatalogContext(

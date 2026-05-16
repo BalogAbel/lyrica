@@ -57,7 +57,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(
@@ -146,7 +146,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           membershipRefreshEffectProvider.overrideWith((ref) {}),
           catalogSnapshotStateProvider.overrideWithValue(
@@ -226,7 +226,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(
@@ -303,7 +303,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(

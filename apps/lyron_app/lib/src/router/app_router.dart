@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
@@ -22,6 +24,7 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 
 GoRouter createAppRouter({
   required AppAuthController authController,
+  ActiveMembershipController? membershipController,
   required Listenable refreshListenable,
   String initialLocation = '/',
 }) {
@@ -59,9 +62,20 @@ GoRouter createAppRouter({
       }
 
       if (status == AppAuthStatus.signedIn) {
-        return isOnSignIn || isOnBootstrap
-            ? (restoreTarget ?? AppRoutes.home.path)
-            : null;
+        if (isOnSignIn || isOnBootstrap) {
+          return restoreTarget ?? AppRoutes.home.path;
+        }
+        // Membership-flow routes are accessible without an active membership
+        final isMembershipFlowRoute =
+            loc == AppRoutes.inviteRequired.path ||
+            loc == AppRoutes.redeem.path;
+        if (membershipController != null &&
+            !isPublicRoute &&
+            !isMembershipFlowRoute &&
+            membershipController.last is! ActiveOrganizationSelected) {
+          return AppRoutes.home.path;
+        }
+        return null;
       }
 
       if (isOnBootstrap) {
@@ -164,6 +178,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return createAppRouter(
     authController: authController,
+    membershipController: ref.read(activeMembershipControllerProvider),
     refreshListenable: refreshNotifier,
   );
 });
@@ -181,8 +196,10 @@ class _InviteLandingCaptureState extends ConsumerState<_InviteLandingCapture> {
   @override
   void initState() {
     super.initState();
+    final token = widget.token;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(pendingInviteTokenControllerProvider).capture(widget.token);
+      ref.read(pendingInviteTokenControllerProvider).capture(token);
+      if (mounted) context.go(AppRoutes.signIn.path);
     });
   }
 
