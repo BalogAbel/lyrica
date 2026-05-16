@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,10 +31,7 @@ class ImportAwaitingDuplicateResolution extends ChordProImportState {
 }
 
 class ImportCommitting extends ChordProImportState {
-  const ImportCommitting({required this.progress, required this.total});
-
-  final int progress;
-  final int total;
+  const ImportCommitting();
 }
 
 class ImportDone extends ChordProImportState {
@@ -170,11 +166,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
-    final total = successes.length +
-        resolvedDuplicates
-            .where((r) => r.resolution == DuplicateResolution.overwrite)
-            .length;
-    state = ImportCommitting(progress: 0, total: total);
+    state = const ImportCommitting();
 
     final skippedCount = resolvedDuplicates
         .where((r) => r.resolution == DuplicateResolution.skip)
@@ -195,25 +187,19 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     state = ImportDone(result: finalResult, skippedCount: skippedCount);
   }
 
-  static Future<({String? source, String? errorReason})> _readFile(PlatformFile file) async {
+  static Future<({String? source, String? errorReason})> _readFile(
+    PlatformFile file,
+  ) async {
+    final bytes = file.bytes;
+    if (bytes == null) {
+      return (source: null, errorReason: AppStrings.songImportReadErrorReason);
+    }
     try {
-      if (file.bytes != null) {
-        return (
-          source: utf8.decode(file.bytes!, allowMalformed: false),
-          errorReason: null,
-        );
-      }
-      if (file.path != null) {
-        return (
-          source: await File(file.path!).readAsString(),
-          errorReason: null,
-        );
-      }
+      return (source: utf8.decode(bytes, allowMalformed: false), errorReason: null);
     } on FormatException {
       return (source: null, errorReason: AppStrings.songImportUtf8ErrorReason);
     } catch (_) {
       return (source: null, errorReason: AppStrings.songImportReadErrorReason);
     }
-    return (source: null, errorReason: AppStrings.songImportReadErrorReason);
   }
 }

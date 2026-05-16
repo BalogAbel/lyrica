@@ -215,10 +215,10 @@ class AppStrings {
   static const songImportSummaryImportedLabel = 'Imported';
   static const songImportSummarySkippedLabel = 'Skipped';
   static const songImportSummaryErrorsLabel = 'Errors';
-  static const songImportSummaryDoneAction = 'Kész';
+  static const songImportSummaryDoneAction = 'Done';
   static const songImportNoContextMessage = 'Sign in before importing songs.';
-  static const songImportReadErrorReason = 'Nem olvasható';
-  static const songImportUtf8ErrorReason = 'Nem UTF-8 fájl';
-  static const songImportEmptyFileReason = 'Üres fájl';
-  static const songImportSaveErrorPrefix = 'Mentési hiba';
+  static const songImportReadErrorReason = 'Unreadable';
+  static const songImportUtf8ErrorReason = 'Invalid encoding';
+  static const songImportEmptyFileReason = 'Empty file';
+  static const songImportSaveErrorPrefix = 'Save error';
 }
