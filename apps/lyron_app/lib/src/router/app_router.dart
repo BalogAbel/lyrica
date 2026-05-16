@@ -6,6 +6,11 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyron_app/src/presentation/account/account_screen.dart';
+import 'package:lyron_app/src/presentation/auth/invite_required_screen.dart';
+import 'package:lyron_app/src/presentation/auth/magic_link_sent_screen.dart';
+import 'package:lyron_app/src/presentation/auth/membership_gate.dart';
+import 'package:lyron_app/src/presentation/auth/redeem_progress_screen.dart';
 import 'package:lyron_app/src/presentation/auth/sign_in_screen.dart';
 import 'package:lyron_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
@@ -28,6 +33,11 @@ GoRouter createAppRouter({
     redirect: (context, state) {
       final isOnBootstrap = state.matchedLocation == AppRoutes.bootstrap.path;
       final isOnSignIn = state.matchedLocation == AppRoutes.signIn.path;
+      final isAuthRoute =
+          isOnSignIn ||
+          isOnBootstrap ||
+          state.matchedLocation == AppRoutes.invite.path ||
+          state.matchedLocation == AppRoutes.magicLinkSent.path;
       final status = authController.state.status;
       final restoreTarget = state.uri.queryParameters['from'];
 
@@ -55,13 +65,15 @@ GoRouter createAppRouter({
         return AppRoutes.signIn.path;
       }
 
-      final requiresAuth =
-          state.matchedLocation == AppRoutes.home.path ||
-          state.matchedLocation == AppRoutes.planList.path ||
-          state.matchedLocation.startsWith('/plans/') ||
-          state.matchedLocation.startsWith('/songs/');
-      if (requiresAuth) {
-        return AppRoutes.signIn.path;
+      if (!isAuthRoute) {
+        final requiresAuth =
+            state.matchedLocation == AppRoutes.home.path ||
+            state.matchedLocation == AppRoutes.planList.path ||
+            state.matchedLocation.startsWith('/plans/') ||
+            state.matchedLocation.startsWith('/songs/');
+        if (requiresAuth) {
+          return AppRoutes.signIn.path;
+        }
       }
 
       return null;
@@ -81,7 +93,35 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: AppRoutes.home.path,
-        builder: (context, state) => const SongListScreen(),
+        builder: (context, state) => const MembershipGate(
+          child: SongListScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.magicLinkSent.path,
+        builder: (context, _) => const MagicLinkSentScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.invite.path,
+        builder: (context, state) {
+          final token = state.uri.queryParameters['token'];
+          if (token != null && token.isNotEmpty) {
+            return _InviteLandingCapture(token: token);
+          }
+          return const SignInScreen();
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.inviteRequired.path,
+        builder: (context, _) => const InviteRequiredScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.redeem.path,
+        builder: (context, _) => const RedeemProgressScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.account.path,
+        builder: (context, _) => const AccountScreen(),
       ),
       GoRoute(
         path: AppRoutes.planList.path,
@@ -132,3 +172,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refreshNotifier,
   );
 });
+
+class _InviteLandingCapture extends ConsumerWidget {
+  const _InviteLandingCapture({required this.token});
+  final String token;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.read(pendingInviteTokenControllerProvider).capture(token);
+    return const SignInScreen();
+  }
+}

@@ -2,6 +2,11 @@ enum AppRoutes {
   bootstrap('/bootstrap'),
   home('/'),
   signIn('/sign-in'),
+  magicLinkSent('/magic-link-sent'),
+  invite('/invite'),
+  inviteRequired('/invite-required'),
+  redeem('/redeem'),
+  account('/account'),
   planList('/plans'),
   planDetail('/plans/:planSlug'),
   planSessionSongReader(
