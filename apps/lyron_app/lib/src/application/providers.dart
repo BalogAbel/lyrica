@@ -7,6 +7,9 @@ import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/invitation_repository.dart';
+import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
+import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
@@ -26,6 +29,7 @@ import 'package:lyron_app/src/application/sync/sync_overview.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
+import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
@@ -127,6 +131,22 @@ final appAuthControllerProvider = Provider<AppAuthController>((ref) {
   final controller = AppAuthController(ref.read(authRepositoryProvider));
   ref.onDispose(controller.dispose);
   return controller;
+});
+
+final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {
+  return SupabaseInvitationRepository(ref.read(supabaseClientProvider));
+});
+
+final pendingInviteTokenControllerProvider =
+    ChangeNotifierProvider<PendingInviteTokenController>((ref) {
+      final controller = PendingInviteTokenController();
+      return controller;
+    });
+
+final redeemControllerProvider = ChangeNotifierProvider<RedeemController>((
+  ref,
+) {
+  return RedeemController(ref.read(invitationRepositoryProvider));
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {

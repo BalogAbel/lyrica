@@ -1,5 +1,4 @@
-// TODO(auth-invite-sso): stub + tests updated when SignInScreen rewritten
-// ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
+// ignore_for_file: subtype_of_sealed_class
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,93 +6,69 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/auth/sign_in_screen.dart';
 
-void main() {
-  testWidgets('shows the sign-in form and submits credentials', (tester) async {
-    final repository = _StubAuthRepository();
-    final controller = AppAuthController(repository);
-    await controller.restoreSession();
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
-          appAuthListenableProvider.overrideWithValue(controller),
-        ],
-        child: const MaterialApp(home: SignInScreen()),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.text('Sign in'), findsOneWidget);
-
-    await tester.enterText(
-      find.byType(TextFormField).at(0),
-      'demo@lyron.local',
-    );
-    await tester.enterText(find.byType(TextFormField).at(1), 'LyronDemo123!');
-    await tester.tap(find.text('Continue'));
-    await tester.pump();
-
-    expect(repository.lastEmail, 'demo@lyron.local');
-    expect(repository.lastPassword, 'LyronDemo123!');
-  });
-
-  testWidgets('sign-in fields are empty when no dart-defines are set', (
-    tester,
-  ) async {
-    final repository = _StubAuthRepository();
-    final controller = AppAuthController(repository);
-    await controller.restoreSession();
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
-          appAuthListenableProvider.overrideWithValue(controller),
-        ],
-        child: const MaterialApp(home: SignInScreen()),
-      ),
-    );
-    await tester.pump();
-
-    final emailField = tester.widget<TextFormField>(
-      find.byType(TextFormField).at(0),
-    );
-    final passwordField = tester.widget<TextFormField>(
-      find.byType(TextFormField).at(1),
-    );
-
-    expect(emailField.controller?.text, isEmpty);
-    expect(passwordField.controller?.text, isEmpty);
-  });
-}
-
-class _StubAuthRepository implements AuthRepository {
-  String? lastEmail;
-  String? lastPassword;
-
+class _StubRepo implements AuthRepository {
   @override
   Future<AppAuthSession?> restoreSession() async => null;
-
   @override
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
+  @override
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  @override
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  @override
+  Future<void> signOut() async {}
+  @override
+  Future<void> deleteAccount() async {}
+}
+
+class _RecordingController extends AppAuthController {
+  _RecordingController() : super(_StubRepo());
+  SignInMethod? lastOAuth;
+  String? lastMagicLinkEmail;
 
   @override
-  Future<AppAuthSession> signIn({
-    required String email,
-    required String password,
-  }) async {
-    lastEmail = email;
-    lastPassword = password;
-    return AppAuthSession(userId: 'user-1', email: email);
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {
+    lastOAuth = method;
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {
+    lastMagicLinkEmail = email;
+  }
+}
+
+void main() {
+  testWidgets('shows three sign-in entry points', (tester) async {
+    final controller = _RecordingController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => controller),
+        ],
+        child: const MaterialApp(home: SignInScreen()),
+      ),
+    );
+
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Continue with Apple'), findsOneWidget);
+    expect(find.text('Send magic link'), findsOneWidget);
+  });
+
+  testWidgets('tapping Google triggers OAuth', (tester) async {
+    final controller = _RecordingController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => controller),
+        ],
+        child: const MaterialApp(home: SignInScreen()),
+      ),
+    );
+    await tester.tap(find.text('Continue with Google'));
+    await tester.pump();
+    expect(controller.lastOAuth, SignInMethod.google);
+  });
 }
