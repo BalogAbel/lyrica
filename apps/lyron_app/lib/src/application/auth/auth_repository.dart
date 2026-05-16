@@ -6,9 +6,15 @@ abstract interface class AuthRepository {
 
   Stream<AppAuthSession?> watchSession();
 
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo});
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  });
 
-  Future<void> sendMagicLink({required String email, required String redirectTo});
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  });
 
   Future<void> signOut();
 

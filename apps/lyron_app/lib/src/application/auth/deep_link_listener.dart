@@ -7,8 +7,8 @@ class DeepLinkListener {
   DeepLinkListener({
     required Stream<Uri> stream,
     required PendingInviteTokenController pendingTokens,
-  })  : _stream = stream,
-        _pendingTokens = pendingTokens;
+  }) : _stream = stream,
+       _pendingTokens = pendingTokens;
 
   final Stream<Uri> _stream;
   final PendingInviteTokenController _pendingTokens;
@@ -24,7 +24,10 @@ class DeepLinkListener {
   }
 
   void _handle(Uri uri) {
-    if (uri.path == '/invite') {
+    final isHttpInvite = uri.path == '/invite';
+    final isCustomSchemeCallback =
+        uri.scheme == 'io.lyron.app' && uri.host == 'auth';
+    if (isHttpInvite || isCustomSchemeCallback) {
       final token = uri.queryParameters['token'];
       if (token != null && token.isNotEmpty) {
         _pendingTokens.capture(token);

@@ -72,7 +72,9 @@ class AppAuthController extends ChangeNotifier {
     if (session != null) {
       return AppAuthState(status: AppAuthStatus.signedIn, session: session);
     }
-    if (fromStream && !_isSigningOut && _state.status == AppAuthStatus.signedIn) {
+    if (fromStream &&
+        !_isSigningOut &&
+        _state.status == AppAuthStatus.signedIn) {
       return const AppAuthState(status: AppAuthStatus.sessionExpired);
     }
     return const AppAuthState(status: AppAuthStatus.signedOut);

@@ -89,9 +89,8 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: AppRoutes.home.path,
-        builder: (context, state) => const MembershipGate(
-          child: SongListScreen(),
-        ),
+        builder: (context, state) =>
+            const MembershipGate(child: SongListScreen()),
       ),
       GoRoute(
         path: AppRoutes.magicLinkSent.path,

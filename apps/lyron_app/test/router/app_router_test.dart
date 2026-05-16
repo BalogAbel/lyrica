@@ -1274,10 +1274,16 @@ class _TestAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
 
   @override
-  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
@@ -1298,10 +1304,16 @@ class _DelayedAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
 
   @override
-  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}

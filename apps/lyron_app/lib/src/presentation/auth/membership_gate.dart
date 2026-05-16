@@ -16,9 +16,10 @@ class MembershipGate extends ConsumerWidget {
 
     return switch (membership) {
       ActiveOrganizationSelected() => child,
-      ActiveOrganizationVerifiedEmpty() => pending != null
-          ? const RedeemProgressScreen()
-          : const InviteRequiredScreen(),
+      ActiveOrganizationVerifiedEmpty() =>
+        pending != null
+            ? const RedeemProgressScreen()
+            : const InviteRequiredScreen(),
       ActiveOrganizationUnknownConnectivityFailure() ||
       ActiveOrganizationUnknownNonConnectivityFailure() => child,
     };

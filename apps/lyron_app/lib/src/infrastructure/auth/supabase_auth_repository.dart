@@ -6,14 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef _Restore = Future<AppAuthSession?> Function();
 typedef _Watch = Stream<AppAuthSession?> Function();
-typedef _OAuth = Future<void> Function(
-  SignInMethod method, {
-  required String redirectTo,
-});
-typedef _Magic = Future<void> Function({
-  required String email,
-  required String redirectTo,
-});
+typedef _OAuth =
+    Future<void> Function(SignInMethod method, {required String redirectTo});
+typedef _Magic =
+    Future<void> Function({required String email, required String redirectTo});
 typedef _SignOut = Future<void> Function();
 typedef _Delete = Future<void> Function();
 
@@ -21,20 +17,24 @@ class SupabaseAuthRepository implements AuthRepository {
   SupabaseAuthRepository(SupabaseClient client)
     : this.testing(
         restoreSession: () async => _mapSession(client.auth.currentSession),
-        watchSession: () => client.auth.onAuthStateChange
-            .map((event) => _mapSession(event.session)),
+        watchSession: () => client.auth.onAuthStateChange.map(
+          (event) => _mapSession(event.session),
+        ),
         signInWithOAuth: (method, {required redirectTo}) async {
           final provider = switch (method) {
             SignInMethod.google => OAuthProvider.google,
             SignInMethod.apple => OAuthProvider.apple,
             SignInMethod.magicLink => throw ArgumentError(
-                'magic link must use sendMagicLink',
-              ),
+              'magic link must use sendMagicLink',
+            ),
           };
           await client.auth.signInWithOAuth(provider, redirectTo: redirectTo);
         },
         sendMagicLink: ({required email, required redirectTo}) async {
-          await client.auth.signInWithOtp(email: email, emailRedirectTo: redirectTo);
+          await client.auth.signInWithOtp(
+            email: email,
+            emailRedirectTo: redirectTo,
+          );
         },
         signOut: client.auth.signOut,
         deleteAccount: () async {
@@ -94,7 +94,8 @@ class SupabaseAuthRepository implements AuthRepository {
     if (email == null || email.isEmpty) {
       throw StateError('Supabase session is missing a user email.');
     }
-    final providers = session.user.identities
+    final providers =
+        session.user.identities
             ?.map((i) => i.provider)
             .whereType<String>()
             .toList() ??

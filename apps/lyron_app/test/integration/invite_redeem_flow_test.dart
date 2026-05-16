@@ -47,9 +47,7 @@ void main() {
               (_) => RedeemController(_SuccessRepo()),
             ),
           ],
-          child: const MaterialApp(
-            home: MembershipGate(child: Text('Home')),
-          ),
+          child: const MaterialApp(home: MembershipGate(child: Text('Home'))),
         ),
       );
 
@@ -73,9 +71,7 @@ void main() {
             pendingInviteTokenControllerProvider.overrideWith((_) => pending),
             activeMembershipControllerProvider.overrideWith((_) => membership),
           ],
-          child: const MaterialApp(
-            home: MembershipGate(child: Text('Home')),
-          ),
+          child: const MaterialApp(home: MembershipGate(child: Text('Home'))),
         ),
       );
 
@@ -84,28 +80,25 @@ void main() {
     },
   );
 
-  testWidgets(
-    'MembershipGate shows child when membership is selected',
-    (tester) async {
-      final pending = PendingInviteTokenController();
-      final membership = ActiveMembershipController();
-      membership.update(
-        const ActiveOrganizationResolution.selected('org-id-123'),
-      );
+  testWidgets('MembershipGate shows child when membership is selected', (
+    tester,
+  ) async {
+    final pending = PendingInviteTokenController();
+    final membership = ActiveMembershipController();
+    membership.update(
+      const ActiveOrganizationResolution.selected('org-id-123'),
+    );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            pendingInviteTokenControllerProvider.overrideWith((_) => pending),
-            activeMembershipControllerProvider.overrideWith((_) => membership),
-          ],
-          child: const MaterialApp(
-            home: MembershipGate(child: Text('Home')),
-          ),
-        ),
-      );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pendingInviteTokenControllerProvider.overrideWith((_) => pending),
+          activeMembershipControllerProvider.overrideWith((_) => membership),
+        ],
+        child: const MaterialApp(home: MembershipGate(child: Text('Home'))),
+      ),
+    );
 
-      expect(find.text('Home'), findsOneWidget);
-    },
-  );
+    expect(find.text('Home'), findsOneWidget);
+  });
 }

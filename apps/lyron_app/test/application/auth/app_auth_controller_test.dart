@@ -22,12 +22,18 @@ class _FakeAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => _controller.stream;
 
   @override
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {
     oauthCalled = true;
   }
 
   @override
-  Future<void> sendMagicLink({required String email, required String redirectTo}) async {
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {
     magicLinkCalled = true;
   }
 

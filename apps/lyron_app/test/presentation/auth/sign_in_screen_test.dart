@@ -15,9 +15,15 @@ class _StubRepo implements AuthRepository {
   @override
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
   @override
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
   @override
-  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
   @override
   Future<void> signOut() async {}
   @override
@@ -30,12 +36,18 @@ class _RecordingController extends AppAuthController {
   String? lastMagicLinkEmail;
 
   @override
-  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {
     lastOAuth = method;
   }
 
   @override
-  Future<void> sendMagicLink({required String email, required String redirectTo}) async {
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {
     lastMagicLinkEmail = email;
   }
 }
@@ -45,9 +57,7 @@ void main() {
     final controller = _RecordingController();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          appAuthControllerProvider.overrideWith((_) => controller),
-        ],
+        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
         child: const MaterialApp(home: SignInScreen()),
       ),
     );
@@ -61,9 +71,7 @@ void main() {
     final controller = _RecordingController();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          appAuthControllerProvider.overrideWith((_) => controller),
-        ],
+        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
         child: const MaterialApp(home: SignInScreen()),
       ),
     );
