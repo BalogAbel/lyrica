@@ -2,6 +2,13 @@
 
 Canonical term definitions for sync state, freshness, and mutation lifecycle. Use these terms consistently in specs, UI copy, models, and tests.
 
+## Auth and Invite Terms
+
+- **Invitation** — A single-use credential that grants membership when redeemed. Carries `organization_id` and `role_code` so redemption is forward-compatible with multi-organization flows.
+- **Magic link** — A one-time email link that authenticates the recipient via Supabase Auth without a password.
+- **Orphan auth identity** — An `auth.users` row without an active membership. Eligible for automatic cleanup after 24 hours via `pg_cron`.
+- **Redeem** — The act of converting an invitation into an active membership row by calling the `redeem_invitation` RPC with a valid, unexpired, unredeemed token.
+
 ## Freshness Terms
 
 - `fresh`: local projection was refreshed from the backend in the current online context.

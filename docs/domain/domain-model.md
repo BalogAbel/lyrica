@@ -5,6 +5,7 @@
 - `organizations`
 - `groups`
 - `memberships`
+- `invitations`
 - `songs`
 - `plans`
 - `sessions`
@@ -66,6 +67,25 @@ Invariants:
 Operational note:
 
 - The local repair migration for previously duplicated organization-scoped memberships keeps the earliest row by `created_at, id` before enforcing uniqueness.
+
+### invitations
+
+A single-use credential that grants membership when redeemed.
+
+| Attribute | Type | Notes |
+|---|---|---|
+| id | UUID | PK |
+| token | text | URL-safe 32-byte random string, unique |
+| email | text? | Optional; informational only; does not gate redemption |
+| organization_id | UUID | FK → organizations |
+| role_code | role_code | The role granted on redemption |
+| expires_at | timestamptz | 30 days from issuance |
+| redeemed_at | timestamptz? | Set when redeemed |
+| redeemed_by | UUID? | FK → auth.users (set null on delete) |
+| issued_by | UUID? | FK → auth.users (set null on delete) |
+| created_at | timestamptz | |
+
+Lifecycle: `issued` → `redeemed` (via `redeem_invitation`) | `expired` (when `now() >= expires_at` without redemption).
 
 ### songs
 

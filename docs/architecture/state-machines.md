@@ -153,3 +153,30 @@ When a canonical song row is deleted while planning references still exist:
 - Session-scoped reader routes must show a tombstone-style deleted-song surface using preserved planning reference data rather than a generic `SongNotFoundException`.
 - Tombstone minimum contract: visible preserved title, visible deleted/unavailable label, no bare `songId`, no edit affordance.
 - Planning-owned preserved title is source of truth for tombstone copy until a later planning refresh supplies a new canonical row.
+
+## Authentication
+
+```
+unauthenticated
+  --[user taps Google/Apple]--> initiating-oauth
+  --[user requests magic link]--> magic-link-sent
+initiating-oauth
+  --[OAuth callback received]--> authenticated
+magic-link-sent
+  --[magic link clicked on device]--> authenticated
+authenticated
+  --[session TTL exceeded]--> session-expired
+  --[explicit sign-out]--> unauthenticated
+  --[delete_account RPC succeeds]--> unauthenticated
+session-expired
+  --[user re-authenticates]--> authenticated
+  --[user dismisses]--> unauthenticated
+```
+
+## Invitation
+
+```
+issued
+  --[redeem_invitation called with valid token]--> redeemed
+  --[expires_at reached without redemption]--> expired
+```
