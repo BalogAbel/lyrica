@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 const _kRedirectUrl = 'io.lyron.app://auth/callback';
@@ -85,11 +87,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       );
                       if (!mounted) return;
                       // ignore: use_build_context_synchronously
-                      Navigator.of(context).pushReplacementNamed(
-                        '/magic-link-sent',
-                      );
+                      context.go(AppRoutes.magicLinkSent.path);
                     } catch (_) {
                       if (mounted) {
+                        // ignore: use_build_context_synchronously
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text(AppStrings.retryAction)),
                         );

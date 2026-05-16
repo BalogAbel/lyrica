@@ -162,11 +162,10 @@ final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
 
 final activeMembershipControllerProvider =
     ChangeNotifierProvider<ActiveMembershipController>(
-  (_) => ActiveMembershipController(),
-);
+      (_) => ActiveMembershipController(),
+    );
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {
-  final authController = ref.watch(appAuthControllerProvider);
   final membershipController = ref.read(activeMembershipControllerProvider);
 
   Future<void> refreshMembership() async {
@@ -175,30 +174,17 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     membershipController.update(result);
   }
 
-  void authListener() {
-    if (authController.state.status == AppAuthStatus.signedIn) {
+  ref.listen<AppAuthController>(appAuthControllerProvider, (_, next) {
+    if (next.state.status == AppAuthStatus.signedIn) {
       unawaited(refreshMembership());
     }
-  }
+  }, fireImmediately: true);
 
-  authController.addListener(authListener);
-  ref.onDispose(() => authController.removeListener(authListener));
-
-  // Also listen for successful redeem
-  final redeemController = ref.watch(redeemControllerProvider);
-  void redeemListener() {
-    if (redeemController.state is RedeemStateSuccess) {
+  ref.listen<RedeemController>(redeemControllerProvider, (_, next) {
+    if (next.state is RedeemStateSuccess) {
       unawaited(refreshMembership());
     }
-  }
-
-  redeemController.addListener(redeemListener);
-  ref.onDispose(() => redeemController.removeListener(redeemListener));
-
-  // Trigger immediately if already signed in
-  if (authController.state.status == AppAuthStatus.signedIn) {
-    unawaited(refreshMembership());
-  }
+  });
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {

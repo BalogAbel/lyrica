@@ -12,8 +12,10 @@ void main() {
     );
     final result = await repo.redeem('tok');
     expect(result, isA<RedeemSuccess>());
-    expect((result as RedeemSuccess).organizationId,
-        '00000000-0000-0000-0000-0000000000aa');
+    expect(
+      (result as RedeemSuccess).organizationId,
+      '00000000-0000-0000-0000-0000000000aa',
+    );
   });
 
   test('redeem maps SQL error messages to InvitationError', () async {
