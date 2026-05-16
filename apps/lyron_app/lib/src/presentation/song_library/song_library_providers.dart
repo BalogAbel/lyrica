@@ -11,7 +11,10 @@ import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chord_transposer.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_mutation_repository.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_controller.dart';
@@ -267,3 +270,22 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
 
       return SongReaderResult(song: song);
     });
+
+final chordProImportServiceProvider = Provider<ChordProImportService>((ref) {
+  return ChordProImportService(
+    songLibraryService: ref.watch(songLibraryServiceProvider),
+    catalogReadRepository: ref.watch(songLibraryRepositoryProvider),
+    normalizer: ChordproNormalizer(),
+    parser: ChordproParser(),
+  );
+});
+
+final chordProImportControllerProvider =
+    StateNotifierProvider.autoDispose<ChordProImportController, ChordProImportState>(
+  (ref) {
+    return ChordProImportController(
+      importService: ref.watch(chordProImportServiceProvider),
+      contextReader: () => ref.read(activeCatalogContextProvider),
+    );
+  },
+);
