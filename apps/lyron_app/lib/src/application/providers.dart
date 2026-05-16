@@ -130,7 +130,9 @@ final activeOrganizationResolutionProvider =
       };
     });
 
-final appAuthControllerProvider = Provider<AppAuthController>((ref) {
+final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
+  ref,
+) {
   final controller = AppAuthController(ref.read(authRepositoryProvider));
   ref.onDispose(controller.dispose);
   return controller;
@@ -153,7 +155,7 @@ final redeemControllerProvider = ChangeNotifierProvider<RedeemController>((
 });
 
 final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
-  final pending = ref.watch(pendingInviteTokenControllerProvider);
+  final pending = ref.read(pendingInviteTokenControllerProvider);
   final stream = AppLinks().uriLinkStream;
   final listener = DeepLinkListener(stream: stream, pendingTokens: pending);
   ref.onDispose(() => listener.dispose());
@@ -174,8 +176,9 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     membershipController.update(result);
   }
 
-  ref.listen<AppAuthController>(appAuthControllerProvider, (_, next) {
-    if (next.state.status == AppAuthStatus.signedIn) {
+  ref.listen<AppAuthController>(appAuthControllerProvider, (prev, next) {
+    if (next.state.status == AppAuthStatus.signedIn &&
+        prev?.state.status != AppAuthStatus.signedIn) {
       unawaited(refreshMembership());
     }
   }, fireImmediately: true);
@@ -188,7 +191,10 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
-  return ref.read(appAuthControllerProvider);
+  return Listenable.merge([
+    ref.read(appAuthControllerProvider),
+    ref.read(activeMembershipControllerProvider),
+  ]);
 });
 
 SongCatalogDatabase? _sharedSongCatalogDatabase;

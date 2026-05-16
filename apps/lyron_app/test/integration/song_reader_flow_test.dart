@@ -157,7 +157,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(authRepository),
-            appAuthControllerProvider.overrideWithValue(authController),
+            appAuthControllerProvider.overrideWith((_) => authController),
             appAuthListenableProvider.overrideWithValue(authController),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             songLibraryRepositoryProvider.overrideWithValue(songRepository),

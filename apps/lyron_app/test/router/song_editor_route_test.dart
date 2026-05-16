@@ -61,7 +61,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           activeCatalogContextProvider.overrideWithValue(
             const ActiveCatalogContext(
@@ -155,7 +155,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
           activeCatalogContextProvider.overrideWithValue(
             const ActiveCatalogContext(
@@ -437,7 +437,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(repository),
-            appAuthControllerProvider.overrideWithValue(controller),
+            appAuthControllerProvider.overrideWith((_) => controller),
             appAuthListenableProvider.overrideWithValue(controller),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
@@ -478,7 +478,7 @@ void main() {
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(repository),
-          appAuthControllerProvider.overrideWithValue(controller),
+          appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
         ],
         child: MaterialApp.router(routerConfig: router),
@@ -577,7 +577,7 @@ Future<_RecordingSongMutationStore> _pumpEditorAndReturnToSongView(
     ProviderScope(
       overrides: [
         authRepositoryProvider.overrideWithValue(repository),
-        appAuthControllerProvider.overrideWithValue(controller),
+        appAuthControllerProvider.overrideWith((_) => controller),
         appAuthListenableProvider.overrideWithValue(controller),
         activeCatalogContextProvider.overrideWithValue(
           const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),

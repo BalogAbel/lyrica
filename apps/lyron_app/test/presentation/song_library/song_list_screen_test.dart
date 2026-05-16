@@ -108,7 +108,7 @@ void main() {
 
     return isolatedSongCatalogProviderScope(
       overrides: [
-        appAuthControllerProvider.overrideWithValue(authController),
+        appAuthControllerProvider.overrideWith((_) => authController),
         appAuthListenableProvider.overrideWithValue(authController),
         if (catalogController != null)
           songCatalogControllerProvider.overrideWith(
@@ -1098,7 +1098,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         songCatalogDatabase: songCatalogDatabase,
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           appAuthListenableProvider.overrideWithValue(authController),
           songCatalogControllerProvider.overrideWith(
             (ref) => songCatalogController,
