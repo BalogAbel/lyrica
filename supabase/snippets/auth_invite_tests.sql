@@ -91,11 +91,12 @@ reset role;
 -- Task 4: Deleting an author preserves their songs but nulls out last_modified_by
 -- Re-seed invitee user (may have been deleted in redeem test — they're still in the txn here)
 insert into public.songs (
-  id, organization_id, title, chordpro_source, last_modified_by
+  id, organization_id, title, slug, chordpro_source, last_modified_by
 ) values (
   '00000000-0000-0000-0000-0000000000bb',
   '00000000-0000-0000-0000-0000000000aa',
   'Sample Song',
+  'sample-song',
   '{title: Sample}',
   '00000000-0000-0000-0000-000000000002'
 );
