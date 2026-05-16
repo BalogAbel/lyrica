@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
@@ -147,6 +150,55 @@ final redeemControllerProvider = ChangeNotifierProvider<RedeemController>((
   ref,
 ) {
   return RedeemController(ref.read(invitationRepositoryProvider));
+});
+
+final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
+  final pending = ref.watch(pendingInviteTokenControllerProvider);
+  final stream = AppLinks().uriLinkStream;
+  final listener = DeepLinkListener(stream: stream, pendingTokens: pending);
+  ref.onDispose(() => listener.dispose());
+  return listener;
+});
+
+final activeMembershipControllerProvider =
+    ChangeNotifierProvider<ActiveMembershipController>(
+  (_) => ActiveMembershipController(),
+);
+
+final membershipRefreshEffectProvider = Provider<void>((ref) {
+  final authController = ref.watch(appAuthControllerProvider);
+  final membershipController = ref.read(activeMembershipControllerProvider);
+
+  void refreshMembership() async {
+    final reader = ref.read(activeOrganizationResolutionProvider);
+    final result = await reader();
+    membershipController.update(result);
+  }
+
+  void authListener() {
+    if (authController.state.status == AppAuthStatus.signedIn) {
+      refreshMembership();
+    }
+  }
+
+  authController.addListener(authListener);
+  ref.onDispose(() => authController.removeListener(authListener));
+
+  // Also listen for successful redeem
+  final redeemController = ref.watch(redeemControllerProvider);
+  void redeemListener() {
+    if (redeemController.state is RedeemStateSuccess) {
+      refreshMembership();
+    }
+  }
+
+  redeemController.addListener(redeemListener);
+  ref.onDispose(() => redeemController.removeListener(redeemListener));
+
+  // Trigger immediately if already signed in
+  if (authController.state.status == AppAuthStatus.signedIn) {
+    refreshMembership();
+  }
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
