@@ -139,9 +139,9 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
             }),
           );
         case ImportFailed(:final message):
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
           ref.read(chordProImportControllerProvider.notifier).reset();
         default:
           break;
@@ -156,7 +156,9 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
           TextButton(
             onPressed: () {
               unawaited(
-                ref.read(chordProImportControllerProvider.notifier).startImport(),
+                ref
+                    .read(chordProImportControllerProvider.notifier)
+                    .startImport(),
               );
             },
             child: const Text(AppStrings.songImportAction),

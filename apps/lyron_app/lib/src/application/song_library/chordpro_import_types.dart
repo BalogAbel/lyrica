@@ -17,7 +17,11 @@ sealed class ImportFileResult {
 /// File was parsed and has no title conflict with an existing song.
 /// [source] is the normalised ChordPro text ready for storage.
 class ImportSuccess extends ImportFileResult {
-  const ImportSuccess({required this.title, required this.source, required this.filename});
+  const ImportSuccess({
+    required this.title,
+    required this.source,
+    required this.filename,
+  });
 
   final String title;
   final String source;
@@ -66,10 +70,7 @@ class ImportBatchResult {
 enum DuplicateResolution { overwrite, skip }
 
 class ResolvedDuplicate {
-  const ResolvedDuplicate({
-    required this.duplicate,
-    required this.resolution,
-  });
+  const ResolvedDuplicate({required this.duplicate, required this.resolution});
 
   final ImportDuplicate duplicate;
   final DuplicateResolution resolution;

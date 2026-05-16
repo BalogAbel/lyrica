@@ -40,7 +40,12 @@ class ChordProImportService {
 
     for (final file in files) {
       if (file.source.trim().isEmpty) {
-        errors.add(ImportError(filename: file.filename, reason: AppStrings.songImportEmptyFileReason));
+        errors.add(
+          ImportError(
+            filename: file.filename,
+            reason: AppStrings.songImportEmptyFileReason,
+          ),
+        );
         continue;
       }
 
@@ -78,7 +83,13 @@ class ChordProImportService {
           ),
         );
       } else {
-        successes.add(ImportSuccess(title: title, source: normalizedSource, filename: file.filename));
+        successes.add(
+          ImportSuccess(
+            title: title,
+            source: normalizedSource,
+            filename: file.filename,
+          ),
+        );
       }
     }
 
@@ -108,7 +119,9 @@ class ChordProImportService {
         );
         committedSuccesses.add(success);
       } catch (e) {
-        errors.add(ImportError(filename: success.filename, reason: e.toString()));
+        errors.add(
+          ImportError(filename: success.filename, reason: e.toString()),
+        );
       }
     }
 
@@ -148,5 +161,6 @@ class ChordProImportService {
     );
   }
 
-  static String _stemOf(String filename) => p.basenameWithoutExtension(filename);
+  static String _stemOf(String filename) =>
+      p.basenameWithoutExtension(filename);
 }

@@ -44,48 +44,47 @@ void main() {
       expect(result.errors, isEmpty);
     });
 
-    test('file without title directive → uses filename stem as title', () async {
-      final result = await service.analyse(
-        context: _context,
-        files: const [
-          ImportFileInput(
-            filename: 'my_song.cho',
-            source: '[G]Hello world',
-          ),
-        ],
-      );
+    test(
+      'file without title directive → uses filename stem as title',
+      () async {
+        final result = await service.analyse(
+          context: _context,
+          files: const [
+            ImportFileInput(filename: 'my_song.cho', source: '[G]Hello world'),
+          ],
+        );
 
-      expect(result.successes, hasLength(1));
-      expect(result.successes.single.title, 'my_song');
-    });
+        expect(result.successes, hasLength(1));
+        expect(result.successes.single.title, 'my_song');
+      },
+    );
 
-    test('title matches existing song (case-insensitive) → ImportDuplicate', () async {
-      repo.songs = [
-        const SongSummary(id: 'song-1', title: 'Amazing Grace'),
-      ];
+    test(
+      'title matches existing song (case-insensitive) → ImportDuplicate',
+      () async {
+        repo.songs = [const SongSummary(id: 'song-1', title: 'Amazing Grace')];
 
-      final result = await service.analyse(
-        context: _context,
-        files: const [
-          ImportFileInput(
-            filename: 'ag.cho',
-            source: '{title: amazing grace}\n[G]Amazing grace',
-          ),
-        ],
-      );
+        final result = await service.analyse(
+          context: _context,
+          files: const [
+            ImportFileInput(
+              filename: 'ag.cho',
+              source: '{title: amazing grace}\n[G]Amazing grace',
+            ),
+          ],
+        );
 
-      expect(result.duplicates, hasLength(1));
-      expect(result.duplicates.single.existingSongId, 'song-1');
-      expect(result.duplicates.single.incomingTitle, 'amazing grace');
-      expect(result.successes, isEmpty);
-    });
+        expect(result.duplicates, hasLength(1));
+        expect(result.duplicates.single.existingSongId, 'song-1');
+        expect(result.duplicates.single.incomingTitle, 'amazing grace');
+        expect(result.successes, isEmpty);
+      },
+    );
 
     test('empty file → ImportError', () async {
       final result = await service.analyse(
         context: _context,
-        files: const [
-          ImportFileInput(filename: 'empty.cho', source: ''),
-        ],
+        files: const [ImportFileInput(filename: 'empty.cho', source: '')],
       );
 
       expect(result.errors, hasLength(1));
@@ -93,9 +92,7 @@ void main() {
     });
 
     test('bulk: 1 success + 1 duplicate + 1 error → correct counts', () async {
-      repo.songs = [
-        const SongSummary(id: 'x', title: 'Existing Song'),
-      ];
+      repo.songs = [const SongSummary(id: 'x', title: 'Existing Song')];
 
       final result = await service.analyse(
         context: _context,
@@ -173,7 +170,11 @@ void main() {
       await service.commitImport(
         context: _context,
         successes: const [
-          ImportSuccess(title: 'New Song', source: '{title: New Song}\n[C]Hi', filename: 'new.cho'),
+          ImportSuccess(
+            title: 'New Song',
+            source: '{title: New Song}\n[C]Hi',
+            filename: 'new.cho',
+          ),
         ],
         resolvedDuplicates: const [],
       );

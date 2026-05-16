@@ -51,9 +51,9 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
   ChordProImportController({
     required ChordProImportService importService,
     required ActiveCatalogContext? Function() contextReader,
-  })  : _importService = importService,
-        _contextReader = contextReader,
-        super(const ImportIdle());
+  }) : _importService = importService,
+       _contextReader = contextReader,
+       super(const ImportIdle());
 
   final ChordProImportService _importService;
   final ActiveCatalogContext? Function() _contextReader;
@@ -93,13 +93,12 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       final (:source, :errorReason) = await _readFile(platformFile);
       if (source == null) {
         readErrors.add(
-          ImportError(
-            filename: platformFile.name,
-            reason: errorReason!,
-          ),
+          ImportError(filename: platformFile.name, reason: errorReason!),
         );
       } else {
-        fileInputs.add(ImportFileInput(filename: platformFile.name, source: source));
+        fileInputs.add(
+          ImportFileInput(filename: platformFile.name, source: source),
+        );
       }
     }
 
@@ -195,7 +194,10 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return (source: null, errorReason: AppStrings.songImportReadErrorReason);
     }
     try {
-      return (source: utf8.decode(bytes, allowMalformed: false), errorReason: null);
+      return (
+        source: utf8.decode(bytes, allowMalformed: false),
+        errorReason: null,
+      );
     } on FormatException {
       return (source: null, errorReason: AppStrings.songImportUtf8ErrorReason);
     } catch (_) {

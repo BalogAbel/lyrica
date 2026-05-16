@@ -9,12 +9,16 @@ Future<void> showImportSummaryDialog({
 }) {
   return showDialog<void>(
     context: context,
-    builder: (_) => _ImportSummaryDialog(result: result, skippedCount: skippedCount),
+    builder: (_) =>
+        _ImportSummaryDialog(result: result, skippedCount: skippedCount),
   );
 }
 
 class _ImportSummaryDialog extends StatelessWidget {
-  const _ImportSummaryDialog({required this.result, required this.skippedCount});
+  const _ImportSummaryDialog({
+    required this.result,
+    required this.skippedCount,
+  });
 
   final ImportBatchResult result;
   final int skippedCount;
@@ -88,13 +92,7 @@ class _CountRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Text(label),
-          const Spacer(),
-          Text('$count'),
-        ],
-      ),
+      child: Row(children: [Text(label), const Spacer(), Text('$count')]),
     );
   }
 }
