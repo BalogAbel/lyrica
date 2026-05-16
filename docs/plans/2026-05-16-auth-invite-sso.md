@@ -32,6 +32,8 @@
 | `supabase/migrations/202605160004_last_modified_by_on_delete_set_null.sql` | create | Adjust FKs so `auth.users` delete preserves audit-less rows |
 | `supabase/migrations/202605160005_delete_account_function.sql` | create | `delete_account` RPC |
 | `supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql` | create | `pg_cron` hourly cleanup |
+| `supabase/migrations/202605160007_auth_boundary_hardening.sql` | create | Revoke anon table/RPC access, grant app-facing RPCs explicitly, set helper `search_path` |
+| `supabase/migrations/202605160008_revoke_anon_rls_auto_enable.sql` | create | Revoke anon execution from Supabase-created `rls_auto_enable` when present |
 | `supabase/snippets/auth_invite_tests.sql` | create | SQL contract tests (executable via `psql`) |
 | `supabase/config.toml` | modify | Enable `pg_cron`, Apple + Google providers, magic link settings |
 | `supabase/seed/seed.sql` | modify (only if seed needs admin bootstrap) | Add singleton organization + first admin invite |

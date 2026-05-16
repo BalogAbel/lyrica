@@ -132,6 +132,13 @@ Notes:
   - `select`: `auth.uid() = issued_by` OR caller is an active `organization_admin` of `invitations.organization_id`.
   - `insert`, `update`, `delete`: denied to authenticated users; functions perform writes under `security definer`.
 - `memberships`: existing policies remain authoritative; `redeem_invitation` writes through `security definer`.
+- Anonymous clients must not have direct `SELECT` privileges on domain tables or
+  `EXECUTE` privileges on security-definer RPC entrypoints. App-facing RPCs are
+  granted explicitly to `authenticated`; bootstrap invite issuance is granted to
+  `service_role`.
+- Authenticated direct table reads remain RLS-protected in this slice because
+  the existing Flutter repositories read songs and planning data through
+  Supabase table APIs. Replacing those reads with RPCs or views is deferred.
 
 ### Orphan cleanup with `pg_cron`
 
