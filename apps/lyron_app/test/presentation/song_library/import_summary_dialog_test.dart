@@ -75,7 +75,7 @@ void main() {
                 successes: [],
                 duplicates: [],
                 errors: [
-                  ImportError(filename: 'bad.cho', reason: 'Üres fájl'),
+                  ImportError(filename: 'bad.cho', reason: 'Empty file'),
                 ],
               ),
               skippedCount: 0,
@@ -90,10 +90,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('bad.cho'), findsOneWidget);
-    expect(find.text('Üres fájl'), findsOneWidget);
+    expect(find.text('Empty file'), findsOneWidget);
   });
 
-  testWidgets('Kész button dismisses the dialog', (tester) async {
+  testWidgets('Done button dismisses the dialog', (tester) async {
     await tester.pumpWidget(
       _wrap(
         Builder(

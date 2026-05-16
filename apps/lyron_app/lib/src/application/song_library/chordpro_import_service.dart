@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
@@ -9,6 +5,7 @@ import 'package:lyron_app/src/application/song_library/song_library_service.dart
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+import 'package:path/path.dart' as p;
 
 class ChordProImportService {
   const ChordProImportService({
@@ -25,23 +22,6 @@ class ChordProImportService {
   final SongCatalogReadRepository _catalogReadRepository;
   final ChordproNormalizer _normalizer;
   final ChordproParser _parser;
-
-  /// Read a [PlatformFile] as UTF-8 text. Returns null on any failure — never throws.
-  static Future<String?> readPlatformFile(PlatformFile file) async {
-    try {
-      if (file.bytes != null) {
-        return utf8.decode(file.bytes!, allowMalformed: false);
-      }
-      if (file.path != null) {
-        return File(file.path!).readAsString();
-      }
-    } on FormatException {
-      return null;
-    } catch (_) {
-      return null;
-    }
-    return null;
-  }
 
   /// Parse [files] and classify each as success / duplicate / error.
   /// Does NOT write to the database.
@@ -168,9 +148,5 @@ class ChordProImportService {
     );
   }
 
-  static String _stemOf(String filename) {
-    final name = filename.contains('/') ? filename.split('/').last : filename;
-    final dot = name.lastIndexOf('.');
-    return dot > 0 ? name.substring(0, dot) : name;
-  }
+  static String _stemOf(String filename) => p.basenameWithoutExtension(filename);
 }

@@ -23,39 +23,50 @@ class _ImportSummaryDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text(AppStrings.songImportSummaryTitle),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _CountRow(
-            label: AppStrings.songImportSummaryImportedLabel,
-            count: result.successes.length,
-          ),
-          _CountRow(
-            label: AppStrings.songImportSummarySkippedLabel,
-            count: skippedCount,
-          ),
-          _CountRow(
-            label: AppStrings.songImportSummaryErrorsLabel,
-            count: result.errors.length,
-          ),
-          if (result.errors.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Divider(),
-            ...result.errors.map(
-              (e) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(e.filename, style: const TextStyle(fontWeight: FontWeight.w500)),
-                    Text(e.reason, style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 400),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _CountRow(
+                label: AppStrings.songImportSummaryImportedLabel,
+                count: result.successes.length,
               ),
-            ),
-          ],
-        ],
+              _CountRow(
+                label: AppStrings.songImportSummarySkippedLabel,
+                count: skippedCount,
+              ),
+              _CountRow(
+                label: AppStrings.songImportSummaryErrorsLabel,
+                count: result.errors.length,
+              ),
+              if (result.errors.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                ...result.errors.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.filename,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        Text(
+                          e.reason,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
       actions: [
         FilledButton(
