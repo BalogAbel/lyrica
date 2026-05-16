@@ -18,6 +18,7 @@ class SignInScreen extends ConsumerStatefulWidget {
 
 class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _emailController = TextEditingController();
+  bool _isSending = false;
 
   @override
   void dispose() {
@@ -77,26 +78,32 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () async {
-                    final email = _emailController.text.trim();
-                    if (email.isEmpty) return;
-                    try {
-                      await controller.sendMagicLink(
-                        email: email,
-                        redirectTo: _kRedirectUrl,
-                      );
-                      if (!mounted) return;
-                      // ignore: use_build_context_synchronously
-                      context.go(AppRoutes.magicLinkSent.path);
-                    } catch (_) {
-                      if (mounted) {
-                        // ignore: use_build_context_synchronously
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text(AppStrings.retryAction)),
-                        );
-                      }
-                    }
-                  },
+                  onPressed: _isSending
+                      ? null
+                      : () async {
+                          final email = _emailController.text.trim();
+                          if (email.isEmpty) return;
+                          setState(() => _isSending = true);
+                          try {
+                            await controller.sendMagicLink(
+                              email: email,
+                              redirectTo: _kRedirectUrl,
+                            );
+                            if (!mounted) return;
+                            // ignore: use_build_context_synchronously
+                            context.go(AppRoutes.magicLinkSent.path);
+                          } catch (_) {
+                            if (mounted) {
+                              setState(() => _isSending = false);
+                              // ignore: use_build_context_synchronously
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(AppStrings.retryAction),
+                                ),
+                              );
+                            }
+                          }
+                        },
                   child: const Text(AppStrings.sendMagicLinkAction),
                 ),
               ],

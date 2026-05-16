@@ -21,7 +21,9 @@ class MembershipGate extends ConsumerWidget {
             ? const RedeemProgressScreen()
             : const InviteRequiredScreen(),
       ActiveOrganizationUnknownConnectivityFailure() ||
-      ActiveOrganizationUnknownNonConnectivityFailure() => child,
+      ActiveOrganizationUnknownNonConnectivityFailure() => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
     };
   }
 }
