@@ -14,6 +14,8 @@ class LyronApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(planningSyncControllerProvider);
+    ref.read(deepLinkListenerProvider).start();
+    ref.read(membershipRefreshEffectProvider);
     final router = _router ?? ref.watch(appRouterProvider);
 
     return MaterialApp.router(
