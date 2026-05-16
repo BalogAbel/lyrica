@@ -452,6 +452,17 @@ Line two
     expect(song.diagnostics, isEmpty);
   });
 
+  test('directives inside {start_of_tab} are treated as literal text', () {
+    final parser = ChordproParser();
+    final song = parser.parse(
+      '{title:T}\n{start_of_tab}\ne|---0---\n{comment:some note}\nB|---1---\n{end_of_tab}\n',
+    );
+    expect(song.sections.single.kind, SongSectionKind.tab);
+    expect(song.sections.single.lines, hasLength(1));
+    final tab = song.sections.single.lines[0] as TabBlock;
+    expect(tab.rawLines, ['e|---0---', '{comment:some note}', 'B|---1---']);
+  });
+
   test('{start_of_prechorus} creates an unknown section', () {
     final parser = ChordproParser();
     final song = parser.parse(

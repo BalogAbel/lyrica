@@ -49,7 +49,10 @@ class ChordproParser {
         }
       } else {
         final directiveName = line.directiveName ?? '';
-        if (directiveName == 'title') {
+        if (currentSection?.kind == SongSectionKind.tab &&
+            !directiveName.startsWith('end_of_')) {
+          currentSection!.appendTabLine(line.raw);
+        } else if (directiveName == 'title') {
           title = line.directiveValue ?? '';
         } else if (directiveName == 'subtitle') {
           subtitle = line.directiveValue;
