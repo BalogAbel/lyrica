@@ -15,6 +15,7 @@ import 'package:lyron_app/src/application/song_library/catalog_session_status.da
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/router/app_router.dart';
@@ -57,6 +58,7 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(authRepository),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             songLibraryRepositoryProvider.overrideWithValue(songRepository),
             activeCatalogContextProvider.overrideWithValue(
               const ActiveCatalogContext(
@@ -157,6 +159,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(authRepository),
             appAuthControllerProvider.overrideWithValue(authController),
             appAuthListenableProvider.overrideWithValue(authController),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             songLibraryRepositoryProvider.overrideWithValue(songRepository),
             activeCatalogContextProvider.overrideWithValue(
               const ActiveCatalogContext(
@@ -222,19 +225,28 @@ class _StreamingAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => _controller.stream;
 
   @override
-  Future<AppAuthSession> signIn({
-    required String email,
-    required String password,
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
   }) async {
-    final session = AppAuthSession(userId: 'user-1', email: email);
-    _controller.add(session);
-    return session;
+    _controller.add(
+      const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+    );
   }
+
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {
     _controller.add(null);
   }
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _StaticSongRepository implements SongCatalogReadRepository {

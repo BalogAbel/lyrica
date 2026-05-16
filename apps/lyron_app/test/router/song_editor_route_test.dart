@@ -19,6 +19,7 @@ import 'package:lyron_app/src/application/song_library/song_library_service.dart
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
@@ -701,15 +702,22 @@ class _TestAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async {
-    return const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local');
-  }
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _TestSongCatalogReadRepository implements SongCatalogReadRepository {

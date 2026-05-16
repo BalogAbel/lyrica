@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -25,6 +26,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(appAuthControllerProvider);
+    final isSessionExpired =
+        controller.state.status == AppAuthStatus.sessionExpired;
 
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.appName)),
@@ -41,6 +44,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   AppStrings.signInTitle,
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
                 ),
+                if (isSessionExpired) ...[
+                  const SizedBox(height: 12),
+                  const Text(AppStrings.sessionExpiredMessage),
+                ],
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: () => controller.signInWithOAuth(

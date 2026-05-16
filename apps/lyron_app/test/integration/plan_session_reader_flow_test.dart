@@ -14,6 +14,7 @@ import 'package:lyron_app/src/application/song_library/catalog_session_status.da
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -58,6 +59,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
             appAuthListenableProvider.overrideWithValue(controller),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: ActiveCatalogContext(
@@ -146,6 +148,7 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWithValue(controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          membershipRefreshEffectProvider.overrideWith((ref) {}),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
               context: null,
@@ -225,6 +228,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
             appAuthListenableProvider.overrideWithValue(controller),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: null,
@@ -301,6 +305,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(repository),
             appAuthControllerProvider.overrideWithValue(controller),
             appAuthListenableProvider.overrideWithValue(controller),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: null,
@@ -346,13 +351,22 @@ class _StaticAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 PlanSummary _planSummaryFixture() {

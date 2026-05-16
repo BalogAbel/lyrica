@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
@@ -35,6 +36,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(
               _DelayedAuthRepository(completer.future),
             ),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
           ],
           child: LyronApp(),
         ),
@@ -56,6 +58,7 @@ void main() {
       isolatedSongCatalogProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(_TestAuthRepository()),
+          membershipRefreshEffectProvider.overrideWith((ref) {}),
         ],
         child: LyronApp(),
       ),
@@ -96,6 +99,7 @@ void main() {
           activeOrganizationReaderProvider.overrideWithValue(
             () async => 'org-1',
           ),
+          membershipRefreshEffectProvider.overrideWith((ref) {}),
           catalogSessionVerifierProvider.overrideWithValue(
             () async => CatalogSessionStatus.verified,
           ),
@@ -155,6 +159,7 @@ void main() {
             activeOrganizationReaderProvider.overrideWithValue(
               () async => 'org-1',
             ),
+            membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSessionVerifierProvider.overrideWithValue(
               () async => CatalogSessionStatus.verified,
             ),
@@ -180,7 +185,7 @@ void main() {
 
       expect(find.text('Sign in'), findsOneWidget);
 
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Continue with Google'));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -197,13 +202,22 @@ class _TestAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _DelayedAuthRepository implements AuthRepository {
@@ -218,13 +232,22 @@ class _DelayedAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _SignedInAuthRepository implements AuthRepository {
@@ -237,13 +260,22 @@ class _SignedInAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
     required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _NoopPlanningSyncController extends PlanningSyncController {
@@ -438,21 +470,29 @@ class _InteractiveAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => _controller.stream;
 
   @override
-  Future<AppAuthSession> signIn({
-    required String email,
-    required String password,
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
   }) async {
-    final session = AppAuthSession(userId: 'user-1', email: email);
+    const session = AppAuthSession(userId: 'user-1', email: 'demo@lyron.local');
     _session = session;
     _controller.add(session);
-    return session;
   }
+
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
 
   @override
   Future<void> signOut() async {
     _session = null;
     _controller.add(null);
   }
+
+  @override
+  Future<void> deleteAccount() async {}
 
   Future<void> dispose() async {
     await _controller.close();
