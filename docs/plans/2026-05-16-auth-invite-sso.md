@@ -1781,12 +1781,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/auth/sign_in_screen.dart';
 
+class _StubRepo implements AuthRepository {
+  @override
+  Future<AppAuthSession?> restoreSession() async => null;
+  @override
+  Stream<AppAuthSession?> watchSession() => const Stream.empty();
+  @override
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  @override
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  @override
+  Future<void> signOut() async {}
+  @override
+  Future<void> deleteAccount() async {}
+}
+
 class _RecordingController extends AppAuthController {
-  _RecordingController() : super(_NoopRepo());
+  _RecordingController() : super(_StubRepo());
   SignInMethod? lastOAuth;
   String? lastMagicLinkEmail;
 
@@ -1799,10 +1816,6 @@ class _RecordingController extends AppAuthController {
   Future<void> sendMagicLink({required String email, required String redirectTo}) async {
     lastMagicLinkEmail = email;
   }
-}
-
-class _NoopRepo extends AppAuthController {
-  _NoopRepo() : super(_StubRepo());
 }
 
 void main() {
@@ -2145,8 +2158,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/account/account_screen.dart';
+
+class _StubRepo implements AuthRepository {
+  @override
+  Future<AppAuthSession?> restoreSession() async => null;
+  @override
+  Stream<AppAuthSession?> watchSession() => const Stream.empty();
+  @override
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+  @override
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
+  @override
+  Future<void> signOut() async {}
+  @override
+  Future<void> deleteAccount() async {}
+}
 
 class _RecordingController extends AppAuthController {
   _RecordingController() : super(_StubRepo());
@@ -2315,64 +2346,186 @@ git add apps/lyron_app/lib/src/application/providers.dart apps/lyron_app/lib/mai
 git commit -m "feat(auth): wire invitation repository, redeem controller, deep link listener"
 ```
 
-### Task 21: Router redirect logic
+### Task 21: Router redirect + MembershipGate
 
 **Files:**
 - Modify: `apps/lyron_app/lib/src/router/app_router.dart`
 - Modify: `apps/lyron_app/lib/src/router/app_routes.dart`
-- Create: `apps/lyron_app/test/router/router_redirect_test.dart` (or extend existing tests)
+- Create: `apps/lyron_app/lib/src/application/auth/active_membership_controller.dart`
+- Create: `apps/lyron_app/lib/src/presentation/auth/membership_gate.dart`
 
-- [ ] **Step 1: Add new route names**
+**Why two pieces (not a redirect-only fix):**
+`activeOrganizationResolutionProvider` returns an async `ActiveOrganizationResolutionReader` (see `lib/src/application/active_organization_resolution.dart`); the `go_router` redirect callback is synchronous, so the router cannot await it. Membership gating therefore lives in a `ChangeNotifier`-backed cache (`ActiveMembershipController`) populated at app start and after each auth state change, plus a thin `MembershipGate` widget that wraps the authenticated route tree and switches between the home shell, the auto-redeem screen, and the invite-required screen.
 
-In `app_routes.dart`:
+The router redirect itself remains responsible only for: (1) auth status (signed-in vs. signed-out), and (2) routing the bare `/invite` deep link to capture the token before sign-in.
+
+- [ ] **Step 1: Add new routes (enum cases)**
+
+The existing `AppRoutes` is an enum with a `path` field (see `apps/lyron_app/lib/src/router/app_routes.dart`). Append new cases:
 
 ```dart
-class AppRoutes {
-  static const signIn = '/sign-in';
-  static const magicLinkSent = '/magic-link-sent';
-  static const invite = '/invite';
-  static const inviteRequired = '/invite-required';
-  static const redeem = '/redeem';
-  static const account = '/account';
-  // ...keep existing routes
+enum AppRoutes {
+  bootstrap('/bootstrap'),
+  home('/'),
+  signIn('/sign-in'),
+  magicLinkSent('/magic-link-sent'),
+  invite('/invite'),
+  inviteRequired('/invite-required'),
+  redeem('/redeem'),
+  account('/account'),
+  planList('/plans'),
+  planDetail('/plans/:planSlug'),
+  planSessionSongReader(
+    '/plans/:planSlug/sessions/:sessionSlug/items/songs/:songSlug',
+  ),
+  songCreate('/songs/new'),
+  songEditor('/songs/:songSlug/edit'),
+  songReader('/songs/:songSlug');
+
+  const AppRoutes(this.path);
+  final String path;
 }
 ```
 
-- [ ] **Step 2: Update router redirect**
+All uses must reference `AppRoutes.<name>.path` when a string is needed.
 
-In `app_router.dart` extend the redirect callback to:
+- [ ] **Step 2: Write `ActiveMembershipController`**
+
+```dart
+// apps/lyron_app/lib/src/application/auth/active_membership_controller.dart
+import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+
+class ActiveMembershipController extends ChangeNotifier {
+  ActiveOrganizationResolution _last =
+      const ActiveOrganizationUnknownConnectivityFailure();
+
+  ActiveOrganizationResolution get last => _last;
+
+  void update(ActiveOrganizationResolution next) {
+    _last = next;
+    notifyListeners();
+  }
+}
+```
+
+Wire it in `providers.dart`:
+
+```dart
+final activeMembershipControllerProvider =
+    ChangeNotifierProvider<ActiveMembershipController>(
+  (_) => ActiveMembershipController(),
+);
+```
+
+A new bootstrap effect (added in the same task) calls `activeOrganizationResolutionProvider` after each sign-in and writes the result into the controller.
+
+- [ ] **Step 3: Update router redirect (auth-only)**
+
+In `app_router.dart`:
 
 ```dart
 redirect: (context, state) {
   final auth = container.read(appAuthControllerProvider).state;
-  final pending = container.read(pendingInviteTokenControllerProvider).current;
-  final membership = container.read(activeOrganizationResolutionProvider);
 
   if (auth.status == AppAuthStatus.initializing) return null;
 
+  final loc = state.matchedLocation;
+  final isAuthRoute = loc == AppRoutes.signIn.path ||
+      loc == AppRoutes.invite.path ||
+      loc == AppRoutes.magicLinkSent.path;
+
   if (auth.status != AppAuthStatus.signedIn) {
-    if (state.matchedLocation == AppRoutes.signIn ||
-        state.matchedLocation == AppRoutes.invite ||
-        state.matchedLocation == AppRoutes.magicLinkSent) {
-      return null;
-    }
-    return AppRoutes.signIn;
+    return isAuthRoute ? null : AppRoutes.signIn.path;
   }
 
-  // Authenticated below here.
-  return switch (membership) {
-    ActiveOrganizationSelected() => null,
-    ActiveOrganizationVerifiedEmpty() =>
-      pending != null ? AppRoutes.redeem : AppRoutes.inviteRequired,
-    ActiveOrganizationUnknownConnectivityFailure() => null,
-    ActiveOrganizationUnknownNonConnectivityFailure() => null,
-  };
+  // Authenticated: do not bounce inside the gate.
+  return null;
 },
 ```
 
-(Adjust pattern matching to whatever `ActiveOrganizationResolution` exposes — see `lib/src/application/active_organization_resolution.dart`. Match the actual class names.)
+Register `GoRoute` entries for the new paths. Wrap authenticated routes in `MembershipGate` so membership decisions stay synchronous:
 
-Also register new `GoRoute` entries for `/magic-link-sent`, `/invite-required`, `/redeem`, `/account`, `/invite` (the `/invite` route renders a transient screen that immediately pulls the token from the URL and redirects to the sign-in flow).
+```dart
+ShellRoute(
+  builder: (_, __, child) => MembershipGate(child: child),
+  routes: [
+    GoRoute(path: AppRoutes.home.path, builder: (_, __) => const HomeScreen()),
+    GoRoute(path: AppRoutes.account.path, builder: (_, __) => const AccountScreen()),
+    // ...existing authenticated routes
+  ],
+),
+GoRoute(path: AppRoutes.signIn.path, builder: (_, __) => const SignInScreen()),
+GoRoute(path: AppRoutes.magicLinkSent.path, builder: (_, __) => const MagicLinkSentScreen()),
+GoRoute(path: AppRoutes.invite.path, builder: (_, __) => const InviteLandingRedirect()),
+GoRoute(path: AppRoutes.inviteRequired.path, builder: (_, __) => const InviteRequiredScreen()),
+GoRoute(path: AppRoutes.redeem.path, builder: (_, __) => const RedeemProgressScreen()),
+```
+
+`InviteLandingRedirect` is a trivial stateless widget: in `build`, capture `state.uri.queryParameters['token']` into `pendingInviteTokenControllerProvider` and immediately redirect to `AppRoutes.signIn.path`.
+
+- [ ] **Step 4: Write `MembershipGate`**
+
+```dart
+// apps/lyron_app/lib/src/presentation/auth/membership_gate.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/presentation/auth/invite_required_screen.dart';
+import 'package:lyron_app/src/presentation/auth/redeem_progress_screen.dart';
+
+class MembershipGate extends ConsumerWidget {
+  const MembershipGate({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final membership = ref.watch(activeMembershipControllerProvider).last;
+    final pending = ref.watch(pendingInviteTokenControllerProvider).current;
+
+    return switch (membership) {
+      ActiveOrganizationSelected() => child,
+      ActiveOrganizationVerifiedEmpty() => pending != null
+          ? const RedeemProgressScreen()
+          : const InviteRequiredScreen(),
+      ActiveOrganizationUnknownConnectivityFailure() ||
+      ActiveOrganizationUnknownNonConnectivityFailure() => child,
+    };
+  }
+}
+```
+
+- [ ] **Step 5: Wire post-sign-in membership refresh**
+
+In `providers.dart`, add an effect that watches `appAuthControllerProvider`. On transition to `signedIn`, call `await ref.read(activeOrganizationResolutionProvider)()` and push the result into `activeMembershipControllerProvider`. The same effect runs after successful `RedeemController` completion.
+
+A small helper:
+
+```dart
+final membershipRefreshEffectProvider = Provider<void>((ref) {
+  ref.listen<AppAuthState>(
+    appAuthControllerProvider.select((c) => c.state),
+    (prev, next) async {
+      if (next.status != AppAuthStatus.signedIn) return;
+      final reader = ref.read(activeOrganizationResolutionProvider);
+      final result = await reader();
+      ref.read(activeMembershipControllerProvider).update(result);
+    },
+  );
+  ref.listen<RedeemState>(
+    redeemControllerProvider.select((c) => c.state),
+    (prev, next) async {
+      if (next is! RedeemStateSuccess) return;
+      final reader = ref.read(activeOrganizationResolutionProvider);
+      final result = await reader();
+      ref.read(activeMembershipControllerProvider).update(result);
+    },
+  );
+});
+```
+
+Register the effect at bootstrap with `container.read(membershipRefreshEffectProvider)`.
 
 - [ ] **Step 3: Test**
 
