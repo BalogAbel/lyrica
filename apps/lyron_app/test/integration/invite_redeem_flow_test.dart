@@ -10,7 +10,6 @@ import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/domain/auth/invitation_error.dart';
 import 'package:lyron_app/src/domain/auth/redeem_result.dart';
 import 'package:lyron_app/src/presentation/auth/membership_gate.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -20,13 +19,6 @@ class _SuccessRepo implements InvitationRepository {
   @override
   Future<RedeemResult> redeem(String token) async =>
       const RedeemSuccess('org-id-123');
-}
-
-// Stub InvitationRepository that returns failure
-class _FailRepo implements InvitationRepository {
-  @override
-  Future<RedeemResult> redeem(String token) async =>
-      const RedeemFailure(InvitationError.notFound);
 }
 
 void main() {
