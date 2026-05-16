@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
@@ -1273,13 +1274,16 @@ class _TestAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
-    required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+
+  @override
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 class _DelayedAuthRepository implements AuthRepository {
@@ -1294,13 +1298,16 @@ class _DelayedAuthRepository implements AuthRepository {
   Stream<AppAuthSession?> watchSession() => const Stream.empty();
 
   @override
-  Future<AppAuthSession> signIn({
-    required String email,
-    required String password,
-  }) async => AppAuthSession(userId: 'user-1', email: email);
+  Future<void> signInWithOAuth(SignInMethod method, {required String redirectTo}) async {}
+
+  @override
+  Future<void> sendMagicLink({required String email, required String redirectTo}) async {}
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
 }
 
 PlanDetail _planDetailFixture() {
