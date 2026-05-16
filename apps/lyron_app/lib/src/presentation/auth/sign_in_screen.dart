@@ -76,16 +76,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    // TODO(auth-invite-sso): rewrite SignInScreen for OAuth + magic link
+                    // Temporarily disabled — controller.signIn removed in this slice.
                     FilledButton(
-                      onPressed: isBusy
-                          ? null
-                          : () async {
-                              await controller.signIn(
-                                email: _emailController.text.trim(),
-                                password: _passwordController.text,
-                              );
-                              ref.invalidate(songCatalogControllerProvider);
-                            },
+                      onPressed: null,
                       child: const Text(AppStrings.signInAction),
                     ),
                   ],

@@ -1,3 +1,5 @@
+// TODO(auth-invite-sso): stub + tests updated when SignInScreen rewritten
+// ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

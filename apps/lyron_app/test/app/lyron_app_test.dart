@@ -1,3 +1,5 @@
+// TODO(auth-invite-sso): stubs updated when SignInScreen + integration tests rewritten
+// ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
