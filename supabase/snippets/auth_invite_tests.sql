@@ -334,5 +334,94 @@ begin
   end if;
 end$$;
 
-rollback;
+-- ============================================================
+-- Task 12: auth boundary hardening
+--   anon cannot execute invite/security-definer RPC entrypoints
+--   anon cannot select domain tables before sign-in
+--   authenticated keeps the app-facing RPC entrypoints it needs
+-- ============================================================
+do $$
+declare
+  v_anon_can_create_invitation boolean;
+  v_anon_can_redeem_invitation boolean;
+  v_authenticated_can_redeem_invitation boolean;
+begin
+  select has_function_privilege(
+    'anon',
+    'public.create_invitation(uuid, public.role_code, text)',
+    'execute'
+  ) into v_anon_can_create_invitation;
 
+  select has_function_privilege(
+    'anon',
+    'public.redeem_invitation(text)',
+    'execute'
+  ) into v_anon_can_redeem_invitation;
+
+  select has_function_privilege(
+    'authenticated',
+    'public.redeem_invitation(text)',
+    'execute'
+  ) into v_authenticated_can_redeem_invitation;
+
+  if v_anon_can_create_invitation then
+    raise exception 'anon must not execute create_invitation';
+  end if;
+  if v_anon_can_redeem_invitation then
+    raise exception 'anon must not execute redeem_invitation';
+  end if;
+  if not v_authenticated_can_redeem_invitation then
+    raise exception 'authenticated must execute redeem_invitation';
+  end if;
+end$$;
+
+do $$
+declare
+  v_table text;
+  v_anon_can_select boolean;
+begin
+  foreach v_table in array array[
+    'organizations',
+    'groups',
+    'memberships',
+    'songs',
+    'plans',
+    'sessions',
+    'session_items',
+    'attachments',
+    'invitations'
+  ] loop
+    select has_table_privilege(
+      'anon',
+      format('public.%I', v_table),
+      'select'
+    ) into v_anon_can_select;
+
+    if v_anon_can_select then
+      raise exception 'anon must not select public.%', v_table;
+    end if;
+  end loop;
+end$$;
+
+do $$
+declare
+  v_exposed_functions text[];
+begin
+  select coalesce(
+    array_agg(p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' order by p.proname),
+    array[]::text[]
+  )
+  into v_exposed_functions
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prosecdef
+    and has_function_privilege('anon', p.oid, 'execute');
+
+  if array_length(v_exposed_functions, 1) is not null then
+    raise exception 'anon must not execute public security-definer functions: %',
+      array_to_string(v_exposed_functions, ', ');
+  end if;
+end$$;
+
+rollback;
