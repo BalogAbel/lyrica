@@ -71,6 +71,8 @@ Operational note:
 
 Organization-owned song records. ChordPro text is canonical. Structured metadata and searchable song fields are derived from ChordPro into dedicated columns for fast lookup, filtering, and import/export mapping. The current executable slice proves authenticated backend song reads through a repository boundary that returns only minimal song summaries and raw ChordPro source. Parsing and reader projection remain in the Flutter app. A later song CRUD slice adds offline-created UUID-backed rows plus write-side sync metadata without moving authorization into Flutter.
 
+Songs can also be bulk-imported from the local file system or web via the **Import** action in the song list. The importer accepts `.cho`, `.chordpro`, and `.chopro` files, detects title-only duplicates (case-insensitive), and lets the user choose to overwrite or skip each conflict before committing.
+
 Key fields:
 
 - `id` (UUID v4)

@@ -24,17 +24,15 @@ Widget _wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
   testWidgets('renders both duplicate rows', (tester) async {
-    late List<ResolvedDuplicate> result;
-
     await tester.pumpWidget(
       _wrap(
         Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await showImportDuplicateDialog(
+              await showImportDuplicateDialog(
                 context: context,
                 duplicates: [_dup1, _dup2],
-              ) ?? [];
+              );
             },
             child: const Text('open'),
           ),
