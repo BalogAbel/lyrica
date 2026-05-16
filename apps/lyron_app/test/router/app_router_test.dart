@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
-import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
@@ -22,6 +21,7 @@ import 'package:lyron_app/src/application/song_library/song_catalog_read_reposit
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';

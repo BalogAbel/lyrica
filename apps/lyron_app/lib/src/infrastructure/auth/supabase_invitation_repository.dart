@@ -5,7 +5,7 @@ import 'package:lyron_app/src/domain/auth/invitation_error.dart';
 import 'package:lyron_app/src/domain/auth/redeem_result.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-typedef _Redeem = Future<String> Function(String token);
+typedef RedeemFn = Future<String> Function(String token);
 
 class SupabaseInvitationRepository implements InvitationRepository {
   SupabaseInvitationRepository(SupabaseClient client)
@@ -20,10 +20,10 @@ class SupabaseInvitationRepository implements InvitationRepository {
       );
 
   @visibleForTesting
-  SupabaseInvitationRepository.testing({required _Redeem redeem})
+  SupabaseInvitationRepository.testing({required RedeemFn redeem})
     : _redeem = redeem;
 
-  final _Redeem _redeem;
+  final RedeemFn _redeem;
 
   @override
   Future<RedeemResult> redeem(String token) async {

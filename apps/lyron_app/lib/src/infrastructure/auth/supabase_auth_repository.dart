@@ -4,14 +4,14 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-typedef _Restore = Future<AppAuthSession?> Function();
-typedef _Watch = Stream<AppAuthSession?> Function();
-typedef _OAuth =
+typedef RestoreSessionFn = Future<AppAuthSession?> Function();
+typedef WatchSessionFn = Stream<AppAuthSession?> Function();
+typedef OAuthSignInFn =
     Future<void> Function(SignInMethod method, {required String redirectTo});
-typedef _Magic =
+typedef MagicLinkFn =
     Future<void> Function({required String email, required String redirectTo});
-typedef _SignOut = Future<void> Function();
-typedef _Delete = Future<void> Function();
+typedef SignOutFn = Future<void> Function();
+typedef DeleteAccountFn = Future<void> Function();
 
 class SupabaseAuthRepository implements AuthRepository {
   SupabaseAuthRepository(SupabaseClient client)
@@ -44,12 +44,12 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @visibleForTesting
   SupabaseAuthRepository.testing({
-    required _Restore restoreSession,
-    required _Watch watchSession,
-    required _OAuth signInWithOAuth,
-    required _Magic sendMagicLink,
-    required _SignOut signOut,
-    required _Delete deleteAccount,
+    required RestoreSessionFn restoreSession,
+    required WatchSessionFn watchSession,
+    required OAuthSignInFn signInWithOAuth,
+    required MagicLinkFn sendMagicLink,
+    required SignOutFn signOut,
+    required DeleteAccountFn deleteAccount,
   }) : _restoreSession = restoreSession,
        _watchSession = watchSession,
        _signInWithOAuth = signInWithOAuth,
@@ -57,12 +57,12 @@ class SupabaseAuthRepository implements AuthRepository {
        _signOut = signOut,
        _deleteAccount = deleteAccount;
 
-  final _Restore _restoreSession;
-  final _Watch _watchSession;
-  final _OAuth _signInWithOAuth;
-  final _Magic _sendMagicLink;
-  final _SignOut _signOut;
-  final _Delete _deleteAccount;
+  final RestoreSessionFn _restoreSession;
+  final WatchSessionFn _watchSession;
+  final OAuthSignInFn _signInWithOAuth;
+  final MagicLinkFn _sendMagicLink;
+  final SignOutFn _signOut;
+  final DeleteAccountFn _deleteAccount;
 
   @override
   Future<AppAuthSession?> restoreSession() => _restoreSession();
