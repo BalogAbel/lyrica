@@ -64,11 +64,22 @@ class ChordProImportService {
         continue;
       }
 
-      final normalizedSource = _normalizer.normalize(file.source);
-      final parsed = _parser.parse(normalizedSource);
-
-      final rawTitle = parsed.title.trim();
-      final title = rawTitle.isNotEmpty ? rawTitle : _stemOf(file.filename);
+      String normalizedSource;
+      String title;
+      try {
+        normalizedSource = _normalizer.normalize(file.source);
+        final parsed = _parser.parse(normalizedSource);
+        final rawTitle = parsed.title.trim();
+        title = rawTitle.isNotEmpty ? rawTitle : _stemOf(file.filename);
+      } catch (_) {
+        errors.add(
+          ImportError(
+            filename: file.filename,
+            reason: AppStrings.songImportReadErrorReason,
+          ),
+        );
+        continue;
+      }
 
       final matchingExisting = existingSongs
           .where(
@@ -87,7 +98,7 @@ class ChordProImportService {
           ),
         );
       } else {
-        successes.add(ImportSuccess(title: title, source: normalizedSource));
+        successes.add(ImportSuccess(title: title, source: normalizedSource, filename: file.filename));
       }
     }
 
@@ -117,7 +128,7 @@ class ChordProImportService {
         );
         committedSuccesses.add(success);
       } catch (e) {
-        errors.add(ImportError(filename: success.title, reason: e.toString()));
+        errors.add(ImportError(filename: success.filename, reason: e.toString()));
       }
     }
 
@@ -137,6 +148,7 @@ class ChordProImportService {
           ImportSuccess(
             title: resolved.duplicate.incomingTitle,
             source: resolved.duplicate.incomingSource,
+            filename: resolved.duplicate.filename,
           ),
         );
       } catch (e) {

@@ -17,10 +17,11 @@ sealed class ImportFileResult {
 /// File was parsed and has no title conflict with an existing song.
 /// [source] is the normalised ChordPro text ready for storage.
 class ImportSuccess extends ImportFileResult {
-  const ImportSuccess({required this.title, required this.source});
+  const ImportSuccess({required this.title, required this.source, required this.filename});
 
   final String title;
   final String source;
+  final String filename;
 }
 
 /// File title matches an existing song (case-insensitive).

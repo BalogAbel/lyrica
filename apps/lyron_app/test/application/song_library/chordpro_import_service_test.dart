@@ -173,7 +173,7 @@ void main() {
       await service.commitImport(
         context: _context,
         successes: const [
-          ImportSuccess(title: 'New Song', source: '{title: New Song}\n[C]Hi'),
+          ImportSuccess(title: 'New Song', source: '{title: New Song}\n[C]Hi', filename: 'new.cho'),
         ],
         resolvedDuplicates: const [],
       );
