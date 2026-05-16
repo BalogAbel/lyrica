@@ -31,13 +31,16 @@ GoRouter createAppRouter({
     initialLocation: initialLocation,
     refreshListenable: refreshListenable,
     redirect: (context, state) {
-      final isOnBootstrap = state.matchedLocation == AppRoutes.bootstrap.path;
-      final isOnSignIn = state.matchedLocation == AppRoutes.signIn.path;
-      final isAuthRoute =
+      final loc = state.matchedLocation;
+      final isOnBootstrap = loc == AppRoutes.bootstrap.path;
+      final isOnSignIn = loc == AppRoutes.signIn.path;
+      // Public routes are accessible without authentication.
+      // Everything else requires sign-in.
+      final isPublicRoute =
           isOnSignIn ||
           isOnBootstrap ||
-          state.matchedLocation == AppRoutes.invite.path ||
-          state.matchedLocation == AppRoutes.magicLinkSent.path;
+          loc == AppRoutes.invite.path ||
+          loc == AppRoutes.magicLinkSent.path;
       final status = authController.state.status;
       final restoreTarget = state.uri.queryParameters['from'];
 
@@ -65,15 +68,8 @@ GoRouter createAppRouter({
         return AppRoutes.signIn.path;
       }
 
-      if (!isAuthRoute) {
-        final requiresAuth =
-            state.matchedLocation == AppRoutes.home.path ||
-            state.matchedLocation == AppRoutes.planList.path ||
-            state.matchedLocation.startsWith('/plans/') ||
-            state.matchedLocation.startsWith('/songs/');
-        if (requiresAuth) {
-          return AppRoutes.signIn.path;
-        }
+      if (!isPublicRoute) {
+        return AppRoutes.signIn.path;
       }
 
       return null;
@@ -173,13 +169,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _InviteLandingCapture extends ConsumerWidget {
+class _InviteLandingCapture extends ConsumerStatefulWidget {
   const _InviteLandingCapture({required this.token});
   final String token;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.read(pendingInviteTokenControllerProvider).capture(token);
+  ConsumerState<_InviteLandingCapture> createState() =>
+      _InviteLandingCaptureState();
+}
+
+class _InviteLandingCaptureState extends ConsumerState<_InviteLandingCapture> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pendingInviteTokenControllerProvider).capture(widget.token);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return const SignInScreen();
   }
 }

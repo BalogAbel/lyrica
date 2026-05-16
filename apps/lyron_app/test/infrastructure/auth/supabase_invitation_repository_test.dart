@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/auth/invitation_error.dart';
 import 'package:lyron_app/src/domain/auth/redeem_result.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   test('redeem returns success when RPC returns an organization id', () async {
@@ -18,7 +19,7 @@ void main() {
   test('redeem maps SQL error messages to InvitationError', () async {
     final repo = SupabaseInvitationRepository.testing(
       redeem: (token) async {
-        throw Exception('invitation_expired');
+        throw const PostgrestException(message: 'invitation_expired');
       },
     );
     final result = await repo.redeem('tok');
