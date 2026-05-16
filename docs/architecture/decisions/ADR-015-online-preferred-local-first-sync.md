@@ -30,6 +30,29 @@ For Lyron:
 - Backend authorization remains authoritative for canonical write acceptance.
 - Explicit sign-out continues to clear authenticated cached data and must warn when unsynced mutations exist.
 
+### Product Contract
+
+Lyron is online-preferred, offline-safe, local-first. Specifically:
+
+- Online availability improves freshness and collaboration without becoming required for core preparation work.
+- UI reads come from repository-owned local projections or merged local views, not directly from transient realtime events.
+- Local writes remain durable across app restart until accepted, discarded, or explicitly cleared by sign-out.
+- Offline status does not imply data loss or disabled preparation workflows when the required local state already exists.
+- Sync and refresh failures preserve the last usable local state.
+- The UI distinguishes "saved locally" from "accepted by the backend" where that distinction matters.
+- Backend authorization remains authoritative for every canonical write acceptance.
+- Explicit sign-out remains a destructive authenticated-cache boundary and must warn when unsynced work exists.
+
+## Non-Goals
+
+- No CRDT or automatic merge system.
+- No realtime event-driven UI read model.
+- No direct Flutter-owned authorization decision.
+- No background sync while the app is suspended or terminated.
+- No multi-organization retained cache redesign.
+- No change to explicit sign-out cache clearing.
+- No redesign of the song editor or song create surface in this contract slice.
+
 ## Consequences
 
 - The app can feel online and current without weakening offline guarantees.
