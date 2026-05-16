@@ -95,10 +95,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       final (:source, :errorReason) = readResults[i];
       if (source == null) {
         readErrors.add(
-          ImportError(
-            filename: platformFile.name,
-            reason: errorReason!,
-          ),
+          ImportError(filename: platformFile.name, reason: errorReason!),
         );
       } else {
         fileInputs.add(
