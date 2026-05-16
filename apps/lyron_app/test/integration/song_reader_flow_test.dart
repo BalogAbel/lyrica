@@ -129,7 +129,6 @@ void main() {
       );
       final authController = AppAuthController(authRepository);
       await authController.restoreSession();
-      addTearDown(authController.dispose);
 
       final songRepository = _StaticSongRepository(
         summaries: const [
