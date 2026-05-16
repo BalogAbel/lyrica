@@ -133,4 +133,206 @@ begin
   end if;
 end$$;
 
+-- ============================================================
+-- Task 6: create_invitation rejects non-admins (authenticated, not admin)
+-- ============================================================
+-- New user with no membership in the org
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000000003', 'nonadmin@test.local');
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000003"}';
+
+do $$
+begin
+  begin
+    perform public.create_invitation(
+      '00000000-0000-0000-0000-0000000000aa',
+      'organization_member',
+      null
+    );
+    raise exception 'expected invitation_create_not_authorized';
+  exception when insufficient_privilege then
+    -- errcode 42501 maps to insufficient_privilege — expected
+    null;
+  end;
+end$$;
+
+-- ============================================================
+-- Task 7: create_invitation succeeds for an authenticated admin
+-- ============================================================
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001"}';
+
+do $$
+declare
+  v_token text;
+begin
+  v_token := public.create_invitation(
+    '00000000-0000-0000-0000-0000000000aa',
+    'organization_member',
+    'newmember@test.local'
+  );
+  if v_token is null or length(v_token) < 16 then
+    raise exception 'admin create_invitation returned bad token: %', v_token;
+  end if;
+end$$;
+
+-- ============================================================
+-- Task 8: redeem_invitation raises invitation_expired for expired tokens
+-- ============================================================
+-- Insert an already-expired invitation directly (service-role context, no uid set)
+set local request.jwt.claims = '{}';
+
+insert into public.invitations (
+  token, email, organization_id, role_code, expires_at, issued_by
+) values (
+  'expired-test-token-0000000000000001',
+  null,
+  '00000000-0000-0000-0000-0000000000aa',
+  'organization_member',
+  now() - interval '1 day',
+  null
+);
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000003"}';
+
+do $$
+begin
+  begin
+    perform public.redeem_invitation('expired-test-token-0000000000000001');
+    raise exception 'expected invitation_expired';
+  exception when others then
+    if sqlerrm not like '%invitation_expired%' then
+      raise;
+    end if;
+  end;
+end$$;
+
+-- ============================================================
+-- Task 9: redeem_invitation raises already_member when caller already has active membership
+-- ============================================================
+-- admin user (00000000-0000-0000-0000-000000000001) already has an active membership
+-- Create a fresh unredeemed invitation for that org
+set local request.jwt.claims = '{}';
+
+insert into public.invitations (
+  token, email, organization_id, role_code, expires_at, issued_by
+) values (
+  'already-member-test-token-000000001',
+  null,
+  '00000000-0000-0000-0000-0000000000aa',
+  'organization_member',
+  now() + interval '30 days',
+  null
+);
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000001"}';
+
+do $$
+begin
+  begin
+    perform public.redeem_invitation('already-member-test-token-000000001');
+    raise exception 'expected already_member';
+  exception when others then
+    if sqlerrm not like '%already_member%' then
+      raise;
+    end if;
+  end;
+end$$;
+
+-- ============================================================
+-- Task 10: delete_account cascades memberships
+-- ============================================================
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-000000000088', 'cascade@test.local');
+
+insert into public.memberships (
+  organization_id, user_id, scope_type, role_code, status
+) values (
+  '00000000-0000-0000-0000-0000000000aa',
+  '00000000-0000-0000-0000-000000000088',
+  'organization', 'organization_member', 'active'
+);
+
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000088"}';
+
+do $$ begin perform public.delete_account(); end$$;
+
+do $$
+declare
+  v_user_count  integer;
+  v_memb_count  integer;
+begin
+  select count(*) into v_user_count from auth.users
+    where id = '00000000-0000-0000-0000-000000000088';
+  select count(*) into v_memb_count from public.memberships
+    where user_id = '00000000-0000-0000-0000-000000000088';
+
+  if v_user_count <> 0 then
+    raise exception 'delete_account: user row still exists';
+  end if;
+  if v_memb_count <> 0 then
+    raise exception 'delete_account: membership not cascaded, got % rows', v_memb_count;
+  end if;
+end$$;
+
+-- ============================================================
+-- Task 11: pg_cron orphan-cleanup simulation
+--   orphan >24h  → deleted
+--   orphan <24h  → preserved
+--   user with active membership (any age) → preserved
+-- ============================================================
+set local request.jwt.claims = '{}';
+
+insert into auth.users (id, email, created_at) values
+  -- orphan older than 24h: should be deleted
+  ('00000000-0000-0000-0000-000000000091', 'orphan-old@test.local',
+   now() - interval '25 hours'),
+  -- orphan younger than 24h: should be preserved
+  ('00000000-0000-0000-0000-000000000092', 'orphan-young@test.local',
+   now() - interval '1 hour'),
+  -- has active membership (old): should be preserved
+  ('00000000-0000-0000-0000-000000000093', 'member-old@test.local',
+   now() - interval '48 hours');
+
+insert into public.memberships (
+  organization_id, user_id, scope_type, role_code, status
+) values (
+  '00000000-0000-0000-0000-0000000000aa',
+  '00000000-0000-0000-0000-000000000093',
+  'organization', 'organization_member', 'active'
+);
+
+-- Simulate the cron body inline
+delete from auth.users u
+where u.created_at < now() - interval '24 hours'
+  and not exists (
+    select 1 from public.memberships m
+    where m.user_id = u.id and m.status = 'active'
+  );
+
+do $$
+declare
+  v_old_exists   boolean;
+  v_young_exists boolean;
+  v_member_exists boolean;
+begin
+  select exists(select 1 from auth.users where id = '00000000-0000-0000-0000-000000000091')
+    into v_old_exists;
+  select exists(select 1 from auth.users where id = '00000000-0000-0000-0000-000000000092')
+    into v_young_exists;
+  select exists(select 1 from auth.users where id = '00000000-0000-0000-0000-000000000093')
+    into v_member_exists;
+
+  if v_old_exists then
+    raise exception 'cron: orphan >24h should have been deleted (00000000-0000-0000-0000-000000000091)';
+  end if;
+  if not v_young_exists then
+    raise exception 'cron: orphan <24h should be preserved (00000000-0000-0000-0000-000000000092)';
+  end if;
+  if not v_member_exists then
+    raise exception 'cron: user with active membership should be preserved (00000000-0000-0000-0000-000000000093)';
+  end if;
+end$$;
+
 rollback;
+
