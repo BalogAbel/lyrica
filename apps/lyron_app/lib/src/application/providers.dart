@@ -169,7 +169,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
   final authController = ref.watch(appAuthControllerProvider);
   final membershipController = ref.read(activeMembershipControllerProvider);
 
-  void refreshMembership() async {
+  Future<void> refreshMembership() async {
     final reader = ref.read(activeOrganizationResolutionProvider);
     final result = await reader();
     membershipController.update(result);
@@ -177,7 +177,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
 
   void authListener() {
     if (authController.state.status == AppAuthStatus.signedIn) {
-      refreshMembership();
+      unawaited(refreshMembership());
     }
   }
 
@@ -188,7 +188,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
   final redeemController = ref.watch(redeemControllerProvider);
   void redeemListener() {
     if (redeemController.state is RedeemStateSuccess) {
-      refreshMembership();
+      unawaited(refreshMembership());
     }
   }
 
@@ -197,7 +197,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
 
   // Trigger immediately if already signed in
   if (authController.state.status == AppAuthStatus.signedIn) {
-    refreshMembership();
+    unawaited(refreshMembership());
   }
 });
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
@@ -19,7 +21,7 @@ class _RedeemProgressScreenState extends ConsumerState<RedeemProgressScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      RedeemEffect(ref).tryConsumePending();
+      unawaited(RedeemEffect(ref).tryConsumePending());
     });
   }
 
