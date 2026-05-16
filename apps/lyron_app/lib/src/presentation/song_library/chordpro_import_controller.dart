@@ -89,11 +89,16 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
 
     final fileInputs = <ImportFileInput>[];
     final readErrors = <ImportError>[];
-    for (final platformFile in picked.files) {
-      final (:source, :errorReason) = await _readFile(platformFile);
+    final readResults = await Future.wait(picked.files.map(_readFile));
+    for (var i = 0; i < picked.files.length; i++) {
+      final platformFile = picked.files[i];
+      final (:source, :errorReason) = readResults[i];
       if (source == null) {
         readErrors.add(
-          ImportError(filename: platformFile.name, reason: errorReason!),
+          ImportError(
+            filename: platformFile.name,
+            reason: errorReason!,
+          ),
         );
       } else {
         fileInputs.add(
