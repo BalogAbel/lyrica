@@ -71,15 +71,23 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   onPressed: () async {
                     final email = _emailController.text.trim();
                     if (email.isEmpty) return;
-                    await controller.sendMagicLink(
-                      email: email,
-                      redirectTo: _kRedirectUrl,
-                    );
-                    if (!mounted) return;
-                    // ignore: use_build_context_synchronously
-                    Navigator.of(context).pushReplacementNamed(
-                      '/magic-link-sent',
-                    );
+                    try {
+                      await controller.sendMagicLink(
+                        email: email,
+                        redirectTo: _kRedirectUrl,
+                      );
+                      if (!mounted) return;
+                      // ignore: use_build_context_synchronously
+                      Navigator.of(context).pushReplacementNamed(
+                        '/magic-link-sent',
+                      );
+                    } catch (_) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text(AppStrings.retryAction)),
+                        );
+                      }
+                    }
                   },
                   child: const Text(AppStrings.sendMagicLinkAction),
                 ),
