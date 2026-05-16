@@ -1,3 +1,5 @@
+// TODO(auth-invite-sso): stub updated when song editor route tests rewritten
+// ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
 import 'dart:async';
 
 import 'package:flutter/material.dart';

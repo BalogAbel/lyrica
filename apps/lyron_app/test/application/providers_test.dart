@@ -1,3 +1,5 @@
+// TODO(auth-invite-sso): stubs and signIn calls updated when SignInScreen + integration tests rewritten
+// ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member, undefined_method
 import 'dart:async';
 
 import 'package:collection/collection.dart';
