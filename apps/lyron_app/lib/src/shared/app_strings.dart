@@ -249,4 +249,8 @@ class AppStrings {
       'Your account, memberships, and any pending offline changes will be removed permanently.';
   static const deleteAccountConfirmAction = 'Delete permanently';
   static const cancelAction = 'Cancel';
+  static const membershipConnectivityFailureMessage =
+      'Could not verify access. Check your network.';
+  static const membershipNonConnectivityFailureMessage =
+      'Could not verify access. Please sign out and sign in again.';
 }
