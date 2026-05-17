@@ -249,6 +249,8 @@ class AppStrings {
       'Your account, memberships, and any pending offline changes will be removed permanently.';
   static const deleteAccountConfirmAction = 'Delete permanently';
   static const cancelAction = 'Cancel';
+  static const magicLinkSendFailureMessage =
+      'Could not send magic link. Please try again.';
   static const membershipConnectivityFailureMessage =
       'Could not verify access. Check your network.';
   static const membershipNonConnectivityFailureMessage =

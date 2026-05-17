@@ -113,7 +113,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                                       setState(() => _isSending = false);
                                       messenger.showSnackBar(
                                         const SnackBar(
-                                          content: Text(AppStrings.retryAction),
+                                          content: Text(
+                                            AppStrings
+                                                .magicLinkSendFailureMessage,
+                                          ),
                                         ),
                                       );
                                     }
