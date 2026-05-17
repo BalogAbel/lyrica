@@ -186,14 +186,14 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     fireImmediately: true,
   );
 
-  ref.listen<RedeemState>(
-    redeemControllerProvider.select((c) => c.state),
-    (prev, next) {
-      if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
-        unawaited(refreshMembership());
-      }
-    },
-  );
+  ref.listen<RedeemState>(redeemControllerProvider.select((c) => c.state), (
+    prev,
+    next,
+  ) {
+    if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
+      unawaited(refreshMembership());
+    }
+  });
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
