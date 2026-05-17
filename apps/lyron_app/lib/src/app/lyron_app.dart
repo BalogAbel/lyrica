@@ -6,17 +6,27 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-class LyronApp extends ConsumerWidget {
+class LyronApp extends ConsumerStatefulWidget {
   const LyronApp({super.key, GoRouter? router}) : _router = router;
 
   final GoRouter? _router;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(planningSyncControllerProvider);
+  ConsumerState<LyronApp> createState() => _LyronAppState();
+}
+
+class _LyronAppState extends ConsumerState<LyronApp> {
+  @override
+  void initState() {
+    super.initState();
     ref.read(deepLinkListenerProvider).start();
     ref.read(membershipRefreshEffectProvider);
-    final router = _router ?? ref.watch(appRouterProvider);
+    ref.read(planningSyncControllerProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final router = widget._router ?? ref.watch(appRouterProvider);
 
     return MaterialApp.router(
       title: AppStrings.appName,

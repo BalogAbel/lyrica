@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/domain/auth/invitation_error.dart';
 import 'package:lyron_app/src/domain/auth/redeem_result.dart';
+import 'package:lyron_app/src/shared/connectivity_failure.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef RedeemFn = Future<String> Function(String token);
@@ -32,8 +33,12 @@ class SupabaseInvitationRepository implements InvitationRepository {
       return RedeemSuccess(orgId);
     } on PostgrestException catch (e) {
       return RedeemFailure(invitationErrorFromMessage(e.message));
-    } on Exception {
-      return RedeemFailure(InvitationError.unknown);
+    } catch (e) {
+      return RedeemFailure(
+        isConnectivityFailure(e)
+            ? InvitationError.network
+            : InvitationError.unknown,
+      );
     }
   }
 }
