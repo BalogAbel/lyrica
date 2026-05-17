@@ -4,6 +4,7 @@ import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/presentation/auth/invite_required_screen.dart';
 import 'package:lyron_app/src/presentation/auth/redeem_progress_screen.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class MembershipGate extends ConsumerWidget {
   const MembershipGate({super.key, required this.child});
@@ -20,9 +21,37 @@ class MembershipGate extends ConsumerWidget {
         pending != null
             ? const RedeemProgressScreen()
             : const InviteRequiredScreen(),
-      ActiveOrganizationUnknownConnectivityFailure() ||
+      ActiveOrganizationUnknownConnectivityFailure() => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(AppStrings.membershipConnectivityFailureMessage),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () async {
+                    final reader = ref.read(
+                      activeOrganizationResolutionProvider,
+                    );
+                    final resolution = await reader();
+                    ref
+                        .read(activeMembershipControllerProvider)
+                        .update(resolution);
+                  },
+                  child: const Text(AppStrings.retryAction),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       ActiveOrganizationUnknownNonConnectivityFailure() => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: SafeArea(
+          child: Center(
+            child: Text(AppStrings.membershipNonConnectivityFailureMessage),
+          ),
+        ),
       ),
     };
   }
