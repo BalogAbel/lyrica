@@ -81,6 +81,9 @@ class AppAuthController extends ChangeNotifier {
   }
 
   void _setState(AppAuthState nextState) {
+    if (_state == nextState) {
+      return;
+    }
     _state = nextState;
     notifyListeners();
   }

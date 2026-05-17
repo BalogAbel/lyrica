@@ -133,7 +133,9 @@ final activeOrganizationResolutionProvider =
 final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
   ref,
 ) {
-  return AppAuthController(ref.read(authRepositoryProvider));
+  final controller = AppAuthController(ref.read(authRepositoryProvider));
+  unawaited(controller.restoreSession());
+  return controller;
 });
 
 final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {
@@ -174,18 +176,24 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     membershipController.update(result);
   }
 
-  ref.listen<AppAuthController>(appAuthControllerProvider, (prev, next) {
-    if (next.state.status == AppAuthStatus.signedIn &&
-        prev?.state.status != AppAuthStatus.signedIn) {
-      unawaited(refreshMembership());
-    }
-  }, fireImmediately: true);
+  ref.listen<AppAuthStatus>(
+    appAuthControllerProvider.select((c) => c.state.status),
+    (prev, next) {
+      if (next == AppAuthStatus.signedIn && prev != AppAuthStatus.signedIn) {
+        unawaited(refreshMembership());
+      }
+    },
+    fireImmediately: true,
+  );
 
-  ref.listen<RedeemController>(redeemControllerProvider, (_, next) {
-    if (next.state is RedeemStateSuccess) {
-      unawaited(refreshMembership());
-    }
-  });
+  ref.listen<RedeemState>(
+    redeemControllerProvider.select((c) => c.state),
+    (prev, next) {
+      if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
+        unawaited(refreshMembership());
+      }
+    },
+  );
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
@@ -524,7 +532,7 @@ final activePlanningContextProvider = Provider<ActivePlanningReadContext?>((
 
 final planningSyncControllerProvider =
     ChangeNotifierProvider<PlanningSyncController>((ref) {
-      final authController = ref.watch(appAuthControllerProvider);
+      final authController = ref.read(appAuthControllerProvider);
       final cleanupCoordinator = ref.watch(
         verifiedEmptyMembershipCleanupCoordinatorProvider,
       );

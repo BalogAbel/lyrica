@@ -191,7 +191,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           supabaseClientProvider.overrideWithValue(client),
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
           songCatalogDatabaseProvider.overrideWithValue(songDatabase),
           appForegroundStateProvider.overrideWithValue(foregroundState),
@@ -200,7 +200,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await planningDatabase.close();
         await songDatabase.close();
       });
@@ -287,7 +286,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           supabaseClientProvider.overrideWithValue(client),
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
           songCatalogDatabaseProvider.overrideWithValue(songDatabase),
           appForegroundStateProvider.overrideWithValue(foregroundState),
@@ -296,7 +295,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await planningDatabase.close();
         await songDatabase.close();
       });
@@ -371,7 +369,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           songCatalogStoreProvider.overrideWithValue(songStore),
           supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
           catalogSessionVerifierProvider.overrideWithValue(
@@ -385,7 +383,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await songDatabase.close();
       });
 
@@ -444,7 +441,7 @@ void main() {
         overrides: [
           supabaseClientProvider.overrideWithValue(client),
           planningLocalDatabaseProvider.overrideWithValue(database),
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           activeCatalogContextProvider.overrideWith(
             (ref) => ref.watch(catalogContextProvider),
           ),
@@ -455,7 +452,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await database.close();
       });
 
@@ -508,7 +504,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningRepositoryProvider.overrideWithValue(repository),
           planningMutationStoreProvider.overrideWithValue(mutationStore),
           planningSyncStateProvider.overrideWithValue(
@@ -531,7 +527,6 @@ void main() {
       );
       addTearDown(() {
         container.dispose();
-        authController.dispose();
       });
 
       expect(
@@ -633,7 +628,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningRepositoryProvider.overrideWithValue(repository),
           planningMutationStoreProvider.overrideWithValue(mutationStore),
           planningMutationSyncControllerProvider.overrideWithValue(
@@ -659,7 +654,6 @@ void main() {
       );
       addTearDown(() {
         container.dispose();
-        authController.dispose();
       });
 
       expect(
@@ -718,7 +712,7 @@ void main() {
       final blockingStore = _BlockingDeletePlanningLocalStore(baseStore);
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalStoreProvider.overrideWithValue(blockingStore),
           planningRemoteRefreshRepositoryProvider.overrideWithValue(
             const _StaticPlanningRemoteRefreshRepository(),
@@ -730,7 +724,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await database.close();
       });
 
@@ -797,7 +790,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalDatabaseProvider.overrideWithValue(database),
           planningRemoteRefreshRepositoryProvider.overrideWithValue(
             const _FailingPlanningRemoteRefreshRepository(),
@@ -825,7 +818,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await database.close();
       });
 
@@ -922,7 +914,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalDatabaseProvider.overrideWithValue(database),
           planningRemoteRefreshRepositoryProvider.overrideWithValue(
             const _FailingPlanningRemoteRefreshRepository(),
@@ -950,7 +942,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await database.close();
       });
 
@@ -1117,7 +1108,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          appAuthControllerProvider.overrideWithValue(authController),
+          appAuthControllerProvider.overrideWith((_) => authController),
           planningLocalDatabaseProvider.overrideWithValue(database),
           songCatalogDatabaseProvider.overrideWithValue(songDatabase),
           planningRemoteRefreshRepositoryProvider.overrideWithValue(
@@ -1146,7 +1137,6 @@ void main() {
       );
       addTearDown(() async {
         container.dispose();
-        authController.dispose();
         await database.close();
         await songDatabase.close();
       });

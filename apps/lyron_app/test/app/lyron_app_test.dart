@@ -9,6 +9,8 @@ import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
@@ -99,6 +101,11 @@ void main() {
           activeOrganizationReaderProvider.overrideWithValue(
             () async => 'org-1',
           ),
+          activeMembershipControllerProvider.overrideWith((_) {
+            final controller = ActiveMembershipController();
+            controller.update(const ActiveOrganizationSelected('org-1'));
+            return controller;
+          }),
           membershipRefreshEffectProvider.overrideWith((ref) {}),
           catalogSessionVerifierProvider.overrideWithValue(
             () async => CatalogSessionStatus.verified,
@@ -159,6 +166,11 @@ void main() {
             activeOrganizationReaderProvider.overrideWithValue(
               () async => 'org-1',
             ),
+            activeMembershipControllerProvider.overrideWith((_) {
+              final controller = ActiveMembershipController();
+              controller.update(const ActiveOrganizationSelected('org-1'));
+              return controller;
+            }),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             catalogSessionVerifierProvider.overrideWithValue(
               () async => CatalogSessionStatus.verified,
