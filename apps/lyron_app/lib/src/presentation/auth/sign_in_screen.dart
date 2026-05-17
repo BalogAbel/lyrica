@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +8,11 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-const _kRedirectUrl = 'io.lyron.app://auth/callback';
+// On web, Supabase PKCE requires an HTTP/HTTPS redirect URL so the browser can
+// navigate back to the running app and exchange the code using the stored
+// code_verifier. Custom URL schemes (io.lyron.app://) only work on mobile.
+String get _kRedirectUrl =>
+    kIsWeb ? Uri.base.origin : 'io.lyron.app://auth/callback';
 
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
