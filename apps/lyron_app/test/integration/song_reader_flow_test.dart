@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
@@ -58,6 +60,11 @@ void main() {
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(authRepository),
+            activeMembershipControllerProvider.overrideWith((_) {
+              final controller = ActiveMembershipController();
+              controller.update(const ActiveOrganizationSelected('org-1'));
+              return controller;
+            }),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             songLibraryRepositoryProvider.overrideWithValue(songRepository),
             activeCatalogContextProvider.overrideWithValue(
@@ -158,6 +165,11 @@ void main() {
             authRepositoryProvider.overrideWithValue(authRepository),
             appAuthControllerProvider.overrideWith((_) => authController),
             appAuthListenableProvider.overrideWithValue(authController),
+            activeMembershipControllerProvider.overrideWith((_) {
+              final controller = ActiveMembershipController();
+              controller.update(const ActiveOrganizationSelected('org-1'));
+              return controller;
+            }),
             membershipRefreshEffectProvider.overrideWith((ref) {}),
             songLibraryRepositoryProvider.overrideWithValue(songRepository),
             activeCatalogContextProvider.overrideWithValue(

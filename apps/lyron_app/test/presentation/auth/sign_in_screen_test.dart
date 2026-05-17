@@ -79,4 +79,23 @@ void main() {
     await tester.pump();
     expect(controller.lastOAuth, SignInMethod.google);
   });
+
+  testWidgets('remains usable on a short viewport', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 235));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = _RecordingController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
+        child: const MaterialApp(home: SignInScreen()),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Send magic link'), findsOneWidget);
+  });
 }

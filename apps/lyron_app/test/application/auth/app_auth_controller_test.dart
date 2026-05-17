@@ -62,6 +62,19 @@ void main() {
     expect(controller.state.session?.userId, 'u');
   });
 
+  test('restoreSession does not notify when state is unchanged', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(userId: 'u', email: 'e@x');
+    final controller = AppAuthController(repo);
+    var notifications = 0;
+    controller.addListener(() => notifications += 1);
+
+    await controller.restoreSession();
+    await controller.restoreSession();
+
+    expect(notifications, 1);
+  });
+
   test('signInWithOAuth delegates to the repository', () async {
     final repo = _FakeAuthRepository();
     final controller = AppAuthController(repo);

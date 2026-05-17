@@ -80,7 +80,6 @@ void main() {
     final effectiveCatalogState = initialCatalogState ?? catalogState;
     final authRepository = _TestAuthRepository();
     final authController = AppAuthController(authRepository);
-    addTearDown(authController.dispose);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -1077,7 +1076,6 @@ void main() {
     final events = <String>[];
     final authRepository = _RecordingAuthRepository(events);
     final authController = AppAuthController(authRepository);
-    addTearDown(authController.dispose);
     await authController.restoreSession();
     final songCatalogDatabase = SongCatalogDatabase.inMemory();
     addTearDown(() => songCatalogDatabase.close());
