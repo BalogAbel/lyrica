@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
@@ -126,6 +128,11 @@ void main() {
           authRepositoryProvider.overrideWithValue(repository),
           appAuthControllerProvider.overrideWith((_) => controller),
           appAuthListenableProvider.overrideWithValue(controller),
+          activeMembershipControllerProvider.overrideWith(
+            (_) =>
+                ActiveMembershipController()
+                  ..update(const ActiveOrganizationSelected('org-1')),
+          ),
           activeCatalogContextProvider.overrideWithValue(
             const ActiveCatalogContext(
               userId: 'user-1',
@@ -156,7 +163,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pumpUntilVisible(tester, find.text('Egy út'));
 
     expect(find.text('Sign in'), findsNothing);
     expect(find.text('Egy út'), findsOneWidget);
@@ -1339,4 +1346,15 @@ PlanDetail _planDetailFixture() {
       ),
     ],
   );
+}
+
+Future<void> _pumpUntilVisible(WidgetTester tester, Finder finder) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 3));
+  while (DateTime.now().isBefore(deadline)) {
+    if (finder.evaluate().isNotEmpty) {
+      return;
+    }
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  await tester.pump();
 }
