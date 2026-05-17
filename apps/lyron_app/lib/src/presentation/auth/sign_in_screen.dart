@@ -34,81 +34,95 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text(AppStrings.appName)),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  AppStrings.signInTitle,
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
-                ),
-                if (isSessionExpired) ...[
-                  const SizedBox(height: 12),
-                  const Text(AppStrings.sessionExpiredMessage),
-                ],
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () => controller.signInWithOAuth(
-                    SignInMethod.google,
-                    redirectTo: _kRedirectUrl,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          AppStrings.signInTitle,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (isSessionExpired) ...[
+                          const SizedBox(height: 12),
+                          const Text(AppStrings.sessionExpiredMessage),
+                        ],
+                        const SizedBox(height: 24),
+                        FilledButton(
+                          onPressed: () => controller.signInWithOAuth(
+                            SignInMethod.google,
+                            redirectTo: _kRedirectUrl,
+                          ),
+                          child: const Text(AppStrings.continueWithGoogle),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: () => controller.signInWithOAuth(
+                            SignInMethod.apple,
+                            redirectTo: _kRedirectUrl,
+                          ),
+                          child: const Text(AppStrings.continueWithApple),
+                        ),
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 24),
+                        TextFormField(
+                          controller: _emailController,
+                          decoration: const InputDecoration(
+                            labelText: AppStrings.magicLinkLabel,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _isSending
+                              ? null
+                              : () async {
+                                  final email = _emailController.text.trim();
+                                  if (email.isEmpty) return;
+                                  final messenger = ScaffoldMessenger.of(
+                                    context,
+                                  );
+                                  setState(() => _isSending = true);
+                                  try {
+                                    await controller.sendMagicLink(
+                                      email: email,
+                                      redirectTo: _kRedirectUrl,
+                                    );
+                                    if (!mounted) return;
+                                    // ignore: use_build_context_synchronously
+                                    context.go(AppRoutes.magicLinkSent.path);
+                                  } catch (_) {
+                                    if (mounted) {
+                                      setState(() => _isSending = false);
+                                      messenger.showSnackBar(
+                                        const SnackBar(
+                                          content: Text(AppStrings.retryAction),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          child: const Text(AppStrings.sendMagicLinkAction),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Text(AppStrings.continueWithGoogle),
                 ),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: () => controller.signInWithOAuth(
-                    SignInMethod.apple,
-                    redirectTo: _kRedirectUrl,
-                  ),
-                  child: const Text(AppStrings.continueWithApple),
-                ),
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(
-                    labelText: AppStrings.magicLinkLabel,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: _isSending
-                      ? null
-                      : () async {
-                          final email = _emailController.text.trim();
-                          if (email.isEmpty) return;
-                          setState(() => _isSending = true);
-                          try {
-                            await controller.sendMagicLink(
-                              email: email,
-                              redirectTo: _kRedirectUrl,
-                            );
-                            if (!mounted) return;
-                            // ignore: use_build_context_synchronously
-                            context.go(AppRoutes.magicLinkSent.path);
-                          } catch (_) {
-                            if (mounted) {
-                              setState(() => _isSending = false);
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(AppStrings.retryAction),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                  child: const Text(AppStrings.sendMagicLinkAction),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

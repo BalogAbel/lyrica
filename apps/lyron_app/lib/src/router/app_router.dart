@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -62,7 +60,9 @@ GoRouter createAppRouter({
       }
 
       if (status == AppAuthStatus.signedIn) {
-        if (isOnSignIn || isOnBootstrap) {
+        if (isOnSignIn ||
+            isOnBootstrap ||
+            loc == AppRoutes.magicLinkSent.path) {
           return restoreTarget ?? AppRoutes.home.path;
         }
         // Membership-flow routes are accessible without an active membership
@@ -174,7 +174,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ref.watch(appAuthListenableProvider),
   );
   ref.onDispose(refreshNotifier.dispose);
-  unawaited(authController.restoreSession());
 
   return createAppRouter(
     authController: authController,
