@@ -817,5 +817,55 @@ attachment_count = run_psql(
 )
 assert_equal(attachment_count, "0", "attachment cascade cleanup")
 
+# --- organization_read_only denial block ---
+guest_user_id = "77777777-7777-7777-7777-777777777777"
+
+run_psql(
+    dedent(
+        f"""
+        insert into auth.users (id, email)
+          values ('{guest_user_id}', 'guest@lyron.local')
+          on conflict (id) do nothing;
+        insert into public.memberships
+          (organization_id, user_id, scope_type, role_code, status)
+        values
+          ('{organization_id}', '{guest_user_id}', 'organization', 'organization_read_only', 'active')
+          on conflict do nothing;
+        """
+    )
+)
+
+upsert_denied_sql, upsert_denied_message, upsert_denied_detail = capture_error(
+    dedent(
+        f"""
+        perform public.create_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_title => 'Read-Only Guest Song',
+          p_chordpro_source => {song_source('Read-Only Guest Song')}
+        );
+        """
+    ),
+    user_id=guest_user_id,
+)
+assert_equal(upsert_denied_sql, "42501", "read-only upsert sqlstate")
+assert_equal(upsert_denied_message, "song_write_not_authorized", "read-only upsert message")
+assert_contains(upsert_denied_detail, "canEditSongs", "read-only upsert detail")
+
+delete_denied_sql, delete_denied_message, delete_denied_detail = capture_error(
+    dedent(
+        f"""
+        perform public.delete_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(seed_song_id)},
+          p_base_version => {seed_song_version}
+        );
+        """
+    ),
+    user_id=guest_user_id,
+)
+assert_equal(delete_denied_sql, "42501", "read-only delete sqlstate")
+assert_equal(delete_denied_message, "song_write_not_authorized", "read-only delete message")
+assert_contains(delete_denied_detail, "canEditSongs", "read-only delete detail")
+
 print("song CRUD write contract regression passed")
 PY
