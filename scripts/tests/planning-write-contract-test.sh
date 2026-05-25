@@ -936,5 +936,86 @@ session_auth_error = capture_error(
 assert session_auth_error[0] == "P0002"
 assert session_auth_error[1] == "plan_not_found"
 
+read_only_user_id = "77777777-7777-7777-7777-777777777777"
+
+run_psql(
+    dedent(
+        f"""
+        insert into auth.users (id, email)
+        values ({sql_quote(read_only_user_id)}, 'readonly@lyron.local')
+        on conflict (id) do nothing;
+
+        insert into public.memberships (
+          user_id,
+          organization_id,
+          role_code,
+          scope_type,
+          status
+        )
+        values (
+          {sql_quote(read_only_user_id)}::uuid,
+          {sql_quote(organization_id)}::uuid,
+          'organization_read_only',
+          'organization',
+          'active'
+        )
+        on conflict do nothing;
+        """
+    )
+)
+
+read_only_plan_error = capture_error(
+    dedent(
+        f"""
+        perform public.create_plan(
+          p_organization_id => {sql_quote(organization_id)},
+          p_plan_id => 'cccccccc-cccc-cccc-cccc-000000000001'::uuid,
+          p_slug => 'readonly-plan',
+          p_name => 'Read-Only Plan',
+          p_description => null,
+          p_scheduled_for => null
+        );
+        """
+    ),
+    user_id=read_only_user_id,
+)
+assert read_only_plan_error[0] == "42501", f"expected 42501, got {read_only_plan_error[0]!r}"
+assert read_only_plan_error[1] == "plan_write_not_authorized", f"unexpected: {read_only_plan_error[1]!r}"
+
+read_only_session_error = capture_error(
+    dedent(
+        f"""
+        perform public.create_session(
+          p_organization_id => {sql_quote(organization_id)},
+          p_plan_id => {sql_quote(created_plan["id"])}::uuid,
+          p_session_id => 'cccccccc-cccc-cccc-cccc-000000000002'::uuid,
+          p_slug => 'readonly-session',
+          p_name => 'Read-Only Session'
+        );
+        """
+    ),
+    user_id=read_only_user_id,
+)
+assert read_only_session_error[0] == "P0002", f"expected P0002, got {read_only_session_error[0]!r}"
+assert read_only_session_error[1] == "plan_not_found", f"unexpected: {read_only_session_error[1]!r}"
+
+read_only_item_error = capture_error(
+    dedent(
+        f"""
+        perform public.create_song_session_item(
+          p_organization_id => {sql_quote(organization_id)},
+          p_session_id => {sql_quote(created_session["id"])}::uuid,
+          p_session_item_id => 'cccccccc-cccc-cccc-cccc-000000000003'::uuid,
+          p_song_id => '33333333-3333-3333-3333-333333333333'::uuid,
+          p_base_version => {deleted_item["version"]},
+          p_position => null
+        );
+        """
+    ),
+    user_id=read_only_user_id,
+)
+assert read_only_item_error[0] == "P0002", f"expected P0002, got {read_only_item_error[0]!r}"
+assert read_only_item_error[1] == "session_not_found", f"unexpected: {read_only_item_error[1]!r}"
+
 print("planning write contract verification passed")
 PY
