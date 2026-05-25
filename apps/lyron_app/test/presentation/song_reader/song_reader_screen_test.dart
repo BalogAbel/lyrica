@@ -277,6 +277,7 @@ void main() {
           ),
         ),
         activeCatalogContextProvider.overrideWithValue(null),
+        activePlanningContextProvider.overrideWithValue(null),
         songLibraryListProvider.overrideWith((ref) async {
           return [
             for (final session in planDetail.sessions)
