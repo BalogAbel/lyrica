@@ -6,12 +6,14 @@ import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_context_checks.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
+import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -22,6 +24,7 @@ class PlanListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(planningPlanListProvider);
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
+    final orgId = ref.watch(activePlanningContextProvider)?.organizationId;
 
     return PlanningWorkspaceShell(
       title: AppStrings.planListTitle,
@@ -36,9 +39,14 @@ class PlanListScreen extends ConsumerWidget {
             )
           : null,
       actions: [
-        TextButton(
-          onPressed: () => _createPlan(context, ref),
-          child: const Text(AppStrings.planCreateAction),
+        IfCapability(
+          key: const Key('plan-create-button'),
+          capability: Capability.managePlans,
+          organizationId: orgId,
+          child: TextButton(
+            onPressed: () => _createPlan(context, ref),
+            child: const Text(AppStrings.planCreateAction),
+          ),
         ),
       ],
       statusSurface: mutationsAsync.when(

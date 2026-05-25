@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
+import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/song_editor/browser_unsaved_changes_guard.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_controller.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_projection.dart';
@@ -548,69 +549,6 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
   }
 }
 
-/// Renders [child] only when the active organization grants [capability].
-/// When capability is unknown or absent, renders [SizedBox.shrink()].
-class _IfCapability extends ConsumerStatefulWidget {
-  const _IfCapability({
-    super.key,
-    required this.capability,
-    required this.organizationId,
-    required this.child,
-  });
-
-  final Capability capability;
-  final String? organizationId;
-  final Widget child;
-
-  @override
-  ConsumerState<_IfCapability> createState() => _IfCapabilityState();
-}
-
-class _IfCapabilityState extends ConsumerState<_IfCapability> {
-  Future<bool>? _future;
-  String? _lastOrgId;
-  Capability? _lastCapability;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _refreshIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(_IfCapability old) {
-    super.didUpdateWidget(old);
-    _refreshIfNeeded();
-  }
-
-  void _refreshIfNeeded() {
-    final orgId = widget.organizationId;
-    if (orgId == null) {
-      _future = null;
-      _lastOrgId = null;
-      return;
-    }
-    if (orgId != _lastOrgId || widget.capability != _lastCapability) {
-      _lastOrgId = orgId;
-      _lastCapability = widget.capability;
-      _future = ref
-          .read(capabilityResolverProvider)
-          .hasCapability(orgId, widget.capability);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final future = _future;
-    if (future == null) return const SizedBox.shrink();
-    return FutureBuilder<bool>(
-      future: future,
-      builder: (context, snap) =>
-          snap.data == true ? widget.child : const SizedBox.shrink(),
-    );
-  }
-}
-
 class _TopBar extends ConsumerWidget {
   const _TopBar({
     required this.title,
@@ -664,7 +602,7 @@ class _TopBar extends ConsumerWidget {
               onPressed: canCancel ? onCancel : null,
               child: const Text('Cancel'),
             ),
-            _IfCapability(
+            IfCapability(
               capability: Capability.editSongs,
               organizationId: organizationId,
               child: FilledButton(

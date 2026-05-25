@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
@@ -16,6 +17,7 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/session_song_picker.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
+import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -42,6 +44,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final ref = this.ref;
     final detailAsync = ref.watch(planningPlanDetailProvider(planId));
     final mutationsAsync = ref.watch(planningMutationEntriesProvider);
+    final orgId = ref.watch(activePlanningContextProvider)?.organizationId;
 
     return PlanningWorkspaceShell(
       title: AppStrings.planDetailTitle,
@@ -56,13 +59,23 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         },
       ),
       actions: [
-        TextButton(
-          onPressed: () => _editPlan(context, ref),
-          child: const Text(AppStrings.planEditAction),
+        IfCapability(
+          key: const Key('plan-edit-button'),
+          capability: Capability.managePlans,
+          organizationId: orgId,
+          child: TextButton(
+            onPressed: () => _editPlan(context, ref),
+            child: const Text(AppStrings.planEditAction),
+          ),
         ),
-        TextButton(
-          onPressed: () => _createSession(context, ref),
-          child: const Text(AppStrings.sessionCreateAction),
+        IfCapability(
+          key: const Key('session-create-button'),
+          capability: Capability.editSessions,
+          organizationId: orgId,
+          child: TextButton(
+            onPressed: () => _createSession(context, ref),
+            child: const Text(AppStrings.sessionCreateAction),
+          ),
         ),
       ],
       statusSurface: mutationsAsync.when(
@@ -491,6 +504,7 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
     final items = _orderedItems(session);
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
+    final orgId = ref.watch(activePlanningContextProvider)?.organizationId;
     ref.listen(activePlanningContextProvider, (previous, next) {
       if (!mounted || !_pickerOpen || previous == next) {
         return;
@@ -532,18 +546,28 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     child: const Center(child: Icon(Icons.drag_indicator)),
                   ),
                 ),
-                IconButton(
-                  onPressed: () => _renameSession(context),
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: '${AppStrings.sessionRenameAction}: ${session.name}',
+                IfCapability(
+                  capability: Capability.editSessions,
+                  organizationId: orgId,
+                  child: IconButton(
+                    onPressed: () => _renameSession(context),
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip:
+                        '${AppStrings.sessionRenameAction}: ${session.name}',
+                  ),
                 ),
                 if (session.items.isEmpty) ...[
                   const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => _deleteSession(context, ref),
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip:
-                        '${AppStrings.sessionDeleteAction}: ${session.name}',
+                  IfCapability(
+                    key: Key('session-delete-button-${session.id}'),
+                    capability: Capability.editSessions,
+                    organizationId: orgId,
+                    child: IconButton(
+                      onPressed: () => _deleteSession(context, ref),
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip:
+                          '${AppStrings.sessionDeleteAction}: ${session.name}',
+                    ),
                   ),
                 ],
               ],
@@ -577,16 +601,21 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
               },
             ),
             const SizedBox(height: 8),
-            Focus(
-              key: ValueKey('session-add-song-focus-${session.id}'),
-              focusNode: _addSongFocusNode,
-              child: TextButton.icon(
-                key: ValueKey('session-add-song-${session.id}'),
-                onPressed: _canAddSong()
-                    ? () => _addSong(context, planDetail, session)
-                    : null,
-                icon: const Icon(Icons.add),
-                label: const Text(AppStrings.sessionItemAddSongAction),
+            IfCapability(
+              key: Key('session-item-add-button-${session.id}'),
+              capability: Capability.editSessions,
+              organizationId: orgId,
+              child: Focus(
+                key: ValueKey('session-add-song-focus-${session.id}'),
+                focusNode: _addSongFocusNode,
+                child: TextButton.icon(
+                  key: ValueKey('session-add-song-${session.id}'),
+                  onPressed: _canAddSong()
+                      ? () => _addSong(context, planDetail, session)
+                      : null,
+                  icon: const Icon(Icons.add),
+                  label: const Text(AppStrings.sessionItemAddSongAction),
+                ),
               ),
             ),
             if (!catalogState.hasCachedCatalog) ...[
@@ -1191,6 +1220,7 @@ class _SongItemRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final orgId = ref.watch(activePlanningContextProvider)?.organizationId;
     return Row(
       children: [
         ReorderableDelayedDragStartListener(
@@ -1227,10 +1257,16 @@ class _SongItemRow extends ConsumerWidget {
             ),
           ),
         ),
-        IconButton(
-          onPressed: () => _deleteItem(context, ref),
-          icon: const Icon(Icons.delete_outline),
-          tooltip: '${AppStrings.sessionItemDeleteAction}: ${item.song.title}',
+        IfCapability(
+          key: Key('session-item-delete-button-${item.id}'),
+          capability: Capability.editSessions,
+          organizationId: orgId,
+          child: IconButton(
+            onPressed: () => _deleteItem(context, ref),
+            icon: const Icon(Icons.delete_outline),
+            tooltip:
+                '${AppStrings.sessionItemDeleteAction}: ${item.song.title}',
+          ),
         ),
       ],
     );

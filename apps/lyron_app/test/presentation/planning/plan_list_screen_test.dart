@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -11,6 +12,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -33,6 +35,7 @@ void main() {
     PlanningWriteService? writeService,
     PlanningMutationSyncController? mutationSyncController,
     bool? hasUnsyncedPlanningMutations,
+    CapabilityResolver? capabilityResolver,
   }) {
     final router = GoRouter(
       initialLocation: AppRoutes.planList.path,
@@ -88,6 +91,13 @@ void main() {
         ),
         unifiedSyncOverviewProvider.overrideWithValue(
           const UnifiedSyncOverview.initial(),
+        ),
+        capabilityResolverProvider.overrideWith(
+          (_) =>
+              capabilityResolver ??
+              CapabilityResolver(
+                gateway: _StaticCapabilityGateway(Capability.values.toSet()),
+              ),
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -281,6 +291,11 @@ void main() {
                 organizationId: 'org-1',
               ),
             ),
+            capabilityResolverProvider.overrideWith(
+              (_) => CapabilityResolver(
+                gateway: _StaticCapabilityGateway(Capability.values.toSet()),
+              ),
+            ),
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(
@@ -355,6 +370,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(syncController.retriedAggregateIds, ['plan-1']);
+  });
+
+  testWidgets('hides plan create button for read-only user', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        capabilityResolver: CapabilityResolver(
+          gateway: _StaticCapabilityGateway({Capability.viewSongs}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planCreateAction), findsNothing);
+  });
+
+  testWidgets('shows plan create button for org member', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        capabilityResolver: CapabilityResolver(
+          gateway: _StaticCapabilityGateway(Capability.values.toSet()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planCreateAction), findsOneWidget);
   });
 
   testWidgets('shows a validation error for invalid scheduled-for input', (
@@ -585,4 +626,13 @@ class _FakePlanningMutationRemoteRepository
     required String organizationId,
     required PlanningMutationRecord record,
   }) async => record;
+}
+
+class _StaticCapabilityGateway implements CapabilityGateway {
+  const _StaticCapabilityGateway(this._capabilities);
+
+  final Set<Capability> _capabilities;
+
+  @override
+  Future<Set<Capability>> resolve(String organizationId) async => _capabilities;
 }
