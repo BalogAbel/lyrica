@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -12,6 +13,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -45,6 +47,7 @@ void main() {
     songsForContext,
     StateProvider<ActivePlanningReadContext?>? mutablePlanningContextProvider,
     CatalogSnapshotState? catalogSnapshotState,
+    CapabilityResolver? capabilityResolver,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
 
@@ -142,6 +145,15 @@ void main() {
           ),
         unifiedSyncOverviewProvider.overrideWithValue(
           const UnifiedSyncOverview.initial(),
+        ),
+        capabilityResolverProvider.overrideWith(
+          (_) =>
+              capabilityResolver ??
+              CapabilityResolver(
+                gateway: _PlanDetailStaticCapabilityGateway(
+                  Capability.values.toSet(),
+                ),
+              ),
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -954,6 +966,13 @@ void main() {
                 SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
               ]),
             ),
+            capabilityResolverProvider.overrideWith(
+              (_) => CapabilityResolver(
+                gateway: _PlanDetailStaticCapabilityGateway(
+                  Capability.values.toSet(),
+                ),
+              ),
+            ),
           ],
           child: MaterialApp.router(
             routerConfig: GoRouter(
@@ -1170,6 +1189,13 @@ void main() {
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               const UnifiedSyncOverview.initial(),
+            ),
+            capabilityResolverProvider.overrideWith(
+              (_) => CapabilityResolver(
+                gateway: _PlanDetailStaticCapabilityGateway(
+                  Capability.values.toSet(),
+                ),
+              ),
             ),
           ],
           child: MaterialApp.router(
@@ -1878,6 +1904,19 @@ void main() {
                 title: 'A forrasnal',
               ),
             ),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            capabilityResolverProvider.overrideWith(
+              (_) => CapabilityResolver(
+                gateway: _PlanDetailStaticCapabilityGateway(
+                  Capability.values.toSet(),
+                ),
+              ),
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -1970,6 +2009,19 @@ void main() {
             planningWriteServiceProvider.overrideWithValue(
               _FakePlanningWriteService(),
             ),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+            ),
+            capabilityResolverProvider.overrideWith(
+              (_) => CapabilityResolver(
+                gateway: _PlanDetailStaticCapabilityGateway(
+                  Capability.values.toSet(),
+                ),
+              ),
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -1980,6 +2032,84 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Reader'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'hides plan edit and session create buttons for read-only user',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          capabilityResolver: CapabilityResolver(
+            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.planEditAction), findsNothing);
+      expect(find.text(AppStrings.sessionCreateAction), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'shows plan edit and session create buttons for org member',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          capabilityResolver: CapabilityResolver(
+            gateway: _PlanDetailStaticCapabilityGateway(
+              Capability.values.toSet(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.planEditAction), findsOneWidget);
+      expect(find.text(AppStrings.sessionCreateAction), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'hides session delete button for read-only user',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          capabilityResolver: CapabilityResolver(
+            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'hides session item delete button for read-only user',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _planDetailWithThreeItemsFixture(),
+          capabilityResolver: CapabilityResolver(
+            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
+        findsNothing,
+      );
     },
   );
 }
@@ -2457,4 +2587,13 @@ class _PlanDetailTestPlanningMutationRemoteRepository
     required String organizationId,
     required PlanningMutationRecord record,
   }) async => record;
+}
+
+class _PlanDetailStaticCapabilityGateway implements CapabilityGateway {
+  const _PlanDetailStaticCapabilityGateway(this._capabilities);
+
+  final Set<Capability> _capabilities;
+
+  @override
+  Future<Set<Capability>> resolve(String organizationId) async => _capabilities;
 }

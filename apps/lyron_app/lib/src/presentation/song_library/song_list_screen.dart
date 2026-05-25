@@ -14,6 +14,7 @@ import 'package:lyron_app/src/presentation/song_library/chordpro_import_controll
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart';
+import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -156,7 +157,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         title: const Text(AppStrings.appName),
         actions: [
           const UnifiedSyncHeaderControl(),
-          _IfCapability(
+          IfCapability(
             key: const Key('song-import-button'),
             capability: Capability.editSongs,
             organizationId: orgId,
@@ -171,7 +172,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
               child: const Text(AppStrings.songImportAction),
             ),
           ),
-          _IfCapability(
+          IfCapability(
             key: const Key('song-create-button'),
             capability: Capability.editSongs,
             organizationId: orgId,
@@ -544,7 +545,7 @@ class _MutationStatusSurface extends ConsumerWidget {
                               return Wrap(
                                 spacing: 8,
                                 children: [
-                                  _IfCapability(
+                                  IfCapability(
                                     capability: Capability.editSongs,
                                     organizationId: conflictOrgId,
                                     child: TextButton(
@@ -595,7 +596,7 @@ class _MutationStatusSurface extends ConsumerWidget {
                                       ),
                                     ),
                                   ),
-                                  _IfCapability(
+                                  IfCapability(
                                     capability: Capability.editSongs,
                                     organizationId: conflictOrgId,
                                     child: TextButton(
@@ -722,69 +723,6 @@ class _RetryableErrorState extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Renders [child] only when the active organization grants [capability].
-/// When capability is unknown or absent, renders [SizedBox.shrink()].
-class _IfCapability extends ConsumerStatefulWidget {
-  const _IfCapability({
-    super.key,
-    required this.capability,
-    required this.organizationId,
-    required this.child,
-  });
-
-  final Capability capability;
-  final String? organizationId;
-  final Widget child;
-
-  @override
-  ConsumerState<_IfCapability> createState() => _IfCapabilityState();
-}
-
-class _IfCapabilityState extends ConsumerState<_IfCapability> {
-  Future<bool>? _future;
-  String? _lastOrgId;
-  Capability? _lastCapability;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _refreshIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(_IfCapability old) {
-    super.didUpdateWidget(old);
-    _refreshIfNeeded();
-  }
-
-  void _refreshIfNeeded() {
-    final orgId = widget.organizationId;
-    if (orgId == null) {
-      _future = null;
-      _lastOrgId = null;
-      return;
-    }
-    if (orgId != _lastOrgId || widget.capability != _lastCapability) {
-      _lastOrgId = orgId;
-      _lastCapability = widget.capability;
-      _future = ref
-          .read(capabilityResolverProvider)
-          .hasCapability(orgId, widget.capability);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final future = _future;
-    if (future == null) return const SizedBox.shrink();
-    return FutureBuilder<bool>(
-      future: future,
-      builder: (context, snap) =>
-          snap.data == true ? widget.child : const SizedBox.shrink(),
     );
   }
 }
