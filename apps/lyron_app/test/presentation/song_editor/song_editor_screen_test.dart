@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -247,6 +249,10 @@ Line two
           unifiedSyncOverviewProvider.overrideWithValue(
             const UnifiedSyncOverview.initial(),
           ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
         ],
         child: const MaterialApp(home: SongEditorScreen.create()),
       ),
@@ -292,6 +298,10 @@ Line two
           unifiedSyncOverviewProvider.overrideWithValue(
             const UnifiedSyncOverview.initial(),
           ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -335,6 +345,10 @@ Line two
           unifiedSyncOverviewProvider.overrideWithValue(
             const UnifiedSyncOverview.initial(),
           ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -348,6 +362,43 @@ Line two
     await tester.pumpAndSettle();
 
     expect(find.text(AppStrings.songEditorDiscardChangesTitle), findsOneWidget);
+  });
+
+  testWidgets('hides save affordance for read-only user', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(
+              gateway: _ViewOnlyCapabilityGateway(),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: SongEditorScreen.edit(
+            songId: 'song-1',
+            songSlug: 'egy-ut',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songSaveAction), findsNothing);
   });
 
   testWidgets('create mode save calls createSong and navigates to reader', (
@@ -390,6 +441,9 @@ Line two
               organizationId: 'org-1',
             ),
           ),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
           songLibraryServiceProvider.overrideWithValue(service),
         ],
         child: MaterialApp.router(routerConfig: router),
@@ -425,6 +479,17 @@ Future<void> _pumpScreen(
         unifiedSyncOverviewProvider.overrideWithValue(
           const UnifiedSyncOverview.initial(),
         ),
+        activeCatalogContextProvider.overrideWithValue(
+          const ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        ),
+        capabilityResolverProvider.overrideWith(
+          (_) => CapabilityResolver(
+            gateway: _FullCapabilityGateway(),
+          ),
+        ),
       ],
       child: MaterialApp(
         home: SongEditorScreen.edit(
@@ -441,6 +506,18 @@ Future<void> _pumpScreen(
 Future<void> _resizeViewport(WidgetTester tester, Size physicalSize) async {
   tester.view.physicalSize = physicalSize;
   await tester.pumpAndSettle();
+}
+
+class _FullCapabilityGateway implements CapabilityGateway {
+  @override
+  Future<Set<Capability>> resolve(String organizationId) async =>
+      Capability.values.toSet();
+}
+
+class _ViewOnlyCapabilityGateway implements CapabilityGateway {
+  @override
+  Future<Set<Capability>> resolve(String organizationId) async =>
+      {Capability.viewSongs};
 }
 
 class _RecordingEditorSongLibraryService extends Fake

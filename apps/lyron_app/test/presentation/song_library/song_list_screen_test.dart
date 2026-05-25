@@ -8,11 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
@@ -69,6 +71,7 @@ void main() {
     mutationEntriesForContext,
     bool? hasUnsyncedChanges,
     bool? hasUnsyncedPlanningMutations,
+    CapabilityResolver? capabilityResolver,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
       connectionStatus: CatalogConnectionStatus.online,
@@ -167,6 +170,13 @@ void main() {
                   hasUnsyncedPlanningMutations == true,
             ),
           ),
+        capabilityResolverProvider.overrideWith(
+          (_) =>
+              capabilityResolver ??
+              CapabilityResolver(
+                gateway: _StaticGateway(Capability.values.toSet()),
+              ),
+        ),
         if (mutableCatalogStateProvider != null)
           catalogSnapshotStateProvider.overrideWith(
             (ref) => ref.watch(mutableCatalogStateProvider),
@@ -350,6 +360,16 @@ void main() {
         songs: const [
           SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
         ],
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1108,6 +1128,11 @@ void main() {
           hasUnsyncedPlanningMutationsProvider.overrideWith(
             (ref) async => false,
           ),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(
+              gateway: _StaticGateway(Capability.values.toSet()),
+            ),
+          ),
           catalogSnapshotStateProvider.overrideWithValue(
             const CatalogSnapshotState(
               context: ActiveCatalogContext(
@@ -1192,6 +1217,16 @@ void main() {
             syncStatus: SongSyncStatus.conflict,
           ),
         ],
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -1447,6 +1482,67 @@ void main() {
       expect(attempts, 2);
     },
   );
+
+  testWidgets('hides import and create buttons for read-only user', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+        capabilityResolver: CapabilityResolver(
+          gateway: _StaticGateway({Capability.viewSongs}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songImportAction), findsNothing);
+    expect(find.text(AppStrings.songCreateAction), findsNothing);
+  });
+
+  testWidgets('shows import and create buttons for member user', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+        capabilityResolver: CapabilityResolver(
+          gateway: _StaticGateway({
+            Capability.viewSongs,
+            Capability.editSongs,
+          }),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songImportAction), findsOneWidget);
+    expect(find.text(AppStrings.songCreateAction), findsOneWidget);
+  });
 }
 
 class _TestAuthRepository implements AuthRepository {
@@ -1847,4 +1943,14 @@ class _StaticForegroundState implements AppForegroundState {
 
   @override
   Stream<bool> watchForeground() => const Stream<bool>.empty();
+}
+
+class _StaticGateway implements CapabilityGateway {
+  _StaticGateway(this._capabilities);
+
+  final Set<Capability> _capabilities;
+
+  @override
+  Future<Set<Capability>> resolve(String organizationId) async =>
+      _capabilities;
 }
