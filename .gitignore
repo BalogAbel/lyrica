@@ -30,3 +30,4 @@ scripts/manual-validation/.supabase-env
 apps/lyron_app/ios/Flutter/Generated.xcconfig
 apps/lyron_app/ios/Flutter/flutter_export_environment.sh
 apps/lyron_app/macos/Flutter/GeneratedPluginRegistrant.swift
+GAGy/
