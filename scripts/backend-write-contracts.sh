@@ -34,3 +34,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$planning_write_contract_test_script"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$song_crud_write_contract_test_script"
+
+organization_read_only_test_script="${ORGANIZATION_READ_ONLY_TEST_SCRIPT:-./scripts/tests/organization-read-only-role-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$organization_read_only_test_script"
