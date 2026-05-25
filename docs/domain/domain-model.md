@@ -62,6 +62,7 @@ Invariants:
 - `scope_type = 'organization'` requires `group_id` to be `null`.
 - `scope_type = 'group'` requires `group_id` to reference a group in the same organization.
 - Organization-scoped roles cannot be assigned to group-scoped memberships and vice versa.
+  Organization-scoped roles are: `organization_admin`, `organization_member`, `organization_read_only`. Group-scoped roles are: `group_admin`, `group_member`, `group_read_only`.
 - Organization-scoped memberships must be unique by `(organization_id, user_id, role_code)` when `group_id` is `null`.
 
 Operational note:
@@ -361,6 +362,8 @@ Authorization evaluates capabilities, not raw role strings in application code. 
 - `canManagePlans`
 
 Roles map to capabilities in backend-owned policy logic.
+
+The `organization_read_only` role grants `canViewSongs` only. It does not grant `canEditSongs`, `canManagePlans`, `canEditSessions`, `canManageOrganizationMembers`, or `canManageGroupMembers`. This role is intended for guest members (such as visiting musicians) who need to read the catalog and plan content but must not modify it. Invitations may carry this role; on redemption, an org-scoped membership with `organization_read_only` is created.
 
 Song mutation note:
 
