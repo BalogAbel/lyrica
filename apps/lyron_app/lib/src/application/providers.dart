@@ -687,9 +687,20 @@ final catalogSnapshotStateProvider = Provider.autoDispose<CatalogSnapshotState>(
 final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((ref) {
   final client = ref.watch(supabaseClientProvider);
   final resolver = CapabilityResolver(gateway: SupabaseCapabilityGateway(client));
+  // Invalidate on any auth state change (sign-in, sign-out, token refresh).
   ref.listen<AppAuthController>(
     appAuthControllerProvider,
     (_, __) => resolver.invalidate(),
   );
+  // Invalidate when a role upgrade completes via invitation redemption so
+  // write affordances appear immediately without requiring a sign-out/in.
+  ref.listen<RedeemState>(redeemControllerProvider.select((c) => c.state), (
+    prev,
+    next,
+  ) {
+    if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
+      resolver.invalidate();
+    }
+  });
   return resolver;
 });

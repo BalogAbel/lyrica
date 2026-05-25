@@ -34,25 +34,30 @@ class CapabilityResolver extends ChangeNotifier {
   CapabilityResolver({required CapabilityGateway gateway}) : _gateway = gateway;
 
   final CapabilityGateway _gateway;
-  final Map<String, Set<Capability>> _cache = {};
 
-  Future<Set<Capability>> capabilitiesFor(String organizationId) async {
-    final cached = _cache[organizationId];
-    if (cached != null) {
-      return cached;
-    }
-    final resolved = await _gateway.resolve(organizationId);
-    _cache[organizationId] = resolved;
-    return resolved;
-  }
+  // Stores in-flight and completed futures keyed by organizationId.
+  // Using Future<> deduplicates concurrent resolves triggered by multiple
+  // IfCapability widgets mounting in the same frame.
+  final Map<String, Future<Set<Capability>>> _cache = {};
 
-  Future<bool> hasCapability(String organizationId, Capability capability) async {
+  // Bumped on every invalidation so IfCapability can detect stale futures.
+  int _version = 0;
+  int get version => _version;
+
+  Future<Set<Capability>> capabilitiesFor(String organizationId) =>
+      _cache.putIfAbsent(organizationId, () => _gateway.resolve(organizationId));
+
+  Future<bool> hasCapability(
+    String organizationId,
+    Capability capability,
+  ) async {
     final set = await capabilitiesFor(organizationId);
     return set.contains(capability);
   }
 
   void invalidate() {
     _cache.clear();
+    _version++;
     notifyListeners();
   }
 }
