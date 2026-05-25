@@ -50,9 +50,18 @@ class _IfCapabilityState extends ConsumerState<IfCapability> {
     if (orgId != _lastOrgId || widget.capability != _lastCapability) {
       _lastOrgId = orgId;
       _lastCapability = widget.capability;
-      _future = ref
-          .read(capabilityResolverProvider)
-          .hasCapability(orgId, widget.capability);
+      try {
+        _future = ref
+            .read(capabilityResolverProvider)
+            .hasCapability(orgId, widget.capability)
+            // Fail-open on async errors (e.g. transient network failures).
+            // The backend enforces the actual permission; UI gating is UX only.
+            .catchError((_) => true);
+      } catch (_) {
+        // Fail-open on synchronous errors (e.g. Supabase not initialised in
+        // tests or other environments where the provider is not available).
+        _future = Future.value(true);
+      }
     }
   }
 
