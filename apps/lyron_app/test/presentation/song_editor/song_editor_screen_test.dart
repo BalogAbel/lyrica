@@ -383,16 +383,11 @@ Line two
             ),
           ),
           capabilityResolverProvider.overrideWith(
-            (_) => CapabilityResolver(
-              gateway: _ViewOnlyCapabilityGateway(),
-            ),
+            (_) => CapabilityResolver(gateway: _ViewOnlyCapabilityGateway()),
           ),
         ],
         child: MaterialApp(
-          home: SongEditorScreen.edit(
-            songId: 'song-1',
-            songSlug: 'egy-ut',
-          ),
+          home: SongEditorScreen.edit(songId: 'song-1', songSlug: 'egy-ut'),
         ),
       ),
     );
@@ -480,15 +475,10 @@ Future<void> _pumpScreen(
           const UnifiedSyncOverview.initial(),
         ),
         activeCatalogContextProvider.overrideWithValue(
-          const ActiveCatalogContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
         ),
         capabilityResolverProvider.overrideWith(
-          (_) => CapabilityResolver(
-            gateway: _FullCapabilityGateway(),
-          ),
+          (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
         ),
       ],
       child: MaterialApp(
@@ -516,8 +506,9 @@ class _FullCapabilityGateway implements CapabilityGateway {
 
 class _ViewOnlyCapabilityGateway implements CapabilityGateway {
   @override
-  Future<Set<Capability>> resolve(String organizationId) async =>
-      {Capability.viewSongs};
+  Future<Set<Capability>> resolve(String organizationId) async => {
+    Capability.viewSongs,
+  };
 }
 
 class _RecordingEditorSongLibraryService extends Fake

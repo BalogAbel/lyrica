@@ -1,0 +1,54 @@
+{title:Nézd ott fenn}
+{subtitle:See His Love}
+{key:C}
+[Am] [G]
+Nézd ott fenn, mi van a kereszten
+[F] [G]
+Áldozatul adott tökéletes élet
+[Am] [G]
+A szeretet lett odaszegezve
+[F] [G]
+Megtöretett testben: mindez csak értünk lett.
+
+[Am] [F]
+Ő itt Jézus, dicsőségben
+[G] [E]
+A Menny Királya meghalt értem
+[Am] [F]
+Így győzött le bűnt és halált
+[G] [E]
+Elvégezte: a Menny már nyitva áll.
+
+[Am] [G]
+Ennél több örömet honnan vársz
+[F] [G]
+Kegyelem által nyert igazi szabadság!
+[Am] [G]
+Minden bűn, rejtegetett szégyen
+[F] [G]
+Vele együtt halt meg, Vele a kereszten!
+
+[Am] [G]
+Értünk mindez
+[Em] [F]
+Mindez csak értünk lett!
+
+{comment:<Intro>}
+
+{comment:<Verse>}
+
+{comment:<PreChorus>}
+
+{comment:<Chorus>}
+{start_of_chorus}
+
+{end_of_chorus}
+
+{comment:<Bridge>}
+
+{comment:#Szerző:}
+{comment:#Fordító:}
+{comment:#Capo: }
+{comment:#Key:}
+[C]
+{comment://}

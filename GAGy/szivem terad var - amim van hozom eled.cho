@@ -1,0 +1,29 @@
+{title:Szívem Terád vár}
+{subtitle:Amim van hozom Eléd}
+{key:C}
+{zoom-ipad: 0.958066}
+
+{comment:<Verse 1>}
+[C] Amim van, hozom eléd,[Am7] leteszem a keresztnél, [G] legyen minden[F9] csak Tiéd, Ura[C]m
+
+{comment:<Verse 2>}
+[C] Minden lépés, minden szó,[Am7] legyen tiszta, mint a hó, [G] ahol járok[F9] Te legyél az ú[C]t
+
+{comment:<PreChorus>}
+Ó-[F]ó, szomjas szí[C]vem Terád vá[G]r, [Am7] ó - [F]ó, arra [Am7]vágyom ölelj á[G]t (Jézu[(C)]s)
+
+{comment:<Verse 3>}
+[C] Minden óra, minden nap,[Am7] minden sóhaj, gondolat, [G] Rólad szóljon,[F9] Rólad, Ura[C]m
+
+{comment:<Bridge>}
+Ó - [F]ó - [C]ó - [G]ó [Dm] ó - [F]ó - [C]ó - [G]ó
+
+{comment:<Chorus>}
+{start_of_chorus}
+Egész [C]életem [G]átadom, [Am7]hadd legyen Tiéd, [C/E] velem [F]bármit tervezté[G]l, legyen me[F]g örökké[G]!
+{end_of_chorus}
+
+[C]
+{comment:// Arms Open Wide}
+{comment:// | Sam Knock (Hillsong) | Kerekes Ernő & KREDIT (Dics-Suli 2010)}
+{tag: Énekes füzet}

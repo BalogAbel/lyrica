@@ -1,0 +1,40 @@
+{title:Úr vagy minden felett}
+{subtitle:Otthagytad a Mennyet hogy a földön légy ember}
+{key:Ab}
+{comment:<Intro>}
+
+{comment:<Verse1>}
+[Fm7]Otthagytad a [Dbmaj7]Mennyet, hogy a [Eb4]földön légy [Eb]ember
+[Fm7] Ragyogás [Dbmaj7]nélkül, de a [Ab]Menny ere[Eb]jével
+[Fm7]Kiittad [Dbmaj7]némán a [Eb4]kereszt poha[Eb]rát
+[C/E]És [Fm7]végigmen[Dbmaj7]tél minden [Eb4]fájdal[Eb]mán
+
+{comment:<PreChorus>}
+Egy [Bm]új [C/Ab]név [Db]várt [Eb]Rád
+Mely a [Fm]Menny minden [Db]hatalmát [Eb4]hordozza m[Eb]ár
+Egy [Bm]új [C/Ab]név [Db]várt [Eb]Rád
+Mely [Fm]elhozza h[Db]ozzánk a [Eb4]megvál[Eb]tást
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Ab]Jézus, [Eb/G]minden térd meghajol,
+[Fm]Jézus, [Eb]minden nyelv vallja, hogy
+[Db]Úr vagy [Ab/C]minden felett:
+A [Eb4]Mennyben, a Földön, s a [Eb]Föld mélyén.
+{end_of_chorus}
+
+{comment:<Interlude>}
+[Db] [Fm] [Ab] [Eb]
+
+{comment:<Verse2>}
+[Fm7]Szóltál a k[Dbmaj7]útnál, hogy [Eb4]élő víz[Eb] árad
+A [Fm7]szívbe, mely [Dbmaj7]előtted [Ab]megny[Eb]ílik
+A [Fm7]vihar el[Dbmaj7]némult, a [Eb4]beteg meg[Eb]gyógyult
+[C/E]És [Fm7]Benned a [Dbmaj7]dicsőség [Eb4]ránk ragyo[Eb]gott
+
+{comment:<Bridge>}
+Téged dics[Db]ér a Föld és az [Fm]Ég szívemnek [Ab]háláját hozom el[Eb]éd
+
+[Ab]
+Capo: 4 (->G)
+{comment:// EredetiCím}

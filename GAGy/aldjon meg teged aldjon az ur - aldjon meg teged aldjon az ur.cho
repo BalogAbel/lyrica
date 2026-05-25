@@ -1,0 +1,13 @@
+{title:Áldjon meg téged áldjon az Úr}
+{subtitle:Áldjon meg téged áldjon az Úr}
+{key:D}
+[D]Áldjon meg [Em]téged, [A]áldjon az [D]Úr
+[D]Őrizzen [Em]téged, [A]őrizzen [D]Ő!
+[D]Orcáját [G]mennyekből [A]fordítsa le [D]rád Atyánk!
+[D]Könyörüljön [G]rajtad, [A]könyörüljön [D]rajtad!
+[D]Adjon [G]békes[A]sé[D]get!
+
+[D]
+Capo: 4 (->G)
+
+{comment://}

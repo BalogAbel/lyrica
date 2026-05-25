@@ -13,13 +13,13 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
-import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -2035,83 +2035,77 @@ void main() {
     },
   );
 
-  testWidgets(
-    'hides plan edit and session create buttons for read-only user',
-    (tester) async {
-      await tester.pumpWidget(
-        buildApp(
-          planDetailValue: _editablePlanDetailFixture(),
-          capabilityResolver: CapabilityResolver(
-            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
+  testWidgets('hides plan edit and session create buttons for read-only user', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        capabilityResolver: CapabilityResolver(
+          gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planEditAction), findsNothing);
+    expect(find.text(AppStrings.sessionCreateAction), findsNothing);
+  });
+
+  testWidgets('shows plan edit and session create buttons for org member', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        capabilityResolver: CapabilityResolver(
+          gateway: _PlanDetailStaticCapabilityGateway(
+            Capability.values.toSet(),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text(AppStrings.planEditAction), findsNothing);
-      expect(find.text(AppStrings.sessionCreateAction), findsNothing);
-    },
-  );
+    expect(find.text(AppStrings.planEditAction), findsOneWidget);
+    expect(find.text(AppStrings.sessionCreateAction), findsOneWidget);
+  });
 
-  testWidgets(
-    'shows plan edit and session create buttons for org member',
-    (tester) async {
-      await tester.pumpWidget(
-        buildApp(
-          planDetailValue: _editablePlanDetailFixture(),
-          capabilityResolver: CapabilityResolver(
-            gateway: _PlanDetailStaticCapabilityGateway(
-              Capability.values.toSet(),
-            ),
-          ),
+  testWidgets('hides session delete button for read-only user', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        capabilityResolver: CapabilityResolver(
+          gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text(AppStrings.planEditAction), findsOneWidget);
-      expect(find.text(AppStrings.sessionCreateAction), findsOneWidget);
-    },
-  );
+    expect(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+      findsNothing,
+    );
+  });
 
-  testWidgets(
-    'hides session delete button for read-only user',
-    (tester) async {
-      await tester.pumpWidget(
-        buildApp(
-          planDetailValue: _editablePlanDetailFixture(),
-          capabilityResolver: CapabilityResolver(
-            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
-          ),
+  testWidgets('hides session item delete button for read-only user', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithThreeItemsFixture(),
+        capabilityResolver: CapabilityResolver(
+          gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets(
-    'hides session item delete button for read-only user',
-    (tester) async {
-      await tester.pumpWidget(
-        buildApp(
-          planDetailValue: _planDetailWithThreeItemsFixture(),
-          capabilityResolver: CapabilityResolver(
-            gateway: _PlanDetailStaticCapabilityGateway({Capability.viewSongs}),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
-        findsNothing,
-      );
-    },
-  );
+    expect(
+      find.byTooltip('${AppStrings.sessionItemDeleteAction}: Alpha'),
+      findsNothing,
+    );
+  });
 }
 
 PlanDetail _editablePlanDetailFixture() {

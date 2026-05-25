@@ -1,0 +1,33 @@
+{title:Szeretünk Téged}
+{subtitle:A gyenge szól erős vagyok}
+{key:C}
+{comment:<Intro>}
+[Am] [G/B] [C]
+
+{comment:<Verse 1>}
+A gyenge [Am]szól: E[G]rős va[C]gyok! Mert az [Dm]Úr Szelle[Am]me megerősí[G/B]tett en[C]gem
+És a sze[Am]gény fel[G]kel, így [C]szól: örök[Dm]ségem az [Am]Úr, Benne gazdag[G]gá let[C]tem!
+
+{comment:<PreChorus>}
+[Am] Égjen most újra az a láng, [F2] a tűz, mely mindent e[F/C]lé[C]get [C/G]Jézu[G]sért
+[Am] A Mennyel együtt hirde[F]tem: Te vagy a [Dm]Szent! [G]
+
+{comment:<Chorus>}
+{start_of_chorus}
+[G] Szeretünk Té[C]ged, imádunk U[Am]runk, Te vagy Iste[G]nünk, napunk és paj[C]zsunk
+{end_of_chorus}
+
+{comment:<Verse 2>}
+Hadd ragyog[Am]jon a Te [G]szent né[C]ped, mint fé[Dm]nyes menyas[Am]szony, ahogyan meg[G/B]álmod[C]tad
+Hogy nemze[Am]tünk meg[G]ismer[C]jen, tékoz[Dm]ló fiú[Am]ként Hozzád vissza[G]érkez[C]zen
+
+{comment:<Bridge>}
+Szeretünk Té[C]ged, imádunk U[Am]runk, Te vagy Iste[G]nünk, napunk és paj[C]zsunk
+Elküldted Fi[C]ad, hogy vigye kereszt[Am]jét, Ő bűnhő[G]dött minden bűnün[C]kért
+Szeretlek Ur[C]am, imádlak Jé[Am]zus, a remény tüze [G]ég, hitem szárnyat [C]bont
+Fogadd el tő[C]lem egész éle[Am]tem, Téged magasz[G]tal minden ben[C]nem
+
+[C]
+{comment:// Saviour King}
+{comment:// Mia Fieldes, Marty Sampson (Hillsong)}
+{comment:// Pintér Béla (Dics-Suli 2008)}

@@ -1,0 +1,31 @@
+{title:Meghívtál hogy vízre lépjek (Nagy neved hívom én)}
+{subtitle:Meghívtál hogy vízre lépjek}
+{key:D}
+{comment:<Verse 1>}
+[Bm] Meghívtál, hogy [A/C#]vízre [D]lépjek, hol nélkü[A]led elsüllye[G]dek
+[Bm] Ebben megta[A/C#]lállak [D]Téged, a mélys[A]égben megtart hi[G]tem
+
+{comment:<Chorus>}
+{start_of_chorus}
+[G] Nagy ne[D]ved hívom [A]én
+[G] Felné[D]zek a vizek fö[A]lé, ott látlak én
+[G] A lelkem [D]Benned megpi[A]hen
+Enyém v[G]agy és [A]én Ti[Bm]ed [A/C#] [D] [A] [G]
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[Bm] A mélységnél na[A/C#]gyobb ke[D]gyelmed, mely elve[A]zet és tart [G]engem
+[Bm] Ha elbuknék és [A/C#]nagyon [D]félnék, Te nem h[A]agysz el és nem in[G]ogsz meg
+
+{comment:<Bridge>}
+[Bm] Lélek add, hogy Benned [G]teljesen megbízzak
+A vízen [D]bátran Veled járjak, hogy [A]bárhová hívsz menjek!
+[Bm] Vigyél tovább, mint a l[G]ábam tudna menni
+Taníts [D]teljes hittel járni, je[A]lenlétedben élni!
+
+[D]
+Capo: 2 (->C)
+{comment:// Oceans (Where Feet May Fall) | Hillsong}
+# Joel Houston, Matt Crocker, Salomon Lighthelm (Hillsong)
+# Csiszér László, Sidó Éva
+{tag: Énekes füzet}

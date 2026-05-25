@@ -1,0 +1,31 @@
+{title:Mindent kegyelemből}
+{subtitle:Mindent kegyelemből kaptam Tőled Uram}
+{key:F}
+{comment:<Intro>}
+[F/C] [Gm7] [Bb/C] [F] [Bb/D] [C/E]
+
+{comment:<Verse>}
+[F]Mindent [C] kegyelemből [Dm7]kaptam Tőled U[Dm7/C]ram
+Olyan [Bbmaj7]hálás Neked a sz[F/A]ívem, mert [Gm7]megtapasztal[C]tam
+Hogy a Te [F]szereteted [Am7] elér a sz[Dm7]ívem legmélyé[C]ig
+[F/C]Hűséged megőrzi utam, [Gm7]velem [C]vagy min[F]dig [(Bb/D)] [(C/E)]
+
+{comment:<Chorus>}
+{start_of_chorus}
+(Hát) [C]dicsérlek most [F]Téged Isten[Am7]em
+Hozzád szálljon [Bbmaj7]új [Gm7]ének[C]em
+(Mert) kegyelmed u[F]tánam fut[Am7]ott
+Szereteted [Bbmaj7]megvál[Gm7]toztat[C]ott [(F/A)]
+{end_of_chorus}
+
+{comment:<Bridge>}
+És betölt[Bb(/F)]esz békessé[F(/A)]geddel, elárasz[Bb(/F)]tod lelkem ö[F(/A)]römmel
+És betölt[Bb(/F)]esz békessé[F(/A)]geddel, elárasz[Bb(/F)]tod lelkem ö[F(/A)]römmel
+És betölt[Bb(/F)]esz békessé[F(/A)]geddel, elárasz[Bb(/F)]tod lelkem ö[F(/A)]römmel
+Elbo[Bb]rí[F/A]tasz[Gm7] szent [F]tüzed[Ebmaj7]del [C]
+
+{comment:#Szerző: Fóris Attila}
+{comment:#Capo: 5 (->C)}
+[F]
+
+{comment://}

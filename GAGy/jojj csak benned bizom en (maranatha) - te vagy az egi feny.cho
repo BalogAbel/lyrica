@@ -1,0 +1,31 @@
+{title:Jöjj csak Benned bízom én (Maranatha)}
+{subtitle:Te vagy az égi fény}
+{key:Eb}
+{comment:<Verse>}
+[Cm] Te vagy az égi fény, [Ab] Benned van üdvösségem, [Eb]szívem Téged vá[Bb]r!
+[Cm] Kezedben biztonság, [Ab] Melletted élet vár, nem [Eb]félek többé má[Bb]r!
+
+{comment:<PreChorus>}
+[Ab]Ó-[Bb]ó-[Cm]ó, szent vagy, ú[Eb]r, mindenható[Bb]
+[Ab]Ó-[Bb]ó-[Cm]ó, dicsére[Eb]tre méltó[Bb]
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Ab]Jöjj, csak benned bízom [Eb]én, többé nem félek [Cm]én
+Nekem te vagy a [Bb]fény, mindig előttem jársz
+[Ab]Jöjj, mert tudom, hogy Te [Eb]élsz, és egy nap vissza[Cm]térsz
+Uralkodsz örök[Bb]ké, halleluja! [(Cm)]
+{end_of_chorus}
+
+{comment:<Instrumental>}
+[Eb] [Ab] [Eb] [Bb]
+
+{comment:<Bridge>}
+Jé[Eb]zus, Jé[Ab]zus, Mennyből [Eb]jöjj el hozzánk, drága Jé[Bb]zus
+Jé[Eb]zus, Jé[Ab]zus, Mennyből [Eb]jöjj el hozzánk, drága Jé[Bb]zus
+
+[Eb]
+Capo: 3 (->C)
+{comment:// Maranatha}
+{comment:// | Hananiel Eduardo (Ministerio Avivah) | Seprenyi Adél}
+{tag: Énekes füzet}

@@ -1,0 +1,17 @@
+{title:Sötétségből a fénybe emelsz}
+{subtitle:Sötétségből a fénybe emelsz}
+{key:A}
+S[A]ötétség[H/A]ből a f[Giszm]énybe e[Ciszm]melsz
+S[A]zabadítóm [H/A]Te v[E]agy!
+H[A]a eltéved[H/A]nék,
+Te m[Giszm]egkeres[Ciszm]el
+S[Fiszm] oha nem engedsz [H]el!
+
+[E]Te vagy Ura[H/Dísz]m,
+ i[Ciszm]mádlak é[Giszm]n
+L[A]eborul[E/Gisz]ok trónodn[D]ál[H].
+T[E]e vagy a b[H/Dísz]ékém,
+e[Ciszm]rőm és p[Giszm]ajzsom,
+[A]Sz[A/H]eretlek, j[H]öjj hozzá[E]m!
+
+{comment://}

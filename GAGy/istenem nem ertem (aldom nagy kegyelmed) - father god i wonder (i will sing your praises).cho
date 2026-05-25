@@ -1,0 +1,27 @@
+{title:Istenem nem értem (Áldom nagy kegyelmed)}
+{subtitle:Father God I Wonder (I Will Sing Your Praises)}
+{key:G}
+{comment:<Verse>}
+[Em] [D]
+Istenem nem értem, hogyan létezhettem nélküled
+[C] [D] [B7]
+Nem ismerve a kegyelmed és féltő szereteted
+[Em] [D]
+De te gyermekeddé fogadtál, új életet ajándékoztál
+[C] [D] [B7]
+S nem kínoz már a félelem, mert mindig itt vagy velem
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Em] [C] [D] [G]
+Áldom nagy kegyelmed, Téged ünnepellek
+[Em] [Am] [D] [B7] [(Em)]
+Téged és senki mást, amíg csak élek!
+{end_of_chorus}
+
+{comment:#Szerző: Ian Smale}
+{comment:#Fordító: Simonfalvi Zsolt}
+{comment:#Capo: 2 (G->F)}
+{comment:#Capo: 5 (G->D)}
+[G]
+{comment://}

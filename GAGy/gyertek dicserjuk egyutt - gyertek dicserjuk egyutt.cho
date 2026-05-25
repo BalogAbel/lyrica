@@ -1,0 +1,17 @@
+{title:Gyertek dicsérjük együtt}
+{subtitle:Gyertek dicsérjük együtt}
+{key:E}
+[E]Gyertek, dicsérjük együtt Izráel [F]Szentjét, mert Ő a [E7]Meg[Dm]vál[E7]tó!
+
+[E7]Emeld fel kezedet, [Dm]nyisd meg a szívedet, mert Ő a te Sza[E7]ba[Dm]dí[E7]tód!
+
+[Am]Gyertek! [Am]Gyertek!
+
+[Am]Menjünk fel az Úr hegyére, vígasságnak lakhelyére
+[Dm]Ujjongjunk Őelőtte, táncoljunk Őelőtte
+Az [E]Ő neve, az Ő neve, ott lakik az [Am]Úr!
+
+[E]
+{comment:// Hava Nagila}
+{comment:// Abraham Zevi Idelsohn}
+{comment:// ?}

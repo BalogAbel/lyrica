@@ -7,9 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
-import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
@@ -684,13 +684,17 @@ final catalogSnapshotStateProvider = Provider.autoDispose<CatalogSnapshotState>(
   },
 );
 
-final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((ref) {
+final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((
+  ref,
+) {
   final client = ref.watch(supabaseClientProvider);
-  final resolver = CapabilityResolver(gateway: SupabaseCapabilityGateway(client));
+  final resolver = CapabilityResolver(
+    gateway: SupabaseCapabilityGateway(client),
+  );
   // Invalidate on any auth state change (sign-in, sign-out, token refresh).
   ref.listen<AppAuthController>(
     appAuthControllerProvider,
-    (_, __) => resolver.invalidate(),
+    (_, _) => resolver.invalidate(),
   );
   // Invalidate when a role upgrade completes via invitation redemption so
   // write affordances appear immediately without requiring a sign-out/in.

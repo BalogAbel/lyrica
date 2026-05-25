@@ -1,0 +1,28 @@
+{title:Útkészítő}
+{subtitle:Te itt vagy itt vagy közöttünk}
+{key:C}
+{comment:<Verse 1>}
+Te itt va[F]gy, itt vagy közöttü[C]nk, és imá[G]dunk, és imá[Am]dunk
+Te itt va[F]gy, Szellemed le[C]száll, és imá[G]dunk, és imá[Am]dunk
+
+{comment:<Chorus>}
+{start_of_chorus}
+[F]Útkészítő, csodát cselekvő
+[C]Szavát megőrző, fény a sötétben
+[G] Te vagy egyedül, U[Am]ram
+{end_of_chorus}
+
+{comment:<Verse 2>}
+Te itt va[F]gy, miénk a megvál[C]tás, és imá[G]dunk, és imá[Am]dunk
+Te itt va[F]gy, meggyógyítot[C]tál, és imá[G]dunk, és imá[Am]dunk
+Te itt va[F]gy, hogy sorsokat írj [C]át, és imá[G]dunk, és imá[Am]dunk
+Te itt va[F]gy, mindent átfor[C]málsz, és imá[G]dunk, és imá[Am]dunk
+
+{comment:<Bridge>}
+[F] Akkor is, ha nem látom, nem érzem
+[C] Akkor is, ha nem látom, nem érzem
+[G] Te akkor is itt vagy bennem, [Am] akkor is harcolsz értem
+
+[C]
+{comment:// Waymaker (Sinach)}
+# Osinachi Okoro (Sinach)

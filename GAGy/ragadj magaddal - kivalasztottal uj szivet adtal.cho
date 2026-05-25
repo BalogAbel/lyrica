@@ -1,0 +1,25 @@
+{title:Ragadj magaddal}
+{subtitle:Kiválasztottál új szívet adtál}
+{key:A}
+{comment:Intro}
+[A2] [D2] [A2] [E] [A] [D] [F#m] [E]
+
+{comment:Verse 1}
+Ki[A/C#]választot[D]tál, [F#m]új szívet [E]adtál, [A/C#]ismertesd [D]meg velem [F#m]útjai[E]dat
+[A/C#]Vezess en[D]gem [F#m]Szellemed [E]által, hogy [A/C#]hirdethes[D]sem a Te [F#m]nagy neve[E]det!
+
+{comment:Chorus}
+{start_of_chorus}
+Ragadj magad[Dmaj7]dal, minden [E]nap, úgy [F#m]kérlek, [Dmaj7]emelj fel szent [E]trónod e[F#m]lé
+[Dmaj7]Hadd lakhas[E]sam [F#m]há[E]zad[D2]ban! [(E)]
+{end_of_chorus}
+
+{comment:Verse 2}
+[A/C#]Oltalmam [D]vagy, [F#m]pajzsom és [E]váram, [A/C#]Te tartasz [D]meg, tu[F#m]dom közel [E]vagy
+[A/C#]Minden u[D]tam [F#m]két kezed[E]ben van, [A/C#]maradj ve[D]lem, légy [F#m]mindig e[E]nyém!
+
+{comment:Bridge}
+[F#m] Vezess [E]drága Szent Szel[A2/C#]lem, [D2] [A2] [F#m] az igaz[E]ság ösvényé[A/C#]re
+Hadd [D]legyek [E4]fény!
+
+{comment://}

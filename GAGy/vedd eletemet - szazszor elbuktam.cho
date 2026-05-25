@@ -1,0 +1,38 @@
+{title:Vedd életemet}
+{subtitle:Százszor elbuktam}
+{key:C}
+{comment:<Intro>}
+[F] [C] [G] [F] [C] [G]
+
+{comment:<Verse 1>}
+Százszor [F]elbuktam, Te [C]megmentet[G]tél, telve [F]irgalommal Te [C]értem jöt[G]tél
+A Te [Am]fényed át[F]tör minden sö[C]tétsé[G]gen, örök [Am]Isten, di[F]csőséged nem [C]ér vé[G]get
+
+{comment:<Verse 2>}
+Légy Te [F]az első, vedd [C]élete[G]met, áta[F]dom magam most, hasz[C]nálj és ve[G]zess
+A Te [Am]fényed át[F]tör minden sö[C]tétsé[G]gen, szaba[Am]dítóm, di[F]csőséged nem [C]ér vé[G]get
+
+{comment:<Bridge>}
+[F] Minden uta[C]mat kezedbe a[Am]dom, formáld át szívem [G]legmélyét, jöjj
+[F] Hogy életem[Am]mel dicsérhesse[G]lek igazságban és [Dm]szellemben
+
+{comment:<Chorus>}
+{start_of_chorus}
+A Te [Am]fényed át[F]tör minden sö[C]tétsé[G]gen
+Örök [Am]Isten, di[F]csőséged nem [C]ér vé[G]get
+Szívem [C]áldozat[F]át letesz[G]em e[Am]léd Uram
+[F] Vedd [G]életemet, [F] for[G]málj át! [(F)]
+{end_of_chorus}
+
+{comment:<Instrumental>}
+[F] [C] [Am] [G] [F] [Am] [G] [Dm]
+
+{comment:<Ending>}
+[F] Vedd [G]életemet, [F] for[G]máld szívemet! [(F)]
+[F] Vedd [G]életemet, [F] for[G]máld szívemet! [(F)]
+[F] Vedd [G]életemet, [F] for[G]máld szívemet! [(F)]
+[F] Vedd [G]életemet, [F] for[G]málj át! [(C)]
+
+[C]
+{comment:// From The Inside Out (Hillsong)}
+# Joel Houston | Hunyadi Tamás

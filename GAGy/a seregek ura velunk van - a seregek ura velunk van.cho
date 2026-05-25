@@ -1,0 +1,30 @@
+{title:A seregek Ura velünk van}
+{subtitle:A seregek Ura velünk van}
+{key:Ab}
+{comment:<Verse 1>}
+[Fm] A seregek Ura velünk van, Jákob [Bbm]Istene a mi várunk
+Ő[Db] a mi oltalmu[C7]nk, erőssé[Fm]günk [Db] [C7]
+
+{comment:<Verse 2>}
+[Fm] A seregek Ura velünk van, Jákob [Bbm]Istene a mi várunk
+[Db]Biztos segítsé[C7]g a nyomorúsá[Fm]gban [F7]
+
+{comment:<Chorus>}
+{start_of_chorus}
+[(F7)] Ezért [Bbm]nem félünk, ha lá[Fm]bunk alatt [C7]megremeg a fö[Fm]ld
+[F7] Vagy ha [Bbm]háborog a te[Fm]nger, és [G7]minden hegy ledő[C7]l
+{end_of_chorus}
+
+{comment:<Verse 3>}
+[Fm] A seregek Ura velünk van, Jákob [Bbm]Istene a mi várunk
+[Db]Magasztalja Ő[C7]t az egész Fö[Fm]ld! [Db] [C7]
+
+{comment:<Ending>}
+[Db]Magasztalja Ő[C7]t, [Db]magasztalja Ő[C7]t
+[Db]Magasztalja Ő[C7]t az egész Fö[Fm]ld! [Bbm] [Fm] [Fm] [C7] [Fm]
+
+[Ab]
+Capo: 1 (->G)
+{comment:// (Gyárfás István)}
+# Dics-Suli 2010
+{tag: Énekes füzet}
