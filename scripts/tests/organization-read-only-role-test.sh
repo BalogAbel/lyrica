@@ -114,5 +114,32 @@ err = run_sql(dedent(f"""
 """), expect_error=True)
 assert "invitations_role_code_check" in err, err
 
+# 5. Combined membership: guest (org_read_only) who also holds group_member
+#    in the same org must retain group-scope write capability.
+group_id = "22222222-2222-2222-2222-222222222222"
+
+run_sql(dedent(f"""
+    insert into public.memberships
+      (organization_id, group_id, user_id, scope_type, role_code, status)
+    values
+      ('{org_id}', '{group_id}', '{guest_id}', 'group', 'group_member', 'active')
+      on conflict do nothing;
+"""))
+
+# When asked about the group scope, group_member (priority 4) wins over org_read_only (priority 5).
+out = run_sql_as_user(
+    f"select public.has_capability('{org_id}'::uuid, 'canEditSessions', '{group_id}'::uuid);",
+    guest_id,
+)
+assert "t" in out, f"expected canEditSessions=true for group_member scope, got: {out!r}"
+
+# When asked at org scope (no group_id), org_read_only wins — write cap still false.
+out = run_sql_as_user(
+    f"select public.has_capability('{org_id}'::uuid, 'canEditSongs');",
+    guest_id,
+)
+assert "f" in out, f"expected canEditSongs=false for org_read_only scope, got: {out!r}"
+
+print("organization-read-only-role-test combined-membership OK")
 print("organization-read-only-role-test OK")
 PY
