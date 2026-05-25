@@ -1,0 +1,29 @@
+{title:Te vagy az Isten (Nincs más Isten)}
+{subtitle:Nálad lett borrá a víz}
+{key:G}
+{comment:<Intro>}
+[Em7] [Cadd2] [Gadd5] [D/F#] [Em7] [Cadd2] [Gadd5] [D]
+
+{comment:<Verse>}
+[Em]Nálad lett bo[C]rrá a ví[G]z, [Em]holtakat é[C]letre hí[G]vsz
+Nincs más [Am]Isten, nincse[Dsus4]n más! [D]
+[Em]Te ragyogo[C]d be az é[G]jt, [Em]Te hozod e[C]l a remé[G]nyt
+Nincs más [Am]Isten, nincse[Dsus4]n más! [D]
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Em]Te vagy az Isten, [C]aki nevére
+[G]Leborul minden a fö[D/F#]ldön, az égen
+[Em]Hegyeket mozdít, [C]beteget gyógyít
+(Szíveket hódít, sebeket gyógyít)
+Az Ú[Gadd5]r ma [D]is
+{end_of_chorus}
+
+{comment:<Bridge>}
+[Em] És hogyha Isten velünk, [C] ember mit árthat nekünk?
+[G] [(Gadd5)] Mert hogyha Te vagy velünk, [D/F#] [(D)] ki lehet ellenünk?
+
+[G]
+/{artist: Our God | Chris Tomlin}
+
+{comment://}

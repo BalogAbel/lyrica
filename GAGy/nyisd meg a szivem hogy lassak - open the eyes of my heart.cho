@@ -1,0 +1,41 @@
+{title:Nyisd meg a szívem hogy lássak}
+{subtitle:Open The Eyes Of My Heart}
+{key:C}
+{comment:<Verse>}
+[C]
+Nyisd meg a szívem, hogy lássak
+[Am]
+Nyisd meg a szívemet
+[F] [G]
+Látni akarlak
+[C]
+Látni akarlak
+
+{comment:<Chorus>}
+{start_of_chorus}
+[G] [Am]
+Ahogy hatalmas erővel
+[F] [G]
+Ragyogsz dicsőségben
+[G] [Am]
+Áraszd ki szeretetet
+[F] [G]
+Ahogy énekeljük néked:
+{end_of_chorus}
+
+{comment:<Bridge>}
+[C]
+Szent, szent, szent vagy
+[G]
+Szent, szent, szent vagy
+[F]
+Szent, szent, szent vagy
+[C]
+Látni akarlak
+
+{comment:#Szerző:}
+{comment:#Fordító:}
+{comment:#Capo: }
+{comment:#Key:}
+[C]
+{comment://}

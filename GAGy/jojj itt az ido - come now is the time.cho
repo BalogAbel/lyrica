@@ -1,0 +1,19 @@
+{title:Jöjj itt az idő}
+{subtitle:Come Now Is The Time}
+{key:D}
+[D]Jöjj, itt az idő, hogy [G/D]di[D]csérd!
+[A]Jöjj, itt az idő, hogy [Em7]átadd szí[G]ved!
+[D]Jöjj, úgy, ahogy vagy és [G/D]di[D]csérd!
+[A]Jöjj, úgy, ahogy vagy az [Em7]Úr e[G]lé! [D]Jöjj!
+
+[G]Egyszer minden nyelv megvallja, [D]hogy Ő az Úr
+[G]És mindenki térdet ha[D]jt!
+De a [G]legnagyobb kincs mégis [Bm]azokra vár
+Kik [Em]most Őt választ[A4]ják! [A]
+
+{comment:#Szerző: Brian Doerksen}
+{comment:#Fordító: Golgota Debrecen, Csiszér László}
+{comment:#Capo: 2 (->C)}
+[D]
+
+{comment://}

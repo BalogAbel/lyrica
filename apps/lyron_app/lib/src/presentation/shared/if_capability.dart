@@ -60,9 +60,9 @@ class _IfCapabilityState extends ConsumerState<IfCapability> {
       _future = orgId == null
           ? null
           : resolver
-              .hasCapability(orgId, widget.capability)
-              // Fail-open on async errors (e.g. transient network failures).
-              .catchError((_) => true);
+                .hasCapability(orgId, widget.capability)
+                // Fail-open on async errors (e.g. transient network failures).
+                .catchError((_) => true);
     }
 
     final future = _future;

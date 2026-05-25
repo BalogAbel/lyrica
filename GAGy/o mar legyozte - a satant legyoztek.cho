@@ -1,0 +1,37 @@
+{title:Ő már legyözte}
+{subtitle:A sátánt legyözték}
+{key:G}
+{comment:<Verse 1>}
+A [Em]sátánt [D/E]legyőzté[Em]k a Bárány[Em] vé[D/E]rével[Em]
+És az [Am7]ő szavuk [Bm7]bizonyságával [Em][D/E][Em][D/E]
+[Em]Nem [D/E]kímél[Em]ték még az[Em] éle[D/E]tüket se[Em]m
+[Am7] Ennek örü[Bm7]lnek a Mennyben [Em][D/E][Em][D/E]
+
+{comment:<PreChorus>}
+[Am7]Itt a földö[Em]n üldözé[Bm7]s vár majd r[Em]ánk is
+[Am7] Mégis örvendezzünk mer[B7]t:
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Em]Ő már [D/E]legyőzt[Em]e, [D/E] [Em]Ő már [D/E]legyőzt[Em]e [D/E]
+[Am7]Ő már legyőzt[B7]e a világot [Em][D/E][Em][D/E]
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[Em]Sátánt [D/E]legyőzzü[Em]k a Bárány[Em] vé[D/E]rével[Em]
+És a [Am7]mi szavunk [Bm7]bizonyságával [Em][D/E][Em][D/E]
+[Em]Ne [D/E]kímél[Em]jük még az[Em] éle[D/E]tünket se[Em]m
+[Am7] Ennek örü[Bm7]lnek a Mennyben [Em][D/E][Em][D/E]
+
+{comment:<Chorus variant>}
+{start_of_chorus}
+[Em]Győztese[D/E]k vagyun[Em]k, [D/E] [Em]győztese[D/E]k vagyun[Em]k
+[Am7]Győztesek vagyun[B7]k a világ fölött [Em][D/E][Em][D/E]
+{end_of_chorus}
+
+{comment:#Szerző: Don Potter (MorningStar)}
+{comment:#Fordító: Prazsák László, Erős Tibor (Dics-Suli 2005)}
+{comment:#Eredeti cím: I Have Overcome}
+[G]
+
+{comment://}

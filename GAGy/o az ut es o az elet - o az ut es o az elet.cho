@@ -1,0 +1,29 @@
+{title:Ő az út és Ő az élet}
+{subtitle:Ő az út és Ő az élet}
+{key:Ab}
+{comment:<Verse 1>}
+[Ab]Ő az út és [Fm]Ő az élet,[Db] Ő Jézus a [Eb]nagy igéret
+[Ab]Ő királyok [Fm]nagy királya,[Db] Ő a világnak [Eb]világossága
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Db]Jézus, ó, [Eb]Jézus, én [Ab]úgy szeretlek [Fm]Téged
+[Db]Jézus, ó, [Eb]Jézus, di[Ab]csérlek amíg [Fm]élek
+Mert [Db]Te Uram vagy [Eb]felséges Is[Ab]ten az [Ab/G]egész [Fm]földön
+Mert [Db]Te Uram [Eb]felmegasztal[Ab]tattá[Ab/G]l a [Fm]földön
+[Db]Nincsen senki [Eb]Hozzád hason[(Ab)]ló
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[Ab]Ő az első [Fm]és utolsó,[Db] igaz király, [Eb] szabadító
+[Ab]Ő a kezdő [Fm]és bevégző,[Db] örök éle[Eb]tet igérő
+
+{comment:<Verse 3>}
+[Ab]Fent a Mennyben [Fm]Atyának jobbján,[Db] Ő a fiú és [Eb]Ő a bárány
+[Ab]Én Istenem, [Fm]én Királyom,[Db] teljes szívem[Eb]ből kiáltom
+
+{comment:#Szerző: ?}
+{comment:#Capo: 1 (->G)}
+[Ab]
+
+{comment://}

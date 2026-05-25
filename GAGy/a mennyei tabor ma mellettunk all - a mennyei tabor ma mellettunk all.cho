@@ -1,0 +1,23 @@
+{title:A mennyei tábor ma mellettünk áll}
+{subtitle:A mennyei tábor ma mellettünk áll}
+{key:G}
+{comment:<Verse 1>}
+A [Em]mennyei tábor ma mellettünk áll, a [C]harcban a [D]győztes az [Em]Úr
+A [Em]gonoszság bástyája proba száll, a [C]harcban a [D]győztes az [Em]Úr
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Em]És [D/F#]mi [G]ál[D]dunk, ma[Em]gasz[D/F#]tal[G]unk, [G]dicsérjük [D]szent nev[Em]ed
+[Em]Mert [D/F#]Te [G]jó [D]vagy, [Em]ir[D/F#]gal[G]mas, [G]megtartod [D]néped[Em]et
+{end_of_chorus}
+
+{comment:<Verse 2>}
+Ha [Em]gyűlölet ádázul rádtör, mint szélvész, a [C]harcban a [D]győztes az [Em]Úr
+Egy [Em]ellened készült fegyver sem szerencsés, a [C]harcban a [D]győztes az [Em]Úr
+
+{comment:<Verse 3>}
+Ha [Em]ellenség gúnyol, szidalmaz és vádol, a [C]harcban a [D]győztes az [Em]Úr
+Az [Em]oroszlán szája egyszer csak bezárul, a [C]harcban a [D]győztes az [Em]Úr
+
+[G]
+{comment:// The Battle Belongs To The Lord (Kent Henry)}

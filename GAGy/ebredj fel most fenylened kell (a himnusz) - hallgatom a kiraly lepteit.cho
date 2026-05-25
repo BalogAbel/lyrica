@@ -1,0 +1,30 @@
+{title:Ébredj fel most fénylened kell (A himnusz)}
+{subtitle:Hallgatom a király lépteit}
+{key:D}
+{comment:<Verse 1>}
+[Bm]Hallgatom a Király léptei[G]t, [D]lelkem hívó szívverései[A]t
+[Bm]Megmentett a sötét fogságbó[G]l, [D]hallom, hogy a Szellem hozzám szó[A]l
+
+{comment:<Chorus>}
+{start_of_chorus}
+(Így szól / Így hív)
+[Bm]Ébredj fel, most fé[G]nylened kell, ezért é[D]lsz, a te időd jö[A]tt el
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[Bm]Hallgatom a mennydörgés zajá[G]t, [D]hirdetem a feltámadt Kirá[A]lyt
+[Bm]Láncokat és falakat zúz szé[G]t, [D]várom már a kürtje zengésé[A]t
+
+{comment:<Bridge>}
+[Bm] Ez a himnusz, ez a nemzedékünk, [G] rázz fel Atyánk, rázd fel népünk
+[D] Teutánad vágyunk, mert [A]megragadtál
+
+{comment:<Coda>}
+[Bm]Vár a királyság, [G]vár a szabadság, [Bm]vár az elhívás, a [G]történelem formálás
+
+[Bm] [G] [D] [A]
+Változzon át a Föld!
+
+[D]
+Capo: 2 (->C)
+{comment:// The Anthem | Jake Hamilton}

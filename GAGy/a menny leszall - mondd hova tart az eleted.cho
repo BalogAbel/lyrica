@@ -1,0 +1,26 @@
+{title:A Menny leszáll}
+{subtitle:Mondd hova tart az életed}
+{key:A}
+{comment:<Verse 1>}
+[A5] Mondd, hova [D9]tart az életed[E4]? A magas [F#m7]kábít, nem enged
+[A5] Ha hegyek, [D9]völgyek törnek rád[E4], az Ő [F#m7]szeretete megtalál
+
+{comment:<Chorus>}
+{start_of_chorus}
+[A5] Szívem kiált[D9], lelkem vár Rád[E4], vedd életem[F#m7], leteszem neked
+[A5] Emelkedj fel[D9], szárnyra emel[E4], a Menny leszáll[F#m7], Vele minden más
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[A5] Mondd, milyen [D9]kincs ér fel Vele[E4]? Szabad[F#m7]ság, 'mit meg nem vehetsz
+[A5] A világ [D9]csábít, nem enged[E4], a Mennyel [F#m7]új életed lehet
+
+{comment:<Bridge>}
+[A5] Trónod elé most le[D9]borulok, mindaz, '[E4]mi vagyok, Uram, [F#m7]fogadd el tőlem
+[A5] Árassz el újra sze[D9]relmeddel, lelkem [E4]táncra kel, és [F#m7]szárnyal Veled
+
+[A]
+Capo: 2 (->G)
+{comment:// Touch The Sky (Hillsong)}
+# Joel Houston, Dylan Thomas, Michael Guy Chislett | Seprenyi Adél
+{tag: Énekes füzet}

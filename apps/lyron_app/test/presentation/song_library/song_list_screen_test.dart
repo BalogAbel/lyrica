@@ -14,7 +14,6 @@ import 'package:lyron_app/src/application/planning/planning_sync_controller.dart
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
-import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
@@ -28,6 +27,7 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
@@ -1531,10 +1531,7 @@ void main() {
           hasCachedCatalog: true,
         ),
         capabilityResolver: CapabilityResolver(
-          gateway: _StaticGateway({
-            Capability.viewSongs,
-            Capability.editSongs,
-          }),
+          gateway: _StaticGateway({Capability.viewSongs, Capability.editSongs}),
         ),
       ),
     );
@@ -1951,6 +1948,5 @@ class _StaticGateway implements CapabilityGateway {
   final Set<Capability> _capabilities;
 
   @override
-  Future<Set<Capability>> resolve(String organizationId) async =>
-      _capabilities;
+  Future<Set<Capability>> resolve(String organizationId) async => _capabilities;
 }

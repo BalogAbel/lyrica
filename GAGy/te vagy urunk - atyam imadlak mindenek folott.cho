@@ -1,0 +1,29 @@
+{title:Te vagy Urunk}
+{subtitle:Atyám imádlak mindenek fölött}
+{key:G}
+{comment:<Verse 1>}
+A[Em7]tyám, imádlak mindenek fölött, sz[C2]ívem egyre jobban vágyik [G5]Rád
+Szomjazom [D/F#]Rád
+Úr [Em7]Jézus, kedves megváltóm, min[C2]dent, amim van, Töled kaptam [G5]én
+Mert szeret[D/F#]tél
+
+{comment:<PreChorus>}
+És [Am7]zúg a [C]Menny, Neked [D4]hód[D]ol, mi [Am7]itt a [C]földön áldu[D4]nk [D]
+
+{comment:<Chorus>}
+{start_of_chorus}
+Te vagy Uru[G]nk és Istenü[D]nk, letesszük né[C]ked életü[D]nk
+Csodálato[G]s és fensége[D]s, senki nincs o[C]ly dicső, mint [Cm6]Te
+{end_of_chorus}
+
+{comment:<Verse 2>}
+És [Em7]Te vagy az egész világom, [C2]oly jó mindenkor Veled jár[G5]nom
+Te vagy az [D/F#]út
+Az [Em7]új élet ajándék Tőled, [C2]kérlek, adj hozzá bölcsessé[G5]get
+Hogy kövesse[D/F#]lek
+
+{comment:#Szerző: Marty Sampson (Hillsong)}
+{comment:#Fordító: Németh S. Judit}
+{comment:#Eredeti cím: You Are My World}
+[G]
+{comment://}

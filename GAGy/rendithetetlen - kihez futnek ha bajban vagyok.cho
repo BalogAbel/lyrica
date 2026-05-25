@@ -1,0 +1,35 @@
+{title:Rendíthetetlen}
+{subtitle:Kihez futnék ha bajban vagyok}
+{key:D}
+{comment:<Verse 1>}
+[Em]Kihez [D/F#]fut[G]nék, [A] [Bm] ha baj[Bm]ban [A]vagyok?
+[Em]Kiben [D/F#]bíz[G]nék, [A] [Bm] ha gyen[Bm]ge [A]vagyok?
+[Em] Lelked [D/F#]súg[G]ja, hogy Te vagy [D]Oltal[Em]om! [G]
+[Em] Ez így volt, [D/F#]így [G]van, így lesz, én [D]jól tud[Em]om!
+
+{comment:<Chorus>}
+{start_of_chorus}
+[Em]Kő[G]szik[A]la az élő [Em]Isten! [G] [D/A] [A]
+[Em]Kő[G]szik[A]la, senki más [Em]nincsen! [G] [D/A] [A]
+{end_of_chorus}
+
+{comment:<Verse 2>}
+Ha [Em]sötét [D/F#] i[G]dők, [A] [Bm] vár[Bm]nak [A]engem?
+Ha [Em]sötét [D/F#] e[G]rők, [A] [Bm] jön[Bm]nek [A]szembe
+[Em] Benned [D/F#]van[G]minden remény [D]és er[Em]ő! [G]
+[Em] Jönnek [D/F#]men[G]nek idők, Te [D]maradsz megmen[Em]tő!
+
+{comment:<Bridge 1>}
+[Em]Ó[Em/F#]-[G]ó-[A]Ó r[Em]endíthetetlen
+[Em]Ó[Em/F#]-[G]ó-[A]Ó le[Em]győzhetetlen
+
+{comment:<Bridge 2>}
+[Em] Lelked [D/F#]súg[G]ja, hogy Te vagy [D]Oltal[Em]om! [G]
+[Em] Ez így volt, [D/F#]így [G]van, így lesz, én [D]jól tud[Em]om! [G]
+[Em] Benned [D/F#]van[G]minden remény [D]és er[Em]ő! [G]
+[Em] Jönnek [D/F#]men[G]nek idők, Te [D]maradsz megmen[Em]tő!
+
+{comment:#Szerző: Révész Dániel (Dics-Suli 2018)}
+{comment:#Capo: }
+[D]
+{comment://}

@@ -1,0 +1,38 @@
+{title:Ő nem ereszt el & Velem vagy a harcban Jézus}
+{subtitle:Körülvesz a völgy hol a halál sötét árnyékot vet}
+{key:A}
+{comment:<Verse 1>}
+Körülvesz a [A]völgy, hol a halál sötét árnyékot vet, de [D]szeretete őriz és véd
+Fölkavar és [A]zúg a vad vihar a szívemben bent, Ő [D]velem van és ennyi elég
+
+{comment:<PreChorus>}
+Démonhad sem [F#m]ré[E]é[A]mít, ha Isten karja [F#m]é[E]é[A]rint
+És ha Isten karja [F#m]é[E]é[A]rint: Mitől félnék [E]hát? Kitől félnék [D]hát?
+
+{comment:<Chorus>}
+{start_of_chorus}
+[A]Ő nem, Ő nem ereszt el, sima út vagy sártenger
+[F#m]Ő nem, Ő nem ereszt el, völgybe le vagy hegyre fel
+[E]Ő nem, Ő nem ereszt el, [D]nem, Ő nem ereszt engem már el [A] [E] [D]
+{end_of_chorus}
+
+{comment:<Verse 2>}
+Közeleg a [A]fény, amely betőlt, ha célba érek, a [D]dicsőséges tündöklő fény
+Közeleg a [A]nap, mikor vége minden szenvedésnek, s már [D]egyre jobban ismerem én
+
+{comment:<Bridge>}
+Közeleg a [A]fény, amely betölt, ha célba érek
+Közeleg a [F#m]nap, mikor vége minden szenvedésnek
+[E] Addig is áldom,[D] Istenem áldom[A][E][D]
+
+{comment:>>> Velem vagy a harcban Jézus <<<}
+
+Velem vagy a [A]harcban, Jézus, velem vagy a [D]harcban Jézus
+
+[A] Erős váram, [D]oltalmam, Veled [E]mindig győztes vagy[F#m]ok!
+
+[A]
+Capo: 2 (->G)
+{tag: Énekes füzet}
+
+{comment://}

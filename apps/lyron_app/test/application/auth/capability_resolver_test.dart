@@ -42,7 +42,10 @@ void main() {
     final gateway = _FakeCapabilityGateway({Capability.viewSongs});
     final resolver = CapabilityResolver(gateway: gateway);
 
-    expect(await resolver.hasCapability('org-1', Capability.editSongs), isFalse);
+    expect(
+      await resolver.hasCapability('org-1', Capability.editSongs),
+      isFalse,
+    );
     expect(await resolver.hasCapability('org-1', Capability.viewSongs), isTrue);
   });
 }

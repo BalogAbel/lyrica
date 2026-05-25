@@ -1,0 +1,35 @@
+{title:Benned szabad vagyok}
+{subtitle:Téged hívlak Istenem}
+{key:C}
+{comment:<Intro>}
+[F] [G] [Am] [C/E] [F] [G] [Am] [Am]
+
+{comment:<Verse1>}
+[F] Téged hívl[G]ak, Isten[Am]em, [C/E] [F] eléd hoz[G]om megtört szívem[Am]et [Am]
+
+{comment:<PreChorus>}
+Nincs m[F]ás király, ki [G]eljött volna [Am]értem [C/E]
+S megm[F]entse lelkem [G]és szív[Am]em [G]
+[Am] Nincs több [C/E]áldozat, [C] Te értem j[G]öttél el
+[Am] Ez a l[G]egnagyobb, [F] nincs már m[G]ás kincs[C]em
+
+{comment:<Chorus>}
+{start_of_chorus}
+[C] Áld[G]lak U[Am]ram, meg[F]mentet[C]tél, Te vagy [G]mindenem, R[Am]ád van [F]szükségem
+{end_of_chorus}
+
+{comment:<Interlude1>}
+[F] [G] [Am] [C/E]
+
+{comment:<Verse2>}
+[F] Dicsérlek [G]én, Isten[Am]em, [C/E] [F] Benned pih[G]en az élet[Am]em [Am]
+
+{comment:<Interlude2>}
+[C] [G] [Am] [F]
+
+{comment:<Bridge>}
+[F] Benned szabad vagyok [C]már, Benned szabad vagyok [Am]már
+Átadom a sz[C/E]ívem, [F] átadom a l[C]ényem [F]
+
+{comment:In Your Freedom}{comment:// Szerző | Fordító}
+{tag: Énekes füzet}

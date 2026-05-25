@@ -44,8 +44,8 @@ class CapabilityResolver extends ChangeNotifier {
   int _version = 0;
   int get version => _version;
 
-  Future<Set<Capability>> capabilitiesFor(String organizationId) =>
-      _cache.putIfAbsent(organizationId, () => _gateway.resolve(organizationId));
+  Future<Set<Capability>> capabilitiesFor(String organizationId) => _cache
+      .putIfAbsent(organizationId, () => _gateway.resolve(organizationId));
 
   Future<bool> hasCapability(
     String organizationId,

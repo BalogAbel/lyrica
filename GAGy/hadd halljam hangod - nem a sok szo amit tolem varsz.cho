@@ -1,0 +1,27 @@
+{title:Hadd halljam hangod}
+{subtitle:Nem a sok szó amit tőlem vársz}
+{key:G}
+{comment:<Verse 1>}
+[G] Nem a sok szó, amit tőlem [C]vársz
+[Em] Mikor csendben [D]vágyom [C]Rád
+[G] Amint jobban megismerlek [C]Téged, Uram, hallom szavad
+[Em] Akarlak, [D] akarlak még jobba[C]n
+
+{comment:<Chorus>}
+{start_of_chorus}
+[G] Hadd halljam [D]hangod,[Em] hadd értsek [C]még többet
+[G] Újítsd meg [D]értelme[C]m
+[G] Hadd lássam [D]arcod,[Em] ruhád hadd [C]érintsem
+[G] Töltsön be [D]Szelleme[C]d
+{end_of_chorus}
+
+{comment:<Verse 2>}
+[G] Magasabbra török minden [C]nap
+[Em] Ami elmúlt, [D]elhagy[C]tam
+[G] Nekidőlve útjaimból [C]félreteszem bűneimet
+[Em] Hogy jutalmam,[D] jutalmam megkapja[C]m
+
+[G]
+{comment:// I Want To Know You}
+{comment:// | Andy Park (Vineyard) | Varga Eszter, Bagyinszki Judit}
+{tag: Énekes füzet}

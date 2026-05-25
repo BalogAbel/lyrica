@@ -1,0 +1,27 @@
+{title:Jöjjetek és énekeljünk}
+{subtitle:Nows The Time}
+{key:D}
+[D] [G] [A] [D]
+Jöjjetek és énekeljünk együtt az Úr előtt
+[Bm] [Em] [A] [D]
+Áldjuk Őt és magasztaljuk mindenek fölött
+
+[D] [G]
+Ünnepeljük Őt, a Menny urát
+[A] [D]
+Imádjuk Őt, a Messiást!
+[D] [G]
+Angyalok zúgják győzelem dalát
+[A] [D]
+Dicsérjük együtt most a nagy Királyt!
+
+[D] [G] [A] [D]
+Halleluja, halleluja
+[Bm] [Em] [A] [D]
+Halleluja, halleluja
+
+{comment:#Szerző: Carman Licciardo}
+{comment:#Fordító: Debreceni István}
+{comment:#Capo: 2 (D->C)}
+[D]
+{comment://}

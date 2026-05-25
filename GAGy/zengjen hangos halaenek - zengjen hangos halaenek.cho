@@ -1,0 +1,27 @@
+{title:Zengjen hangos hálaének}
+{subtitle:Zengjen hangos hálaének}
+{key:C}
+{comment:<Intro>}
+[C] [C4]
+
+{comment:<Verse 1>}
+[C] Zengjen [C4]hangos hála[C]ének, [C] [C/B] [Am] szívünk [F]töltse be örö[G]m
+[C] Ujjong[C4]junk az Ő győzel[C]mének, [C] [C/B] [Am] Jézusnak [F]hódoljon a Fö[G]ld
+
+{comment:<Chorus>}
+{soc}
+A he[C]gyekről, [C/B] sík me[F]zőkről új dal [Am7]száll fel [Em7] az ég fe[F]lé [G]
+És a [C]Mennyből [C/B] kürtszó [F]zendül, együtt [Am7]áldjuk [Em7] Szent Ne[F]vét! [G]
+{eoc}
+
+{comment:<Verse 2>}
+[C] Felragyo[C4]g világoss[C]ágod, [C] [C/B] [Am] igaz[F]ságod mint a dé[G]l
+[C] Békes[C4]séged, mint folyó [C]árad, [C] [C/B] [Am] Úr 's ki[F]rály vagy örökk[G]é
+
+{comment:<Bridge>}
+Halle[F]luja, [Dm] halle[Am]luja [Em]
+Halle[F]luja, [Dm] halle[G]luja
+
+[C]
+{comment:// Hear Our Praises (Hillsong)}
+#Szerző: Reuben Morgan

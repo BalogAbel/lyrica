@@ -10,11 +10,11 @@ import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.da
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
+import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart';
-import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -561,9 +561,8 @@ class _MutationStatusSurface extends ConsumerWidget {
                                               .keepMine(
                                                 SongMutationContext(
                                                   userId: activeContext.userId,
-                                                  organizationId:
-                                                      activeContext
-                                                          .organizationId,
+                                                  organizationId: activeContext
+                                                      .organizationId,
                                                 ),
                                                 songId: entry.id,
                                               );
@@ -573,7 +572,9 @@ class _MutationStatusSurface extends ConsumerWidget {
                                           ref.invalidate(
                                             songLibraryListProvider,
                                           );
-                                        } on SongMutationSyncException catch (error) {
+                                        } on SongMutationSyncException catch (
+                                          error
+                                        ) {
                                           ref.invalidate(
                                             songMutationEntriesProvider,
                                           );
@@ -612,9 +613,8 @@ class _MutationStatusSurface extends ConsumerWidget {
                                               .discardMine(
                                                 SongMutationContext(
                                                   userId: activeContext.userId,
-                                                  organizationId:
-                                                      activeContext
-                                                          .organizationId,
+                                                  organizationId: activeContext
+                                                      .organizationId,
                                                 ),
                                                 songId: entry.id,
                                               );
@@ -624,7 +624,9 @@ class _MutationStatusSurface extends ConsumerWidget {
                                           ref.invalidate(
                                             songLibraryListProvider,
                                           );
-                                        } on SongMutationSyncException catch (error) {
+                                        } on SongMutationSyncException catch (
+                                          error
+                                        ) {
                                           ref.invalidate(
                                             songMutationEntriesProvider,
                                           );
