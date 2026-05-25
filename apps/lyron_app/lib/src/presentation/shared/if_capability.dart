@@ -7,6 +7,10 @@ import '../../domain/core/capability.dart';
 
 /// Renders [child] only when the active organization grants [capability].
 /// When capability is unknown or absent, renders [SizedBox.shrink].
+///
+/// Fail-open: if the resolver is unavailable (e.g. Supabase not initialised
+/// in tests, or a transient network error), the child is shown — the backend
+/// enforces the actual permission; this widget is a UX affordance only.
 class IfCapability extends ConsumerStatefulWidget {
   const IfCapability({
     super.key,
@@ -27,46 +31,40 @@ class _IfCapabilityState extends ConsumerState<IfCapability> {
   Future<bool>? _future;
   String? _lastOrgId;
   Capability? _lastCapability;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _refreshIfNeeded();
-  }
-
-  @override
-  void didUpdateWidget(IfCapability old) {
-    super.didUpdateWidget(old);
-    _refreshIfNeeded();
-  }
-
-  void _refreshIfNeeded() {
-    final orgId = widget.organizationId;
-    if (orgId == null) {
-      _future = null;
-      _lastOrgId = null;
-      return;
-    }
-    if (orgId != _lastOrgId || widget.capability != _lastCapability) {
-      _lastOrgId = orgId;
-      _lastCapability = widget.capability;
-      try {
-        _future = ref
-            .read(capabilityResolverProvider)
-            .hasCapability(orgId, widget.capability)
-            // Fail-open on async errors (e.g. transient network failures).
-            // The backend enforces the actual permission; UI gating is UX only.
-            .catchError((_) => true);
-      } catch (_) {
-        // Fail-open on synchronous errors (e.g. Supabase not initialised in
-        // tests or other environments where the provider is not available).
-        _future = Future.value(true);
-      }
-    }
-  }
+  int? _lastVersion;
 
   @override
   Widget build(BuildContext context) {
+    // Watch the resolver so this widget rebuilds when invalidate() fires
+    // (e.g. after an auth state change or a role upgrade via invitation).
+    CapabilityResolver resolver;
+    try {
+      resolver = ref.watch(capabilityResolverProvider);
+    } catch (_) {
+      // Fail-open: resolver unavailable (e.g. Supabase not initialised).
+      return widget.child;
+    }
+
+    final orgId = widget.organizationId;
+    final version = resolver.version;
+
+    // Re-create the future only when orgId, capability, or resolver version
+    // changes. Preserving _future across unrelated parent rebuilds prevents
+    // the child from flashing hidden while the new future resolves.
+    if (orgId != _lastOrgId ||
+        widget.capability != _lastCapability ||
+        version != _lastVersion) {
+      _lastOrgId = orgId;
+      _lastCapability = widget.capability;
+      _lastVersion = version;
+      _future = orgId == null
+          ? null
+          : resolver
+              .hasCapability(orgId, widget.capability)
+              // Fail-open on async errors (e.g. transient network failures).
+              .catchError((_) => true);
+    }
+
     final future = _future;
     if (future == null) return const SizedBox.shrink();
     return FutureBuilder<bool>(
