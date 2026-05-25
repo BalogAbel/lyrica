@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
@@ -682,3 +683,13 @@ final catalogSnapshotStateProvider = Provider.autoDispose<CatalogSnapshotState>(
     return ref.watch(songCatalogControllerProvider).state;
   },
 );
+
+final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  final resolver = CapabilityResolver(gateway: SupabaseCapabilityGateway(client));
+  ref.listen<AppAuthController>(
+    appAuthControllerProvider,
+    (_, __) => resolver.invalidate(),
+  );
+  return resolver;
+});
