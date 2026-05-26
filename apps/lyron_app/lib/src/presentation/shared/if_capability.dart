@@ -46,6 +46,15 @@ class _IfCapabilityState extends ConsumerState<IfCapability> {
     }
 
     final orgId = widget.organizationId;
+    if (orgId == null) return const SizedBox.shrink();
+
+    // Synchronous fast-path: if capabilities are already resolved, render
+    // without FutureBuilder to avoid a 1-frame flicker on cache hits.
+    final syncResult = resolver.hasCapabilitySync(orgId, widget.capability);
+    if (syncResult != null) {
+      return syncResult ? widget.child : const SizedBox.shrink();
+    }
+
     final version = resolver.version;
 
     // Re-create the future only when orgId, capability, or resolver version
@@ -57,12 +66,10 @@ class _IfCapabilityState extends ConsumerState<IfCapability> {
       _lastOrgId = orgId;
       _lastCapability = widget.capability;
       _lastVersion = version;
-      _future = orgId == null
-          ? null
-          : resolver
-                .hasCapability(orgId, widget.capability)
-                // Fail-open on async errors (e.g. transient network failures).
-                .catchError((_) => true);
+      _future = resolver
+          .hasCapability(orgId, widget.capability)
+          // Fail-open on async errors (e.g. transient network failures).
+          .catchError((_) => true);
     }
 
     final future = _future;
