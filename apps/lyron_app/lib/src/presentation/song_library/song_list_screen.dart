@@ -542,13 +542,13 @@ class _MutationStatusSurface extends ConsumerWidget {
                               );
                               final conflictOrgId =
                                   activeContext?.organizationId;
-                              return Wrap(
-                                spacing: 8,
-                                children: [
-                                  IfCapability(
-                                    capability: Capability.editSongs,
-                                    organizationId: conflictOrgId,
-                                    child: TextButton(
+                              return IfCapability(
+                                capability: Capability.editSongs,
+                                organizationId: conflictOrgId,
+                                child: Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    TextButton(
                                       onPressed: () async {
                                         if (activeContext == null) {
                                           return;
@@ -596,11 +596,7 @@ class _MutationStatusSurface extends ConsumerWidget {
                                         AppStrings.songKeepMineAction,
                                       ),
                                     ),
-                                  ),
-                                  IfCapability(
-                                    capability: Capability.editSongs,
-                                    organizationId: conflictOrgId,
-                                    child: TextButton(
+                                    TextButton(
                                       onPressed: () async {
                                         if (activeContext == null) {
                                           return;
@@ -648,8 +644,8 @@ class _MutationStatusSurface extends ConsumerWidget {
                                         AppStrings.songDiscardMineAction,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               );
                             },
                           )
