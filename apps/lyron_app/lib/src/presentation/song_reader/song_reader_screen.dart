@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
@@ -491,6 +492,19 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   Widget build(BuildContext context) {
     final readerAsync = ref.watch(songLibraryReaderProvider(widget.songId));
     final catalogState = ref.watch(catalogSnapshotStateProvider);
+
+    // Resolve edit capability synchronously (cache hit) for the overflow menu.
+    // Fail-open when org context or resolver are unavailable.
+    final orgId = catalogState.context?.organizationId;
+    bool canEditSongs = true;
+    if (orgId != null) {
+      try {
+        final resolver = ref.read(capabilityResolverProvider);
+        canEditSongs =
+            resolver.hasCapabilitySync(orgId, Capability.editSongs) ?? true;
+      } catch (_) {}
+    }
+
     final isResolvingCatalogContext =
         catalogState.context == null &&
         catalogState.refreshStatus == CatalogRefreshStatus.refreshing;
@@ -605,15 +619,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                   value: _SongReaderOverflowAction.pianoView,
                   child: Text(AppStrings.songReaderPianoViewAction),
                 ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.edit,
-                  child: Text(AppStrings.songEditAction),
-                ),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.delete,
-                  child: Text(AppStrings.songDeleteAction),
-                ),
+                if (canEditSongs) ...[
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: _SongReaderOverflowAction.edit,
+                    child: Text(AppStrings.songEditAction),
+                  ),
+                  PopupMenuItem(
+                    value: _SongReaderOverflowAction.delete,
+                    child: Text(AppStrings.songDeleteAction),
+                  ),
+                ],
               ],
             ),
         ],
