@@ -535,8 +535,8 @@ class _MutationStatusSurface extends ConsumerWidget {
                     title: Text(entry.title),
                     subtitle: Text(_messageFor(entry)),
                     trailing: entry.syncStatus == SongSyncStatus.conflict
-                        ? Builder(
-                            builder: (context) {
+                        ? Consumer(
+                            builder: (context, ref, _) {
                               final activeContext = ref.watch(
                                 activeCatalogContextProvider,
                               );
