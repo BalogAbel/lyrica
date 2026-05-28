@@ -424,6 +424,26 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
     final projection = SongEditorProjection(state: _controller.state);
     final orgId = ref.watch(activeCatalogContextProvider)?.organizationId;
 
+    // Guard against direct deep-links or capability downgrade mid-session.
+    // Fail-open when orgId or resolver are unavailable (consistent with
+    // IfCapability's fail-open contract — backend enforces the actual check).
+    if (orgId != null) {
+      bool canEdit = true;
+      try {
+        canEdit =
+            ref
+                .watch(capabilityResolverProvider)
+                .hasCapabilitySync(orgId, Capability.editSongs) ??
+            true;
+      } catch (_) {}
+      if (!canEdit) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.pop();
+        });
+        return const SizedBox.shrink();
+      }
+    }
+
     return PopScope<void>(
       canPop: !_isDirty,
       onPopInvokedWithResult: (didPop, result) {
