@@ -19,7 +19,9 @@ class SupabaseCapabilityGateway implements CapabilityGateway {
       'get_my_capabilities',
       params: {'target_organization_id': organizationId},
     );
-    final codes = ((response as List<dynamic>?) ?? []).cast<String>().toSet();
+    final codes = response is List
+        ? response.map((e) => e.toString()).toSet()
+        : <String>{};
     return Capability.values.where((c) => codes.contains(c.code)).toSet();
   }
 }
