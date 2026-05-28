@@ -13,20 +13,14 @@ class SupabaseCapabilityGateway implements CapabilityGateway {
 
   @override
   Future<Set<Capability>> resolve(String organizationId) async {
-    // Fan-out all capability checks concurrently to minimise latency.
-    final resolutions = await Future.wait(
-      Capability.values.map((capability) async {
-        final response = await _client.rpc<dynamic>(
-          'has_capability',
-          params: {
-            'target_organization_id': organizationId,
-            'capability': capability.code,
-          },
-        );
-        return response == true ? capability : null;
-      }),
+    // Single RPC call returns all granted capability codes in one round-trip,
+    // avoiding N concurrent HTTP requests (one per capability).
+    final response = await _client.rpc<dynamic>(
+      'get_my_capabilities',
+      params: {'target_organization_id': organizationId},
     );
-    return resolutions.whereType<Capability>().toSet();
+    final codes = (response as List<dynamic>).cast<String>().toSet();
+    return Capability.values.where((c) => codes.contains(c.code)).toSet();
   }
 }
 
@@ -48,21 +42,35 @@ class CapabilityResolver extends ChangeNotifier {
   int _version = 0;
   int get version => _version;
 
-  Future<Set<Capability>> capabilitiesFor(String organizationId) =>
-      _cache.putIfAbsent(organizationId, () {
-        return _gateway
-            .resolve(organizationId)
-            .then((res) {
+  Future<Set<Capability>> capabilitiesFor(String organizationId) {
+    // Capture version before putIfAbsent so the factory closure can guard
+    // against writing stale data when invalidate() fires mid-flight.
+    final capturedVersion = _version;
+    return _cache.putIfAbsent(organizationId, () {
+      return _gateway
+          .resolve(organizationId)
+          .then((res) {
+            // Only populate the synchronous cache if the resolver has not been
+            // invalidated since this future was created.
+            if (_version == capturedVersion) {
               _resolved[organizationId] = res;
-              return res;
-            })
-            .catchError((Object error) {
-              // Remove failed future so the next call retries instead of
-              // permanently returning the same error.
+            }
+            return res;
+          })
+          .catchError((Object error, StackTrace stackTrace) {
+            // Only evict the failed future if it is still the current one —
+            // a racing invalidate() may have already replaced it.
+            if (_version == capturedVersion) {
               _cache.remove(organizationId);
-              throw error;
-            });
-      });
+            }
+            debugPrint(
+              'CapabilityResolver: failed to resolve capabilities '
+              'for $organizationId: $error\n$stackTrace',
+            );
+            throw error;
+          });
+    });
+  }
 
   /// Synchronous check — returns null if capabilities have not been resolved
   /// yet for [organizationId].
