@@ -499,7 +499,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     bool canEditSongs = true;
     if (orgId != null) {
       try {
-        final resolver = ref.read(capabilityResolverProvider);
+        final resolver = ref.watch(capabilityResolverProvider);
         canEditSongs =
             resolver.hasCapabilitySync(orgId, Capability.editSongs) ?? true;
       } catch (_) {}
