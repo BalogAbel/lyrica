@@ -238,7 +238,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.songCatalogOnlineStatus), findsOneWidget);
     expect(find.text('Egy út'), findsOneWidget);
     expect(find.text('Felkel a nap'), findsOneWidget);
     expect(find.byType(ListTile), findsNWidgets(2));
@@ -247,6 +246,29 @@ void main() {
     expect(firstTile.subtitle, isNull);
     expect(firstTile.leading, isNull);
     expect(firstTile.trailing, isNull);
+  });
+
+  testWidgets('song list shows no catalog status banner', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        catalogState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songCatalogOnlineStatus), findsNothing);
+    expect(find.text(AppStrings.songCatalogOfflineStatus), findsNothing);
+    expect(find.text(AppStrings.songCatalogRefreshingStatus), findsNothing);
+    expect(find.text(AppStrings.songCatalogRefreshFailedStatus), findsNothing);
   });
 
   testWidgets('navigates to the reader route when a title is tapped', (
@@ -325,32 +347,6 @@ void main() {
     expect(find.text('No songs available.'), findsOneWidget);
   });
 
-  testWidgets('shows persistent offline and refresh-failed status surfaces', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        catalogState: const CatalogSnapshotState(
-          context: null,
-          connectionStatus: CatalogConnectionStatus.offlineCached,
-          refreshStatus: CatalogRefreshStatus.failed,
-          sessionStatus: CatalogSessionStatus.unverifiableDueToConnectivity,
-          hasCachedCatalog: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text(AppStrings.songCatalogOfflineStatus), findsOneWidget);
-    expect(
-      find.text(AppStrings.songCatalogRefreshFailedStatus),
-      findsOneWidget,
-    );
-  });
-
   testWidgets('shows the unified sync header control alongside sign out', (
     tester,
   ) async {
@@ -425,28 +421,6 @@ void main() {
 
     expect(find.text(AppStrings.songListNoResultsMessage), findsOneWidget);
     expect(find.text('Amazing Grace'), findsNothing);
-  });
-
-  testWidgets('shows loading while mutation entries resolve', (tester) async {
-    final mutationEntriesCompleter = Completer<List<SongMutationRecord>>();
-
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-        ],
-        loadMutationEntries: () => mutationEntriesCompleter.future,
-      ),
-    );
-    await tester.pump();
-
-    expect(
-      find.text(AppStrings.songListMutationStatusLoadingMessage),
-      findsOneWidget,
-    );
-    expect(find.text('Alpha'), findsOneWidget);
-    expect(find.text(AppStrings.songListNoResultsMessage), findsNothing);
   });
 
   testWidgets(
@@ -560,114 +534,7 @@ void main() {
 
     expect(find.text('Alpha'), findsOneWidget);
     expect(find.text('Beta'), findsOneWidget);
-    expect(
-      find.text(AppStrings.songCatalogRefreshFailedStatus),
-      findsOneWidget,
-    );
     expect(find.text(AppStrings.songListLoadFailureMessage), findsNothing);
-  });
-
-  testWidgets('shows a narrow warning when mutation entries fail', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-        ],
-        loadMutationEntries: () =>
-            Future<List<SongMutationRecord>>.error(StateError('boom')),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(AppStrings.songListMutationStatusFailedMessage),
-      findsOneWidget,
-    );
-    expect(find.text('Alpha'), findsOneWidget);
-    expect(find.text('Beta'), findsOneWidget);
-  });
-
-  testWidgets('clears cached mutation entries when active catalog changes', (
-    tester,
-  ) async {
-    final catalogStateProvider = StateProvider<CatalogSnapshotState>(
-      (ref) => const CatalogSnapshotState(
-        context: ActiveCatalogContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        connectionStatus: CatalogConnectionStatus.online,
-        refreshStatus: CatalogRefreshStatus.idle,
-        sessionStatus: CatalogSessionStatus.verified,
-        hasCachedCatalog: true,
-      ),
-    );
-    final org2MutationEntriesCompleter = Completer<List<SongMutationRecord>>();
-
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-        ],
-        mutableCatalogStateProvider: catalogStateProvider,
-        mutationEntriesForContext: (context) {
-          return switch (context?.organizationId) {
-            'org-1' => [
-              const SongMutationRecord(
-                id: 'song-1',
-                organizationId: 'org-1',
-                slug: 'alpha',
-                title: 'Alpha',
-                chordproSource: '{title: Alpha}',
-                version: 2,
-                baseVersion: 1,
-                syncStatus: SongSyncStatus.pendingUpdate,
-              ),
-            ],
-            _ => org2MutationEntriesCompleter.future,
-          };
-        },
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(SongListScreen)),
-    );
-    Finder rowText(String text) => find.descendant(
-      of: find.byKey(const ValueKey('song-library-results-list')),
-      matching: find.text(text),
-    );
-
-    expect(rowText('Alpha'), findsOneWidget);
-    expect(rowText('Beta'), findsOneWidget);
-
-    container
-        .read(catalogStateProvider.notifier)
-        .state = const CatalogSnapshotState(
-      context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-2'),
-      connectionStatus: CatalogConnectionStatus.online,
-      refreshStatus: CatalogRefreshStatus.idle,
-      sessionStatus: CatalogSessionStatus.verified,
-      hasCachedCatalog: true,
-    );
-    await tester.pump();
-
-    expect(
-      find.text(AppStrings.songListMutationStatusLoadingMessage),
-      findsOneWidget,
-    );
-
-    org2MutationEntriesCompleter.complete(const []);
-    await tester.pumpAndSettle();
-
-    expect(rowText('Alpha'), findsOneWidget);
-    expect(rowText('Beta'), findsOneWidget);
-    expect(find.text(AppStrings.songListNoResultsMessage), findsNothing);
   });
 
   testWidgets('search state survives reader navigation and back navigation', (
@@ -1011,176 +878,6 @@ void main() {
     expect(find.byKey(const ValueKey('song-editor-title-field')), findsNothing);
   });
 
-  testWidgets('shows conflict actions for conflicted song mutations', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        mutationEntries: const [
-          SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'conflict-song',
-            title: 'Conflict Song',
-            chordproSource: '{title: Conflict Song}',
-            version: 4,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.conflict,
-          ),
-        ],
-        catalogState: const CatalogSnapshotState(
-          context: ActiveCatalogContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          connectionStatus: CatalogConnectionStatus.online,
-          refreshStatus: CatalogRefreshStatus.idle,
-          sessionStatus: CatalogSessionStatus.verified,
-          hasCachedCatalog: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Conflict Song'), findsOneWidget);
-    expect(find.text(AppStrings.songKeepMineAction), findsOneWidget);
-    expect(find.text(AppStrings.songDiscardMineAction), findsOneWidget);
-  });
-
-  testWidgets('shows a surfaced error when keep mine fails', (tester) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        songMutationSyncController: _ThrowingSongMutationSyncController(
-          const SongMutationSyncException(
-            SongMutationSyncErrorCode.dependencyBlocked,
-          ),
-        ),
-        mutationEntries: const [
-          SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'conflict-song',
-            title: 'Conflict Song',
-            chordproSource: '{title: Conflict Song}',
-            version: 4,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.conflict,
-            conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
-          ),
-        ],
-        catalogState: const CatalogSnapshotState(
-          context: ActiveCatalogContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          connectionStatus: CatalogConnectionStatus.online,
-          refreshStatus: CatalogRefreshStatus.idle,
-          sessionStatus: CatalogSessionStatus.verified,
-          hasCachedCatalog: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text(AppStrings.songKeepMineAction));
-    await tester.pumpAndSettle();
-
-    expect(find.text(AppStrings.songDeleteBlockedMessage), findsOneWidget);
-  });
-
-  testWidgets('shows raw error message when sync code is unavailable', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        mutationEntries: const [
-          SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'stuck-song',
-            title: 'Stuck Song',
-            chordproSource: '{title: Stuck Song}',
-            version: 4,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.pendingUpdate,
-            errorCode: null,
-            errorMessage: 'Stored plain sync error',
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Stored plain sync error'), findsOneWidget);
-  });
-
-  testWidgets('reloads conflict entries after keep mine failure', (
-    tester,
-  ) async {
-    var loadCalls = 0;
-
-    Future<List<SongMutationRecord>> loadEntries() async {
-      loadCalls += 1;
-      return [
-        SongMutationRecord(
-          id: 'song-1',
-          organizationId: 'org-1',
-          slug: 'conflict-song',
-          title: 'Conflict Song',
-          chordproSource: '{title: Conflict Song}',
-          version: 4,
-          baseVersion: 3,
-          syncStatus: SongSyncStatus.conflict,
-          conflictSourceSyncStatus: SongSyncStatus.pendingDelete,
-          errorCode: loadCalls > 1
-              ? SongMutationSyncErrorCode.dependencyBlocked
-              : null,
-        ),
-      ];
-    }
-
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        songMutationSyncController: _ThrowingSongMutationSyncController(
-          const SongMutationSyncException(
-            SongMutationSyncErrorCode.dependencyBlocked,
-          ),
-        ),
-        loadMutationEntries: loadEntries,
-        catalogState: const CatalogSnapshotState(
-          context: ActiveCatalogContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          connectionStatus: CatalogConnectionStatus.online,
-          refreshStatus: CatalogRefreshStatus.idle,
-          sessionStatus: CatalogSessionStatus.verified,
-          hasCachedCatalog: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(loadCalls, 1);
-
-    await tester.tap(find.text(AppStrings.songKeepMineAction));
-    await tester.pumpAndSettle();
-
-    expect(loadCalls, greaterThanOrEqualTo(2));
-  });
-
   testWidgets('navigates to the planning area from the song list', (
     tester,
   ) async {
@@ -1197,26 +894,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('plans:list'), findsOneWidget);
-  });
-
-  testWidgets('shows a persistent refreshing status surface', (tester) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
-        ],
-        catalogState: const CatalogSnapshotState(
-          context: null,
-          connectionStatus: CatalogConnectionStatus.online,
-          refreshStatus: CatalogRefreshStatus.refreshing,
-          sessionStatus: CatalogSessionStatus.verified,
-          hasCachedCatalog: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text(AppStrings.songCatalogRefreshingStatus), findsOneWidget);
   });
 
   testWidgets('shows an unavailable state when no cached catalog exists', (
