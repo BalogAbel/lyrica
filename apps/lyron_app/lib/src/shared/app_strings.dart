@@ -204,6 +204,8 @@ class AppStrings {
   static const unifiedSyncDiscardAllMessagePrefix =
       'This permanently discards all local changes for this organization';
   static const unifiedSyncDiscardAllConfirmAction = 'Discard all';
+  static const unifiedSyncDiscardAllFailedMessage =
+      'Some changes could not be discarded. Try again.';
 
   // ChordPro import
   static const songImportAction = 'Import';
