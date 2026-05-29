@@ -28,7 +28,9 @@ class UnifiedDiscardController {
   Future<void> discardAll() async {
     final context = _activeContextReader();
     if (context == null) return;
-    await _discardSongs(context);
-    await _discardPlanning(context);
+    await Future.wait([
+      _discardSongs(context),
+      _discardPlanning(context),
+    ], eagerError: false);
   }
 }
