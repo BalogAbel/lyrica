@@ -345,7 +345,7 @@ void main() {
       ),
     );
     await tester.tap(find.byKey(const ValueKey('unified-sync-song-discard-s1')));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(spy.discardMineCalls, ['s1']);
   });
 
