@@ -542,6 +542,43 @@ void main() {
         SongMutationSyncErrorCode.connectivityFailure,
       );
     });
+
+    test(
+      'discardMine for pendingCreate deletes local entry when fetchSong returns remoteDeleted',
+      () async {
+        final store = _FakeSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 1,
+              baseVersion: null,
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          fetchHandler: (songId) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.remoteDeleted,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+        expect(store.lastSavedStatus, isNull);
+      },
+    );
   });
 }
 
