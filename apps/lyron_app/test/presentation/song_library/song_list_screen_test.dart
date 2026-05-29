@@ -20,7 +20,6 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
-import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
@@ -1252,109 +1251,6 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 }
 
-class _SongMutationTestRepository
-    implements SongCatalogReadRepository, SongMutationStore {
-  @override
-  Future<String> allocateUniqueSlug({
-    required String userId,
-    required String organizationId,
-    required String title,
-  }) async => 'created-song';
-
-  @override
-  Future<int> countReferencingSessionItems({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async => 0;
-
-  @override
-  Future<void> deleteSong({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async {}
-
-  @override
-  Future<SongSource> getSongSource({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async => const SongSource(id: 'song-1', source: '{title: Song}');
-
-  @override
-  Future<SongSummary?> getSongSummaryById({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async => const SongSummary(id: 'song-1', title: 'Song');
-
-  @override
-  Future<SongSummary?> getSongSummaryBySlug({
-    required String userId,
-    required String organizationId,
-    required String songSlug,
-  }) async => const SongSummary(id: 'song-1', title: 'Song');
-
-  @override
-  Future<bool> hasUnsyncedChanges({required String userId}) async => false;
-
-  @override
-  Future<List<SongSummary>> listSongs({
-    required String userId,
-    required String organizationId,
-  }) async => const [SongSummary(id: 'song-1', title: 'Song')];
-
-  @override
-  Future<SongMutationRecord?> readById({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async => null;
-
-  @override
-  Future<List<SongMutationRecord>> readConflictSongs({
-    required String userId,
-    required String organizationId,
-  }) async => const [];
-
-  @override
-  Future<List<SongMutationRecord>> readPendingSongs({
-    required String userId,
-    required String organizationId,
-  }) async => const [];
-
-  @override
-  Future<void> saveSyncAttemptResult({
-    required String userId,
-    required String organizationId,
-    required String songId,
-    required SongSyncStatus syncStatus,
-    SongMutationSyncErrorCode? errorCode,
-    String? errorMessage,
-  }) async {}
-
-  @override
-  Future<void> upsertSong({
-    required String userId,
-    required SongMutationRecord record,
-  }) async {}
-
-  @override
-  Future<void> reconcileSyncedSong({
-    required String userId,
-    required String organizationId,
-    required SongMutationRecord record,
-  }) async {}
-
-  @override
-  Future<void> clearSongMutation({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) async {}
-}
-
 class _CountingSongRepository implements SongRepository {
   int listSongsCalls = 0;
 
@@ -1374,27 +1270,6 @@ class _CountingSongRepository implements SongRepository {
       ),
     ];
   }
-}
-
-class _UnusedSongMutationRemoteRepository
-    implements SongMutationRemoteRepository {
-  @override
-  Future<SongMutationRecord> fetchSong({
-    required String organizationId,
-    required String songId,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<SongMutationRecord> overwriteSong({
-    required String organizationId,
-    required SongMutationRecord record,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<SongMutationRecord> syncSong({
-    required String organizationId,
-    required SongMutationRecord record,
-  }) => throw UnimplementedError();
 }
 
 class _StaticForegroundState implements AppForegroundState {
