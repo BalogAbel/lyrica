@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -104,6 +106,38 @@ class _FakeSongRemote implements SongMutationRemoteRepository {
     required String organizationId,
     required String songId,
   }) => throw UnimplementedError();
+}
+
+class _SpyPlanningSyncController extends PlanningMutationSyncController {
+  _SpyPlanningSyncController()
+    : super(
+        mutationStore: () => throw UnimplementedError(),
+        remoteRepository: () => throw UnimplementedError(),
+        refreshPlanning: () async => false,
+        reconcileAcceptedMutation: (_, __) async {},
+        shouldReconcileAcceptedMutation: (_) async => false,
+      );
+
+  final List<String> retryCalls = [];
+  final List<String> discardCalls = [];
+
+  @override
+  Future<void> retryMutation(
+    ActivePlanningReadContext context, {
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    retryCalls.add('$aggregateType:$aggregateId');
+  }
+
+  @override
+  Future<void> discardMutation(
+    ActivePlanningReadContext context, {
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    discardCalls.add('$aggregateType:$aggregateId');
+  }
 }
 
 class _SpySongSyncController extends SongMutationSyncController {
@@ -377,6 +411,169 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('conflict plan row shows Keep mine and Discard mine buttons', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.conflict,
+              plans: const [
+                UnifiedSyncPlanRow(
+                  planId: 'p1',
+                  title: 'Service',
+                  severity: UnifiedSyncRowSeverity.conflict,
+                  reasonCode: UnifiedSyncReasonCode.conflict,
+                  nestedSummaries: ['plan edited'],
+                  mutationRefs: [
+                    UnifiedSyncPlanMutationRef(
+                      aggregateType: 'plan',
+                      aggregateId: 'p1',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'conflict plan row Discard mine discards all grouped mutations',
+    (tester) async {
+      final spy = _SpyPlanningSyncController();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                plans: const [
+                  UnifiedSyncPlanRow(
+                    planId: 'p1',
+                    title: 'Service',
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.conflict,
+                    nestedSummaries: ['plan edited', 'session added'],
+                    mutationRefs: [
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'plan',
+                        aggregateId: 'p1',
+                      ),
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'session',
+                        aggregateId: 's1',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            planningMutationSyncControllerProvider.overrideWithValue(spy),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+      );
+      await tester.pumpAndSettle();
+      expect(spy.discardCalls, ['plan:p1', 'session:s1']);
+    },
+  );
+
+  testWidgets('retryable plan row shows Retry button only', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              plans: const [
+                UnifiedSyncPlanRow(
+                  planId: 'p1',
+                  title: 'Service',
+                  severity: UnifiedSyncRowSeverity.retryableFailure,
+                  reasonCode: UnifiedSyncReasonCode.syncFailed,
+                  nestedSummaries: ['plan edited'],
+                  mutationRefs: [
+                    UnifiedSyncPlanMutationRef(
+                      aggregateType: 'plan',
+                      aggregateId: 'p1',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-retry-p1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('pending plan row shows no action buttons', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              plans: const [
+                UnifiedSyncPlanRow(
+                  planId: 'p1',
+                  title: 'Service',
+                  severity: UnifiedSyncRowSeverity.pending,
+                  reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                  nestedSummaries: ['plan edited'],
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-plan-retry-p1')),
       findsNothing,
     );
   });

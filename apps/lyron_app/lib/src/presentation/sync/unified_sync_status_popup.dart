@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -174,13 +176,13 @@ class _SongRowTile extends ConsumerWidget {
   }
 }
 
-class _PlanRowTile extends StatelessWidget {
+class _PlanRowTile extends ConsumerWidget {
   const _PlanRowTile({required this.row});
 
   final UnifiedSyncPlanRow row;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListTile(
       key: ValueKey('unified-sync-plan-row-${row.planId}'),
       title: Text(row.title),
@@ -198,7 +200,58 @@ class _PlanRowTile extends StatelessWidget {
             ),
         ],
       ),
+      trailing: _actions(ref),
     );
+  }
+
+  Widget? _actions(WidgetRef ref) {
+    return switch (row.severity) {
+      UnifiedSyncRowSeverity.conflict => Wrap(
+          spacing: 8,
+          children: [
+            TextButton(
+              key: ValueKey('unified-sync-plan-keep-${row.planId}'),
+              onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+              child: const Text(AppStrings.songKeepMineAction),
+            ),
+            TextButton(
+              key: ValueKey('unified-sync-plan-discard-${row.planId}'),
+              onPressed: () => unawaited(_applyToGroup(ref, retry: false)),
+              child: const Text(AppStrings.songDiscardMineAction),
+            ),
+          ],
+        ),
+      UnifiedSyncRowSeverity.retryableFailure => TextButton(
+          key: ValueKey('unified-sync-plan-retry-${row.planId}'),
+          onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+          child: const Text(AppStrings.retryAction),
+        ),
+      UnifiedSyncRowSeverity.pending => null,
+    };
+  }
+
+  Future<void> _applyToGroup(WidgetRef ref, {required bool retry}) async {
+    final ctx = ref.read(activePlanningContextProvider);
+    if (ctx == null) return;
+    final controller = ref.read(planningMutationSyncControllerProvider);
+    for (final mref in row.mutationRefs) {
+      if (retry) {
+        await controller.retryMutation(
+          ctx,
+          aggregateType: mref.aggregateType,
+          aggregateId: mref.aggregateId,
+        );
+      } else {
+        await controller.discardMutation(
+          ctx,
+          aggregateType: mref.aggregateType,
+          aggregateId: mref.aggregateId,
+        );
+      }
+    }
+    ref.read(planningDataRevisionProvider.notifier).state += 1;
+    ref.invalidate(planningMutationEntriesProvider);
+    ref.invalidate(planningPlanListProvider);
   }
 }
 
