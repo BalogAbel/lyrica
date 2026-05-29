@@ -656,6 +656,126 @@ void main() {
     expect(spy.discardAllCalls, 0);
   });
 
+  testWidgets('conflict song row Keep mine calls controller', (tester) async {
+    final spy = _SpySongSyncController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.conflict,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.conflict,
+                  severity: UnifiedSyncRowSeverity.conflict,
+                  reasonCode: UnifiedSyncReasonCode.conflict,
+                ),
+              ],
+            ),
+          ),
+          songMutationSyncControllerProvider.overrideWithValue(spy),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'u1',
+              organizationId: 'org1',
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('unified-sync-song-keep-s1')));
+    await tester.pumpAndSettle();
+    expect(spy.keepMineCalls, ['s1']);
+  });
+
+  testWidgets('retryable plan row Retry calls controller', (tester) async {
+    final spy = _SpyPlanningSyncController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              plans: const [
+                UnifiedSyncPlanRow(
+                  planId: 'p1',
+                  title: 'Service',
+                  severity: UnifiedSyncRowSeverity.retryableFailure,
+                  reasonCode: UnifiedSyncReasonCode.syncFailed,
+                  nestedSummaries: ['plan edited'],
+                  mutationRefs: [
+                    UnifiedSyncPlanMutationRef(
+                      aggregateType: 'plan',
+                      aggregateId: 'p1',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          planningMutationSyncControllerProvider.overrideWithValue(spy),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('unified-sync-plan-retry-p1')));
+    await tester.pumpAndSettle();
+    expect(spy.retryCalls, ['plan:p1']);
+  });
+
+  testWidgets(
+    'conflict plan row Keep mine calls retry on all grouped mutations',
+    (tester) async {
+      final spy = _SpyPlanningSyncController();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                plans: const [
+                  UnifiedSyncPlanRow(
+                    planId: 'p1',
+                    title: 'Service',
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.conflict,
+                    nestedSummaries: ['plan edited', 'session added'],
+                    mutationRefs: [
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'plan',
+                        aggregateId: 'p1',
+                      ),
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'session',
+                        aggregateId: 's1',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            planningMutationSyncControllerProvider.overrideWithValue(spy),
+            activePlanningContextProvider.overrideWithValue(
+              const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('unified-sync-plan-keep-p1')));
+      await tester.pumpAndSettle();
+      expect(spy.retryCalls, ['plan:p1', 'session:s1']);
+    },
+  );
+
   testWidgets('pending plan row shows no action buttons', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

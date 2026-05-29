@@ -138,7 +138,8 @@ class SongMutationSyncController {
       );
     } on SongMutationSyncException catch (error) {
       if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
-          record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
+          (record.effectiveSyncStatus == SongSyncStatus.pendingDelete ||
+           record.effectiveSyncStatus == SongSyncStatus.pendingCreate)) {
         final refreshCatalog = _refreshCatalog;
         if (refreshCatalog != null) {
           await refreshCatalog(context);
