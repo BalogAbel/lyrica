@@ -351,7 +351,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     expect(
@@ -364,7 +366,9 @@ void main() {
     );
   });
 
-  testWidgets('conflict song row Discard mine calls controller', (tester) async {
+  testWidgets('conflict song row Discard mine calls controller', (
+    tester,
+  ) async {
     final spy = _SpySongSyncController();
     await tester.pumpWidget(
       ProviderScope(
@@ -385,16 +389,17 @@ void main() {
           ),
           songMutationSyncControllerProvider.overrideWithValue(spy),
           activeCatalogContextProvider.overrideWithValue(
-            const ActiveCatalogContext(
-              userId: 'u1',
-              organizationId: 'org1',
-            ),
+            const ActiveCatalogContext(userId: 'u1', organizationId: 'org1'),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('unified-sync-song-discard-s1')));
+    await tester.tap(
+      find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+    );
     await tester.pumpAndSettle();
     expect(spy.discardMineCalls, ['s1']);
   });
@@ -418,7 +423,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     expect(
@@ -458,7 +465,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     expect(
@@ -471,54 +480,53 @@ void main() {
     );
   });
 
-  testWidgets(
-    'conflict plan row Discard mine discards all grouped mutations',
-    (tester) async {
-      final spy = _SpyPlanningSyncController();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            unifiedSyncOverviewProvider.overrideWithValue(
-              _overview(
-                status: UnifiedSyncHeaderStatus.conflict,
-                plans: const [
-                  UnifiedSyncPlanRow(
-                    planId: 'p1',
-                    title: 'Service',
-                    severity: UnifiedSyncRowSeverity.conflict,
-                    reasonCode: UnifiedSyncReasonCode.conflict,
-                    nestedSummaries: ['plan edited', 'session added'],
-                    mutationRefs: [
-                      UnifiedSyncPlanMutationRef(
-                        aggregateType: 'plan',
-                        aggregateId: 'p1',
-                      ),
-                      UnifiedSyncPlanMutationRef(
-                        aggregateType: 'session',
-                        aggregateId: 's1',
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+  testWidgets('conflict plan row Discard mine discards all grouped mutations', (
+    tester,
+  ) async {
+    final spy = _SpyPlanningSyncController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.conflict,
+              plans: const [
+                UnifiedSyncPlanRow(
+                  planId: 'p1',
+                  title: 'Service',
+                  severity: UnifiedSyncRowSeverity.conflict,
+                  reasonCode: UnifiedSyncReasonCode.conflict,
+                  nestedSummaries: ['plan edited', 'session added'],
+                  mutationRefs: [
+                    UnifiedSyncPlanMutationRef(
+                      aggregateType: 'plan',
+                      aggregateId: 'p1',
+                    ),
+                    UnifiedSyncPlanMutationRef(
+                      aggregateType: 'session',
+                      aggregateId: 's1',
+                    ),
+                  ],
+                ),
+              ],
             ),
-            planningMutationSyncControllerProvider.overrideWithValue(spy),
-            activePlanningContextProvider.overrideWithValue(
-              const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
-            ),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(body: UnifiedSyncStatusPopup()),
           ),
+          planningMutationSyncControllerProvider.overrideWithValue(spy),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
         ),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
-      );
-      await tester.pumpAndSettle();
-      expect(spy.discardCalls, ['plan:p1', 'session:s1']);
-    },
-  );
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+    );
+    await tester.pumpAndSettle();
+    expect(spy.discardCalls, ['plan:p1', 'session:s1']);
+  });
 
   testWidgets('retryable plan row shows Retry button only', (tester) async {
     await tester.pumpWidget(
@@ -545,7 +553,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     expect(
@@ -562,13 +572,20 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [unifiedSyncOverviewProvider.overrideWithValue(_overview())],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
-    expect(find.byKey(const ValueKey('unified-sync-popup-discard-all')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('unified-sync-popup-discard-all')),
+      findsNothing,
+    );
   });
 
-  testWidgets('Discard all button present when unsynced work exists', (tester) async {
+  testWidgets('Discard all button present when unsynced work exists', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -587,10 +604,15 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
-    expect(find.byKey(const ValueKey('unified-sync-popup-discard-all')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('unified-sync-popup-discard-all')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Discard all confirms then calls controller', (tester) async {
@@ -614,13 +636,19 @@ void main() {
           ),
           unifiedDiscardControllerProvider.overrideWithValue(spy),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('unified-sync-popup-discard-all')));
+    await tester.tap(
+      find.byKey(const ValueKey('unified-sync-popup-discard-all')),
+    );
     await tester.pumpAndSettle();
     expect(find.text(AppStrings.unifiedSyncDiscardAllTitle), findsOneWidget);
-    await tester.tap(find.text(AppStrings.unifiedSyncDiscardAllConfirmAction).last);
+    await tester.tap(
+      find.text(AppStrings.unifiedSyncDiscardAllConfirmAction).last,
+    );
     await tester.pumpAndSettle();
     expect(spy.discardAllCalls, 1);
   });
@@ -646,10 +674,14 @@ void main() {
           ),
           unifiedDiscardControllerProvider.overrideWithValue(spy),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('unified-sync-popup-discard-all')));
+    await tester.tap(
+      find.byKey(const ValueKey('unified-sync-popup-discard-all')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songCancelAction));
     await tester.pumpAndSettle();
@@ -677,13 +709,12 @@ void main() {
           ),
           songMutationSyncControllerProvider.overrideWithValue(spy),
           activeCatalogContextProvider.overrideWithValue(
-            const ActiveCatalogContext(
-              userId: 'u1',
-              organizationId: 'org1',
-            ),
+            const ActiveCatalogContext(userId: 'u1', organizationId: 'org1'),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     await tester.tap(find.byKey(const ValueKey('unified-sync-song-keep-s1')));
@@ -721,7 +752,9 @@ void main() {
             const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     await tester.tap(find.byKey(const ValueKey('unified-sync-plan-retry-p1')));
@@ -762,7 +795,10 @@ void main() {
             ),
             planningMutationSyncControllerProvider.overrideWithValue(spy),
             activePlanningContextProvider.overrideWithValue(
-              const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+              const ActivePlanningReadContext(
+                userId: 'u1',
+                organizationId: 'o1',
+              ),
             ),
           ],
           child: const MaterialApp(
@@ -795,7 +831,9 @@ void main() {
             ),
           ),
         ],
-        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
       ),
     );
     expect(

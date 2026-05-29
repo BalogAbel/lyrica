@@ -239,9 +239,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                             }
 
                             return ListView.separated(
-                              key: const ValueKey(
-                                'song-library-results-list',
-                              ),
+                              key: const ValueKey('song-library-results-list'),
                               padding: const EdgeInsets.all(
                                 SongListScreen._horizontalPadding,
                               ),
@@ -364,4 +362,3 @@ class _RetryableErrorState extends StatelessWidget {
     );
   }
 }
-

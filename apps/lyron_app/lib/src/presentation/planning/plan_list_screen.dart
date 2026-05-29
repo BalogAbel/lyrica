@@ -122,7 +122,6 @@ class PlanListScreen extends ConsumerWidget {
     }
     context.push(PlanningRoutes.planDetailLocation(routeSlug));
   }
-
 }
 
 class _PlanEditorDialog extends ConsumerStatefulWidget {

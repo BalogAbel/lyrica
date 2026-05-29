@@ -199,8 +199,9 @@ final unifiedDiscardControllerProvider =
               planningContext.organizationId != ctx.organizationId) {
             return;
           }
-          final entries =
-              await ref.read(planningMutationEntriesProvider.future);
+          final entries = await ref.read(
+            planningMutationEntriesProvider.future,
+          );
           final controller = ref.read(planningMutationSyncControllerProvider);
           for (final entry in entries) {
             try {

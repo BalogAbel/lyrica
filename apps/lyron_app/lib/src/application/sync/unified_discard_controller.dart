@@ -9,7 +9,8 @@ class UnifiedDiscardContext {
 }
 
 typedef UnifiedDiscardContextReader = UnifiedDiscardContext? Function();
-typedef UnifiedDiscardStep = Future<void> Function(UnifiedDiscardContext context);
+typedef UnifiedDiscardStep =
+    Future<void> Function(UnifiedDiscardContext context);
 
 class UnifiedDiscardController {
   UnifiedDiscardController({

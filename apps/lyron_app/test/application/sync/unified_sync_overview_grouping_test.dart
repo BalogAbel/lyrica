@@ -159,10 +159,7 @@ void main() {
 
     test('plan rows carry aggregate refs for every grouped mutation', () {
       final overview = _compute([
-        _mut(
-          aggregateId: 'plan-1',
-          kind: PlanningMutationKind.planEdit,
-        ),
+        _mut(aggregateId: 'plan-1', kind: PlanningMutationKind.planEdit),
         _mut(
           aggregateId: 'session-1',
           kind: PlanningMutationKind.sessionCreate,
@@ -172,7 +169,9 @@ void main() {
 
       final row = overview.planRows.single;
       expect(
-        row.mutationRefs.map((r) => '${r.aggregateType}:${r.aggregateId}').toSet(),
+        row.mutationRefs
+            .map((r) => '${r.aggregateType}:${r.aggregateId}')
+            .toSet(),
         {'plan:plan-1', 'session:session-1'},
       );
     });

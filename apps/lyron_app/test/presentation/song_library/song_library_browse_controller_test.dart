@@ -66,9 +66,7 @@ void main() {
 
     expect(
       container.read(songLibraryBrowseControllerProvider),
-      const SongLibraryBrowseState(
-        sort: SongLibraryBrowseSort.titleAscending,
-      ),
+      const SongLibraryBrowseState(sort: SongLibraryBrowseSort.titleAscending),
     );
   });
 
@@ -148,10 +146,18 @@ void main() {
   test('filterSongLibraryBrowseRows filters by query', () {
     const rows = [
       SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-1', slug: 'amazing-grace', title: 'Amazing Grace'),
+        song: SongSummary(
+          id: 'song-1',
+          slug: 'amazing-grace',
+          title: 'Amazing Grace',
+        ),
       ),
       SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-2', slug: 'great-faith', title: 'Great Is Thy Faithfulness'),
+        song: SongSummary(
+          id: 'song-2',
+          slug: 'great-faith',
+          title: 'Great Is Thy Faithfulness',
+        ),
       ),
     ];
 
