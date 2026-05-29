@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
@@ -40,6 +41,19 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
+                  if (overview.hasUnsyncedWork) ...[
+                    TextButton(
+                      key: const ValueKey('unified-sync-popup-discard-all'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                      onPressed: () => unawaited(
+                        _confirmDiscardAll(context, ref, overview),
+                      ),
+                      child: const Text(AppStrings.unifiedSyncDiscardAllAction),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   FilledButton.icon(
                     key: const ValueKey('unified-sync-popup-sync-now'),
                     onPressed: () {
@@ -59,6 +73,41 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDiscardAll(
+    BuildContext context,
+    WidgetRef ref,
+    UnifiedSyncOverview overview,
+  ) async {
+    final songCount = overview.songRows.length;
+    final planCount = overview.planRows.length;
+    final message =
+        '${AppStrings.unifiedSyncDiscardAllMessagePrefix} '
+        '($songCount songs, $planCount plans). This cannot be undone.';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(AppStrings.unifiedSyncDiscardAllTitle),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text(AppStrings.songCancelAction),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text(AppStrings.unifiedSyncDiscardAllConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+    await ref.read(unifiedDiscardControllerProvider).discardAll();
   }
 }
 
