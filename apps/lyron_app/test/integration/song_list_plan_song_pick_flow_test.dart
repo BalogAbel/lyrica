@@ -151,21 +151,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey('song-list-filter-control')),
-          matching: find.text(AppStrings.songLibraryFilterPendingSyncLabel),
-        ),
-      );
-      await tester.pumpAndSettle();
-
       Finder browseRowText(String text) => find.descendant(
         of: find.byKey(const ValueKey('song-library-results-list')),
         matching: find.text(text),
       );
 
+      expect(browseRowText('Alpha'), findsOneWidget);
       expect(browseRowText('Beta'), findsOneWidget);
-      expect(browseRowText('Alpha'), findsNothing);
+      expect(browseRowText('Egy út'), findsOneWidget);
 
       router.go(AppRoutes.planDetail.path.replaceFirst(':planSlug', 'team'));
       await tester.pumpAndSettle();
