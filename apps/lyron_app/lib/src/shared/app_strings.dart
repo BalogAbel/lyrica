@@ -206,6 +206,10 @@ class AppStrings {
   static const unifiedSyncDiscardAllConfirmAction = 'Discard all';
   static const unifiedSyncDiscardAllFailedMessage =
       'Some changes could not be discarded. Try again.';
+  static const unifiedSyncActionFailedMessage =
+      'Action could not be completed. Try again.';
+  static const unifiedSyncActionPartialFailureMessage =
+      'Some actions could not be completed.';
 
   // ChordPro import
   static const songImportAction = 'Import';

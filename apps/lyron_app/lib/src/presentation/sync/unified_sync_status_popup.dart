@@ -178,12 +178,12 @@ class _SongRowTile extends ConsumerWidget {
               children: [
                 TextButton(
                   key: ValueKey('unified-sync-song-keep-${row.songId}'),
-                  onPressed: () => unawaited(_keepMine(ref)),
+                  onPressed: () => unawaited(_keepMine(context, ref)),
                   child: const Text(AppStrings.songKeepMineAction),
                 ),
                 TextButton(
                   key: ValueKey('unified-sync-song-discard-${row.songId}'),
-                  onPressed: () => unawaited(_discardMine(ref)),
+                  onPressed: () => unawaited(_discardMine(context, ref)),
                   child: const Text(AppStrings.songDiscardMineAction),
                 ),
               ],
@@ -201,24 +201,46 @@ class _SongRowTile extends ConsumerWidget {
     );
   }
 
-  Future<void> _keepMine(WidgetRef ref) async {
+  Future<void> _keepMine(BuildContext context, WidgetRef ref) async {
     final ctx = _context(ref);
     if (ctx == null) return;
-    await ref
-        .read(songMutationSyncControllerProvider)
-        .keepMine(ctx, songId: row.songId);
-    ref.invalidate(songMutationEntriesProvider);
-    ref.invalidate(songLibraryListProvider);
+    try {
+      await ref
+          .read(songMutationSyncControllerProvider)
+          .keepMine(ctx, songId: row.songId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.unifiedSyncActionFailedMessage),
+          ),
+        );
+      }
+    } finally {
+      ref.invalidate(songMutationEntriesProvider);
+      ref.invalidate(songLibraryListProvider);
+    }
   }
 
-  Future<void> _discardMine(WidgetRef ref) async {
+  Future<void> _discardMine(BuildContext context, WidgetRef ref) async {
     final ctx = _context(ref);
     if (ctx == null) return;
-    await ref
-        .read(songMutationSyncControllerProvider)
-        .discardMine(ctx, songId: row.songId);
-    ref.invalidate(songMutationEntriesProvider);
-    ref.invalidate(songLibraryListProvider);
+    try {
+      await ref
+          .read(songMutationSyncControllerProvider)
+          .discardMine(ctx, songId: row.songId);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.unifiedSyncActionFailedMessage),
+          ),
+        );
+      }
+    } finally {
+      ref.invalidate(songMutationEntriesProvider);
+      ref.invalidate(songLibraryListProvider);
+    }
   }
 
   String _songStateLabel(SongSyncStatus state) {
@@ -256,54 +278,72 @@ class _PlanRowTile extends ConsumerWidget {
             ),
         ],
       ),
-      trailing: _actions(ref),
+      trailing: _actions(context, ref),
     );
   }
 
-  Widget? _actions(WidgetRef ref) {
+  Widget? _actions(BuildContext context, WidgetRef ref) {
     return switch (row.severity) {
       UnifiedSyncRowSeverity.conflict => Wrap(
         spacing: 8,
         children: [
           TextButton(
             key: ValueKey('unified-sync-plan-keep-${row.planId}'),
-            onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+            onPressed: () =>
+                unawaited(_applyToGroup(context, ref, retry: true)),
             child: const Text(AppStrings.songKeepMineAction),
           ),
           TextButton(
             key: ValueKey('unified-sync-plan-discard-${row.planId}'),
-            onPressed: () => unawaited(_applyToGroup(ref, retry: false)),
+            onPressed: () =>
+                unawaited(_applyToGroup(context, ref, retry: false)),
             child: const Text(AppStrings.songDiscardMineAction),
           ),
         ],
       ),
       UnifiedSyncRowSeverity.retryableFailure => TextButton(
         key: ValueKey('unified-sync-plan-retry-${row.planId}'),
-        onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+        onPressed: () => unawaited(_applyToGroup(context, ref, retry: true)),
         child: const Text(AppStrings.retryAction),
       ),
       UnifiedSyncRowSeverity.pending => null,
     };
   }
 
-  Future<void> _applyToGroup(WidgetRef ref, {required bool retry}) async {
+  Future<void> _applyToGroup(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool retry,
+  }) async {
     final ctx = ref.read(activePlanningContextProvider);
     if (ctx == null) return;
     final controller = ref.read(planningMutationSyncControllerProvider);
+    var hasError = false;
     for (final mref in row.mutationRefs) {
-      if (retry) {
-        await controller.retryMutation(
-          ctx,
-          aggregateType: mref.aggregateType,
-          aggregateId: mref.aggregateId,
-        );
-      } else {
-        await controller.discardMutation(
-          ctx,
-          aggregateType: mref.aggregateType,
-          aggregateId: mref.aggregateId,
-        );
+      try {
+        if (retry) {
+          await controller.retryMutation(
+            ctx,
+            aggregateType: mref.aggregateType,
+            aggregateId: mref.aggregateId,
+          );
+        } else {
+          await controller.discardMutation(
+            ctx,
+            aggregateType: mref.aggregateType,
+            aggregateId: mref.aggregateId,
+          );
+        }
+      } catch (_) {
+        hasError = true;
       }
+    }
+    if (hasError && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.unifiedSyncActionPartialFailureMessage),
+        ),
+      );
     }
     ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
