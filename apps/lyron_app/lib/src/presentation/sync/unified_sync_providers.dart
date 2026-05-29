@@ -8,6 +8,8 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
+import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
+import 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
@@ -162,3 +164,51 @@ final foregroundSyncListenerProvider = Provider<ForegroundSyncListener>((ref) {
   ref.onDispose(listener.dispose);
   return listener;
 });
+
+final unifiedDiscardControllerProvider =
+    Provider.autoDispose<UnifiedDiscardController>((ref) {
+      return UnifiedDiscardController(
+        activeContextReader: () {
+          final c = ref.read(activeCatalogContextProvider);
+          if (c == null) return null;
+          return UnifiedDiscardContext(
+            userId: c.userId,
+            organizationId: c.organizationId,
+          );
+        },
+        discardSongs: (ctx) async {
+          final entries = await ref.read(songMutationEntriesProvider.future);
+          final controller = ref.read(songMutationSyncControllerProvider);
+          final songContext = SongMutationContext(
+            userId: ctx.userId,
+            organizationId: ctx.organizationId,
+          );
+          for (final entry in entries) {
+            await controller.discardMine(songContext, songId: entry.id);
+          }
+          ref.invalidate(songMutationEntriesProvider);
+          ref.invalidate(songLibraryListProvider);
+        },
+        discardPlanning: (ctx) async {
+          final planningContext = ref.read(activePlanningContextProvider);
+          if (planningContext == null ||
+              planningContext.userId != ctx.userId ||
+              planningContext.organizationId != ctx.organizationId) {
+            return;
+          }
+          final entries =
+              await ref.read(planningMutationEntriesProvider.future);
+          final controller = ref.read(planningMutationSyncControllerProvider);
+          for (final entry in entries) {
+            await controller.discardMutation(
+              planningContext,
+              aggregateType: entry.kind.aggregateType,
+              aggregateId: entry.aggregateId,
+            );
+          }
+          ref.read(planningDataRevisionProvider.notifier).state += 1;
+          ref.invalidate(planningMutationEntriesProvider);
+          ref.invalidate(planningPlanListProvider);
+        },
+      );
+    });
