@@ -9,10 +9,6 @@ class SongLibraryBrowseController
     state = state.copyWith(query: query);
   }
 
-  void setFilter(SongLibraryBrowseFilter filter) {
-    state = state.copyWith(filter: filter);
-  }
-
   void setSort(SongLibraryBrowseSort sort) {
     state = state.copyWith(sort: sort);
   }
