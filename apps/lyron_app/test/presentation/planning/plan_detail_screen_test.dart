@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
-import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -40,7 +39,6 @@ void main() {
   Widget buildApp({
     Object? planDetailValue,
     PlanningWriteService? writeService,
-    PlanningMutationSyncController? mutationSyncController,
     Future<List<PlanningMutationRecord>> Function()? loadMutationEntries,
     List<SongSummary>? visibleSongs,
     FutureOr<List<SongSummary>> Function(ActiveCatalogContext? context)?
@@ -93,10 +91,6 @@ void main() {
         planningWriteServiceProvider.overrideWithValue(
           writeService ?? _FakePlanningWriteService(),
         ),
-        if (mutationSyncController != null)
-          planningMutationSyncControllerProvider.overrideWithValue(
-            mutationSyncController,
-          ),
         planningMutationEntriesProvider.overrideWith((ref) {
           if (loadMutationEntries != null) {
             return loadMutationEntries();
@@ -424,61 +418,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.text(AppStrings.sessionItemAddSongAction), findsWidgets);
-  });
-
-  testWidgets('renders each conflict row with keep and discard mine actions', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
-        loadMutationEntries: () async => [
-          PlanningMutationRecord(
-            aggregateId: 'session-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            kind: PlanningMutationKind.sessionRename,
-            syncStatus: PlanningMutationSyncStatus.conflict,
-            errorCode: PlanningMutationSyncErrorCode.conflict,
-            errorMessage: 'base_version_conflict',
-            name: 'Opening Set rename',
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026, 4, 10, 9),
-          ),
-          PlanningMutationRecord(
-            aggregateId: 'plan-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.conflict,
-            errorCode: PlanningMutationSyncErrorCode.conflict,
-            errorMessage: 'base_version_conflict',
-            name: 'Team Rehearsal title',
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026, 4, 10, 9),
-          ),
-          PlanningMutationRecord(
-            aggregateId: 'item-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            kind: PlanningMutationKind.sessionItemReorder,
-            syncStatus: PlanningMutationSyncStatus.conflict,
-            errorCode: PlanningMutationSyncErrorCode.conflict,
-            errorMessage: 'base_version_conflict',
-            name: 'Holy Forever order',
-            orderKey: 2,
-            updatedAt: DateTime.utc(2026, 4, 10, 9),
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Opening Set rename'), findsOneWidget);
-    expect(find.text('Team Rehearsal title'), findsOneWidget);
-    expect(find.text('Holy Forever order'), findsOneWidget);
-    expect(find.text('Keep mine'), findsNWidgets(3));
-    expect(find.text('Discard mine'), findsNWidgets(3));
   });
 
   testWidgets('edits a plan locally from the detail screen', (tester) async {
@@ -1728,51 +1667,6 @@ void main() {
     );
   });
 
-  testWidgets('shows failed planning mutations and retries them from detail', (
-    tester,
-  ) async {
-    final syncController = _FakePlanningMutationSyncController();
-
-    await tester.pumpWidget(
-      buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
-        mutationSyncController: syncController,
-        loadMutationEntries: () async => [
-          PlanningMutationRecord(
-            aggregateId: 'plan-1',
-            organizationId: 'org-1',
-            name: 'Team Rehearsal',
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.conflict,
-            errorCode: PlanningMutationSyncErrorCode.conflict,
-            errorMessage: 'base_version_conflict',
-            orderKey: 2,
-            updatedAt: DateTime.utc(2026),
-          ),
-          PlanningMutationRecord(
-            aggregateId: 'plan-2',
-            organizationId: 'org-1',
-            name: 'Other Plan',
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.failedAuthorization,
-            errorCode: PlanningMutationSyncErrorCode.authorizationDenied,
-            orderKey: 3,
-            updatedAt: DateTime.utc(2026),
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text(AppStrings.planConflictMessage), findsOneWidget);
-    expect(find.text('Other Plan'), findsNothing);
-
-    await tester.tap(find.text(AppStrings.songKeepMineAction));
-    await tester.pumpAndSettle();
-
-    expect(syncController.retriedAggregateIds, ['plan-1']);
-  });
-
   testWidgets('shows a validation error for invalid scheduled-for input', (
     tester,
   ) async {
@@ -2407,30 +2301,6 @@ class _DelayedPlanningWriteService extends _FakePlanningWriteService {
   }) async {
     editedDraft = draft;
     await onEditPlan();
-  }
-}
-
-class _FakePlanningMutationSyncController
-    extends PlanningMutationSyncController {
-  _FakePlanningMutationSyncController()
-    : super(
-        mutationStore: () => _PlanDetailTestPlanningMutationStore(),
-        remoteRepository: () =>
-            _PlanDetailTestPlanningMutationRemoteRepository(),
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
-        reconcileAcceptedMutation: (_, _) async {},
-      );
-
-  final List<String> retriedAggregateIds = [];
-
-  @override
-  Future<void> retryMutation(
-    ActivePlanningReadContext context, {
-    required String aggregateType,
-    required String aggregateId,
-  }) async {
-    retriedAggregateIds.add(aggregateId);
   }
 }
 

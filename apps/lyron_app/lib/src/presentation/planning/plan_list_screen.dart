@@ -2,8 +2,6 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
-import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
@@ -12,7 +10,6 @@ import 'package:lyron_app/src/presentation/planning/planning_context_checks.dart
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
-import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_status_surface.dart';
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -23,7 +20,6 @@ class PlanListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(planningPlanListProvider);
-    final mutationsAsync = ref.watch(planningMutationEntriesProvider);
     final orgId = ref.watch(activePlanningContextProvider)?.organizationId;
 
     return PlanningWorkspaceShell(
@@ -49,22 +45,6 @@ class PlanListScreen extends ConsumerWidget {
           ),
         ),
       ],
-      statusSurface: mutationsAsync.when(
-        skipLoadingOnReload: true,
-        data: (entries) {
-          if (entries.isEmpty) {
-            return null;
-          }
-          return PlanningWorkspaceStatusSurface(
-            entries: entries,
-            onRetry: (entry) => _retryMutation(context, ref, entry),
-            onKeepMine: (entry) => _keepMine(context, ref, entry),
-            onDiscardMine: (entry) => _discardMine(context, ref, entry),
-          );
-        },
-        error: (_, _) => null,
-        loading: () => null,
-      ),
       body: plansAsync.when(
         skipLoadingOnReload: true,
         loading: () =>
@@ -143,63 +123,6 @@ class PlanListScreen extends ConsumerWidget {
     context.push(PlanningRoutes.planDetailLocation(routeSlug));
   }
 
-  Future<void> _retryMutation(
-    BuildContext context,
-    WidgetRef ref,
-    PlanningMutationRecord entry,
-  ) async {
-    final activeContext = ref.read(activePlanningContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-
-    await ref
-        .read(planningMutationSyncControllerProvider)
-        .retryMutation(
-          activeContext,
-          aggregateType: entry.kind.aggregateType,
-          aggregateId: entry.aggregateId,
-        );
-    if (!context.mounted) {
-      return;
-    }
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-  }
-
-  Future<void> _keepMine(
-    BuildContext context,
-    WidgetRef ref,
-    PlanningMutationRecord entry,
-  ) async {
-    await _retryMutation(context, ref, entry);
-  }
-
-  Future<void> _discardMine(
-    BuildContext context,
-    WidgetRef ref,
-    PlanningMutationRecord entry,
-  ) async {
-    final activeContext = ref.read(activePlanningContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-
-    await ref
-        .read(planningMutationSyncControllerProvider)
-        .discardMutation(
-          activeContext,
-          aggregateType: entry.kind.aggregateType,
-          aggregateId: entry.aggregateId,
-        );
-    if (!context.mounted) {
-      return;
-    }
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-  }
 }
 
 class _PlanEditorDialog extends ConsumerStatefulWidget {

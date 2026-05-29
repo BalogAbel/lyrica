@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
-import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -31,9 +30,7 @@ void main() {
 
   Widget buildApp({
     Object? listPlansValue = const <PlanSummary>[],
-    Future<List<PlanningMutationRecord>> Function()? loadMutationEntries,
     PlanningWriteService? writeService,
-    PlanningMutationSyncController? mutationSyncController,
     bool? hasUnsyncedPlanningMutations,
     CapabilityResolver? capabilityResolver,
   }) {
@@ -69,16 +66,8 @@ void main() {
 
           return Future.value(listPlansValue as List<PlanSummary>);
         }),
-        if (loadMutationEntries != null)
-          planningMutationEntriesProvider.overrideWith((ref) {
-            return loadMutationEntries();
-          }),
         if (writeService != null)
           planningWriteServiceProvider.overrideWithValue(writeService),
-        if (mutationSyncController != null)
-          planningMutationSyncControllerProvider.overrideWithValue(
-            mutationSyncController,
-          ),
         if (hasUnsyncedPlanningMutations != null)
           hasUnsyncedPlanningMutationsProvider.overrideWith(
             (ref) async => hasUnsyncedPlanningMutations,
@@ -338,40 +327,6 @@ void main() {
     },
   );
 
-  testWidgets('shows failed planning mutations and retries them explicitly', (
-    tester,
-  ) async {
-    final syncController = _FakePlanningMutationSyncController();
-
-    await tester.pumpWidget(
-      buildApp(
-        mutationSyncController: syncController,
-        loadMutationEntries: () async => [
-          PlanningMutationRecord(
-            aggregateId: 'plan-1',
-            organizationId: 'org-1',
-            name: 'Weekend Service',
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.conflict,
-            errorCode: PlanningMutationSyncErrorCode.conflict,
-            errorMessage: 'base_version_conflict',
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026),
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Weekend Service'), findsOneWidget);
-    expect(find.text(AppStrings.planConflictMessage), findsOneWidget);
-
-    await tester.tap(find.text(AppStrings.songKeepMineAction));
-    await tester.pumpAndSettle();
-
-    expect(syncController.retriedAggregateIds, ['plan-1']);
-  });
-
   testWidgets('hides plan create button for read-only user', (tester) async {
     await tester.pumpWidget(
       buildApp(
@@ -455,29 +410,6 @@ class _FakePlanningWriteService extends PlanningWriteService {
   }) async {
     createdDraft = draft;
     return createdPlan;
-  }
-}
-
-class _FakePlanningMutationSyncController
-    extends PlanningMutationSyncController {
-  _FakePlanningMutationSyncController()
-    : super(
-        mutationStore: () => _FakePlanningMutationStore(),
-        remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
-        reconcileAcceptedMutation: (_, _) async {},
-      );
-
-  final List<String> retriedAggregateIds = [];
-
-  @override
-  Future<void> retryMutation(
-    ActivePlanningReadContext context, {
-    required String aggregateType,
-    required String aggregateId,
-  }) async {
-    retriedAggregateIds.add(aggregateId);
   }
 }
 
@@ -617,15 +549,6 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
   }) async {}
-}
-
-class _FakePlanningMutationRemoteRepository
-    implements PlanningMutationRemoteRepository {
-  @override
-  Future<PlanningMutationRecord> syncMutation({
-    required String organizationId,
-    required PlanningMutationRecord record,
-  }) async => record;
 }
 
 class _StaticCapabilityGateway implements CapabilityGateway {
