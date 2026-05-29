@@ -1,7 +1,7 @@
 # Spec: Sync UI Consolidation
 
 **Date:** 2026-05-29  
-**Status:** Draft
+**Status:** Approved
 
 ## Problem
 

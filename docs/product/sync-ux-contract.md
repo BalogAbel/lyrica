@@ -75,14 +75,29 @@ Planning popup grouping uses the best available identity in this order:
 
 Failed plan creates appear as their own plan-level rows. Mutations for sessions or session items whose parent plan is unavailable must still appear under a recoverable plan-level fallback row instead of disappearing from the popup.
 
+### Recovery Actions
+
+Song rows expose **Keep mine** and **Discard mine** buttons for conflict-severity rows. Pending and retryable rows have no per-row actions — the global `Sync now` covers them.
+
+Plan rows expose group-level recovery actions for all mutations belonging to that plan:
+
+- Conflict severity: **Keep mine** (retries all grouped mutations) and **Discard mine** (discards all grouped mutations).
+- Retryable failure severity: **Retry** (retries all grouped mutations).
+- Pending severity: no per-row action.
+
+The popup header also exposes a **Discard all** action (destructive, styled with the error color) when `hasUnsyncedWork` is true. Tapping opens a confirmation dialog naming the count of affected songs and plans. On confirm, all local song and planning mutations for the active organization are discarded. The scope matches `Sync now`.
+
 The popup does not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
 
 Retry may appear for retryable unsynced rows as well as recovery rows where retry is meaningful. Non-retryable conflict rows should prefer explicit recovery actions such as discard, explicit overwrite, explicit remove, or explicit reorder overwrite.
 
 ## Inline Status Responsibility
 
-Inline row badges remain useful for locating the affected song or plan in the current screen. They are secondary to the header sync control:
+Screen-level status surfaces (the song catalog banner, the per-song mutation cards, and the `PlanningWorkspaceStatusSurface`) and the pending/conflict browse filter have been removed.
+
+The header control and popup are now the single sync surface for authenticated non-reader workspaces:
 
 - the header sync control answers "is this workspace fully synced?"
-- the popup answers "what is not synced?"
-- inline badges answer "where is this item affected in the current view?"
+- the popup answers "what is not synced, why, and how do I fix it?"
+
+Inline row badges remain available for future use to locate affected items in the current view, but no such badges are currently rendered.
