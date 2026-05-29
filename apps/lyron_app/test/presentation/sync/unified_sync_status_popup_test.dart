@@ -130,8 +130,8 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
         refreshPlanning: () async => false,
-        reconcileAcceptedMutation: (_, __) async {},
-        shouldReconcileAcceptedMutation: (_) async => false,
+        reconcileAcceptedMutation: (context, record) async {},
+        shouldReconcileAcceptedMutation: (context) async => false,
       );
 
   final List<String> retryCalls = [];
