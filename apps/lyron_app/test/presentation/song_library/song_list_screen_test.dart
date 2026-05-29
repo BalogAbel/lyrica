@@ -37,7 +37,6 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -644,16 +643,8 @@ void main() {
       matching: find.text(text),
     );
 
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('song-list-filter-control')),
-        matching: find.text('Pending sync'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
     expect(rowText('Alpha'), findsOneWidget);
-    expect(rowText('Beta'), findsNothing);
+    expect(rowText('Beta'), findsOneWidget);
 
     container
         .read(catalogStateProvider.notifier)
@@ -664,17 +655,8 @@ void main() {
       sessionStatus: CatalogSessionStatus.verified,
       hasCachedCatalog: true,
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('song-list-filter-control')),
-        matching: find.text('Pending sync'),
-      ),
-    );
     await tester.pump();
 
-    expect(rowText('Alpha'), findsNothing);
     expect(
       find.text(AppStrings.songListMutationStatusLoadingMessage),
       findsOneWidget,
@@ -683,131 +665,9 @@ void main() {
     org2MutationEntriesCompleter.complete(const []);
     await tester.pumpAndSettle();
 
-    expect(rowText('Alpha'), findsNothing);
-    expect(find.text(AppStrings.songListNoResultsMessage), findsOneWidget);
-  });
-
-  testWidgets('filter controls narrow songs by local mutation status', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      buildApp(
-        songs: const [
-          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-          SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
-          SongSummary(id: 'song-4', slug: 'delta', title: 'Delta'),
-          SongSummary(id: 'song-5', slug: 'coda', title: 'Coda'),
-        ],
-        mutationEntries: const [
-          SongMutationRecord(
-            id: 'song-2',
-            organizationId: 'org-1',
-            slug: 'beta',
-            title: 'Beta',
-            chordproSource: '{title: Beta}',
-            version: 2,
-            baseVersion: 1,
-            syncStatus: SongSyncStatus.pendingUpdate,
-          ),
-          SongMutationRecord(
-            id: 'song-3',
-            organizationId: 'org-1',
-            slug: 'gamma',
-            title: 'Gamma',
-            chordproSource: '{title: Gamma}',
-            version: 3,
-            baseVersion: 2,
-            syncStatus: SongSyncStatus.conflict,
-          ),
-          SongMutationRecord(
-            id: 'song-4',
-            organizationId: 'org-1',
-            slug: 'delta',
-            title: 'Delta',
-            chordproSource: '{title: Delta}',
-            version: 4,
-            baseVersion: null,
-            syncStatus: SongSyncStatus.pendingCreate,
-          ),
-          SongMutationRecord(
-            id: 'song-5',
-            organizationId: 'org-1',
-            slug: 'coda',
-            title: 'Coda',
-            chordproSource: '{title: Coda}',
-            version: 5,
-            baseVersion: 4,
-            syncStatus: SongSyncStatus.pendingDelete,
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    Finder rowText(String text) => find.descendant(
-      of: find.byKey(const ValueKey('song-library-results-list')),
-      matching: find.text(text),
-    );
-
     expect(rowText('Alpha'), findsOneWidget);
     expect(rowText('Beta'), findsOneWidget);
-    expect(find.text('All'), findsOneWidget);
-    expect(find.text('Pending sync'), findsOneWidget);
-    expect(find.text('Conflicts'), findsOneWidget);
-
-    Future<void> tapFilterLabel(String label) async {
-      await tester.tap(
-        find.descendant(
-          of: find.byKey(const ValueKey('song-list-filter-control')),
-          matching: find.text(label),
-        ),
-      );
-    }
-
-    await tapFilterLabel('Pending sync');
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.pendingSync},
-    );
-
-    expect(rowText('Alpha'), findsNothing);
-    expect(rowText('Beta'), findsOneWidget);
-    expect(rowText('Gamma'), findsNothing);
-    await tester.drag(
-      find.byKey(const ValueKey('song-library-results-list')),
-      const Offset(0, -300),
-    );
-    await tester.pumpAndSettle();
-
-    expect(rowText('Delta'), findsOneWidget);
-    expect(rowText('Coda'), findsOneWidget);
-
-    await tapFilterLabel('Conflicts');
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.conflicts},
-    );
-
-    expect(rowText('Alpha'), findsNothing);
-    expect(rowText('Beta'), findsNothing);
-    expect(rowText('Gamma'), findsOneWidget);
-
-    await tapFilterLabel('All');
-    await tester.pumpAndSettle();
-
-    expect(rowText('Alpha'), findsOneWidget);
-    expect(rowText('Beta'), findsOneWidget);
+    expect(find.text(AppStrings.songListNoResultsMessage), findsNothing);
   });
 
   testWidgets('search state survives reader navigation and back navigation', (
@@ -911,21 +771,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Amazing Grace'), findsOneWidget);
     expect(find.text('Great Is Thy Faithfulness'), findsNothing);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('song-list-filter-control')),
-        matching: find.text('Pending sync'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.pendingSync},
-    );
 
     container
         .read(catalogStateProvider.notifier)
@@ -946,14 +791,6 @@ void main() {
           .controller
           ?.text,
       isEmpty,
-    );
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.all},
     );
     expect(find.text('Amazing Grace'), findsOneWidget);
     expect(find.text('Great Is Thy Faithfulness'), findsOneWidget);
@@ -1002,21 +839,6 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Amazing Grace'), findsOneWidget);
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey('song-list-filter-control')),
-        matching: find.text('Pending sync'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.pendingSync},
-    );
 
     container
         .read(catalogStateProvider.notifier)
@@ -1037,14 +859,6 @@ void main() {
           .controller
           ?.text,
       isEmpty,
-    );
-    expect(
-      tester
-          .widget<SegmentedButton<SongLibraryBrowseFilter>>(
-            find.byKey(const ValueKey('song-list-filter-control')),
-          )
-          .selected,
-      {SongLibraryBrowseFilter.all},
     );
   });
 

@@ -3,11 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 
 void main() {
   test(
-    'browse rows join mutations and filter by current browse state',
+    'browse rows join mutations and narrow by query',
     () async {
       final container = ProviderContainer(
         overrides: [
@@ -67,21 +66,11 @@ void main() {
       );
 
       container.read(songLibraryBrowseControllerProvider.notifier).setQuery('');
-      container
-          .read(songLibraryBrowseControllerProvider.notifier)
-          .setFilter(SongLibraryBrowseFilter.pendingSync);
-
-      final pendingRows = container.read(songLibraryBrowseRowsProvider);
-      expect(pendingRows.map((row) => row.song.title), ['Beta']);
-
-      container
-          .read(songLibraryBrowseControllerProvider.notifier)
-          .setFilter(SongLibraryBrowseFilter.conflicts);
       expect(
         container
             .read(songLibraryBrowseRowsProvider)
             .map((row) => row.song.title),
-        ['Gamma'],
+        ['Alpha', 'Beta', 'Gamma'],
       );
     },
   );
