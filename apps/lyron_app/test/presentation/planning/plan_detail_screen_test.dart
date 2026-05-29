@@ -2444,15 +2444,6 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 }
 
-class _PlanDetailTestPlanningMutationRemoteRepository
-    implements PlanningMutationRemoteRepository {
-  @override
-  Future<PlanningMutationRecord> syncMutation({
-    required String organizationId,
-    required PlanningMutationRecord record,
-  }) async => record;
-}
-
 class _PlanDetailStaticCapabilityGateway implements CapabilityGateway {
   const _PlanDetailStaticCapabilityGateway(this._capabilities);
 

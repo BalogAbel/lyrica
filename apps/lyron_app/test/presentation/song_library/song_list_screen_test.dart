@@ -1252,32 +1252,6 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 }
 
-class _ThrowingSongMutationSyncController extends SongMutationSyncController {
-  _ThrowingSongMutationSyncController(this._error)
-    : super(
-        store: _SongMutationTestRepository(),
-        remoteRepository: _UnusedSongMutationRemoteRepository(),
-      );
-
-  final SongMutationSyncException _error;
-
-  @override
-  Future<void> keepMine(
-    SongMutationContext context, {
-    required String songId,
-  }) async {
-    throw _error;
-  }
-
-  @override
-  Future<void> discardMine(
-    SongMutationContext context, {
-    required String songId,
-  }) async {
-    throw _error;
-  }
-}
-
 class _SongMutationTestRepository
     implements SongCatalogReadRepository, SongMutationStore {
   @override
