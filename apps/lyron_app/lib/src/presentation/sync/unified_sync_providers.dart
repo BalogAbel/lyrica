@@ -183,7 +183,11 @@ final unifiedDiscardControllerProvider =
             organizationId: ctx.organizationId,
           );
           for (final entry in entries) {
-            await controller.discardMine(songContext, songId: entry.id);
+            try {
+              await controller.discardMine(songContext, songId: entry.id);
+            } catch (_) {
+              // best-effort: continue discarding remaining entries
+            }
           }
           ref.invalidate(songMutationEntriesProvider);
           ref.invalidate(songLibraryListProvider);
@@ -199,11 +203,15 @@ final unifiedDiscardControllerProvider =
               await ref.read(planningMutationEntriesProvider.future);
           final controller = ref.read(planningMutationSyncControllerProvider);
           for (final entry in entries) {
-            await controller.discardMutation(
-              planningContext,
-              aggregateType: entry.kind.aggregateType,
-              aggregateId: entry.aggregateId,
-            );
+            try {
+              await controller.discardMutation(
+                planningContext,
+                aggregateType: entry.kind.aggregateType,
+                aggregateId: entry.aggregateId,
+              );
+            } catch (_) {
+              // best-effort: continue discarding remaining entries
+            }
           }
           ref.read(planningDataRevisionProvider.notifier).state += 1;
           ref.invalidate(planningMutationEntriesProvider);

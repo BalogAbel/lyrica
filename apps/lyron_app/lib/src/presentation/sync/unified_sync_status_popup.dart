@@ -106,7 +106,16 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
     );
     if (confirmed != true) return;
     if (!context.mounted) return;
-    await ref.read(unifiedDiscardControllerProvider).discardAll();
+    try {
+      await ref.read(unifiedDiscardControllerProvider).discardAll();
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.unifiedSyncDiscardAllFailedMessage),
+        ),
+      );
+    }
   }
 }
 
