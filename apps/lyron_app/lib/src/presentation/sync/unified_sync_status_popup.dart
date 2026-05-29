@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
@@ -95,13 +96,13 @@ class _PopupBody extends StatelessWidget {
   }
 }
 
-class _SongRowTile extends StatelessWidget {
+class _SongRowTile extends ConsumerWidget {
   const _SongRowTile({required this.row});
 
   final UnifiedSyncSongRow row;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListTile(
       key: ValueKey('unified-sync-song-row-${row.songId}'),
       title: Text(row.title),
@@ -113,7 +114,53 @@ class _SongRowTile extends StatelessWidget {
           _ReasonChip(reason: row.reasonCode),
         ],
       ),
+      trailing: row.severity == UnifiedSyncRowSeverity.conflict
+          ? Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                  key: ValueKey('unified-sync-song-keep-${row.songId}'),
+                  onPressed: () => unawaited(_keepMine(ref)),
+                  child: const Text(AppStrings.songKeepMineAction),
+                ),
+                TextButton(
+                  key: ValueKey('unified-sync-song-discard-${row.songId}'),
+                  onPressed: () => unawaited(_discardMine(ref)),
+                  child: const Text(AppStrings.songDiscardMineAction),
+                ),
+              ],
+            )
+          : null,
     );
+  }
+
+  SongMutationContext? _context(WidgetRef ref) {
+    final c = ref.read(activeCatalogContextProvider);
+    if (c == null) return null;
+    return SongMutationContext(
+      userId: c.userId,
+      organizationId: c.organizationId,
+    );
+  }
+
+  Future<void> _keepMine(WidgetRef ref) async {
+    final ctx = _context(ref);
+    if (ctx == null) return;
+    await ref
+        .read(songMutationSyncControllerProvider)
+        .keepMine(ctx, songId: row.songId);
+    ref.invalidate(songMutationEntriesProvider);
+    ref.invalidate(songLibraryListProvider);
+  }
+
+  Future<void> _discardMine(WidgetRef ref) async {
+    final ctx = _context(ref);
+    if (ctx == null) return;
+    await ref
+        .read(songMutationSyncControllerProvider)
+        .discardMine(ctx, songId: row.songId);
+    ref.invalidate(songMutationEntriesProvider);
+    ref.invalidate(songLibraryListProvider);
   }
 
   String _songStateLabel(SongSyncStatus state) {

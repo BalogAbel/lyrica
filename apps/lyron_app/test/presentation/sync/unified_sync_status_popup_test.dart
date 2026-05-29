@@ -1,11 +1,134 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+class _FakeSongStore implements SongMutationStore {
+  @override
+  Future<String> allocateUniqueSlug({
+    required String userId,
+    required String organizationId,
+    required String title,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> upsertSong({
+    required String userId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord?> readById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<SongMutationRecord>> readPendingSongs({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<SongMutationRecord>> readConflictSongs({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required SongSyncStatus syncStatus,
+    SongMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<int> countReferencingSessionItems({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteSong({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> reconcileSyncedSong({
+    required String userId,
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> clearSongMutation({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> hasUnsyncedChanges({required String userId}) =>
+      throw UnimplementedError();
+}
+
+class _FakeSongRemote implements SongMutationRemoteRepository {
+  @override
+  Future<SongMutationRecord> syncSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> overwriteSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> fetchSong({
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+}
+
+class _SpySongSyncController extends SongMutationSyncController {
+  _SpySongSyncController()
+    : super(store: _FakeSongStore(), remoteRepository: _FakeSongRemote());
+
+  final List<String> keepMineCalls = [];
+  final List<String> discardMineCalls = [];
+
+  @override
+  Future<void> keepMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    keepMineCalls.add(songId);
+  }
+
+  @override
+  Future<void> discardMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    discardMineCalls.add(songId);
+  }
+}
 
 UnifiedSyncOverview _overview({
   List<UnifiedSyncSongRow> songs = const [],
@@ -155,5 +278,106 @@ void main() {
     );
     await _pumpPopup(tester, overview);
     expect(find.text(AppStrings.unifiedSyncReasonSyncFailed), findsOneWidget);
+  });
+
+  testWidgets('conflict song row shows Keep mine and Discard mine buttons', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.conflict,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.conflict,
+                  severity: UnifiedSyncRowSeverity.conflict,
+                  reasonCode: UnifiedSyncReasonCode.conflict,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-song-keep-s1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('conflict song row Discard mine calls controller', (tester) async {
+    final spy = _SpySongSyncController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.conflict,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.conflict,
+                  severity: UnifiedSyncRowSeverity.conflict,
+                  reasonCode: UnifiedSyncReasonCode.conflict,
+                ),
+              ],
+            ),
+          ),
+          songMutationSyncControllerProvider.overrideWithValue(spy),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'u1',
+              organizationId: 'org1',
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('unified-sync-song-discard-s1')));
+    await tester.pump();
+    expect(spy.discardMineCalls, ['s1']);
+  });
+
+  testWidgets('pending song row shows no action buttons', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.pendingCreate,
+                  severity: UnifiedSyncRowSeverity.pending,
+                  reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-song-keep-s1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+      findsNothing,
+    );
   });
 }
