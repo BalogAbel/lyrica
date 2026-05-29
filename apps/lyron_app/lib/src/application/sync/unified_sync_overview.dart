@@ -74,6 +74,16 @@ class UnifiedSyncSongRow {
   final String? errorMessage;
 }
 
+class UnifiedSyncPlanMutationRef {
+  const UnifiedSyncPlanMutationRef({
+    required this.aggregateType,
+    required this.aggregateId,
+  });
+
+  final String aggregateType;
+  final String aggregateId;
+}
+
 class UnifiedSyncPlanRow {
   const UnifiedSyncPlanRow({
     required this.planId,
@@ -82,6 +92,7 @@ class UnifiedSyncPlanRow {
     required this.reasonCode,
     required this.nestedSummaries,
     this.errorMessage,
+    this.mutationRefs = const [],
   });
 
   final String planId;
@@ -90,6 +101,7 @@ class UnifiedSyncPlanRow {
   final UnifiedSyncReasonCode reasonCode;
   final List<String> nestedSummaries;
   final String? errorMessage;
+  final List<UnifiedSyncPlanMutationRef> mutationRefs;
 }
 
 class UnifiedSyncOverviewInputs {
@@ -261,6 +273,14 @@ List<UnifiedSyncPlanRow> _buildPlanRows({
       (e) => e.errorMessage != null,
       orElse: () => groupEntries.first,
     );
+    final refs = groupEntries
+        .map(
+          (e) => UnifiedSyncPlanMutationRef(
+            aggregateType: e.kind.aggregateType,
+            aggregateId: e.aggregateId,
+          ),
+        )
+        .toList(growable: false);
     rows.add(
       UnifiedSyncPlanRow(
         planId: planId,
@@ -269,6 +289,7 @@ List<UnifiedSyncPlanRow> _buildPlanRows({
         reasonCode: reason,
         nestedSummaries: nested,
         errorMessage: firstWithMessage.errorMessage,
+        mutationRefs: refs,
       ),
     );
   });
