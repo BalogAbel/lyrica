@@ -217,8 +217,10 @@ class _SongRowTile extends ConsumerWidget {
         );
       }
     } finally {
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
+      if (context.mounted) {
+        ref.invalidate(songMutationEntriesProvider);
+        ref.invalidate(songLibraryListProvider);
+      }
     }
   }
 
@@ -238,8 +240,10 @@ class _SongRowTile extends ConsumerWidget {
         );
       }
     } finally {
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
+      if (context.mounted) {
+        ref.invalidate(songMutationEntriesProvider);
+        ref.invalidate(songLibraryListProvider);
+      }
     }
   }
 
@@ -338,7 +342,8 @@ class _PlanRowTile extends ConsumerWidget {
         hasError = true;
       }
     }
-    if (hasError && context.mounted) {
+    if (!context.mounted) return;
+    if (hasError) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(AppStrings.unifiedSyncActionPartialFailureMessage),
