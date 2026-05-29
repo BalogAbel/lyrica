@@ -3,6 +3,8 @@
 **Date:** 2026-05-15  
 **Status:** Approved
 
+> **Superseded in part:** `PlanningWorkspaceStatusSurface` was retained as the action home by this spec. It has since been removed by [2026-05-29-sync-ui-consolidation.md](2026-05-29-sync-ui-consolidation.md), which relocates recovery actions into the unified popup.
+
 ## Problem
 
 After the unified sync header landed, inline mutation status chips appear in three places on planning screens (plan list row trailing, plan detail plan title area, plan detail session card header). These chips duplicate information already available through two dedicated sync surfaces:
