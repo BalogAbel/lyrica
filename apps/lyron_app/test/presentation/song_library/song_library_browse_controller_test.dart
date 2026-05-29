@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_row.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
@@ -31,7 +30,7 @@ void main() {
     );
   });
 
-  test('browse state starts on all songs with title sort', () {
+  test('browse state starts with title sort', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -39,13 +38,12 @@ void main() {
       container.read(songLibraryBrowseControllerProvider),
       const SongLibraryBrowseState(
         query: '',
-        filter: SongLibraryBrowseFilter.all,
         sort: SongLibraryBrowseSort.titleAscending,
       ),
     );
   });
 
-  test('browse filter and sort can reset together', () {
+  test('browse sort can reset', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -54,14 +52,12 @@ void main() {
     );
     controller
       ..setQuery('grace')
-      ..setFilter(SongLibraryBrowseFilter.pendingSync)
       ..setSort(SongLibraryBrowseSort.titleAscending);
 
     expect(
       container.read(songLibraryBrowseControllerProvider),
       const SongLibraryBrowseState(
         query: 'grace',
-        filter: SongLibraryBrowseFilter.pendingSync,
         sort: SongLibraryBrowseSort.titleAscending,
       ),
     );
@@ -71,7 +67,6 @@ void main() {
     expect(
       container.read(songLibraryBrowseControllerProvider),
       const SongLibraryBrowseState(
-        filter: SongLibraryBrowseFilter.all,
         sort: SongLibraryBrowseSort.titleAscending,
       ),
     );
@@ -124,123 +119,49 @@ void main() {
     expect(matches, isEmpty);
   });
 
-  test('browse row filter keeps conflict rows under conflicts', () {
+  test('filterSongLibraryBrowseRows returns all rows sorted by title', () {
     const rows = [
+      SongLibraryBrowseRow(
+        song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+      ),
       SongLibraryBrowseRow(
         song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
       ),
       SongLibraryBrowseRow(
-        song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-2',
-          organizationId: 'org-1',
-          slug: 'beta',
-          title: 'Beta',
-          chordproSource: '{title: Beta}',
-          version: 2,
-          baseVersion: 1,
-          syncStatus: SongSyncStatus.pendingUpdate,
-        ),
-      ),
-      SongLibraryBrowseRow(
         song: SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
-        mutationRecord: SongMutationRecord(
-          id: 'song-3',
-          organizationId: 'org-1',
-          slug: 'gamma',
-          title: 'Gamma',
-          chordproSource: '{title: Gamma}',
-          version: 3,
-          baseVersion: 2,
-          syncStatus: SongSyncStatus.conflict,
-        ),
       ),
     ];
 
-    final matches = filterSongLibraryBrowseRows(
+    final result = filterSongLibraryBrowseRows(
       rows: rows,
       query: '',
-      filter: SongLibraryBrowseFilter.conflicts,
       sort: SongLibraryBrowseSort.titleAscending,
     );
 
-    expect(matches, hasLength(1));
-    expect(matches.single.song.title, 'Gamma');
+    expect(result, hasLength(3));
+    expect(
+      result.map((r) => r.song.title),
+      containsAllInOrder(['Alpha', 'Beta', 'Gamma']),
+    );
   });
 
-  test(
-    'browse row filter keeps every pending sync state under pending sync',
-    () {
-      const rows = [
-        SongLibraryBrowseRow(
-          song: SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
-        ),
-        SongLibraryBrowseRow(
-          song: SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
-          mutationRecord: SongMutationRecord(
-            id: 'song-2',
-            organizationId: 'org-1',
-            slug: 'beta',
-            title: 'Beta',
-            chordproSource: '{title: Beta}',
-            version: 2,
-            baseVersion: null,
-            syncStatus: SongSyncStatus.pendingCreate,
-          ),
-        ),
-        SongLibraryBrowseRow(
-          song: SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
-          mutationRecord: SongMutationRecord(
-            id: 'song-3',
-            organizationId: 'org-1',
-            slug: 'gamma',
-            title: 'Gamma',
-            chordproSource: '{title: Gamma}',
-            version: 3,
-            baseVersion: 2,
-            syncStatus: SongSyncStatus.pendingUpdate,
-          ),
-        ),
-        SongLibraryBrowseRow(
-          song: SongSummary(id: 'song-4', slug: 'delta', title: 'Delta'),
-          mutationRecord: SongMutationRecord(
-            id: 'song-4',
-            organizationId: 'org-1',
-            slug: 'delta',
-            title: 'Delta',
-            chordproSource: '{title: Delta}',
-            version: 4,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.pendingDelete,
-          ),
-        ),
-        SongLibraryBrowseRow(
-          song: SongSummary(id: 'song-5', slug: 'epsilon', title: 'Epsilon'),
-          mutationRecord: SongMutationRecord(
-            id: 'song-5',
-            organizationId: 'org-1',
-            slug: 'epsilon',
-            title: 'Epsilon',
-            chordproSource: '{title: Epsilon}',
-            version: 5,
-            baseVersion: 4,
-            syncStatus: SongSyncStatus.conflict,
-          ),
-        ),
-      ];
+  test('filterSongLibraryBrowseRows filters by query', () {
+    const rows = [
+      SongLibraryBrowseRow(
+        song: SongSummary(id: 'song-1', slug: 'amazing-grace', title: 'Amazing Grace'),
+      ),
+      SongLibraryBrowseRow(
+        song: SongSummary(id: 'song-2', slug: 'great-faith', title: 'Great Is Thy Faithfulness'),
+      ),
+    ];
 
-      final matches = filterSongLibraryBrowseRows(
-        rows: rows,
-        query: '',
-        filter: SongLibraryBrowseFilter.pendingSync,
-        sort: SongLibraryBrowseSort.titleAscending,
-      );
+    final result = filterSongLibraryBrowseRows(
+      rows: rows,
+      query: 'grace',
+      sort: SongLibraryBrowseSort.titleAscending,
+    );
 
-      expect(matches, hasLength(3));
-      expect(
-        matches.map((row) => row.song.title),
-        containsAllInOrder(['Beta', 'Delta', 'Gamma']),
-      );
-    },
-  );
+    expect(result, hasLength(1));
+    expect(result.single.song.title, 'Amazing Grace');
+  });
 }

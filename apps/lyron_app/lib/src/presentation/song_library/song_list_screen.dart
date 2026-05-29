@@ -12,7 +12,6 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
-import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
@@ -32,8 +31,6 @@ class SongListScreen extends ConsumerStatefulWidget {
 
 class _SongListScreenState extends ConsumerState<SongListScreen> {
   late final TextEditingController _searchController;
-  List<SongMutationRecord>? _cachedMutationEntries;
-  String? _cachedMutationEntriesOrganizationId;
 
   @override
   void initState() {
@@ -59,47 +56,11 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
       if (previous == null && next == null) {
         return;
       }
-      setState(() {
-        _cachedMutationEntries = null;
-        _cachedMutationEntriesOrganizationId = null;
-      });
       ref.read(songLibraryBrowseControllerProvider.notifier).reset();
-    });
-
-    ref.listen(songMutationEntriesProvider, (previous, next) {
-      if (!next.hasValue) {
-        return;
-      }
-
-      final nextValue = next.value!;
-      final activeOrganizationId = ref.read(
-        catalogSnapshotStateProvider.select(
-          (state) => state.context?.organizationId,
-        ),
-      );
-      final nextOrganizationId = nextValue.isEmpty
-          ? activeOrganizationId
-          : nextValue.first.organizationId;
-      if (activeOrganizationId != null &&
-          (nextOrganizationId == null ||
-              nextOrganizationId != activeOrganizationId)) {
-        return;
-      }
-
-      if (identical(_cachedMutationEntries, nextValue) &&
-          _cachedMutationEntriesOrganizationId == nextOrganizationId) {
-        return;
-      }
-
-      setState(() {
-        _cachedMutationEntries = nextValue;
-        _cachedMutationEntriesOrganizationId = nextOrganizationId;
-      });
     });
 
     final songsAsync = ref.watch(songLibraryListProvider);
     final catalogState = ref.watch(catalogSnapshotStateProvider);
-    final browseState = ref.watch(songLibraryBrowseControllerProvider);
     final mutationEntriesAsync = ref.watch(songMutationEntriesProvider);
     final isResolvingCatalogContext =
         catalogState.context == null &&
@@ -235,47 +196,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                     },
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    SongListScreen._horizontalPadding,
-                    0,
-                    SongListScreen._horizontalPadding,
-                    12,
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SegmentedButton<SongLibraryBrowseFilter>(
-                      key: const ValueKey('song-list-filter-control'),
-                      segments: const [
-                        ButtonSegment(
-                          value: SongLibraryBrowseFilter.all,
-                          label: Text(AppStrings.songLibraryFilterAllLabel),
-                        ),
-                        ButtonSegment(
-                          value: SongLibraryBrowseFilter.pendingSync,
-                          label: Text(
-                            AppStrings.songLibraryFilterPendingSyncLabel,
-                          ),
-                        ),
-                        ButtonSegment(
-                          value: SongLibraryBrowseFilter.conflicts,
-                          label: Text(
-                            AppStrings.songLibraryFilterConflictsLabel,
-                          ),
-                        ),
-                      ],
-                      selected: {browseState.filter},
-                      onSelectionChanged: (selection) {
-                        if (selection.isEmpty) {
-                          return;
-                        }
-                        ref
-                            .read(songLibraryBrowseControllerProvider.notifier)
-                            .setFilter(selection.first);
-                      },
-                    ),
-                  ),
-                ),
                 Expanded(
                   child: isResolvingCatalogContext
                       ? const Center(
@@ -317,34 +237,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                             final browseRows = ref.watch(
                               songLibraryBrowseRowsProvider,
                             );
-
-                            final activeOrganizationId =
-                                catalogState.context?.organizationId;
-                            final mutationEntries = _resolveMutationEntries(
-                              activeOrganizationId: activeOrganizationId,
-                              mutationEntriesAsync: mutationEntriesAsync,
-                            );
-                            final mutationRowsReady = mutationEntries != null;
-                            if (!mutationRowsReady &&
-                                browseState.filter !=
-                                    SongLibraryBrowseFilter.all) {
-                              if (mutationEntriesAsync.hasError) {
-                                return _RetryableErrorState(
-                                  message: AppStrings
-                                      .songListMutationStatusFailedMessage,
-                                  onRetry: () => ref.invalidate(
-                                    songMutationEntriesProvider,
-                                  ),
-                                );
-                              }
-
-                              return const Center(
-                                child: Text(
-                                  AppStrings
-                                      .songListMutationStatusLoadingMessage,
-                                ),
-                              );
-                            }
 
                             final visibleSongs = browseRows
                                 .map((row) => row.song)
@@ -423,27 +315,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         ),
       ),
     );
-  }
-
-  List<SongMutationRecord>? _resolveMutationEntries({
-    required String? activeOrganizationId,
-    required AsyncValue<List<SongMutationRecord>> mutationEntriesAsync,
-  }) {
-    final mutationEntriesFromProvider = mutationEntriesAsync.valueOrNull;
-    final mutationEntriesFromProviderOrganizationId =
-        mutationEntriesFromProvider == null
-        ? null
-        : mutationEntriesFromProvider.isEmpty
-        ? activeOrganizationId
-        : mutationEntriesFromProvider.first.organizationId;
-
-    return activeOrganizationId == null
-        ? mutationEntriesFromProvider ?? _cachedMutationEntries
-        : mutationEntriesFromProviderOrganizationId == activeOrganizationId
-        ? mutationEntriesFromProvider
-        : _cachedMutationEntriesOrganizationId == activeOrganizationId
-        ? _cachedMutationEntries
-        : null;
   }
 
   Future<void> _createSong(BuildContext context, WidgetRef ref) async {

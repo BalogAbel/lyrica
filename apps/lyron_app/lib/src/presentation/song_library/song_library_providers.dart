@@ -132,19 +132,12 @@ final songLibraryBrowseRowsProvider =
         return const [];
       }
 
-      final mutationEntries = ref
-          .watch(songMutationEntriesProvider)
-          .valueOrNull;
       final browseState = ref.watch(songLibraryBrowseControllerProvider);
-      final rows = buildSongLibraryBrowseRows(
-        songs: songs,
-        mutationEntries: mutationEntries ?? const [],
-      );
+      final rows = buildSongLibraryBrowseRows(songs: songs);
 
       return filterSongLibraryBrowseRows(
         rows: rows,
         query: browseState.query,
-        filter: browseState.filter,
         sort: browseState.sort,
       );
     });
