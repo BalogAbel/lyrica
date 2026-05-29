@@ -46,9 +46,8 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
                       style: TextButton.styleFrom(
                         foregroundColor: Theme.of(context).colorScheme.error,
                       ),
-                      onPressed: () => unawaited(
-                        _confirmDiscardAll(context, ref, overview),
-                      ),
+                      onPressed: () =>
+                          unawaited(_confirmDiscardAll(context, ref, overview)),
                       child: const Text(AppStrings.unifiedSyncDiscardAllAction),
                     ),
                     const SizedBox(width: 8),
@@ -264,25 +263,25 @@ class _PlanRowTile extends ConsumerWidget {
   Widget? _actions(WidgetRef ref) {
     return switch (row.severity) {
       UnifiedSyncRowSeverity.conflict => Wrap(
-          spacing: 8,
-          children: [
-            TextButton(
-              key: ValueKey('unified-sync-plan-keep-${row.planId}'),
-              onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
-              child: const Text(AppStrings.songKeepMineAction),
-            ),
-            TextButton(
-              key: ValueKey('unified-sync-plan-discard-${row.planId}'),
-              onPressed: () => unawaited(_applyToGroup(ref, retry: false)),
-              child: const Text(AppStrings.songDiscardMineAction),
-            ),
-          ],
-        ),
+        spacing: 8,
+        children: [
+          TextButton(
+            key: ValueKey('unified-sync-plan-keep-${row.planId}'),
+            onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+            child: const Text(AppStrings.songKeepMineAction),
+          ),
+          TextButton(
+            key: ValueKey('unified-sync-plan-discard-${row.planId}'),
+            onPressed: () => unawaited(_applyToGroup(ref, retry: false)),
+            child: const Text(AppStrings.songDiscardMineAction),
+          ),
+        ],
+      ),
       UnifiedSyncRowSeverity.retryableFailure => TextButton(
-          key: ValueKey('unified-sync-plan-retry-${row.planId}'),
-          onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
-          child: const Text(AppStrings.retryAction),
-        ),
+        key: ValueKey('unified-sync-plan-retry-${row.planId}'),
+        onPressed: () => unawaited(_applyToGroup(ref, retry: true)),
+        child: const Text(AppStrings.retryAction),
+      ),
       UnifiedSyncRowSeverity.pending => null,
     };
   }
