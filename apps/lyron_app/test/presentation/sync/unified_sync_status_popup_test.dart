@@ -7,10 +7,26 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+class _SpyDiscardController extends UnifiedDiscardController {
+  _SpyDiscardController()
+    : super(
+        activeContextReader: () => null,
+        discardSongs: (_) async {},
+        discardPlanning: (_) async {},
+      );
+  int discardAllCalls = 0;
+
+  @override
+  Future<void> discardAll() async {
+    discardAllCalls += 1;
+  }
+}
 
 class _FakeSongStore implements SongMutationStore {
   @override
@@ -540,6 +556,104 @@ void main() {
       find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
       findsNothing,
     );
+  });
+
+  testWidgets('Discard all button absent when nothing to sync', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [unifiedSyncOverviewProvider.overrideWithValue(_overview())],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(find.byKey(const ValueKey('unified-sync-popup-discard-all')), findsNothing);
+  });
+
+  testWidgets('Discard all button present when unsynced work exists', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.pendingCreate,
+                  severity: UnifiedSyncRowSeverity.pending,
+                  reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                ),
+              ],
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    expect(find.byKey(const ValueKey('unified-sync-popup-discard-all')), findsOneWidget);
+  });
+
+  testWidgets('Discard all confirms then calls controller', (tester) async {
+    final spy = _SpyDiscardController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.pendingCreate,
+                  severity: UnifiedSyncRowSeverity.pending,
+                  reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                ),
+              ],
+            ),
+          ),
+          unifiedDiscardControllerProvider.overrideWithValue(spy),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('unified-sync-popup-discard-all')));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.unifiedSyncDiscardAllTitle), findsOneWidget);
+    await tester.tap(find.text(AppStrings.unifiedSyncDiscardAllConfirmAction).last);
+    await tester.pumpAndSettle();
+    expect(spy.discardAllCalls, 1);
+  });
+
+  testWidgets('Discard all cancel does not call controller', (tester) async {
+    final spy = _SpyDiscardController();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: const [
+                UnifiedSyncSongRow(
+                  songId: 's1',
+                  title: 'Hymn',
+                  entityState: SongSyncStatus.pendingCreate,
+                  severity: UnifiedSyncRowSeverity.pending,
+                  reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                ),
+              ],
+            ),
+          ),
+          unifiedDiscardControllerProvider.overrideWithValue(spy),
+        ],
+        child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('unified-sync-popup-discard-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+    expect(spy.discardAllCalls, 0);
   });
 
   testWidgets('pending plan row shows no action buttons', (tester) async {
