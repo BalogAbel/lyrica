@@ -199,6 +199,11 @@ class AppStrings {
   static const unifiedSyncConnectivityOffline = 'offline';
   static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
   static const unifiedSyncActivitySyncing = 'syncing';
+  static const unifiedSyncDiscardAllAction = 'Discard all';
+  static const unifiedSyncDiscardAllTitle = 'Discard all local changes?';
+  static const unifiedSyncDiscardAllMessagePrefix =
+      'This permanently discards all local changes for this organization';
+  static const unifiedSyncDiscardAllConfirmAction = 'Discard all';
 
   // ChordPro import
   static const songImportAction = 'Import';
