@@ -3,8 +3,11 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "io.lyron.app",
-      "sha256_cert_fingerprints": ["<FINGERPRINT_HEX>"]
+      "package_name": "io.lyron.chords",
+      "sha256_cert_fingerprints": [
+        "TODO: replace with SHA-256 from: keytool -list -v -keystore <storeFile> -alias <keyAlias>",
+        "TODO: if using Google Play App Signing, also add the Play-managed key SHA-256 from Play Console → Release → Setup → App signing"
+      ]
     }
   }
 ]
