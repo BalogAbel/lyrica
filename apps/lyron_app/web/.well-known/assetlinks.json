@@ -5,8 +5,8 @@
       "namespace": "android_app",
       "package_name": "io.lyron.chords",
       "sha256_cert_fingerprints": [
-        "TODO: replace with SHA-256 from: keytool -list -v -keystore <storeFile> -alias <keyAlias>",
-        "TODO: if using Google Play App Signing, also add the Play-managed key SHA-256 from Play Console → Release → Setup → App signing"
+        "E6:10:77:25:82:1A:24:2E:4D:F4:20:48:A1:7B:F4:EE:DF:9C:33:F9:B7:34:1B:29:E3:BA:5A:29:78:B4:73:CA",
+        "70:FF:06:EA:04:3D:AF:A7:5C:19:80:2D:59:2E:AC:7E:81:BE:62:C3:1D:1D:46:83:B1:5F:67:93:4E:54:70:6F"
       ]
     }
   }
