@@ -8,7 +8,7 @@
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:app.lyron.&lt;staging-domain&gt;</string>
+		<string>applinks:lyron.pages.dev</string>
 	</array>
 </dict>
 </plist>
