@@ -4,7 +4,7 @@
     "details": [
       {
         "appID": "TODO_APPLE_TEAM_ID.com.lyron.lyronApp",
-        "paths": ["/invite/*"]
+        "paths": ["/invite", "/invite/*"]
       }
     ]
   }
