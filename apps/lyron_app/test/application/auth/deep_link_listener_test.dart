@@ -37,4 +37,22 @@ void main() {
     expect(pending.current, isNull);
     await listener.dispose();
   });
+
+  test('captures token from https://lyron.pages.dev/invite', () async {
+    final controller = StreamController<Uri>();
+    final pending = PendingInviteTokenController();
+    final listener = DeepLinkListener(
+      stream: controller.stream,
+      pendingTokens: pending,
+    );
+
+    listener.start();
+    controller.add(Uri.parse('https://lyron.pages.dev/invite?token=PAGESDEV'));
+
+    await Future<void>.delayed(Duration.zero);
+
+    expect(pending.current?.token, 'PAGESDEV');
+
+    await listener.dispose();
+  });
 }
