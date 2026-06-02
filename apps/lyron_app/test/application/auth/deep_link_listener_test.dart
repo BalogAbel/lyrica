@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/auth/pending_invite_token_controller.d
 void main() {
   test('captures token from /invite?token=X', () async {
     final controller = StreamController<Uri>();
+    addTearDown(controller.close);
     final pending = PendingInviteTokenController();
     final listener = DeepLinkListener(
       stream: controller.stream,
@@ -26,6 +27,7 @@ void main() {
 
   test('ignores unrelated paths', () async {
     final controller = StreamController<Uri>();
+    addTearDown(controller.close);
     final pending = PendingInviteTokenController();
     final listener = DeepLinkListener(
       stream: controller.stream,
@@ -40,6 +42,7 @@ void main() {
 
   test('captures token from https://lyron.pages.dev/invite', () async {
     final controller = StreamController<Uri>();
+    addTearDown(controller.close);
     final pending = PendingInviteTokenController();
     final listener = DeepLinkListener(
       stream: controller.stream,
