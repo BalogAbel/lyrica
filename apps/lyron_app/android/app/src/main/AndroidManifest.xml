@@ -32,7 +32,11 @@
                 <data
                     android:scheme="https"
                     android:host="lyron.pages.dev"
-                    android:pathPrefix="/invite" />
+                    android:path="/invite" />
+                <data
+                    android:scheme="https"
+                    android:host="lyron.pages.dev"
+                    android:pathPrefix="/invite/" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
