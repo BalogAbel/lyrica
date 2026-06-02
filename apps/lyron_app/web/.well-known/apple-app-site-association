@@ -3,8 +3,8 @@
     "apps": [],
     "details": [
       {
-        "appID": "<APPLE_TEAM_ID>.io.lyron.app",
-        "paths": ["/invite/*", "/auth/callback/*"]
+        "appID": "TODO_APPLE_TEAM_ID.com.lyron.lyronApp",
+        "paths": ["/invite/*"]
       }
     ]
   }
