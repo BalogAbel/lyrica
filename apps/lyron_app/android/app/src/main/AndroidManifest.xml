@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Lyron Chords"
         android:name="${applicationName}"
@@ -30,12 +31,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="app.lyron.staging-domain"
+                    android:host="lyron.pages.dev"
                     android:pathPrefix="/invite" />
-                <data
-                    android:scheme="https"
-                    android:host="app.lyron.staging-domain"
-                    android:pathPrefix="/auth/callback" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
