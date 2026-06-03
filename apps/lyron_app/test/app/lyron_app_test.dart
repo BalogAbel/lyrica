@@ -216,6 +216,7 @@ void main() {
       // failure even when a cached organization exists. Now it falls back to the
       // cached org and renders SongListScreen.
       final database = SongCatalogDatabase.inMemory();
+      addTearDown(database.close);
       final store = DriftSongCatalogStore(database);
 
       // Seed a cached catalog snapshot so readLatestCachedOrganizationId
@@ -264,7 +265,6 @@ void main() {
           child: LyronApp(),
         ),
       );
-      addTearDown(database.close);
 
       await tester.pumpAndSettle();
 
