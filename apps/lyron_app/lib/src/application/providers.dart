@@ -168,11 +168,54 @@ final activeMembershipControllerProvider =
       (_) => ActiveMembershipController(),
     );
 
+/// Returns [resolution] unchanged unless it is an
+/// [ActiveOrganizationUnknownConnectivityFailure] AND a [userId] is present AND
+/// a cached organization id can be read for that user — in which case it returns
+/// `ActiveOrganizationResolution.selected(cachedOrgId)`.
+///
+/// Extracted as a pure top-level function so it can be unit-tested without any
+/// Riverpod or Supabase dependency.
+Future<ActiveOrganizationResolution> resolveMembershipWithCachedFallback({
+  required ActiveOrganizationResolution resolution,
+  required String? userId,
+  required Future<String?> Function({required String userId})
+  readCachedOrganizationId,
+}) async {
+  if (resolution is! ActiveOrganizationUnknownConnectivityFailure) {
+    return resolution;
+  }
+  if (userId == null) return resolution;
+  final cachedOrgId = await readCachedOrganizationId(userId: userId);
+  if (cachedOrgId == null) return resolution;
+  return ActiveOrganizationResolution.selected(cachedOrgId);
+}
+
+final membershipResolutionProvider =
+    Provider<ActiveOrganizationResolutionReader>((ref) {
+      return () async {
+        final resolution = await ref.read(
+          activeOrganizationResolutionProvider,
+        )();
+        final userId = ref
+            .read(appAuthControllerProvider)
+            .state
+            .session
+            ?.userId;
+        return resolveMembershipWithCachedFallback(
+          resolution: resolution,
+          userId: userId,
+          readCachedOrganizationId: ref
+              .read(songCatalogStoreProvider)
+              .readLatestCachedOrganizationId,
+        );
+      };
+    });
+
 final membershipRefreshEffectProvider = Provider<void>((ref) {
   final membershipController = ref.read(activeMembershipControllerProvider);
 
   Future<void> refreshMembership() async {
-    final reader = ref.read(activeOrganizationResolutionProvider);
+    final reader = ref.read(membershipResolutionProvider);
     final result = await reader();
     membershipController.update(result);
   }

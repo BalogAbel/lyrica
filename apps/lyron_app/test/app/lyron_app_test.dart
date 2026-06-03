@@ -17,11 +17,14 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/domain/song/song_source.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 import '../support/drift_test_setup.dart';
 
@@ -202,6 +205,86 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Egy út'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'signed-in user with cached catalog sees song list even when org lookup fails with connectivity error',
+    (tester) async {
+      // Regression test for the offline relaunch bug:
+      // MembershipGate used to show "Could not verify access" on connectivity
+      // failure even when a cached organization exists. Now it falls back to the
+      // cached org and renders SongListScreen.
+      final database = SongCatalogDatabase.inMemory();
+      final store = DriftSongCatalogStore(database);
+
+      // Seed a cached catalog snapshot so readLatestCachedOrganizationId
+      // returns 'org-1' for 'user-1'.
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [
+          SongSummary(id: 'song-1', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        sources: const [SongSource(id: 'song-1', source: '{title:Egy út}\n')],
+        refreshedAt: DateTime(2026, 6, 1),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(_SignedInAuthRepository()),
+            songCatalogDatabaseProvider.overrideWithValue(database),
+            songCatalogStoreProvider.overrideWithValue(store),
+            // Simulate offline: org lookup always returns connectivity failure.
+            activeOrganizationResolutionProvider.overrideWithValue(
+              () async =>
+                  const ActiveOrganizationResolution.unknownConnectivityFailure(),
+            ),
+            // Catalog still works offline via the store.
+            activeOrganizationReaderProvider.overrideWithValue(
+              () async => 'org-1',
+            ),
+            supabaseSongRepositoryProvider.overrideWithValue(
+              SupabaseSongRepository.testing(
+                listSongsRows: () async => [],
+                getSongRow: (id) async => null,
+              ),
+            ),
+            catalogSessionVerifierProvider.overrideWithValue(
+              () async => CatalogSessionStatus.verified,
+            ),
+            planningSyncControllerProvider.overrideWith(
+              (ref) => _NoopPlanningSyncController(),
+            ),
+            hasUnsyncedPlanningMutationsProvider.overrideWith(
+              (ref) async => false,
+            ),
+          ],
+          child: LyronApp(),
+        ),
+      );
+      addTearDown(database.close);
+
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(AppStrings.membershipConnectivityFailureMessage),
+        findsNothing,
+      );
+      // SongListScreen is visible: it shows loading or empty state.
+      expect(
+        find
+                .textContaining(AppStrings.songListLoadingMessage)
+                .evaluate()
+                .isNotEmpty ||
+            find
+                .textContaining(AppStrings.songListEmptyMessage)
+                .evaluate()
+                .isNotEmpty ||
+            find.text('Egy út').evaluate().isNotEmpty,
+        isTrue,
+      );
     },
   );
 }
