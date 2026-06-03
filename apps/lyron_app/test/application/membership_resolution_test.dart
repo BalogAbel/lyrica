@@ -103,5 +103,25 @@ void main() {
         );
       },
     );
+
+    test(
+      'passes through connectivity failure unchanged when cache lookup throws',
+      () async {
+        const resolution =
+            ActiveOrganizationResolution.unknownConnectivityFailure();
+
+        final result = await resolveMembershipWithCachedFallback(
+          resolution: resolution,
+          userId: 'user-1',
+          readCachedOrganizationId: ({required userId}) async =>
+              throw StateError('cache read failed'),
+        );
+
+        expect(
+          result,
+          const ActiveOrganizationResolution.unknownConnectivityFailure(),
+        );
+      },
+    );
   });
 }
