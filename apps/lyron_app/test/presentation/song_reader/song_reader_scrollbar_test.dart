@@ -96,7 +96,6 @@ void main() {
               onTransposeUp: () {},
               onDecreaseFontScale: () {},
               onIncreaseFontScale: () {},
-              maxContentWidth: 1440,
               contentPadding: EdgeInsets.all(24),
             ),
           ),

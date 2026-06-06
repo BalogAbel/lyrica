@@ -23,7 +23,6 @@ class SongReaderExpandedSurface extends StatefulWidget {
     this.nextTitle,
     this.onPreviousTap,
     this.onNextTap,
-    required this.maxContentWidth,
     required this.contentPadding,
   });
 
@@ -43,8 +42,6 @@ class SongReaderExpandedSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
-  /// Maximum logical width of the song content area (centering cap).
-  final double maxContentWidth;
   /// Padding applied around the song content grid inside the scroll view.
   final EdgeInsetsGeometry contentPadding;
 
@@ -97,9 +94,9 @@ class _SongReaderExpandedSurfaceState
                 controller: _scrollController,
                 child: SingleChildScrollView(
                   controller: _scrollController,
-                  // No Center here: the center column width is already fixed
-                  // by the outer Row layout. Padding lives inside so the
-                  // scrollbar thumb reaches the physical edge.
+                  // The outer Row governs this column's width; no ConstrainedBox
+                  // needed. Padding lives inside so the scrollbar thumb reaches
+                  // the physical edge.
                   child: Padding(
                     padding: widget.contentPadding,
                     child: SongReaderSectionGrid(

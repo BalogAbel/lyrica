@@ -51,7 +51,6 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
-  static const _expandedContentWidth = 1440.0;
   static const _contentPadding = EdgeInsets.all(24);
   static const _compactOverlayInactivity = Duration(seconds: 3);
 
@@ -774,7 +773,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   scopedContext: resolvedScopedContext,
                                   neighbor: resolvedScopedContext?.nextItem,
                                 ),
-                                maxContentWidth: _expandedContentWidth,
                                 contentPadding: _contentPadding,
                               )
                             : SongReaderCompactSurface(
