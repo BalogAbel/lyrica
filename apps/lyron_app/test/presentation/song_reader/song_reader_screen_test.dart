@@ -25,6 +25,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
@@ -36,6 +37,30 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+/// A no-op preferences store for tests — never reads or writes any real
+/// storage, so tests do not need SharedPreferences initialised.
+class _NoopSongReaderPreferencesStore implements SongReaderPreferencesStore {
+  @override
+  Future<double?> readZoom({
+    required String userId,
+    required String songId,
+  }) async => null;
+
+  @override
+  Future<void> writeZoom({
+    required String userId,
+    required String songId,
+    required double zoom,
+  }) async {}
+}
+
+/// Convenience override that silences the SharedPreferences dependency so tests
+/// do not need `SharedPreferences.setMockInitialValues({})`.
+final _noopPreferencesStoreOverride =
+    songReaderPreferencesStoreProvider.overrideWith(
+      (_) async => _NoopSongReaderPreferencesStore(),
+    );
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -154,6 +179,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
@@ -200,6 +226,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
@@ -267,6 +294,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(
           const CatalogSnapshotState(
             context: null,
@@ -313,6 +341,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         songLibraryReaderProvider.overrideWithProvider(
@@ -1308,6 +1337,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: ActiveCatalogContext(
@@ -1403,6 +1433,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: ActiveCatalogContext(
@@ -1546,6 +1577,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: null,

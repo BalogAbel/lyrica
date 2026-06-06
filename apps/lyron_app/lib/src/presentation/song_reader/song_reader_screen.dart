@@ -20,6 +20,7 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_con
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
@@ -56,6 +57,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   late final SongReaderController _controller = SongReaderController();
   Timer? _compactOverlayHideTimer;
+  Timer? _persistZoomTimer;
+  bool _seededZoom = false;
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -68,6 +71,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   void initState() {
     super.initState();
     _syncScopedRuntimeState();
+    _seedZoomFromStorage();
   }
 
   @override
@@ -83,7 +87,92 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   @override
   void dispose() {
     _compactOverlayHideTimer?.cancel();
+    _persistZoomTimer?.cancel();
     super.dispose();
+  }
+
+  /// Reads the stored zoom for this user+song once on open and applies it via
+  /// the same path as [_setSharedFontScale]. Guards with [_seededZoom] so it
+  /// fires only once per reader open and never clobbers a subsequent user change.
+  void _seedZoomFromStorage() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _seededZoom) {
+        return;
+      }
+      _seededZoom = true;
+
+      // Resolve userId inside the callback so tests can override the provider
+      // and the read does not crash during Supabase-less test environments.
+      String? userId;
+      try {
+        userId = ref.read(supabaseClientProvider).auth.currentUser?.id;
+      } catch (_) {
+        return; // Supabase not available (e.g. tests) — skip seeding.
+      }
+      if (userId == null) {
+        return;
+      }
+
+      try {
+        final store = await ref.read(songReaderPreferencesStoreProvider.future);
+        if (!mounted) {
+          return;
+        }
+        final zoom = await store.readZoom(
+          userId: userId,
+          songId: widget.songId,
+        );
+        if (!mounted || zoom == null) {
+          return;
+        }
+        _setSharedFontScale(zoom);
+      } catch (_) {
+        // Best-effort — ignore read failures so the reader still opens.
+      }
+    });
+  }
+
+  /// Debounced persist: (re)starts a 400 ms timer that writes the current
+  /// sharedFontScale for this user+song. Called on pinch-end and double-tap fit.
+  void _persistFontScale() {
+    String? rawUserId;
+    try {
+      rawUserId = ref.read(supabaseClientProvider).auth.currentUser?.id;
+    } catch (_) {
+      return; // Supabase not available (e.g. tests) — skip persisting.
+    }
+    if (rawUserId == null) {
+      return;
+    }
+    final userId = rawUserId; // non-nullable capture for the timer closure
+
+    _persistZoomTimer?.cancel();
+    _persistZoomTimer = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) {
+        return;
+      }
+
+      final scale = _isScopedMode
+          ? ref
+                .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+                .state
+                .readerState
+                .sharedFontScale
+          : _controller.state.sharedFontScale;
+
+      try {
+        final store = await ref.read(
+          songReaderPreferencesStoreProvider.future,
+        );
+        await store.writeZoom(
+          userId: userId,
+          songId: widget.songId,
+          zoom: scale,
+        );
+      } catch (_) {
+        // Best-effort — ignore write failures silently.
+      }
+    });
   }
 
   void _updateState(void Function(SongReaderController controller) update) {
@@ -804,6 +893,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
                                 onSetFontScale: _setSharedFontScale,
+                                onPersistFontScale: _persistFontScale,
                                 onPreviousTap:
                                     _buildScopedNeighborNavigationTap(
                                       context,
