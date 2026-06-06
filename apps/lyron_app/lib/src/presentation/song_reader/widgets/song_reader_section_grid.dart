@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_section_view.dart';
@@ -20,15 +21,6 @@ class SongReaderSectionGrid extends StatelessWidget {
   final double sharedFontScale;
   final int columnCount;
   final double availableHeight;
-  static const _sectionGap = 20.0;
-  static const _headerHeight = 40.0;
-  static const _lineGap = 10.0;
-  static const _linePadding = 24.0;
-  static const _characterWidthEstimate = 10.0;
-  static const _chordRowHeight = 20.0;
-  static const _lyricRowHeight = 24.0;
-  static const _directiveLineHeight = 36.0;
-  static const _tabBlockVerticalPadding = 16.0;
   static const _columnHeightToleranceFactor = 1.15;
 
   @override
@@ -46,7 +38,7 @@ class SongReaderSectionGrid extends StatelessWidget {
             : MediaQuery.sizeOf(context).height;
         final leadingDirectiveHeight = leadingDirectiveText == null
             ? 0.0
-            : _directiveLineHeight;
+            : directiveLineHeight;
         final shouldUseMultipleColumns =
             normalizedColumns > 1 &&
             _singleColumnHeightEstimate(
@@ -61,7 +53,7 @@ class SongReaderSectionGrid extends StatelessWidget {
           return _buildSingleColumn(normalizedSections);
         }
 
-        const spacing = _sectionGap;
+        const spacing = sectionGap;
         final tileWidth =
             (availableWidth - (effectiveColumns - 1) * spacing) /
             effectiveColumns;
@@ -122,7 +114,12 @@ class SongReaderSectionGrid extends StatelessWidget {
     required List<SongReaderSectionProjection> sourceSections,
     required double maxColumnWidth,
   }) {
-    return _columnHeightEstimate(sourceSections, maxColumnWidth);
+    return estimateSongContentHeight(
+      sections: sourceSections,
+      viewMode: viewMode,
+      availableWidth: maxColumnWidth,
+      fontScale: sharedFontScale,
+    );
   }
 
   Widget _buildSingleColumn(List<SongReaderSectionProjection> sections) {
@@ -132,7 +129,7 @@ class SongReaderSectionGrid extends StatelessWidget {
       children: [
         if (leadingDirectiveText != null) ...[
           _DirectiveLine(text: leadingDirectiveText!),
-          const SizedBox(height: _sectionGap),
+          const SizedBox(height: sectionGap),
         ],
         for (final section in sections) ...[
           SongSectionView(
@@ -140,7 +137,7 @@ class SongReaderSectionGrid extends StatelessWidget {
             viewMode: viewMode,
             sharedFontScale: sharedFontScale,
           ),
-          const SizedBox(height: _sectionGap),
+          const SizedBox(height: sectionGap),
         ],
       ],
     );
@@ -150,9 +147,11 @@ class SongReaderSectionGrid extends StatelessWidget {
     List<SongReaderSectionProjection> sections,
     double maxColumnWidth,
   ) {
-    return sections.fold<double>(
-      0,
-      (sum, section) => sum + _estimatedSectionHeight(section, maxColumnWidth),
+    return estimateSongContentHeight(
+      sections: sections,
+      viewMode: viewMode,
+      availableWidth: maxColumnWidth,
+      fontScale: sharedFontScale,
     );
   }
 
@@ -200,7 +199,14 @@ class SongReaderSectionGrid extends StatelessWidget {
     }
 
     final sectionHeights = sections
-        .map((section) => _estimatedSectionHeight(section, maxColumnWidth))
+        .map(
+          (section) => estimateSectionHeight(
+            section: section,
+            viewMode: viewMode,
+            maxWidth: maxColumnWidth,
+            fontScale: sharedFontScale,
+          ),
+        )
         .toList(growable: false);
     final totalHeight = sectionHeights.fold<double>(
       0,
@@ -227,53 +233,6 @@ class SongReaderSectionGrid extends StatelessWidget {
     return bestIndex;
   }
 
-  double _estimatedSectionHeight(
-    SongReaderSectionProjection section,
-    double maxWidth,
-  ) {
-    final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
-    final headerHeight = hasHeader ? _headerHeight : 0.0;
-    final effectiveLineWidth = (maxWidth - _linePadding).clamp(120.0, 1200.0);
-    final charsPerLine =
-        (effectiveLineWidth / (_characterWidthEstimate * sharedFontScale))
-            .floor()
-            .clamp(12, 140);
-    var linesHeight = 0.0;
-    for (final item in section.lines) {
-      switch (item) {
-        case SongReaderLyricLineProjection():
-          final text = item.segments.map((segment) => segment.text).join();
-          final lyricLength = text.trimRight().length;
-          final hasChord =
-              viewMode == SongReaderViewMode.chordsAndLyrics &&
-              item.segments.any((segment) => segment.displayChord != null);
-          final wrapCount = lyricLength == 0
-              ? 1
-              : (lyricLength / charsPerLine).ceil().clamp(1, 14);
-          final chordRowHeight = hasChord
-              ? (_chordRowHeight * sharedFontScale)
-              : 0;
-          final lyricRowsHeight =
-              wrapCount * (_lyricRowHeight * sharedFontScale);
-          linesHeight += chordRowHeight + lyricRowsHeight + _lineGap;
-        case SongReaderCommentProjection():
-          final commentLength = item.text.length;
-          final commentWrapCount = commentLength == 0
-              ? 1
-              : (commentLength / charsPerLine).ceil().clamp(1, 14);
-          linesHeight +=
-              commentWrapCount * (_lyricRowHeight * sharedFontScale) + _lineGap;
-        case SongReaderTabProjection():
-          linesHeight +=
-              item.rawLines.length * (_lyricRowHeight * sharedFontScale) +
-              _lineGap +
-              _tabBlockVerticalPadding;
-        case SongReaderDirectiveProjection():
-          linesHeight += _directiveLineHeight;
-      }
-    }
-    return headerHeight + linesHeight + _sectionGap;
-  }
 }
 
 class _DirectiveLine extends StatelessWidget {
