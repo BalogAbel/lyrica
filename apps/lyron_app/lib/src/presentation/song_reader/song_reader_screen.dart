@@ -188,6 +188,22 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     _bumpCompactOverlayInactivityIfVisible();
   }
 
+  void _setSharedFontScale(double scale) {
+    if (_isScopedMode) {
+      final runtimeController = ref.read(
+        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
+      );
+      runtimeController.setSharedFontScale(scale);
+      _bumpCompactOverlayInactivityIfVisible();
+      return;
+    }
+
+    _updateState((controller) {
+      controller.setSharedFontScale(scale);
+    });
+    _bumpCompactOverlayInactivityIfVisible();
+  }
+
   void _toggleCompactControls() {
     if (_isScopedMode) {
       final runtimeController = ref.read(
@@ -801,6 +817,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onSetFontScale: _setSharedFontScale,
                                 onPreviousTap:
                                     _buildScopedNeighborNavigationTap(
                                       context,

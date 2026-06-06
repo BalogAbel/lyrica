@@ -2,9 +2,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class SongReaderCompactSurface extends StatefulWidget {
@@ -26,6 +28,8 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
     required this.showBottomContextBar,
+    this.onSetFontScale,
+    this.onPersistFontScale,
     this.previousTitle,
     this.nextTitle,
     this.onPreviousTap,
@@ -54,6 +58,10 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  /// Called continuously during a two-finger pinch with the new absolute scale.
+  final ValueChanged<double>? onSetFontScale;
+  /// Called once when the pinch gesture ends (e.g. to persist the scale).
+  final VoidCallback? onPersistFontScale;
   /// Maximum logical width of the song content area (centering cap).
   final double maxContentWidth;
   /// Padding applied around the song content grid inside the scroll view.
@@ -72,6 +80,9 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   int? _activePointer;
   Offset? _pointerDownPosition;
   bool _movedBeyondTapSlop = false;
+
+  // Pinch-to-zoom state.
+  double _pinchBaselineScale = 1.0;
 
   @override
   void initState() {
@@ -122,6 +133,26 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
     }
   }
 
+  void _handleScaleStart(ScaleStartDetails details) {
+    _pinchBaselineScale = widget.projection.sharedFontScale;
+  }
+
+  void _handleScaleUpdate(ScaleUpdateDetails details) {
+    if (details.pointerCount < 2) {
+      // Single-finger — let scroll happen, do not adjust font scale.
+      return;
+    }
+    final newScale = (_pinchBaselineScale * details.scale).clamp(
+      SongReaderState.minSharedFontScale,
+      SongReaderState.maxSharedFontScale,
+    );
+    widget.onSetFontScale?.call(newScale);
+  }
+
+  void _handleScaleEnd(ScaleEndDetails details) {
+    widget.onPersistFontScale?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusableActionDetector(
@@ -143,78 +174,92 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
             ? AppStrings.songReaderHideControlsSemantics
             : AppStrings.songReaderShowControlsSemantics,
         onTap: widget.onSurfaceTap,
-        child: Listener(
-          onPointerDown: _handlePointerDown,
-          onPointerMove: _handlePointerMove,
-          onPointerUp: (event) => _handlePointerEnd(event.pointer),
-          onPointerCancel: (event) => _handlePointerEnd(event.pointer),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
-            onDoubleTap: widget.onSurfaceDoubleTap,
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final availableHeight = constraints.maxHeight;
-                          return Scrollbar(
-                            controller: _scrollController,
-                            child: SingleChildScrollView(
+        child: RawGestureDetector(
+          gestures: {
+            TwoPointerScaleRecognizer:
+                GestureRecognizerFactoryWithHandlers<TwoPointerScaleRecognizer>(
+              () => TwoPointerScaleRecognizer(debugOwner: this),
+              (instance) {
+                instance
+                  ..onStart = _handleScaleStart
+                  ..onUpdate = _handleScaleUpdate
+                  ..onEnd = _handleScaleEnd;
+              },
+            ),
+          },
+          child: Listener(
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: (event) => _handlePointerEnd(event.pointer),
+            onPointerCancel: (event) => _handlePointerEnd(event.pointer),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
+              onDoubleTap: widget.onSurfaceDoubleTap,
+              child: Stack(
+                children: [
+                  Column(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final availableHeight = constraints.maxHeight;
+                            return Scrollbar(
                               controller: _scrollController,
-                              child: Center(
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxWidth: widget.maxContentWidth,
-                                  ),
-                                  child: Padding(
-                                    padding: widget.contentPadding,
-                                    child: SongReaderSectionGrid(
-                                      leadingDirectiveText:
-                                          widget.projection.capoDirectiveText,
-                                      sections: widget.projection.sections,
-                                      viewMode: widget.projection.viewMode,
-                                      sharedFontScale:
-                                          widget.projection.sharedFontScale,
-                                      columnCount: widget.contentColumnCount,
-                                      availableHeight: availableHeight,
+                              child: SingleChildScrollView(
+                                controller: _scrollController,
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: widget.maxContentWidth,
+                                    ),
+                                    child: Padding(
+                                      padding: widget.contentPadding,
+                                      child: SongReaderSectionGrid(
+                                        leadingDirectiveText:
+                                            widget.projection.capoDirectiveText,
+                                        sections: widget.projection.sections,
+                                        viewMode: widget.projection.viewMode,
+                                        sharedFontScale:
+                                            widget.projection.sharedFontScale,
+                                        columnCount: widget.contentColumnCount,
+                                        availableHeight: availableHeight,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    if (widget.showBottomContextBar) ...[
-                      const SizedBox(height: 16),
-                      SongReaderBottomContextBar(
-                        currentTitle: widget.currentTitle,
-                        previousTitle: widget.previousTitle,
-                        nextTitle: widget.nextTitle,
-                        onPreviousTap: widget.onPreviousTap,
-                        onNextTap: widget.onNextTap,
-                      ),
+                      if (widget.showBottomContextBar) ...[
+                        const SizedBox(height: 16),
+                        SongReaderBottomContextBar(
+                          currentTitle: widget.currentTitle,
+                          previousTitle: widget.previousTitle,
+                          nextTitle: widget.nextTitle,
+                          onPreviousTap: widget.onPreviousTap,
+                          onNextTap: widget.onNextTap,
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                SongReaderCompactOverlay(
-                  isVisible: widget.areControlsVisible,
-                  projection: widget.projection,
-                  hasRecoverableWarnings: widget.hasRecoverableWarnings,
-                  warningCount: widget.warningCount,
-                  onToggleViewMode: widget.onToggleViewMode,
-                  onTransposeDown: widget.onTransposeDown,
-                  onTransposeUp: widget.onTransposeUp,
-                  onCapoDown: widget.onCapoDown,
-                  onCapoUp: widget.onCapoUp,
-                  onDecreaseFontScale: widget.onDecreaseFontScale,
-                  onIncreaseFontScale: widget.onIncreaseFontScale,
-                ),
-              ],
+                  ),
+                  SongReaderCompactOverlay(
+                    isVisible: widget.areControlsVisible,
+                    projection: widget.projection,
+                    hasRecoverableWarnings: widget.hasRecoverableWarnings,
+                    warningCount: widget.warningCount,
+                    onToggleViewMode: widget.onToggleViewMode,
+                    onTransposeDown: widget.onTransposeDown,
+                    onTransposeUp: widget.onTransposeUp,
+                    onCapoDown: widget.onCapoDown,
+                    onCapoUp: widget.onCapoUp,
+                    onDecreaseFontScale: widget.onDecreaseFontScale,
+                    onIncreaseFontScale: widget.onIncreaseFontScale,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
