@@ -431,7 +431,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.planEditAction));
+    await tester.tap(find.byTooltip(AppStrings.planEditAction));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('plan-editor-name')),
@@ -460,7 +460,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text(AppStrings.planEditAction));
+      await tester.tap(find.byTooltip(AppStrings.planEditAction));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('plan-editor-name')),
@@ -493,7 +493,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.sessionCreateAction));
+    await tester.tap(find.byTooltip(AppStrings.sessionCreateAction));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('session-editor-name')),
@@ -1680,7 +1680,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.planEditAction));
+    await tester.tap(find.byTooltip(AppStrings.planEditAction));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('plan-editor-scheduled-for')),
@@ -1942,8 +1942,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planEditAction), findsNothing);
-    expect(find.text(AppStrings.sessionCreateAction), findsNothing);
+    expect(find.byTooltip(AppStrings.planEditAction), findsNothing);
+    expect(find.byTooltip(AppStrings.sessionCreateAction), findsNothing);
   });
 
   testWidgets('shows plan edit and session create buttons for org member', (
@@ -1961,8 +1961,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planEditAction), findsOneWidget);
-    expect(find.text(AppStrings.sessionCreateAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.planEditAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.sessionCreateAction), findsOneWidget);
   });
 
   testWidgets('hides session delete button for read-only user', (tester) async {

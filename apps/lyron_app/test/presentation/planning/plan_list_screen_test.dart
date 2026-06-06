@@ -244,7 +244,7 @@ void main() {
     await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planCreateAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.planCreateAction), findsOneWidget);
   });
 
   testWidgets(
@@ -308,7 +308,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text(AppStrings.planCreateAction));
+      await tester.tap(find.byTooltip(AppStrings.planCreateAction));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -337,7 +337,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planCreateAction), findsNothing);
+    expect(find.byTooltip(AppStrings.planCreateAction), findsNothing);
   });
 
   testWidgets('shows plan create button for org member', (tester) async {
@@ -350,7 +350,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(AppStrings.planCreateAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.planCreateAction), findsOneWidget);
   });
 
   testWidgets('shows a validation error for invalid scheduled-for input', (
@@ -372,7 +372,7 @@ void main() {
     await tester.pumpWidget(buildApp(writeService: writeService));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.planCreateAction));
+    await tester.tap(find.byTooltip(AppStrings.planCreateAction));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('plan-editor-scheduled-for')),

@@ -29,30 +29,20 @@ class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
     final overview = ref.watch(unifiedSyncOverviewProvider);
     final (label, color) = _labelAndColor(context, overview.headerStatus);
     final secondary = _secondaryText(overview);
+    final tooltip = secondary == null ? label : '$label · $secondary';
 
     return Tooltip(
-      message: AppStrings.unifiedSyncTooltip,
+      message: tooltip,
       child: InkWell(
         key: const ValueKey('unified-sync-header-control'),
         onTap: () => UnifiedSyncStatusPopup.show(context),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(color: color)),
-              if (secondary != null) ...[
-                const SizedBox(width: 6),
-                Text(secondary, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ],
+          padding: const EdgeInsets.all(8),
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
         ),
       ),

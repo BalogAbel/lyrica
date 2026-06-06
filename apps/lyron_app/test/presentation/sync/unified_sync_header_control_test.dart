@@ -9,12 +9,14 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 UnifiedSyncOverview _overview(
   UnifiedSyncHeaderStatus status, {
   bool hasUnsyncedWork = false,
+  UnifiedSyncFreshness freshness = UnifiedSyncFreshness.fresh,
+  UnifiedSyncActivity activity = UnifiedSyncActivity.idle,
 }) {
   return UnifiedSyncOverview(
     headerStatus: status,
-    activity: UnifiedSyncActivity.idle,
+    activity: activity,
     connectivity: UnifiedSyncConnectivity.online,
-    freshness: UnifiedSyncFreshness.fresh,
+    freshness: freshness,
     songRows: const [],
     planRows: const [],
     hasUnsyncedWork: hasUnsyncedWork,
@@ -36,24 +38,69 @@ Future<void> _pump(WidgetTester tester, UnifiedSyncOverview overview) async {
 }
 
 void main() {
-  testWidgets('renders Synced label for green status', (tester) async {
+  testWidgets('exposes Synced label via tooltip for green status', (
+    tester,
+  ) async {
     await _pump(tester, _overview(UnifiedSyncHeaderStatus.synced));
-    expect(find.text(AppStrings.unifiedSyncSyncedLabel), findsOneWidget);
+    expect(find.byTooltip(AppStrings.unifiedSyncSyncedLabel), findsOneWidget);
   });
 
-  testWidgets('renders Unsynced label for yellow status', (tester) async {
+  testWidgets('exposes Unsynced label via tooltip for yellow status', (
+    tester,
+  ) async {
     await _pump(
       tester,
       _overview(UnifiedSyncHeaderStatus.unsynced, hasUnsyncedWork: true),
     );
-    expect(find.text(AppStrings.unifiedSyncUnsyncedLabel), findsOneWidget);
+    expect(find.byTooltip(AppStrings.unifiedSyncUnsyncedLabel), findsOneWidget);
   });
 
-  testWidgets('renders Conflict label for red status', (tester) async {
+  testWidgets('exposes Conflict label via tooltip for red status', (
+    tester,
+  ) async {
     await _pump(
       tester,
       _overview(UnifiedSyncHeaderStatus.conflict, hasUnsyncedWork: true),
     );
-    expect(find.text(AppStrings.unifiedSyncConflictLabel), findsOneWidget);
+    expect(find.byTooltip(AppStrings.unifiedSyncConflictLabel), findsOneWidget);
+  });
+
+  testWidgets('appends secondary freshness detail to the tooltip', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _overview(
+        UnifiedSyncHeaderStatus.synced,
+        freshness: UnifiedSyncFreshness.stale,
+      ),
+    );
+    expect(
+      find.byTooltip(
+        '${AppStrings.unifiedSyncSyncedLabel} · '
+        '${AppStrings.unifiedSyncFreshnessStale}',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('joins multiple secondary parts in the tooltip', (tester) async {
+    await _pump(
+      tester,
+      _overview(
+        UnifiedSyncHeaderStatus.unsynced,
+        hasUnsyncedWork: true,
+        freshness: UnifiedSyncFreshness.stale,
+        activity: UnifiedSyncActivity.syncing,
+      ),
+    );
+    expect(
+      find.byTooltip(
+        '${AppStrings.unifiedSyncUnsyncedLabel} · '
+        '${AppStrings.unifiedSyncFreshnessStale} · '
+        '${AppStrings.unifiedSyncActivitySyncing}',
+      ),
+      findsOneWidget,
+    );
   });
 }

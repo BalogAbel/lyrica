@@ -60,18 +60,20 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
           key: const Key('plan-edit-button'),
           capability: Capability.managePlans,
           organizationId: orgId,
-          child: TextButton(
+          child: IconButton(
+            tooltip: AppStrings.planEditAction,
+            icon: const Icon(Icons.edit_outlined),
             onPressed: () => _editPlan(context, ref),
-            child: const Text(AppStrings.planEditAction),
           ),
         ),
         IfCapability(
           key: const Key('session-create-button'),
           capability: Capability.editSessions,
           organizationId: orgId,
-          child: TextButton(
+          child: IconButton(
+            tooltip: AppStrings.sessionCreateAction,
+            icon: const Icon(Icons.playlist_add),
             onPressed: () => _createSession(context, ref),
-            child: const Text(AppStrings.sessionCreateAction),
           ),
         ),
       ],

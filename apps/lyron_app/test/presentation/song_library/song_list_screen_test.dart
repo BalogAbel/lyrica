@@ -372,8 +372,16 @@ void main() {
       find.byKey(const ValueKey('unified-sync-header-control')),
       findsOneWidget,
     );
-    expect(find.text(AppStrings.songCreateAction), findsOneWidget);
-    expect(find.text(AppStrings.planningEntryAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.songCreateAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.planningEntryAction), findsOneWidget);
+    expect(
+      find.byKey(const Key('song-list-overflow-menu')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.songImportAction), findsOneWidget);
     expect(find.text(AppStrings.signOutAction), findsOneWidget);
   });
 
@@ -741,6 +749,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.signOutAction));
     await tester.pumpAndSettle();
 
@@ -762,6 +772,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(AppStrings.signOutAction));
       await tester.pumpAndSettle();
 
@@ -842,6 +854,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.signOutAction));
     await tester.pumpAndSettle();
 
@@ -870,7 +884,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.songCreateAction));
+    await tester.tap(find.byTooltip(AppStrings.songCreateAction));
     await tester.pumpAndSettle();
 
     expect(find.text('create-screen'), findsOneWidget);
@@ -889,7 +903,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text(AppStrings.planningEntryAction));
+    await tester.tap(find.byTooltip(AppStrings.planningEntryAction));
     await tester.pumpAndSettle();
 
     expect(find.text('plans:list'), findsOneWidget);
@@ -998,8 +1012,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byTooltip(AppStrings.songCreateAction), findsNothing);
+
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
     expect(find.text(AppStrings.songImportAction), findsNothing);
-    expect(find.text(AppStrings.songCreateAction), findsNothing);
   });
 
   testWidgets('shows import and create buttons for member user', (
@@ -1027,8 +1044,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byTooltip(AppStrings.songCreateAction), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
     expect(find.text(AppStrings.songImportAction), findsOneWidget);
-    expect(find.text(AppStrings.songCreateAction), findsOneWidget);
   });
 }
 
