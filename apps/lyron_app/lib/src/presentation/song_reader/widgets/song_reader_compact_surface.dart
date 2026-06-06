@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
@@ -16,7 +17,6 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.areControlsVisible,
     required this.currentTitle,
     required this.onSurfaceTap,
-    required this.onSurfaceDoubleTap,
     required this.hasRecoverableWarnings,
     required this.warningCount,
     required this.contentColumnCount,
@@ -46,7 +46,6 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback? onPreviousTap;
   final VoidCallback? onNextTap;
   final VoidCallback onSurfaceTap;
-  final VoidCallback onSurfaceDoubleTap;
   final bool hasRecoverableWarnings;
   final int warningCount;
   final int contentColumnCount;
@@ -84,6 +83,21 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   // Pinch-to-zoom state.
   double _pinchBaselineScale = 1.0;
 
+  // Fit-to-screen toggle state.
+  //
+  // When non-null, a fit is active: _preFitScale holds the scale that was in
+  // effect before the first double-tap (so the second double-tap can restore
+  // it). The field is also reset in didUpdateWidget: if the projection scale
+  // changes to something other than the fit we last applied and other than the
+  // stored pre-fit scale, the user must have changed scale via pinch/buttons,
+  // so we discard the stale restore point and treat the next double-tap as a
+  // fresh fit.
+  double? _preFitScale;
+  double? _lastAppliedFitScale;
+
+  // Latest constraints from the content LayoutBuilder, used by _handleDoubleTap.
+  BoxConstraints? _contentConstraints;
+
   @override
   void initState() {
     super.initState();
@@ -91,9 +105,60 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   }
 
   @override
+  void didUpdateWidget(covariant SongReaderCompactSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newScale = widget.projection.sharedFontScale;
+    // If a fit is active and the incoming scale is neither the fit value we
+    // applied nor the stored pre-fit scale, the user changed scale externally
+    // (pinch / buttons). Clear the stale restore point so the next double-tap
+    // starts a fresh fit rather than restoring an outdated scale.
+    if (_preFitScale != null &&
+        newScale != _lastAppliedFitScale &&
+        newScale != _preFitScale) {
+      _preFitScale = null;
+      _lastAppliedFitScale = null;
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Handles a double-tap: first tap fits the song to the viewport, second tap
+  /// restores the pre-fit scale.
+  void _handleDoubleTap() {
+    final constraints = _contentConstraints;
+    if (constraints == null) return;
+
+    final availableHeight = constraints.maxHeight;
+    // Content is horizontally capped by maxContentWidth; use the smaller of
+    // the viewport width and the cap so the estimate matches the real layout.
+    final availableWidth = constraints.maxWidth < widget.maxContentWidth
+        ? constraints.maxWidth
+        : widget.maxContentWidth;
+
+    if (_preFitScale == null) {
+      // First double-tap: compute and apply fit scale.
+      _preFitScale = widget.projection.sharedFontScale;
+      final fit = resolveFitFontScale(
+        sections: widget.projection.sections,
+        viewMode: widget.projection.viewMode,
+        availableWidth: availableWidth,
+        availableHeight: availableHeight,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+      );
+      _lastAppliedFitScale = fit;
+      widget.onSetFontScale?.call(fit);
+    } else {
+      // Second double-tap: restore the stored pre-fit scale.
+      widget.onSetFontScale?.call(_preFitScale!);
+      _preFitScale = null;
+      _lastAppliedFitScale = null;
+    }
+    widget.onPersistFontScale?.call();
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -195,7 +260,7 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
-              onDoubleTap: widget.onSurfaceDoubleTap,
+              onDoubleTap: _handleDoubleTap,
               child: Stack(
                 children: [
                   Column(
@@ -203,6 +268,10 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
+                            // Store constraints so _handleDoubleTap can use
+                            // the viewport dimensions without capturing a stale
+                            // BuildContext.
+                            _contentConstraints = constraints;
                             final availableHeight = constraints.maxHeight;
                             return Scrollbar(
                               controller: _scrollController,

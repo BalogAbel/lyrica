@@ -47,7 +47,6 @@ void main() {
               areControlsVisible: false,
               currentTitle: 'Scrollbar Test Song',
               onSurfaceTap: () {},
-              onSurfaceDoubleTap: () {},
               hasRecoverableWarnings: false,
               warningCount: 0,
               contentColumnCount: 1,

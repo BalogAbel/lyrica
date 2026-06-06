@@ -74,7 +74,6 @@ Widget _buildSurface({
         areControlsVisible: false,
         currentTitle: projection.title,
         onSurfaceTap: () {},
-        onSurfaceDoubleTap: () {},
         hasRecoverableWarnings: false,
         warningCount: 0,
         contentColumnCount: 1,

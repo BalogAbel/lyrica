@@ -28,7 +28,6 @@ void main() {
             areControlsVisible: false,
             currentTitle: 'Song',
             onSurfaceTap: () => surfaceTaps += 1,
-            onSurfaceDoubleTap: () {},
             hasRecoverableWarnings: false,
             warningCount: 0,
             contentColumnCount: 1,

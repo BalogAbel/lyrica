@@ -222,19 +222,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  void _toggleAutoFit() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .toggleAutoFit();
-      _bumpCompactOverlayInactivityIfVisible();
-      return;
-    }
-
-    _updateState((controller) => controller.toggleAutoFit());
-    _bumpCompactOverlayInactivityIfVisible();
-  }
-
   void _handleCompactOverlayVisibilityChanged(bool isVisible) {
     _compactOverlayHideTimer?.cancel();
     if (!isVisible) {
@@ -799,7 +786,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 previousTitle: previousTitle,
                                 nextTitle: nextTitle,
                                 onSurfaceTap: _toggleCompactControls,
-                                onSurfaceDoubleTap: _toggleAutoFit,
                                 hasRecoverableWarnings:
                                     result.hasRecoverableWarnings,
                                 warningCount: recoverableWarningCount,
