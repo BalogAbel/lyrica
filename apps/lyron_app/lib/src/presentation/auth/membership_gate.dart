@@ -31,9 +31,7 @@ class MembershipGate extends ConsumerWidget {
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () async {
-                    final reader = ref.read(
-                      activeOrganizationResolutionProvider,
-                    );
+                    final reader = ref.read(membershipResolutionProvider);
                     final resolution = await reader();
                     ref
                         .read(activeMembershipControllerProvider)
