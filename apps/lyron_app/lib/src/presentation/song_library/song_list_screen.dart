@@ -151,7 +151,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
               }
             },
             itemBuilder: (context) => [
-              if (_canEditSongs(ref, orgId))
+              if (_canEditSongs(orgId))
                 const PopupMenuItem(
                   key: Key('song-import-menu-item'),
                   value: _SongListMenuAction.import,
@@ -289,7 +289,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
   // is still unknown we hide the item (matching [IfCapability]'s hidden-until-
   // resolved behavior); only an unavailable resolver fails open, since the
   // backend remains the enforcement boundary.
-  bool _canEditSongs(WidgetRef ref, String? orgId) {
+  bool _canEditSongs(String? orgId) {
     if (orgId == null) return false;
     try {
       final resolver = ref.read(capabilityResolverProvider);
