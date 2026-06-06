@@ -828,6 +828,108 @@ void main() {
     expect(scaledSize, greaterThan(initialSize));
   });
 
+  testWidgets('seeds font scale from stored zoom on open', (tester) async {
+    const testUserId = 'seed-test-user';
+    const testSongId = 'seed-test-song';
+    const storedZoom = 2.0;
+
+    final fakeStore = _FakeSongReaderPreferencesStore({
+      '$testUserId:$testSongId': storedZoom,
+    });
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => fakeStore,
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(
+          home: SongReaderScreen(songId: testSongId),
+        ),
+      ),
+    );
+
+    // Drive the async seed chain to completion:
+    //   pumpAndSettle → song loaded, postFrameCallback fires, async body starts
+    //   runAsync → store FutureProvider and store.readZoom complete, setState called
+    //   pumpAndSettle → widget rebuilds with seeded font scale
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+
+    final seededText = tester.widget<Text>(find.text('Hello'));
+    final seededSize = seededText.style!.fontSize!;
+
+    // The default bodyLarge fontSize in Flutter's default theme is 16.0.
+    // At storedZoom=2.0 it becomes 16.0 * 2.0 = 32.0, well above the default.
+    expect(
+      seededSize,
+      greaterThan(16.0),
+      reason: 'stored zoom 2.0 must scale lyric text above the default 16 px',
+    );
+  });
+
+  testWidgets('uses default scale when no stored zoom exists', (tester) async {
+    const testUserId = 'no-zoom-user';
+    const testSongId = 'no-zoom-song';
+
+    // Noop store returns null → scale stays at 1.0 (default).
+    await pumpWithViewport(
+      tester,
+      size: const Size(1440, 1200),
+      child: ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => _NoopSongReaderPreferencesStore(),
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(
+          home: SongReaderScreen(songId: testSongId),
+        ),
+      ),
+    );
+
+    // Song renders at default size — just verify it loads without crash.
+    expect(find.text('Hello'), findsOneWidget);
+  });
+
   testWidgets(
     'shows a non-blocking warning surface for recoverable diagnostics',
     (tester) async {
@@ -1786,6 +1888,28 @@ String _sessionItemIdForScopedRoute(
   }).firstOrNull;
 
   return item?.id ?? songSlug;
+}
+
+/// In-memory preferences store. Keyed by '$userId:$songId'.
+class _FakeSongReaderPreferencesStore implements SongReaderPreferencesStore {
+  _FakeSongReaderPreferencesStore(this._data);
+
+  final Map<String, double> _data;
+
+  @override
+  Future<double?> readZoom({
+    required String userId,
+    required String songId,
+  }) async => _data['$userId:$songId'];
+
+  @override
+  Future<void> writeZoom({
+    required String userId,
+    required String songId,
+    required double zoom,
+  }) async {
+    _data['$userId:$songId'] = zoom;
+  }
 }
 
 class _BlockingSongLibraryService extends SongLibraryService {

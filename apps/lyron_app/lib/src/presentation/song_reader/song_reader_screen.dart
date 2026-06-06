@@ -28,6 +28,19 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expan
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
+/// Overridable provider that resolves the current user's ID.
+///
+/// Defaults to reading from [supabaseClientProvider] so production behaviour is
+/// unchanged. Tests override this with a [Provider.value] to avoid initialising
+/// a real [SupabaseClient].
+final readerUserIdProvider = Provider<String?>((ref) {
+  try {
+    return ref.read(supabaseClientProvider).auth.currentUser?.id;
+  } catch (_) {
+    return null;
+  }
+});
+
 enum _SongReaderOverflowAction { guitarView, pianoView, edit, delete }
 
 class SongReaderScreen extends ConsumerStatefulWidget {
@@ -103,12 +116,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
       // Resolve userId inside the callback so tests can override the provider
       // and the read does not crash during Supabase-less test environments.
-      String? userId;
-      try {
-        userId = ref.read(supabaseClientProvider).auth.currentUser?.id;
-      } catch (_) {
-        return; // Supabase not available (e.g. tests) — skip seeding.
-      }
+      final userId = ref.read(readerUserIdProvider);
       if (userId == null) {
         return;
       }
@@ -135,16 +143,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   /// Debounced persist: (re)starts a 400 ms timer that writes the current
   /// sharedFontScale for this user+song. Called on pinch-end and double-tap fit.
   void _persistFontScale() {
-    String? rawUserId;
-    try {
-      rawUserId = ref.read(supabaseClientProvider).auth.currentUser?.id;
-    } catch (_) {
-      return; // Supabase not available (e.g. tests) — skip persisting.
-    }
-    if (rawUserId == null) {
+    final userId = ref.read(readerUserIdProvider);
+    if (userId == null) {
       return;
     }
-    final userId = rawUserId; // non-nullable capture for the timer closure
 
     _persistZoomTimer?.cancel();
     _persistZoomTimer = Timer(const Duration(milliseconds: 400), () async {

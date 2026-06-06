@@ -145,7 +145,6 @@ void main() {
         final scaleCalls = <double>[];
 
         late StateSetter setStateOuter;
-        late SongReaderProjection Function() getProjection;
 
         await tester.pumpWidget(
           MaterialApp(
@@ -154,7 +153,6 @@ void main() {
                 builder: (context, setState) {
                   setStateOuter = setState;
                   final projection = _buildTallProjection(fontScale: currentScale);
-                  getProjection = () => projection;
                   return SongReaderCompactSurface(
                     projection: projection,
                     areControlsVisible: false,
