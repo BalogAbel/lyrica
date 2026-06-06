@@ -150,7 +150,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                   unawaited(_signOut(context, ref));
               }
             },
-            itemBuilder: (context) => [
+            itemBuilder: (_) => [
               if (_canEditSongs(orgId))
                 const PopupMenuItem(
                   key: Key('song-import-menu-item'),
