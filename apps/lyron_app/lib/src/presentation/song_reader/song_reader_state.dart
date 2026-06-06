@@ -5,6 +5,10 @@ enum SongReaderControlPresentationMode { overlay, pinned }
 enum SongReaderInstrumentDisplayMode { guitar, piano }
 
 class SongReaderState {
+  static const minSharedFontScale = 0.25;
+  static const maxSharedFontScale = 3.0;
+  static const defaultSharedFontScale = 1.0;
+
   SongReaderState({
     this.viewMode = SongReaderViewMode.chordsAndLyrics,
     this.transposeOffset = 0,
@@ -76,20 +80,16 @@ class SongReaderState {
   );
 
   static double _normalizeSharedFontScale(double value) {
-    const minScale = 0.5;
-    const maxScale = 2.0;
-    const defaultScale = 1.0;
-
     if (!value.isFinite || value <= 0) {
-      return defaultScale;
+      return defaultSharedFontScale;
     }
 
-    if (value < minScale) {
-      return minScale;
+    if (value < minSharedFontScale) {
+      return minSharedFontScale;
     }
 
-    if (value > maxScale) {
-      return maxScale;
+    if (value > maxSharedFontScale) {
+      return maxSharedFontScale;
     }
 
     return value;

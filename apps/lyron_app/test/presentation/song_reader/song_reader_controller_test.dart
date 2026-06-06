@@ -136,8 +136,8 @@ void main() {
       SongReaderState(sharedFontScale: double.infinity).sharedFontScale,
       1.0,
     );
-    expect(SongReaderState(sharedFontScale: 0.25).sharedFontScale, 0.5);
-    expect(SongReaderState(sharedFontScale: 4.0).sharedFontScale, 2.0);
+    expect(SongReaderState(sharedFontScale: 0.25).sharedFontScale, 0.25);
+    expect(SongReaderState(sharedFontScale: 4.0).sharedFontScale, 3.0);
   });
 
   test('preserves UI state through copyWith', () {
