@@ -374,10 +374,7 @@ void main() {
     );
     expect(find.byTooltip(AppStrings.songCreateAction), findsOneWidget);
     expect(find.byTooltip(AppStrings.planningEntryAction), findsOneWidget);
-    expect(
-      find.byKey(const Key('song-list-overflow-menu')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('song-list-overflow-menu')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
     await tester.pumpAndSettle();
