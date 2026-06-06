@@ -65,80 +65,32 @@ class _WorkspaceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 640) {
-          return Column(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (leading != null) ...[leading!, const SizedBox(width: 8)],
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (leading != null) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: leading!,
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                        ),
-                        if (subtitle != null && subtitle!.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle!,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (actions.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Wrap(spacing: 8, runSpacing: 8, children: actions),
-                ),
+              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(subtitle!, style: Theme.of(context).textTheme.bodyMedium),
               ],
             ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (leading != null) ...[
-              Padding(padding: const EdgeInsets.only(top: 2), child: leading!),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                  if (subtitle != null && subtitle!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: actions),
-          ],
-        );
-      },
+          ),
+        ),
+        if (actions.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: actions,
+          ),
+        ],
+      ],
     );
   }
 }

@@ -171,7 +171,6 @@ class AppStrings {
   static const unifiedSyncSyncedLabel = 'Synced';
   static const unifiedSyncUnsyncedLabel = 'Unsynced';
   static const unifiedSyncConflictLabel = 'Conflict';
-  static const unifiedSyncTooltip = 'Workspace sync status';
   static const unifiedSyncNowAction = 'Sync now';
   static const unifiedSyncPopupTitle = 'Workspace sync';
   static const unifiedSyncEmptyMessage =

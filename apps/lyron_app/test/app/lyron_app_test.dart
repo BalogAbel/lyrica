@@ -2,6 +2,7 @@
 // ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/lyron_app.dart';
@@ -129,6 +130,8 @@ void main() {
 
     expect(find.text('Egy út'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
 
@@ -195,6 +198,8 @@ void main() {
 
       expect(find.text('Egy út'), findsOneWidget);
 
+      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Sign out'));
       await tester.pumpAndSettle();
 

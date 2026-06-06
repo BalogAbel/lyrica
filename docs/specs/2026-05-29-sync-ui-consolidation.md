@@ -3,6 +3,12 @@
 **Date:** 2026-05-29  
 **Status:** Approved
 
+> **Partially superseded** by
+> [2026-06-06-header-consistency-and-sync-presentation.md](2026-06-06-header-consistency-and-sync-presentation.md):
+> the header sync control now renders as a dot + tooltip (not a `dot + label +
+> secondary text` row), and the song editor no longer shows the control. The
+> consolidation of recovery into the popup described below still stands.
+
 ## Problem
 
 The unified sync header control (`UnifiedSyncHeaderControl`) plus its popup

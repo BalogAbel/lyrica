@@ -25,12 +25,17 @@ Authenticated non-reader workspaces show one consistent sync status control in t
 Surfaces that show the header sync control:
 
 - song library
-- song editor and future song create/edit workspace surfaces
 - plan list
 - plan detail
 - future authenticated management or editing surfaces
 
 The song reader does not show the header sync control. Reader surfaces stay focused on reading and presenting songs.
+
+The song create/edit workspace also does not show the header sync control. Its explicit `Cancel`/`Save` affordances and dirty state already communicate local persistence intent, so a background workspace-sync indicator there is redundant and visually misplaced. This supersedes the editor inclusion from [2026-05-02-song-editing-ui](../specs/2026-05-02-song-editing-ui.md) and [2026-05-29-sync-ui-consolidation](../specs/2026-05-29-sync-ui-consolidation.md); see [2026-06-06-header-consistency-and-sync-presentation](../specs/2026-06-06-header-consistency-and-sync-presentation.md).
+
+### Header Presentation
+
+The header sync control renders as a single colored status dot. The status word (`Synced`, `Unsynced`, `Conflict`) and any secondary connectivity or freshness detail are exposed through the control's tooltip and the status popup rather than as always-visible header text. This keeps the header compact and consistent with the icon-based header actions across workspaces. Color remains the primary signal; the status words below name the colors and the tooltip/popup copy, not a required inline label.
 
 ### Status Colors
 
@@ -48,7 +53,7 @@ Status mapping:
 - **Yellow `Unsynced`**: one or more `Created`, `Edited`, `Removed`, or `Reordered` states exist. Retryable network, timeout, or temporary backend failures remain yellow because the local intent is still retryable.
 - **Red `Conflict`**: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection.
 
-Connectivity and freshness are secondary status dimensions. Offline cached data may still show green if there is no known local divergence or unresolved sync issue. Offline or stale status is shown as secondary text or iconography rather than changing the primary green/yellow/red sync color.
+Connectivity and freshness are secondary status dimensions. Offline cached data may still show green if there is no known local divergence or unresolved sync issue. Offline or stale status is surfaced through the control tooltip and the status popup rather than changing the primary green/yellow/red sync color.
 
 ### Header Status Popup
 

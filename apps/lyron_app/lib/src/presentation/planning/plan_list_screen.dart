@@ -39,9 +39,10 @@ class PlanListScreen extends ConsumerWidget {
           key: const Key('plan-create-button'),
           capability: Capability.managePlans,
           organizationId: orgId,
-          child: TextButton(
+          child: IconButton(
+            tooltip: AppStrings.planCreateAction,
+            icon: const Icon(Icons.add),
             onPressed: () => _createPlan(context, ref),
-            child: const Text(AppStrings.planCreateAction),
           ),
         ),
       ],

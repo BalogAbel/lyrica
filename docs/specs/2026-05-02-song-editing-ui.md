@@ -1,6 +1,11 @@
 # Song Editing UI Spec
 
 > Status: Draft
+>
+> **Partially superseded:** the editor's header sync control was removed by
+> [2026-06-06-header-consistency-and-sync-presentation.md](2026-06-06-header-consistency-and-sync-presentation.md).
+> The editor no longer shows `UnifiedSyncHeaderControl`; `Cancel`/`Save` and the
+> dirty state carry the persistence signal.
 
 ## Goal
 

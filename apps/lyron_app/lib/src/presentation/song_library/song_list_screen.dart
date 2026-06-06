@@ -17,6 +17,8 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
+enum _SongListMenuAction { import, signOut }
+
 class SongListScreen extends ConsumerStatefulWidget {
   const SongListScreen({super.key});
 
@@ -114,43 +116,52 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         title: const Text(AppStrings.appName),
         actions: [
           const UnifiedSyncHeaderControl(),
-          IfCapability(
-            key: const Key('song-import-button'),
-            capability: Capability.editSongs,
-            organizationId: orgId,
-            child: TextButton(
-              onPressed: () {
-                unawaited(
-                  ref
-                      .read(chordProImportControllerProvider.notifier)
-                      .startImport(),
-                );
-              },
-              child: const Text(AppStrings.songImportAction),
-            ),
+          IconButton(
+            key: const Key('song-plans-button'),
+            tooltip: AppStrings.planningEntryAction,
+            icon: const Icon(Icons.event_note_outlined),
+            onPressed: () {
+              context.push(AppRoutes.planList.path);
+            },
           ),
           IfCapability(
             key: const Key('song-create-button'),
             capability: Capability.editSongs,
             organizationId: orgId,
-            child: TextButton(
+            child: IconButton(
+              tooltip: AppStrings.songCreateAction,
+              icon: const Icon(Icons.add),
               onPressed: () {
                 unawaited(_createSong(context, ref));
               },
-              child: const Text(AppStrings.songCreateAction),
             ),
           ),
-          TextButton(
-            onPressed: () {
-              context.push(AppRoutes.planList.path);
+          PopupMenuButton<_SongListMenuAction>(
+            key: const Key('song-list-overflow-menu'),
+            onSelected: (action) {
+              switch (action) {
+                case _SongListMenuAction.import:
+                  unawaited(
+                    ref
+                        .read(chordProImportControllerProvider.notifier)
+                        .startImport(),
+                  );
+                case _SongListMenuAction.signOut:
+                  unawaited(_signOut(context, ref));
+              }
             },
-            child: const Text(AppStrings.planningEntryAction),
-          ),
-          TextButton(
-            onPressed: () {
-              unawaited(_signOut(context, ref));
-            },
-            child: const Text(AppStrings.signOutAction),
+            itemBuilder: (_) => [
+              if (_canEditSongs(orgId))
+                const PopupMenuItem(
+                  key: Key('song-import-menu-item'),
+                  value: _SongListMenuAction.import,
+                  child: Text(AppStrings.songImportAction),
+                ),
+              const PopupMenuItem(
+                value: _SongListMenuAction.signOut,
+                child: Text(AppStrings.signOutAction),
+              ),
+            ],
           ),
         ],
       ),
@@ -269,6 +280,23 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
         ),
       ),
     );
+  }
+
+  // Gates the overflow-menu Import item, which cannot host an [IfCapability]
+  // widget directly. By the time the menu opens, the visible capability-gated
+  // icons (e.g. Add song) have already triggered editSongs resolution into the
+  // resolver cache, so the synchronous lookup is populated. While the capability
+  // is still unknown we hide the item (matching [IfCapability]'s hidden-until-
+  // resolved behavior); only an unavailable resolver fails open, since the
+  // backend remains the enforcement boundary.
+  bool _canEditSongs(String? orgId) {
+    if (orgId == null) return false;
+    try {
+      final resolver = ref.read(capabilityResolverProvider);
+      return resolver.hasCapabilitySync(orgId, Capability.editSongs) ?? false;
+    } catch (_) {
+      return true;
+    }
   }
 
   Future<void> _createSong(BuildContext context, WidgetRef ref) async {
