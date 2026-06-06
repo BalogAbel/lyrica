@@ -30,6 +30,8 @@ class SongReaderCompactSurface extends StatefulWidget {
     this.nextTitle,
     this.onPreviousTap,
     this.onNextTap,
+    required this.maxContentWidth,
+    required this.contentPadding,
   });
 
   final SongReaderProjection projection;
@@ -52,6 +54,10 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  /// Maximum logical width of the song content area (centering cap).
+  final double maxContentWidth;
+  /// Padding applied around the song content grid inside the scroll view.
+  final EdgeInsetsGeometry contentPadding;
 
   @override
   State<SongReaderCompactSurface> createState() =>
@@ -61,9 +67,23 @@ class SongReaderCompactSurface extends StatefulWidget {
 class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   static const _tapSlop = 8.0;
 
+  late final ScrollController _scrollController;
+
   int? _activePointer;
   Offset? _pointerDownPosition;
   bool _movedBeyondTapSlop = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   void _handlePointerDown(PointerDownEvent event) {
     if (event.buttons != kPrimaryButton || _activePointer != null) {
@@ -139,16 +159,31 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            child: SongReaderSectionGrid(
-                              leadingDirectiveText:
-                                  widget.projection.capoDirectiveText,
-                              sections: widget.projection.sections,
-                              viewMode: widget.projection.viewMode,
-                              sharedFontScale:
-                                  widget.projection.sharedFontScale,
-                              columnCount: widget.contentColumnCount,
-                              availableHeight: constraints.maxHeight,
+                          final availableHeight = constraints.maxHeight;
+                          return Scrollbar(
+                            controller: _scrollController,
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: widget.maxContentWidth,
+                                  ),
+                                  child: Padding(
+                                    padding: widget.contentPadding,
+                                    child: SongReaderSectionGrid(
+                                      leadingDirectiveText:
+                                          widget.projection.capoDirectiveText,
+                                      sections: widget.projection.sections,
+                                      viewMode: widget.projection.viewMode,
+                                      sharedFontScale:
+                                          widget.projection.sharedFontScale,
+                                      columnCount: widget.contentColumnCount,
+                                      availableHeight: availableHeight,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
                           );
                         },

@@ -774,6 +774,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   scopedContext: resolvedScopedContext,
                                   neighbor: resolvedScopedContext?.nextItem,
                                 ),
+                                maxContentWidth: _expandedContentWidth,
+                                contentPadding: _contentPadding,
                               )
                             : SongReaderCompactSurface(
                                 projection: projection,
@@ -813,23 +815,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   scopedContext: resolvedScopedContext,
                                   neighbor: resolvedScopedContext?.nextItem,
                                 ),
+                                maxContentWidth: _contentWidth,
+                                contentPadding: _contentPadding,
                               );
 
-                        return Center(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: layout.shell == SongReaderShell.expanded
-                                  ? _expandedContentWidth
-                                  : _contentWidth,
-                            ),
-                            child: Padding(
-                              padding: _contentPadding,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [Expanded(child: readerSurface)],
-                              ),
-                            ),
-                          ),
+                        // The surface itself is full-width; ConstrainedBox and
+                        // padding are applied inside the scroll view by each
+                        // surface widget so the scrollbar thumb sits at the
+                        // physical screen edge.
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [Expanded(child: readerSurface)],
                         );
                       },
                     );

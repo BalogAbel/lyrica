@@ -38,6 +38,8 @@ void main() {
             onDecreaseFontScale: () {},
             onIncreaseFontScale: () {},
             showBottomContextBar: false,
+            maxContentWidth: 960,
+            contentPadding: const EdgeInsets.all(24),
           ),
         ),
       ),

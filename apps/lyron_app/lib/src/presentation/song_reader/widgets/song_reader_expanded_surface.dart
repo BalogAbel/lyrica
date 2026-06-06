@@ -4,7 +4,7 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expan
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 
-class SongReaderExpandedSurface extends StatelessWidget {
+class SongReaderExpandedSurface extends StatefulWidget {
   const SongReaderExpandedSurface({
     super.key,
     required this.projection,
@@ -23,6 +23,8 @@ class SongReaderExpandedSurface extends StatelessWidget {
     this.nextTitle,
     this.onPreviousTap,
     this.onNextTap,
+    required this.maxContentWidth,
+    required this.contentPadding,
   });
 
   final SongReaderProjection projection;
@@ -41,6 +43,31 @@ class SongReaderExpandedSurface extends StatelessWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  /// Maximum logical width of the song content area (centering cap).
+  final double maxContentWidth;
+  /// Padding applied around the song content grid inside the scroll view.
+  final EdgeInsetsGeometry contentPadding;
+
+  @override
+  State<SongReaderExpandedSurface> createState() =>
+      _SongReaderExpandedSurfaceState();
+}
+
+class _SongReaderExpandedSurfaceState
+    extends State<SongReaderExpandedSurface> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,12 +78,12 @@ class SongReaderExpandedSurface extends StatelessWidget {
           width: 240,
           child: Align(
             alignment: Alignment.topLeft,
-            child: showContextPanel
+            child: widget.showContextPanel
                 ? SongReaderExpandedContextPanel(
-                    previousTitle: previousTitle,
-                    nextTitle: nextTitle,
-                    onPreviousTap: onPreviousTap,
-                    onNextTap: onNextTap,
+                    previousTitle: widget.previousTitle,
+                    nextTitle: widget.nextTitle,
+                    onPreviousTap: widget.onPreviousTap,
+                    onNextTap: widget.onNextTap,
                   )
                 : const SizedBox.shrink(),
           ),
@@ -65,14 +92,26 @@ class SongReaderExpandedSurface extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              return SingleChildScrollView(
-                child: SongReaderSectionGrid(
-                  leadingDirectiveText: projection.capoDirectiveText,
-                  sections: projection.sections,
-                  viewMode: projection.viewMode,
-                  sharedFontScale: projection.sharedFontScale,
-                  columnCount: contentColumnCount,
-                  availableHeight: constraints.maxHeight,
+              final availableHeight = constraints.maxHeight;
+              return Scrollbar(
+                controller: _scrollController,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  // No Center here: the center column width is already fixed
+                  // by the outer Row layout. Padding lives inside so the
+                  // scrollbar thumb reaches the physical edge.
+                  child: Padding(
+                    padding: widget.contentPadding,
+                    child: SongReaderSectionGrid(
+                      leadingDirectiveText:
+                          widget.projection.capoDirectiveText,
+                      sections: widget.projection.sections,
+                      viewMode: widget.projection.viewMode,
+                      sharedFontScale: widget.projection.sharedFontScale,
+                      columnCount: widget.contentColumnCount,
+                      availableHeight: availableHeight,
+                    ),
+                  ),
                 ),
               );
             },
@@ -82,16 +121,16 @@ class SongReaderExpandedSurface extends StatelessWidget {
         SizedBox(
           width: 320,
           child: SongReaderExpandedToolsPanel(
-            projection: projection,
-            hasRecoverableWarnings: hasRecoverableWarnings,
-            warningCount: warningCount,
-            onToggleViewMode: onToggleViewMode,
-            onTransposeDown: onTransposeDown,
-            onTransposeUp: onTransposeUp,
-            onCapoDown: onCapoDown,
-            onCapoUp: onCapoUp,
-            onDecreaseFontScale: onDecreaseFontScale,
-            onIncreaseFontScale: onIncreaseFontScale,
+            projection: widget.projection,
+            hasRecoverableWarnings: widget.hasRecoverableWarnings,
+            warningCount: widget.warningCount,
+            onToggleViewMode: widget.onToggleViewMode,
+            onTransposeDown: widget.onTransposeDown,
+            onTransposeUp: widget.onTransposeUp,
+            onCapoDown: widget.onCapoDown,
+            onCapoUp: widget.onCapoUp,
+            onDecreaseFontScale: widget.onDecreaseFontScale,
+            onIncreaseFontScale: widget.onIncreaseFontScale,
           ),
         ),
       ],
