@@ -8,17 +8,27 @@ import 'package:flutter/gestures.dart';
 class TwoPointerScaleRecognizer extends ScaleGestureRecognizer {
   TwoPointerScaleRecognizer({super.debugOwner, super.supportedDevices});
 
-  int _trackedPointerCount = 0;
+  /// Tracks the IDs of pointers currently known to this recognizer.
+  /// Using a Set prevents double-counting if a pointer ID is reused before
+  /// removal, and keeps the count accurate when the recognizer loses the arena
+  /// or a pointer is rejected mid-gesture.
+  final Set<int> _trackedPointers = {};
 
   @override
   void addPointer(PointerDownEvent event) {
-    _trackedPointerCount++;
+    _trackedPointers.add(event.pointer);
     super.addPointer(event);
   }
 
   @override
+  void rejectGesture(int pointer) {
+    _trackedPointers.remove(pointer);
+    super.rejectGesture(pointer);
+  }
+
+  @override
   void didStopTrackingLastPointer(int pointer) {
-    _trackedPointerCount = 0;
+    _trackedPointers.clear();
     super.didStopTrackingLastPointer(pointer);
   }
 
@@ -26,7 +36,7 @@ class TwoPointerScaleRecognizer extends ScaleGestureRecognizer {
   void resolve(GestureDisposition disposition) {
     // Only accept when two or more pointers are involved; otherwise reject so
     // the arena remains open for the scroll recognizer.
-    if (_trackedPointerCount < 2 &&
+    if (_trackedPointers.length < 2 &&
         disposition == GestureDisposition.accepted) {
       super.resolve(GestureDisposition.rejected);
       return;
