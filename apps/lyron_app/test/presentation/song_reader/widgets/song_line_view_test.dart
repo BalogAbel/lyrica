@@ -139,6 +139,55 @@ void main() {
     expect(tester.getSize(whitespaceText).width, greaterThan(0));
   });
 
+  testWidgets(
+    'long unbreakable segment does not overflow when parent gives unbounded width',
+    (tester) async {
+      // A single token with no spaces — naturally ~3000px wide at scale 3.0.
+      // When SongLineView receives unbounded width (e.g. inside InteractiveViewer
+      // during zoom), Wrap passes unbounded constraints to its children and the
+      // segment Text would expand to its natural width.  The fix — LayoutBuilder +
+      // ConstrainedBox with the MediaQuery screen width — must cap it to screen
+      // width (800px in test) and wrap the text rather than letting it overflow.
+      const longToken =
+          'supercalifragilisticexpialidocioussupercalifragilisticexpialidocious';
+      final line = SongReaderLyricLineProjection(
+        segments: const [
+          SongReaderSegmentProjection(displayChord: 'G', text: longToken),
+        ],
+      );
+
+      // OverflowBox gives SongLineView truly unbounded width — same effect as
+      // InteractiveViewer / horizontal SingleChildScrollView.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 200,
+              height: 2000,
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                maxWidth: double.infinity,
+                child: SongLineView(
+                  line: line,
+                  viewMode: SongReaderViewMode.chordsAndLyrics,
+                  sharedFontScale: 3.0,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // No RenderFlex/overflow exception.
+      expect(tester.takeException(), isNull);
+      // With unbounded parent width, the widget must still respect the screen
+      // width (MediaQuery reports 800px in Flutter test env) — not expand to
+      // the natural single-line text width (~3000px).
+      final renderedWidth = tester.getSize(find.byType(SongLineView)).width;
+      expect(renderedWidth, lessThanOrEqualTo(800.5));
+    },
+  );
+
   testWidgets('collapses chord-only lines in lyrics only mode', (tester) async {
     final line = SongReaderLyricLineProjection(
       segments: const [
