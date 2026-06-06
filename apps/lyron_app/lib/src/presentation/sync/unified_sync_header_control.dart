@@ -38,7 +38,8 @@ class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
         onTap: () => UnifiedSyncStatusPopup.show(context),
         borderRadius: BorderRadius.circular(24),
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          // 18 padding + 12 dot = 48x48 minimum touch target (Material a11y).
+          padding: const EdgeInsets.all(18),
           child: Container(
             width: 12,
             height: 12,

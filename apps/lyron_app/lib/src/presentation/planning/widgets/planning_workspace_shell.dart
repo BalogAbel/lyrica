@@ -83,9 +83,9 @@ class _WorkspaceHeader extends StatelessWidget {
         ),
         if (actions.isNotEmpty) ...[
           const SizedBox(width: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: actions,
           ),
         ],
