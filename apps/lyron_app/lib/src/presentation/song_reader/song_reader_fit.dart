@@ -40,6 +40,13 @@ double estimateSectionHeight({
   for (final item in section.lines) {
     switch (item) {
       case SongReaderLyricLineProjection():
+        // Mirror SongLineView's collapse condition exactly: use .trim().isNotEmpty
+        // (not just .isNotEmpty) so leading/trailing-whitespace-only text is
+        // treated as empty, matching what the widget renders.
+        final hasLyrics = item.segments.any((s) => s.text.trim().isNotEmpty);
+        if (!hasLyrics && viewMode == SongReaderViewMode.lyricsOnly) {
+          break; // collapsed to SizedBox.shrink() in lyricsOnly → contributes no height
+        }
         final text = item.segments.map((s) => s.text).join();
         final lyricLength = text.trimRight().length;
         final hasChord =

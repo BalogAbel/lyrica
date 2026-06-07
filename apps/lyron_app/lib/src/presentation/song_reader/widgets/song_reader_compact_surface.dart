@@ -103,6 +103,10 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   // Latest constraints from the content LayoutBuilder, used by _handleDoubleTap.
   BoxConstraints? _contentConstraints;
 
+  // Resolved padding dimensions (updated each build inside the LayoutBuilder).
+  double _contentPaddingH = 0;
+  double _contentPaddingV = 0;
+
   @override
   void initState() {
     super.initState();
@@ -137,12 +141,13 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
     final constraints = _contentConstraints;
     if (constraints == null) return;
 
-    final availableHeight = constraints.maxHeight;
-    // Content is horizontally capped by maxContentWidth; use the smaller of
-    // the viewport width and the cap so the estimate matches the real layout.
-    final availableWidth = constraints.maxWidth < widget.maxContentWidth
+    // Subtract resolved content padding so the fit estimate uses the same
+    // dimensions as the actual scrollable area.
+    final rawWidth = constraints.maxWidth < widget.maxContentWidth
         ? constraints.maxWidth
         : widget.maxContentWidth;
+    final availableWidth = rawWidth - _contentPaddingH;
+    final availableHeight = constraints.maxHeight - _contentPaddingV;
 
     if (_preFitScale == null) {
       // First double-tap: compute and apply fit scale.
@@ -282,11 +287,17 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
-                            // Store constraints so _handleDoubleTap can use
-                            // the viewport dimensions without capturing a stale
-                            // BuildContext.
+                            // Store constraints and resolved padding so
+                            // _handleDoubleTap can use the viewport dimensions
+                            // without capturing a stale BuildContext.
+                            final resolved = widget.contentPadding.resolve(
+                              Directionality.of(context),
+                            );
+                            _contentPaddingH = resolved.horizontal;
+                            _contentPaddingV = resolved.vertical;
                             _contentConstraints = constraints;
-                            final availableHeight = constraints.maxHeight;
+                            final availableHeight =
+                                constraints.maxHeight - _contentPaddingV;
                             return Scrollbar(
                               controller: _scrollController,
                               child: SingleChildScrollView(
@@ -306,7 +317,8 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                                         sharedFontScale:
                                             widget.projection.sharedFontScale,
                                         columnCount: widget.contentColumnCount,
-                                        availableHeight: availableHeight,
+                                        availableHeight:
+                                            availableHeight, // already padding-adjusted
                                       ),
                                     ),
                                   ),

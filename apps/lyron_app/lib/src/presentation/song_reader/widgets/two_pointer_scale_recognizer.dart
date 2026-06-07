@@ -21,6 +21,14 @@ class TwoPointerScaleRecognizer extends ScaleGestureRecognizer {
   }
 
   @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _trackedPointers.remove(event.pointer);
+    }
+    super.handleEvent(event);
+  }
+
+  @override
   void rejectGesture(int pointer) {
     _trackedPointers.remove(pointer);
     super.rejectGesture(pointer);

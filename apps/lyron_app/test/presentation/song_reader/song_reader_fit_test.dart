@@ -416,6 +416,133 @@ void main() {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Fix 3: lyricsOnly chord-only line contributes zero height
+  // ---------------------------------------------------------------------------
+
+  group('estimateSectionHeight — lyricsOnly chord-only line', () {
+    // A lyric line whose segments all have empty/whitespace text (chord-only).
+    SongReaderLyricLineProjection chordOnlyLine() =>
+        SongReaderLyricLineProjection(
+          segments: [
+            const SongReaderSegmentProjection(displayChord: 'Am', text: ''),
+            const SongReaderSegmentProjection(displayChord: null, text: '   '),
+          ],
+        );
+
+    SongReaderLyricLineProjection lyricLine() => SongReaderLyricLineProjection(
+      segments: [
+        const SongReaderSegmentProjection(
+          displayChord: 'G',
+          text: 'Hello world',
+        ),
+      ],
+    );
+
+    test('chord-only line: lyricsOnly height < chordsAndLyrics height', () {
+      final section = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Verse',
+        number: 1,
+        isUnknown: false,
+        lines: [lyricLine(), chordOnlyLine()],
+      );
+
+      final hLyricsOnly = estimateSectionHeight(
+        section: section,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        maxWidth: availableWidth,
+        fontScale: fontScale,
+      );
+      final hChordsAndLyrics = estimateSectionHeight(
+        section: section,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: availableWidth,
+        fontScale: fontScale,
+      );
+
+      expect(hLyricsOnly, lessThan(hChordsAndLyrics));
+    });
+
+    test('chord-only line adds zero height in lyricsOnly: '
+        'section with and without it estimate equal height', () {
+      final withoutChordOnly = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Verse',
+        number: 1,
+        isUnknown: false,
+        lines: [lyricLine()],
+      );
+      final withChordOnly = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Verse',
+        number: 1,
+        isUnknown: false,
+        lines: [lyricLine(), chordOnlyLine()],
+      );
+
+      final hWithout = estimateSectionHeight(
+        section: withoutChordOnly,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        maxWidth: availableWidth,
+        fontScale: fontScale,
+      );
+      final hWith = estimateSectionHeight(
+        section: withChordOnly,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        maxWidth: availableWidth,
+        fontScale: fontScale,
+      );
+
+      expect(hWith, equals(hWithout));
+    });
+
+    test(
+      'whitespace-only text segment treated as chord-only in lyricsOnly',
+      () {
+        final whitespaceOnlySection = SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          isUnknown: false,
+          lines: [
+            SongReaderLyricLineProjection(
+              segments: [
+                const SongReaderSegmentProjection(
+                  displayChord: 'C',
+                  text: '   ',
+                ),
+              ],
+            ),
+          ],
+        );
+        final emptySection = SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          isUnknown: false,
+          lines: const [],
+        );
+
+        final hWhitespace = estimateSectionHeight(
+          section: whitespaceOnlySection,
+          viewMode: SongReaderViewMode.lyricsOnly,
+          maxWidth: availableWidth,
+          fontScale: fontScale,
+        );
+        final hEmpty = estimateSectionHeight(
+          section: emptySection,
+          viewMode: SongReaderViewMode.lyricsOnly,
+          maxWidth: availableWidth,
+          fontScale: fontScale,
+        );
+
+        // Whitespace-only line should be collapsed → same height as no lines.
+        expect(hWhitespace, equals(hEmpty));
+      },
+    );
+  });
+
   group('estimateSectionHeight', () {
     test('unlabeled section has no header height contribution', () {
       final labeled = SongReaderSectionProjection(

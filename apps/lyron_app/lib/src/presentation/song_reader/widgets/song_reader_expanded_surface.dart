@@ -84,6 +84,10 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
   // Latest constraints from the content LayoutBuilder, used by _handleDoubleTap.
   BoxConstraints? _contentConstraints;
 
+  // Resolved padding dimensions (updated each build inside the LayoutBuilder).
+  double _contentPaddingH = 0;
+  double _contentPaddingV = 0;
+
   @override
   void initState() {
     super.initState();
@@ -118,8 +122,10 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
     final constraints = _contentConstraints;
     if (constraints == null) return;
 
-    final availableHeight = constraints.maxHeight;
-    final availableWidth = constraints.maxWidth;
+    // Subtract resolved content padding so the fit estimate uses the same
+    // dimensions as the actual scrollable area.
+    final availableWidth = constraints.maxWidth - _contentPaddingH;
+    final availableHeight = constraints.maxHeight - _contentPaddingV;
 
     if (_preFitScale == null) {
       // First double-tap: compute and apply fit scale.
@@ -212,10 +218,16 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
               onDoubleTap: _handleDoubleTap,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Store constraints so _handleDoubleTap can use the viewport
-                  // dimensions without capturing a stale BuildContext.
+                  // Store constraints and resolved padding so _handleDoubleTap
+                  // can use the viewport dimensions without a stale BuildContext.
+                  final resolved = widget.contentPadding.resolve(
+                    Directionality.of(context),
+                  );
+                  _contentPaddingH = resolved.horizontal;
+                  _contentPaddingV = resolved.vertical;
                   _contentConstraints = constraints;
-                  final availableHeight = constraints.maxHeight;
+                  final availableHeight =
+                      constraints.maxHeight - _contentPaddingV;
                   return Scrollbar(
                     controller: _scrollController,
                     child: SingleChildScrollView(
@@ -232,7 +244,8 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
                           viewMode: widget.projection.viewMode,
                           sharedFontScale: widget.projection.sharedFontScale,
                           columnCount: widget.contentColumnCount,
-                          availableHeight: availableHeight,
+                          availableHeight:
+                              availableHeight, // already padding-adjusted
                         ),
                       ),
                     ),
