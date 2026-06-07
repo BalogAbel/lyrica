@@ -20,12 +20,26 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_con
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+/// Overridable provider that resolves the current user's ID.
+///
+/// Defaults to reading from [supabaseClientProvider] so production behaviour is
+/// unchanged. Tests override this with a [Provider.value] to avoid initialising
+/// a real [SupabaseClient].
+final readerUserIdProvider = Provider<String?>((ref) {
+  try {
+    return ref.watch(supabaseClientProvider).auth.currentUser?.id;
+  } catch (_) {
+    return null;
+  }
+});
 
 enum _SongReaderOverflowAction { guitarView, pianoView, edit, delete }
 
@@ -51,12 +65,13 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
-  static const _expandedContentWidth = 1440.0;
   static const _contentPadding = EdgeInsets.all(24);
   static const _compactOverlayInactivity = Duration(seconds: 3);
 
   late final SongReaderController _controller = SongReaderController();
   Timer? _compactOverlayHideTimer;
+  Timer? _persistZoomTimer;
+  bool _seededZoom = false;
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -69,6 +84,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   void initState() {
     super.initState();
     _syncScopedRuntimeState();
+    _seedZoomFromStorage();
   }
 
   @override
@@ -84,7 +100,79 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   @override
   void dispose() {
     _compactOverlayHideTimer?.cancel();
+    _persistZoomTimer?.cancel();
     super.dispose();
+  }
+
+  /// Reads the stored zoom for this user+song once on open and applies it via
+  /// the same path as [_setSharedFontScale]. Guards with [_seededZoom] so it
+  /// fires only once per reader open and never clobbers a subsequent user change.
+  void _seedZoomFromStorage() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _seededZoom) {
+        return;
+      }
+      _seededZoom = true;
+
+      // Resolve userId inside the callback so tests can override the provider
+      // and the read does not crash during Supabase-less test environments.
+      final userId = ref.read(readerUserIdProvider);
+      if (userId == null) {
+        return;
+      }
+
+      try {
+        final store = await ref.read(songReaderPreferencesStoreProvider.future);
+        if (!mounted) {
+          return;
+        }
+        final zoom = await store.readZoom(
+          userId: userId,
+          songId: widget.songId,
+        );
+        if (!mounted || zoom == null) {
+          return;
+        }
+        _setSharedFontScale(zoom);
+      } catch (_) {
+        // Best-effort — ignore read failures so the reader still opens.
+      }
+    });
+  }
+
+  /// Debounced persist: (re)starts a 400 ms timer that writes the current
+  /// sharedFontScale for this user+song. Called on pinch-end and double-tap fit.
+  void _persistFontScale() {
+    final userId = ref.read(readerUserIdProvider);
+    if (userId == null) {
+      return;
+    }
+
+    _persistZoomTimer?.cancel();
+    _persistZoomTimer = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) {
+        return;
+      }
+
+      final scale = _isScopedMode
+          ? ref
+                .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+                .state
+                .readerState
+                .sharedFontScale
+          : _controller.state.sharedFontScale;
+
+      try {
+        final store = await ref.read(songReaderPreferencesStoreProvider.future);
+        await store.writeZoom(
+          userId: userId,
+          songId: widget.songId,
+          zoom: scale,
+        );
+      } catch (_) {
+        // Best-effort — ignore write failures silently.
+      }
+    });
   }
 
   void _updateState(void Function(SongReaderController controller) update) {
@@ -180,11 +268,29 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         runtimeController.state.readerState.sharedFontScale + delta,
       );
       _bumpCompactOverlayInactivityIfVisible();
+      _persistFontScale();
       return;
     }
 
     _updateState((controller) {
       controller.setSharedFontScale(controller.state.sharedFontScale + delta);
+    });
+    _bumpCompactOverlayInactivityIfVisible();
+    _persistFontScale();
+  }
+
+  void _setSharedFontScale(double scale) {
+    if (_isScopedMode) {
+      final runtimeController = ref.read(
+        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
+      );
+      runtimeController.setSharedFontScale(scale);
+      _bumpCompactOverlayInactivityIfVisible();
+      return;
+    }
+
+    _updateState((controller) {
+      controller.setSharedFontScale(scale);
     });
     _bumpCompactOverlayInactivityIfVisible();
   }
@@ -205,19 +311,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     _handleCompactOverlayVisibilityChanged(
       _controller.state.areCompactControlsVisible,
     );
-  }
-
-  void _toggleAutoFit() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .toggleAutoFit();
-      _bumpCompactOverlayInactivityIfVisible();
-      return;
-    }
-
-    _updateState((controller) => controller.toggleAutoFit());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _handleCompactOverlayVisibilityChanged(bool isVisible) {
@@ -734,7 +827,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                       builder: (context, constraints) {
                         final layout = resolveSongReaderLayout(
                           viewportWidth: constraints.maxWidth,
-                          sharedFontScale: projection.sharedFontScale,
                           isAutoFitEnabled: readerState.isAutoFitEnabled,
                         );
                         final showCompactBottomContextBar =
@@ -762,6 +854,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onSetFontScale: _setSharedFontScale,
+                                onPersistFontScale: _persistFontScale,
                                 onPreviousTap:
                                     _buildScopedNeighborNavigationTap(
                                       context,
@@ -774,6 +868,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   scopedContext: resolvedScopedContext,
                                   neighbor: resolvedScopedContext?.nextItem,
                                 ),
+                                contentPadding: _contentPadding,
                               )
                             : SongReaderCompactSurface(
                                 projection: projection,
@@ -783,7 +878,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 previousTitle: previousTitle,
                                 nextTitle: nextTitle,
                                 onSurfaceTap: _toggleCompactControls,
-                                onSurfaceDoubleTap: _toggleAutoFit,
                                 hasRecoverableWarnings:
                                     result.hasRecoverableWarnings,
                                 warningCount: recoverableWarningCount,
@@ -801,6 +895,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onSetFontScale: _setSharedFontScale,
+                                onPersistFontScale: _persistFontScale,
                                 onPreviousTap:
                                     _buildScopedNeighborNavigationTap(
                                       context,
@@ -813,23 +909,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                   scopedContext: resolvedScopedContext,
                                   neighbor: resolvedScopedContext?.nextItem,
                                 ),
+                                maxContentWidth: _contentWidth,
+                                contentPadding: _contentPadding,
                               );
 
-                        return Center(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: layout.shell == SongReaderShell.expanded
-                                  ? _expandedContentWidth
-                                  : _contentWidth,
-                            ),
-                            child: Padding(
-                              padding: _contentPadding,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [Expanded(child: readerSurface)],
-                              ),
-                            ),
-                          ),
+                        // The surface itself is full-width; ConstrainedBox and
+                        // padding are applied inside the scroll view by each
+                        // surface widget so the scrollbar thumb sits at the
+                        // physical screen edge.
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [Expanded(child: readerSurface)],
                         );
                       },
                     );

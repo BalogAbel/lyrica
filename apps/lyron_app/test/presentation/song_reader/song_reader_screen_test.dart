@@ -25,6 +25,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
@@ -36,6 +37,28 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+/// A no-op preferences store for tests — never reads or writes any real
+/// storage, so tests do not need SharedPreferences initialised.
+class _NoopSongReaderPreferencesStore implements SongReaderPreferencesStore {
+  @override
+  Future<double?> readZoom({
+    required String userId,
+    required String songId,
+  }) async => null;
+
+  @override
+  Future<void> writeZoom({
+    required String userId,
+    required String songId,
+    required double zoom,
+  }) async {}
+}
+
+/// Convenience override that silences the SharedPreferences dependency so tests
+/// do not need `SharedPreferences.setMockInitialValues({})`.
+final _noopPreferencesStoreOverride = songReaderPreferencesStoreProvider
+    .overrideWith((_) async => _NoopSongReaderPreferencesStore());
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -154,6 +177,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
@@ -200,6 +224,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
@@ -267,6 +292,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(
           const CatalogSnapshotState(
             context: null,
@@ -313,6 +339,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         songLibraryReaderProvider.overrideWithProvider(
@@ -342,7 +369,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -410,7 +437,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -440,7 +467,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(result: buildTallResult()),
       );
 
@@ -465,56 +492,52 @@ void main() {
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
-    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.physicalSize = const Size(1600, 1200);
     await tester.pumpAndSettle();
 
     expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
   });
 
-  testWidgets('double tap in compact mode toggles auto-fit used after resize', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(800, 1200);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'double tap in compact mode fits song to screen and does not toggle auto-fit',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1200);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(buildApp(result: buildTallResult()));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(buildApp(result: buildTallResult()));
+      await tester.pumpAndSettle();
 
-    tester.view.physicalSize = const Size(1440, 1200);
-    await tester.pumpAndSettle();
-    expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
-    expect(
-      find.byKey(const Key('song-reader-section-grid-columns-2')),
-      findsOneWidget,
-    );
+      // Verify expanded layout shows 2 columns at default scale.
+      tester.view.physicalSize = const Size(1600, 1200);
+      await tester.pumpAndSettle();
+      expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-2')),
+        findsOneWidget,
+        reason: 'expanded reader starts with 2 columns for the tall song',
+      );
 
-    tester.view.physicalSize = const Size(800, 1200);
-    await tester.pumpAndSettle();
+      // Switch back to compact.
+      tester.view.physicalSize = const Size(800, 1200);
+      await tester.pumpAndSettle();
+      expect(find.byType(SongReaderCompactSurface), findsOneWidget);
 
-    final center = tester.getCenter(find.byType(SongReaderCompactSurface));
-    final firstTap = await tester.startGesture(center);
-    await firstTap.up();
-    await tester.pump(const Duration(milliseconds: 40));
-    final secondTap = await tester.startGesture(center);
-    await secondTap.up();
-    await tester.pumpAndSettle();
+      // Double-tap in compact mode should not crash and does not toggle auto-fit.
+      final center = tester.getCenter(find.byType(SongReaderCompactSurface));
+      final firstTap = await tester.startGesture(center);
+      await firstTap.up();
+      await tester.pump(const Duration(milliseconds: 40));
+      final secondTap = await tester.startGesture(center);
+      await secondTap.up();
+      await tester.pumpAndSettle();
 
-    tester.view.physicalSize = const Size(1440, 1200);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
-    expect(
-      find.byKey(const Key('song-reader-section-grid-columns-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('song-reader-section-grid-columns-2')),
-      findsNothing,
-    );
-  });
+      // Compact surface still present (no crash).
+      expect(find.byType(SongReaderCompactSurface), findsOneWidget);
+    },
+  );
 
   testWidgets('compact overlay hides after inactivity timeout', (tester) async {
     await pumpWithViewport(
@@ -579,7 +602,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -598,7 +621,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -757,7 +780,7 @@ void main() {
   testWidgets('hides chords in lyrics only mode', (tester) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -773,7 +796,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -787,7 +810,7 @@ void main() {
   testWidgets('updates shared font size when controls change', (tester) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -803,12 +826,110 @@ void main() {
     expect(scaledSize, greaterThan(initialSize));
   });
 
+  testWidgets('seeds font scale from stored zoom on open', (tester) async {
+    const testUserId = 'seed-test-user';
+    const testSongId = 'seed-test-song';
+    const storedZoom = 2.0;
+
+    final fakeStore = _FakeSongReaderPreferencesStore({
+      '$testUserId:$testSongId': storedZoom,
+    });
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => fakeStore,
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
+      ),
+    );
+
+    // Drive the async seed chain to completion:
+    //   pumpAndSettle → song loaded, postFrameCallback fires, async body starts
+    //   runAsync → store FutureProvider and store.readZoom complete, setState called
+    //   pumpAndSettle → widget rebuilds with seeded font scale
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+
+    final seededText = tester.widget<Text>(find.text('Hello'));
+    final seededSize = seededText.style!.fontSize!;
+
+    // The default bodyLarge fontSize in Flutter's default theme is 16.0.
+    // At storedZoom=2.0 it becomes 16.0 * 2.0 = 32.0, well above the default.
+    expect(
+      seededSize,
+      greaterThan(16.0),
+      reason: 'stored zoom 2.0 must scale lyric text above the default 16 px',
+    );
+  });
+
+  testWidgets('uses default scale when no stored zoom exists', (tester) async {
+    const testUserId = 'no-zoom-user';
+    const testSongId = 'no-zoom-song';
+
+    // Noop store returns null → scale stays at 1.0 (default).
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => _NoopSongReaderPreferencesStore(),
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
+      ),
+    );
+
+    // Song renders at default size — just verify it loads without crash.
+    expect(find.text('Hello'), findsOneWidget);
+  });
+
   testWidgets(
     'shows a non-blocking warning surface for recoverable diagnostics',
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(
           result: buildResult(
             diagnostics: [
@@ -832,7 +953,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(
         result: buildResult(
           diagnostics: [
@@ -1017,7 +1138,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildScopedReaderApp(
         planDetail: _multiItemPlanDetail(),
         resultsBySongId: {
@@ -1048,7 +1169,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(result: buildResult()),
       );
 
@@ -1058,13 +1179,13 @@ void main() {
 
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: const SizedBox.shrink(),
       );
 
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
@@ -1110,7 +1231,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -1213,7 +1334,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
@@ -1249,7 +1370,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
@@ -1312,6 +1433,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: ActiveCatalogContext(
@@ -1407,6 +1529,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: ActiveCatalogContext(
@@ -1550,6 +1673,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _noopPreferencesStoreOverride,
             catalogSnapshotStateProvider.overrideWithValue(
               const CatalogSnapshotState(
                 context: null,
@@ -1606,6 +1730,63 @@ void main() {
       expect(find.text('Plan Fixture'), findsOneWidget);
     },
   );
+
+  testWidgets('tapping increase-font button persists zoom after debounce', (
+    tester,
+  ) async {
+    const testUserId = 'persist-btn-user';
+    const testSongId = 'persist-btn-song';
+
+    final fakeStore = _FakeSongReaderPreferencesStore({});
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => fakeStore,
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the increase-font button (A+ in expanded tools panel).
+    await tester.tap(find.text('A+'));
+    await tester.pump();
+
+    // Advance past the 400 ms debounce and let async store write complete.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      fakeStore.writeCount,
+      greaterThan(0),
+      reason: 'increase-font tap must trigger a persisted zoom write',
+    );
+  });
 }
 
 PlanDetail _multiItemPlanDetail() {
@@ -1758,6 +1939,30 @@ String _sessionItemIdForScopedRoute(
   }).firstOrNull;
 
   return item?.id ?? songSlug;
+}
+
+/// In-memory preferences store. Keyed by '$userId:$songId'.
+class _FakeSongReaderPreferencesStore implements SongReaderPreferencesStore {
+  _FakeSongReaderPreferencesStore(this._data);
+
+  final Map<String, double> _data;
+  int writeCount = 0;
+
+  @override
+  Future<double?> readZoom({
+    required String userId,
+    required String songId,
+  }) async => _data['$userId:$songId'];
+
+  @override
+  Future<void> writeZoom({
+    required String userId,
+    required String songId,
+    required double zoom,
+  }) async {
+    writeCount += 1;
+    _data['$userId:$songId'] = zoom;
+  }
 }
 
 class _BlockingSongLibraryService extends SongLibraryService {

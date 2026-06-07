@@ -38,22 +38,36 @@ class SongLineView extends StatelessWidget {
     }
     final spacing = hasLyricSegments ? 0.0 : _chordOnlySpacing;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Wrap(
-        spacing: spacing,
-        runSpacing: _lineRunSpacing,
-        crossAxisAlignment: WrapCrossAlignment.end,
-        children: [
-          for (final segment in line.segments)
-            _SongLineSegmentView(
-              segment: segment,
-              viewMode: viewMode,
-              chordStyle: chordStyle,
-              lyricStyle: lyricStyle,
-            ),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Wrap passes unbounded width to its children, so an unbreakable token
+        // would expand to its natural width.  Resolve the available width here
+        // (falling back to the MediaQuery screen width when constraints are
+        // infinite, e.g. inside an InteractiveViewer) and pass it down so each
+        // segment can apply a ConstrainedBox that forces internal text wrapping.
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : (MediaQuery.maybeSizeOf(context)?.width ?? 800.0);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Wrap(
+            spacing: spacing,
+            runSpacing: _lineRunSpacing,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              for (final segment in line.segments)
+                _SongLineSegmentView(
+                  segment: segment,
+                  viewMode: viewMode,
+                  chordStyle: chordStyle,
+                  lyricStyle: lyricStyle,
+                  maxWidth: maxWidth,
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -64,12 +78,18 @@ class _SongLineSegmentView extends StatelessWidget {
     required this.viewMode,
     required this.chordStyle,
     required this.lyricStyle,
+    required this.maxWidth,
   });
 
   final SongReaderSegmentProjection segment;
   final SongReaderViewMode viewMode;
   final TextStyle? chordStyle;
   final TextStyle? lyricStyle;
+  // Maximum width available for this segment's lyric text.  Wrap passes
+  // unbounded constraints to its children; ConstrainedBox re-introduces the
+  // bound so that a long unbreakable token wraps internally instead of
+  // overflowing the line.
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +110,11 @@ class _SongLineSegmentView extends StatelessWidget {
           Text(segment.displayChord!, style: chordStyle),
           if (showLyric) const SizedBox(height: 2),
         ],
-        if (showLyric) Text(segment.text, style: lyricStyle),
+        if (showLyric)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Text(segment.text, style: lyricStyle, softWrap: true),
+          ),
       ],
     );
 
