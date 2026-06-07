@@ -1730,6 +1730,63 @@ void main() {
       expect(find.text('Plan Fixture'), findsOneWidget);
     },
   );
+
+  testWidgets('tapping increase-font button persists zoom after debounce', (
+    tester,
+  ) async {
+    const testUserId = 'persist-btn-user';
+    const testSongId = 'persist-btn-song';
+
+    final fakeStore = _FakeSongReaderPreferencesStore({});
+
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          songReaderPreferencesStoreProvider.overrideWith(
+            (_) async => fakeStore,
+          ),
+          readerUserIdProvider.overrideWithValue(testUserId),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWithProvider(
+            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          ),
+        ],
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the increase-font button (A+ in expanded tools panel).
+    await tester.tap(find.text('A+'));
+    await tester.pump();
+
+    // Advance past the 400 ms debounce and let async store write complete.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+
+    expect(
+      fakeStore.writeCount,
+      greaterThan(0),
+      reason: 'increase-font tap must trigger a persisted zoom write',
+    );
+  });
 }
 
 PlanDetail _multiItemPlanDetail() {
@@ -1889,6 +1946,7 @@ class _FakeSongReaderPreferencesStore implements SongReaderPreferencesStore {
   _FakeSongReaderPreferencesStore(this._data);
 
   final Map<String, double> _data;
+  int writeCount = 0;
 
   @override
   Future<double?> readZoom({
@@ -1902,6 +1960,7 @@ class _FakeSongReaderPreferencesStore implements SongReaderPreferencesStore {
     required String songId,
     required double zoom,
   }) async {
+    writeCount += 1;
     _data['$userId:$songId'] = zoom;
   }
 }

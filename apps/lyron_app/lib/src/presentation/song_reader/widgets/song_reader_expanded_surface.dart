@@ -67,6 +67,7 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
 
   // Pinch-to-zoom state.
   double _pinchBaselineScale = 1.0;
+  double _lastEmittedScale = 1.0;
 
   // Fit-to-screen toggle state.
   //
@@ -148,6 +149,7 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
 
   void _handleScaleStart(ScaleStartDetails details) {
     _pinchBaselineScale = widget.projection.sharedFontScale;
+    _lastEmittedScale = widget.projection.sharedFontScale;
   }
 
   void _handleScaleUpdate(ScaleUpdateDetails details) {
@@ -159,6 +161,10 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
       SongReaderState.minSharedFontScale,
       SongReaderState.maxSharedFontScale,
     );
+    if ((newScale - _lastEmittedScale).abs() < 0.005) {
+      return;
+    }
+    _lastEmittedScale = newScale;
     widget.onSetFontScale?.call(newScale);
   }
 

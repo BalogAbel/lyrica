@@ -268,6 +268,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         runtimeController.state.readerState.sharedFontScale + delta,
       );
       _bumpCompactOverlayInactivityIfVisible();
+      _persistFontScale();
       return;
     }
 
@@ -275,6 +276,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       controller.setSharedFontScale(controller.state.sharedFontScale + delta);
     });
     _bumpCompactOverlayInactivityIfVisible();
+    _persistFontScale();
   }
 
   void _setSharedFontScale(double scale) {
