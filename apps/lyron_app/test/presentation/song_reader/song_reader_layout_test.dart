@@ -13,9 +13,19 @@ void main() {
     expect(layout.contentColumnCount, 1);
   });
 
-  test('resolves expanded shell for wide layouts', () {
+  test('resolves compact shell for tablet-width layouts (< 1600)', () {
     final layout = resolveSongReaderLayout(
       viewportWidth: 1280,
+      sharedFontScale: 1,
+      isAutoFitEnabled: true,
+    );
+
+    expect(layout.shell, SongReaderShell.compact);
+  });
+
+  test('resolves expanded shell for large desktop layouts (>= 1600)', () {
+    final layout = resolveSongReaderLayout(
+      viewportWidth: 1600,
       sharedFontScale: 1,
       isAutoFitEnabled: true,
     );

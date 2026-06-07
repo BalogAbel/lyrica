@@ -371,7 +371,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -439,7 +439,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -469,7 +469,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(result: buildTallResult()),
       );
 
@@ -494,7 +494,7 @@ void main() {
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
-    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.physicalSize = const Size(1600, 1200);
     await tester.pumpAndSettle();
 
     expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
@@ -513,7 +513,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify expanded layout shows 2 columns at default scale.
-      tester.view.physicalSize = const Size(1440, 1200);
+      tester.view.physicalSize = const Size(1600, 1200);
       await tester.pumpAndSettle();
       expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
       expect(
@@ -604,7 +604,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -623,7 +623,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -782,7 +782,7 @@ void main() {
   testWidgets('hides chords in lyrics only mode', (tester) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -798,7 +798,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -812,7 +812,7 @@ void main() {
   testWidgets('updates shared font size when controls change', (tester) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -838,7 +838,7 @@ void main() {
     });
 
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1440, 1200);
+    tester.view.physicalSize = const Size(1600, 1200);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -899,7 +899,7 @@ void main() {
     // Noop store returns null → scale stays at 1.0 (default).
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: ProviderScope(
         overrides: [
           songReaderPreferencesStoreProvider.overrideWith(
@@ -935,7 +935,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(
           result: buildResult(
             diagnostics: [
@@ -959,7 +959,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(
         result: buildResult(
           diagnostics: [
@@ -1144,7 +1144,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildScopedReaderApp(
         planDetail: _multiItemPlanDetail(),
         resultsBySongId: {
@@ -1175,7 +1175,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildApp(result: buildResult()),
       );
 
@@ -1185,13 +1185,13 @@ void main() {
 
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: const SizedBox.shrink(),
       );
 
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
@@ -1237,7 +1237,7 @@ void main() {
   ) async {
     await pumpWithViewport(
       tester,
-      size: const Size(1440, 1200),
+      size: const Size(1600, 1200),
       child: buildApp(result: buildResult()),
     );
 
@@ -1340,7 +1340,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {
@@ -1376,7 +1376,7 @@ void main() {
     (tester) async {
       await pumpWithViewport(
         tester,
-        size: const Size(1440, 1200),
+        size: const Size(1600, 1200),
         child: buildScopedReaderApp(
           planDetail: _multiItemPlanDetail(),
           resultsBySongId: {

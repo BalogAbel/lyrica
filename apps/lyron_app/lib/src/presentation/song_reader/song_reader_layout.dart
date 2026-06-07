@@ -15,7 +15,10 @@ SongReaderLayout resolveSongReaderLayout({
   required double sharedFontScale,
   required bool isAutoFitEnabled,
 }) {
-  const expandedShellMinWidth = 1024.0;
+  // Expanded shell is reserved for large desktop windows only.
+  // Tablets (including landscape mode on ~1280px devices) use the compact
+  // shell so they get overlay controls and full-width content.
+  const expandedShellMinWidth = 1600.0;
   const denseLayoutMinWidth = 1180.0;
   const denseLayoutMaxScale = 1.15;
 
