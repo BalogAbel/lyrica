@@ -35,9 +35,13 @@ class SongReaderSectionGrid extends StatelessWidget {
         final effectiveHeight = availableHeight.isFinite
             ? availableHeight
             : MediaQuery.sizeOf(context).height;
+        // The leading directive renders as a directive line plus the section
+        // gap below it, so reserve both. This must match the value the fit
+        // calculator is given in the surfaces' _handleDoubleTap so the grid
+        // and resolveFitFontScale agree on the column decision.
         final leadingDirectiveHeight = leadingDirectiveText == null
             ? 0.0
-            : directiveLineHeight;
+            : directiveLineHeight + sectionGap;
 
         // Use the shared estimateRenderedLayout so the grid's column decision
         // exactly mirrors the logic used by resolveFitFontScale. This is the
