@@ -62,6 +62,9 @@ Cover:
 - Song CRUD flows, including delete-blocked messaging for referenced songs and sign-out warnings for unsynced mutations
 - Persistent song-catalog status surfaces for online, offline, refreshing, and refresh-failed modes
 - Song list and reader controls, including view mode, transposition, font scaling, and warning surfaces
+- Reader zoom gesture coverage: two-pointer pinch increases font scale while single-finger drag still scrolls (verified via scroll-position assertion, not only callback absence); double-tap fit-to-screen and restore cycle; full-width scrollbar layout confirming the scroll view spans the full viewport width at any content width
+- Reader zoom seed-on-open: store provider overridden with an in-memory fake; `readerUserIdProvider` overridden with a test identity; font size on rendered text asserted to reflect the seeded value
+- Local key-value preference stores (shared_preferences): unit-tested via `SharedPreferences.setMockInitialValues` for read/write roundtrip, per-key isolation, and null-on-miss; production stores exposed behind a Riverpod interface for override in widget tests
 - Planning list/detail loading, empty, and failure states plus signed-in navigation affordances into planning
 - Planning create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder flows, including failed-mutation review surfaces and sign-out warnings when planning mutations remain unsynced
 - Test environment stability via mandatory persistence stubbing in all `ProviderScope` overrides to prevent real Drift database instantiation and associated CI race conditions.
