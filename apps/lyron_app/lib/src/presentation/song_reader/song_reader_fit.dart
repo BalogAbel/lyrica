@@ -12,6 +12,14 @@ const double lyricRowHeight = 24.0;
 const double directiveLineHeight = 36.0;
 const double tabBlockVerticalPadding = 16.0;
 
+// Layout decision constants (shared by the section grid, the fit calculator,
+// and the layout resolver so all three agree).
+const double denseLayoutMinWidth = 1180.0;
+const double columnUsefulMaxRatio =
+    0.9; // 2 cols must shave >=10% off single-col height
+const double columnHeightToleranceFactor =
+    1.15; // 2-col fallback if taller col overflows this
+
 /// Returns an estimated pixel height for a single [section] when rendered at
 /// the given [fontScale] and [maxWidth].
 double estimateSectionHeight({
@@ -132,13 +140,76 @@ double _estimateTwoColumnTallerHeight({
   return (total + bestDiff) / 2;
 }
 
-/// Returns the largest font scale in [minScale, maxScale] whose estimated
+/// Result of [estimateRenderedLayout]: estimated pixel height and effective
+/// column count the grid will actually render at the given font scale.
+class RenderedHeightEstimate {
+  const RenderedHeightEstimate({
+    required this.height,
+    required this.columnCount,
+  });
+
+  final double height;
+  final int columnCount;
+}
+
+/// Decides whether content renders in 1 or 2 columns at [fontScale] and returns
+/// the resulting estimated height. Mirrors [SongReaderSectionGrid.build] exactly:
+///  - 2 columns only when [allowTwoColumns] AND >=2 sections AND single-column
+///    height (incl. [leadingDirectiveHeight]) overflows [availableHeight] AND the
+///    split is "useful" (taller column <= single * [columnUsefulMaxRatio]) AND the
+///    taller column fits [availableHeight] * [columnHeightToleranceFactor].
+///
+/// The [leadingDirectiveHeight] is added pessimistically to the taller column
+/// (col 0 always receives the directive in the grid; adding it to `taller`
+/// is safe when col 0 is already the taller column, and only slightly
+/// over-estimates when col 1 is taller).
+RenderedHeightEstimate estimateRenderedLayout({
+  required List<SongReaderSectionProjection> sections,
+  required SongReaderViewMode viewMode,
+  required double availableWidth,
+  required double availableHeight,
+  required double fontScale,
+  required bool allowTwoColumns,
+  double leadingDirectiveHeight = 0,
+}) {
+  final single =
+      estimateSongContentHeight(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        fontScale: fontScale,
+      ) +
+      leadingDirectiveHeight;
+
+  if (!allowTwoColumns || sections.length < 2 || single <= availableHeight) {
+    return RenderedHeightEstimate(height: single, columnCount: 1);
+  }
+
+  final taller =
+      _estimateTwoColumnTallerHeight(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        fontScale: fontScale,
+      ) +
+      leadingDirectiveHeight; // directive sits on column 0; pessimistic but safe
+
+  final usefulSplit = taller <= single * columnUsefulMaxRatio;
+  final fitsTolerance = taller <= availableHeight * columnHeightToleranceFactor;
+  if (usefulSplit && fitsTolerance) {
+    return RenderedHeightEstimate(height: taller, columnCount: 2);
+  }
+  return RenderedHeightEstimate(height: single, columnCount: 1);
+}
+
+/// Returns the largest font scale in [[minScale], [maxScale]] whose estimated
 /// content height fits within [availableHeight].
 ///
-/// When [columnCount] is 2 the fit is computed against the TALLER of the two
-/// columns (using a balanced split), allowing a larger scale on wide layouts.
-/// For any other value of [columnCount] the standard single-column height is
-/// used.
+/// When [allowTwoColumns] is true the fit is computed via [estimateRenderedLayout],
+/// which mirrors the grid's own column-decision logic (overflow check, useful-split
+/// guard, tolerance guard). This guarantees that the fit scale and the rendered
+/// layout always agree on column count, so a double-tap fit can never produce a
+/// scale that causes the grid to flip columns and overflow.
 ///
 /// - If maxScale already fits → returns maxScale.
 /// - If minScale still doesn't fit → returns minScale.
@@ -151,26 +222,20 @@ double resolveFitFontScale({
   required double availableHeight,
   required double minScale,
   required double maxScale,
-  int columnCount = 1,
+  bool allowTwoColumns = false,
+  double leadingDirectiveHeight = 0,
 }) {
-  bool fits(double scale) {
-    if (columnCount == 2) {
-      return _estimateTwoColumnTallerHeight(
-            sections: sections,
-            viewMode: viewMode,
-            availableWidth: availableWidth,
-            fontScale: scale,
-          ) <=
-          availableHeight;
-    }
-    return estimateSongContentHeight(
-          sections: sections,
-          viewMode: viewMode,
-          availableWidth: availableWidth,
-          fontScale: scale,
-        ) <=
-        availableHeight;
-  }
+  bool fits(double scale) =>
+      estimateRenderedLayout(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        availableHeight: availableHeight,
+        fontScale: scale,
+        allowTwoColumns: allowTwoColumns,
+        leadingDirectiveHeight: leadingDirectiveHeight,
+      ).height <=
+      availableHeight;
 
   if (fits(maxScale)) return maxScale;
   if (!fits(minScale)) return minScale;

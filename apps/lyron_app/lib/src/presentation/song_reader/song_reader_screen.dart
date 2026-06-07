@@ -825,7 +825,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                       builder: (context, constraints) {
                         final layout = resolveSongReaderLayout(
                           viewportWidth: constraints.maxWidth,
-                          sharedFontScale: projection.sharedFontScale,
                           isAutoFitEnabled: readerState.isAutoFitEnabled,
                         );
                         final showCompactBottomContextBar =

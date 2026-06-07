@@ -130,7 +130,10 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
         availableHeight: availableHeight,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: widget.contentColumnCount,
+        allowTwoColumns: widget.contentColumnCount > 1,
+        leadingDirectiveHeight: widget.projection.capoDirectiveText != null
+            ? directiveLineHeight + sectionGap
+            : 0,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);

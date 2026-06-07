@@ -231,7 +231,7 @@ void main() {
   // Fix 2: 2-column-aware fit-to-screen
   // ---------------------------------------------------------------------------
 
-  group('resolveFitFontScale columnCount:2 — 2-column-aware fit', () {
+  group('resolveFitFontScale allowTwoColumns:true — 2-column-aware fit', () {
     test('2-column fit scale is larger than 1-column for same tall content', () {
       // 4 sections × 20 lines each. At minScale=0.25 and w=360:
       //   single-col total ≈ 1520 px > 900 px  → 1-col returns minScale.
@@ -245,7 +245,7 @@ void main() {
         availableHeight: 900,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 1,
+        allowTwoColumns: false,
       );
       final scale2 = resolveFitFontScale(
         sections: sections,
@@ -254,7 +254,7 @@ void main() {
         availableHeight: 900,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 2,
+        allowTwoColumns: true,
       );
       expect(scale2, greaterThan(scale1));
     });
@@ -274,7 +274,7 @@ void main() {
           availableHeight: 300,
           minScale: 0.25,
           maxScale: 3.0,
-          columnCount: 2,
+          allowTwoColumns: true,
         );
         // Scale should be > 0.25 meaning it actually fits at non-minimum scale.
         expect(twoColScale, greaterThan(0.25));
@@ -290,7 +290,7 @@ void main() {
         availableHeight: 800,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 1,
+        allowTwoColumns: false,
       );
       final scale2 = resolveFitFontScale(
         sections: sections,
@@ -299,7 +299,7 @@ void main() {
         availableHeight: 800,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 2,
+        allowTwoColumns: true,
       );
       // Both should return maxScale (content fits easily) — i.e. equal.
       expect(scale2, equals(scale1));
@@ -313,9 +313,46 @@ void main() {
         availableHeight: 400,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 2,
+        allowTwoColumns: true,
       );
       expect(scale, equals(SongReaderState.maxSharedFontScale));
+    });
+
+    // ── consistency: fit scale must not cause layout flip ─────────────────────
+    test('fit scale at allowTwoColumns:true renders within availableHeight '
+        '(no post-fit overflow due to column flip)', () {
+      // Use tall content where fit scale exceeds the old 1.15 threshold.
+      // Before the fix: resolveFitFontScale would compute a 2-col fit scale
+      // (e.g. 1.4) but the layout resolver would flip to 1-col at > 1.15,
+      // causing the content to overflow. After the fix: estimateRenderedLayout
+      // uses the same decision logic as the grid, so the returned height is
+      // always <= availableHeight regardless of scale.
+      final sections = [_section(20), _section(20), _section(20), _section(20)];
+      const availableWidth = 1300.0;
+      const availableHeight = 900.0;
+
+      final fit = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: availableWidth,
+        availableHeight: availableHeight,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        allowTwoColumns: true,
+      );
+
+      final rendered = estimateRenderedLayout(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: availableWidth,
+        availableHeight: availableHeight,
+        fontScale: fit,
+        allowTwoColumns: true,
+      );
+
+      // The rendered height at the fit scale must fit within the available height.
+      // Allow 1px rounding tolerance (24 binary-search iterations).
+      expect(rendered.height, lessThanOrEqualTo(availableHeight + 1));
     });
   });
 
@@ -346,7 +383,7 @@ void main() {
         availableHeight: 900,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 1,
+        allowTwoColumns: false,
       );
       final s2 = resolveFitFontScale(
         sections: sections,
@@ -355,7 +392,7 @@ void main() {
         availableHeight: 900,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
-        columnCount: 2,
+        allowTwoColumns: true,
       );
       expect(s2, greaterThan(s1));
     });
@@ -373,7 +410,7 @@ void main() {
         availableHeight: 20000, // always fits
         minScale: 0.5,
         maxScale: maxScale,
-        columnCount: 2,
+        allowTwoColumns: true,
       );
       expect(scale, equals(maxScale));
     });

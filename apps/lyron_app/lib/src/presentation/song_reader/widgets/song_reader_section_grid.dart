@@ -21,11 +21,6 @@ class SongReaderSectionGrid extends StatelessWidget {
   final double sharedFontScale;
   final int columnCount;
   final double availableHeight;
-  static const _columnHeightToleranceFactor = 1.15;
-
-  // A 2-column split must shave at least ~10% off the single-column height to
-  // be worth it; otherwise one dominant section just leaves a near-empty column.
-  static const _columnUsefulMaxRatio = 0.9;
 
   @override
   Widget build(BuildContext context) {
@@ -43,15 +38,21 @@ class SongReaderSectionGrid extends StatelessWidget {
         final leadingDirectiveHeight = leadingDirectiveText == null
             ? 0.0
             : directiveLineHeight;
-        final singleColumnHeight =
-            _singleColumnHeightEstimate(
-              sourceSections: normalizedSections,
-              maxColumnWidth: availableWidth,
-            ) +
-            leadingDirectiveHeight;
-        final shouldUseMultipleColumns =
-            normalizedColumns > 1 && singleColumnHeight > effectiveHeight;
-        var effectiveColumns = shouldUseMultipleColumns ? normalizedColumns : 1;
+
+        // Use the shared estimateRenderedLayout so the grid's column decision
+        // exactly mirrors the logic used by resolveFitFontScale. This is the
+        // single source of truth that eliminates the pre-fix column-count
+        // disagreement between the fit calculator and the rendered layout.
+        final layout = estimateRenderedLayout(
+          sections: normalizedSections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: effectiveHeight,
+          fontScale: sharedFontScale,
+          allowTwoColumns: normalizedColumns > 1,
+          leadingDirectiveHeight: leadingDirectiveHeight,
+        );
+        final effectiveColumns = layout.columnCount;
 
         if (effectiveColumns == 1) {
           return _buildSingleColumn(normalizedSections);
@@ -66,23 +67,6 @@ class SongReaderSectionGrid extends StatelessWidget {
           columnCount: effectiveColumns,
           maxColumnWidth: tileWidth,
         );
-        final estimatedColumnHeights = columns
-            .map((column) => _columnHeightEstimate(column, tileWidth))
-            .toList(growable: false);
-        if (leadingDirectiveHeight > 0 && estimatedColumnHeights.isNotEmpty) {
-          estimatedColumnHeights[0] += leadingDirectiveHeight;
-        }
-        final tallestColumn = estimatedColumnHeights.fold<double>(
-          0,
-          (maxHeight, height) => height > maxHeight ? height : maxHeight,
-        );
-        final splitIsUseful =
-            tallestColumn <= singleColumnHeight * _columnUsefulMaxRatio;
-        if (!splitIsUseful ||
-            tallestColumn > effectiveHeight * _columnHeightToleranceFactor) {
-          effectiveColumns = 1;
-          return _buildSingleColumn(normalizedSections);
-        }
 
         return Row(
           key: Key('song-reader-section-grid-columns-$effectiveColumns'),
@@ -117,18 +101,6 @@ class SongReaderSectionGrid extends StatelessWidget {
     );
   }
 
-  double _singleColumnHeightEstimate({
-    required List<SongReaderSectionProjection> sourceSections,
-    required double maxColumnWidth,
-  }) {
-    return estimateSongContentHeight(
-      sections: sourceSections,
-      viewMode: viewMode,
-      availableWidth: maxColumnWidth,
-      fontScale: sharedFontScale,
-    );
-  }
-
   Widget _buildSingleColumn(List<SongReaderSectionProjection> sections) {
     return Column(
       key: const Key('song-reader-section-grid-columns-1'),
@@ -147,18 +119,6 @@ class SongReaderSectionGrid extends StatelessWidget {
           const SizedBox(height: sectionGap),
         ],
       ],
-    );
-  }
-
-  double _columnHeightEstimate(
-    List<SongReaderSectionProjection> sections,
-    double maxColumnWidth,
-  ) {
-    return estimateSongContentHeight(
-      sections: sections,
-      viewMode: viewMode,
-      availableWidth: maxColumnWidth,
-      fontScale: sharedFontScale,
     );
   }
 
