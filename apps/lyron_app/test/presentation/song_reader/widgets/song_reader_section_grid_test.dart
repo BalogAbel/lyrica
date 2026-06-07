@@ -339,6 +339,122 @@ void main() {
     expect((eX - dX).abs(), lessThan(1));
   });
 
+  // ── dominant-section guard ──────────────────────────────────────────────────
+
+  group('dominant section guard', () {
+    /// Section with [lineCount] SHORT lyric lines (≤6 chars) and a chord so
+    /// they contribute chord+lyric height but do NOT wrap even at half-width.
+    /// Short text ensures the dominant-section test isolates the new guard
+    /// rather than the existing overflow-tolerance guard.
+    SongReaderSectionProjection dominantSection(String label, int lineCount) {
+      return SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: label,
+        number: lineCount == 0 ? null : 1,
+        isUnknown: false,
+        lines: [
+          for (var i = 0; i < lineCount; i++)
+            SongReaderLyricLineProjection(
+              segments: [
+                SongReaderSegmentProjection(
+                  displayChord: 'E',
+                  // Deliberately short so text never wraps even at half-width
+                  // (~36 chars/line at 390px). This lets the tallestColumn
+                  // ≈ singleColumnHeight, making the split "useless" rather
+                  // than just "overflowing".
+                  text: 'Line $i',
+                ),
+              ],
+            ),
+        ],
+      );
+    }
+
+    testWidgets(
+      'dominant single section falls back to one column even when content overflows',
+      (tester) async {
+        // Intro (0 lines, header only ≈ 60px) + Verse (12 short lines ≈ 708px).
+        // singleColumnHeight ≈ 768px > availableHeight=700 → multi-col triggers.
+        // Balanced split: [Intro] | [Verse] — the Verse column at half-width
+        // does NOT wrap (short text), so tallestColumn ≈ 708px.
+        // Old guard: 708 <= 700*1.15=805 → does NOT fire.
+        // New guard: 708 > 768*0.9=691 → fires → falls back to one column.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SizedBox(
+                  width: 1280,
+                  child: SongReaderSectionGrid(
+                    sections: [
+                      dominantSection('Intro', 0),
+                      dominantSection('Verse', 12),
+                    ],
+                    viewMode: SongReaderViewMode.chordsAndLyrics,
+                    sharedFontScale: 1,
+                    columnCount: 2,
+                    availableHeight: 700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(const Key('song-reader-section-grid-columns-1')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('song-reader-section-grid-columns-2')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'many balanced sections still use two columns',
+      (tester) async {
+        // 6 equal 2-line sections (short text, no wrap):
+        //   singleColumnHeight ≈ 6 × 168 = 1008px > 900 → multi-col triggers
+        //   tallestColumn (3 sections) ≈ 504px
+        //   availableHeight=900 → 504 <= 1035 (tolerance OK) and 504 <= 907 (useful OK)
+        //   → columns-2.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: SizedBox(
+                  width: 1280,
+                  child: SongReaderSectionGrid(
+                    sections: [
+                      for (var i = 0; i < 6; i++) dominantSection('Verse', 2),
+                    ],
+                    viewMode: SongReaderViewMode.chordsAndLyrics,
+                    sharedFontScale: 1,
+                    columnCount: 2,
+                    availableHeight: 900,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(const Key('song-reader-section-grid-columns-2')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('song-reader-section-grid-columns-1')),
+          findsNothing,
+        );
+      },
+    );
+  });
+
+  // ── existing tests below ────────────────────────────────────────────────────
+
   testWidgets('counts the injected capo directive in column height', (
     tester,
   ) async {

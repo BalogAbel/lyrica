@@ -23,6 +23,10 @@ class SongReaderSectionGrid extends StatelessWidget {
   final double availableHeight;
   static const _columnHeightToleranceFactor = 1.15;
 
+  // A 2-column split must shave at least ~10% off the single-column height to
+  // be worth it; otherwise one dominant section just leaves a near-empty column.
+  static const _columnUsefulMaxRatio = 0.9;
+
   @override
   Widget build(BuildContext context) {
     final normalizedSections = sections;
@@ -39,14 +43,14 @@ class SongReaderSectionGrid extends StatelessWidget {
         final leadingDirectiveHeight = leadingDirectiveText == null
             ? 0.0
             : directiveLineHeight;
-        final shouldUseMultipleColumns =
-            normalizedColumns > 1 &&
+        final singleColumnHeight =
             _singleColumnHeightEstimate(
-                      sourceSections: normalizedSections,
-                      maxColumnWidth: availableWidth,
-                    ) +
-                    leadingDirectiveHeight >
-                effectiveHeight;
+              sourceSections: normalizedSections,
+              maxColumnWidth: availableWidth,
+            ) +
+            leadingDirectiveHeight;
+        final shouldUseMultipleColumns =
+            normalizedColumns > 1 && singleColumnHeight > effectiveHeight;
         var effectiveColumns = shouldUseMultipleColumns ? normalizedColumns : 1;
 
         if (effectiveColumns == 1) {
@@ -72,7 +76,10 @@ class SongReaderSectionGrid extends StatelessWidget {
           0,
           (maxHeight, height) => height > maxHeight ? height : maxHeight,
         );
-        if (tallestColumn > effectiveHeight * _columnHeightToleranceFactor) {
+        final splitIsUseful =
+            tallestColumn <= singleColumnHeight * _columnUsefulMaxRatio;
+        if (!splitIsUseful ||
+            tallestColumn > effectiveHeight * _columnHeightToleranceFactor) {
           effectiveColumns = 1;
           return _buildSingleColumn(normalizedSections);
         }
