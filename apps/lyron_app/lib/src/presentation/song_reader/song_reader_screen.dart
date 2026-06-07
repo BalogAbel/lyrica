@@ -855,6 +855,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                     _adjustSharedFontScale(-0.1),
                                 onIncreaseFontScale: () =>
                                     _adjustSharedFontScale(0.1),
+                                onSetFontScale: _setSharedFontScale,
+                                onPersistFontScale: _persistFontScale,
                                 onPreviousTap:
                                     _buildScopedNeighborNavigationTap(
                                       context,
