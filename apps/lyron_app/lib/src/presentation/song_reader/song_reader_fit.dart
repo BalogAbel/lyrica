@@ -83,8 +83,62 @@ double estimateSongContentHeight({
   );
 }
 
+/// Returns the height of the TALLER column when [sections] are split into two
+/// columns using the most balanced split (minimum absolute height difference).
+///
+/// This mirrors the corrected `_bestTwoColumnSplitIndex` algorithm (abs-diff,
+/// no left ≥ right constraint) so that fit-to-screen uses the same logic as
+/// the section-grid layout.
+double _estimateTwoColumnTallerHeight({
+  required List<SongReaderSectionProjection> sections,
+  required SongReaderViewMode viewMode,
+  required double availableWidth,
+  required double fontScale,
+}) {
+  if (sections.isEmpty) return 0;
+  if (sections.length == 1) {
+    return estimateSectionHeight(
+      section: sections[0],
+      viewMode: viewMode,
+      maxWidth: availableWidth,
+      fontScale: fontScale,
+    );
+  }
+
+  final tileWidth = (availableWidth - sectionGap) / 2;
+  final heights = sections
+      .map(
+        (s) => estimateSectionHeight(
+          section: s,
+          viewMode: viewMode,
+          maxWidth: tileWidth,
+          fontScale: fontScale,
+        ),
+      )
+      .toList(growable: false);
+
+  final total = heights.fold<double>(0, (a, b) => a + b);
+
+  var running = 0.0;
+  var bestDiff = double.infinity;
+
+  for (var i = 0; i < heights.length - 1; i++) {
+    running += heights[i];
+    final diff = (running - (total - running)).abs();
+    if (diff < bestDiff) bestDiff = diff;
+  }
+
+  // taller column = (total + |left - right|) / 2
+  return (total + bestDiff) / 2;
+}
+
 /// Returns the largest font scale in [minScale, maxScale] whose estimated
-/// single-column content height fits within [availableHeight].
+/// content height fits within [availableHeight].
+///
+/// When [columnCount] is 2 the fit is computed against the TALLER of the two
+/// columns (using a balanced split), allowing a larger scale on wide layouts.
+/// For any other value of [columnCount] the standard single-column height is
+/// used.
 ///
 /// - If maxScale already fits → returns maxScale.
 /// - If minScale still doesn't fit → returns minScale.
@@ -97,15 +151,26 @@ double resolveFitFontScale({
   required double availableHeight,
   required double minScale,
   required double maxScale,
+  int columnCount = 1,
 }) {
-  bool fits(double scale) =>
-      estimateSongContentHeight(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        fontScale: scale,
-      ) <=
-      availableHeight;
+  bool fits(double scale) {
+    if (columnCount == 2) {
+      return _estimateTwoColumnTallerHeight(
+            sections: sections,
+            viewMode: viewMode,
+            availableWidth: availableWidth,
+            fontScale: scale,
+          ) <=
+          availableHeight;
+    }
+    return estimateSongContentHeight(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          fontScale: scale,
+        ) <=
+        availableHeight;
+  }
 
   if (fits(maxScale)) return maxScale;
   if (!fits(minScale)) return minScale;

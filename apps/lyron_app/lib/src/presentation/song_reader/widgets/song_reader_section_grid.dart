@@ -220,10 +220,9 @@ class SongReaderSectionGrid extends StatelessWidget {
     for (var split = 1; split < sections.length; split += 1) {
       runningLeft += sectionHeights[split - 1];
       final right = totalHeight - runningLeft;
-      if (runningLeft < right) {
-        continue;
-      }
-      final diff = runningLeft - right;
+      // Use the absolute difference so splits where left < right are also
+      // considered — this gives the globally most balanced partition.
+      final diff = (runningLeft - right).abs();
       if (diff < bestDiff) {
         bestDiff = diff;
         bestIndex = split;

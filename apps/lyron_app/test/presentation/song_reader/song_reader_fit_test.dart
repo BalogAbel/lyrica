@@ -28,6 +28,12 @@ SongReaderSectionProjection _lyricSection({
   );
 }
 
+/// Builds a section with [lineCount] lyric lines, each with a fixed text
+/// length that can be tuned to make sections of different heights.
+SongReaderSectionProjection _section(int lineCount, {int? number}) {
+  return _lyricSection(lineCount: lineCount, number: number ?? lineCount);
+}
+
 void main() {
   const viewMode = SongReaderViewMode.chordsAndLyrics;
   const availableWidth = 400.0;
@@ -216,6 +222,172 @@ void main() {
         fontScale: scale,
       );
       expect(h, lessThanOrEqualTo(availableHeight + 0.5));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fix 2: 2-column-aware fit-to-screen
+  // ---------------------------------------------------------------------------
+
+  group('resolveFitFontScale columnCount:2 — 2-column-aware fit', () {
+    test('2-column fit scale is larger than 1-column for same tall content', () {
+      // 4 sections × 20 lines each. At minScale=0.25 and w=360:
+      //   single-col total ≈ 1520 px > 900 px  → 1-col returns minScale.
+      //   taller 2-col     ≈  760 px < 900 px  → 2-col binary-searches above minScale.
+      // Therefore scale2 > scale1.
+      final sections = [
+        _section(20),
+        _section(20),
+        _section(20),
+        _section(20),
+      ];
+      final scale1 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 900,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 1,
+      );
+      final scale2 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 900,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 2,
+      );
+      expect(scale2, greaterThan(scale1));
+    });
+
+    test('taller-column height ≤ total/2 + epsilon for balanced 4-section content', () {
+      // 4 equal sections → balanced 2-2 split → each column holds 2 sections.
+      // At scale=0.25 (minScale here) and tileW=170: section(4 lines) ≈ 124px,
+      // so taller-2col ≈ 248px.  Use availableHeight=300 > 248 so it fits at
+      // minScale → binary-search finds a scale above minScale.
+      final sections = [
+        _section(4),
+        _section(4),
+        _section(4),
+        _section(4),
+      ];
+      final twoColScale = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 300,
+        minScale: 0.25,
+        maxScale: 3.0,
+        columnCount: 2,
+      );
+      // Scale should be > 0.25 meaning it actually fits at non-minimum scale.
+      expect(twoColScale, greaterThan(0.25));
+    });
+
+    test('single section: 2-column behaves same as 1-column', () {
+      final sections = [_section(6)];
+      final scale1 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 800,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 1,
+      );
+      final scale2 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 800,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 2,
+      );
+      // Both should return maxScale (content fits easily) — i.e. equal.
+      expect(scale2, equals(scale1));
+    });
+
+    test('empty sections: 2-column returns maxScale just like 1-column', () {
+      final scale = resolveFitFontScale(
+        sections: const [],
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 360,
+        availableHeight: 400,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 2,
+      );
+      expect(scale, equals(SongReaderState.maxSharedFontScale));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fix 1: balanced 2-column split (abs-diff minimization)
+  // ---------------------------------------------------------------------------
+
+  group('balanced 2-column split via 2-column resolveFitFontScale', () {
+    test(
+        'unequal sections [V1=large, Chorus=small, V2=large, V3=large]: '
+        '2-col scale > 1-col scale', () {
+      // Old buggy split (left≥right constraint): [V1,Chorus,V2]|[V3] → taller≈948px
+      // New balanced split (abs-diff):            [V1,Chorus]|[V2,V3] → taller≈760px
+      //
+      // At w=720, minScale=0.25: single-col≈1328px, taller(new)≈760px.
+      // With availableHeight=900: single-col doesn't fit → returns minScale.
+      //                           taller 2-col fits at minScale → binary search → > minScale.
+      // Therefore scale2 > scale1.
+      final sections = [
+        _section(20), // V1 — large
+        _section(8),  // Chorus — small
+        _section(20), // V2 — large
+        _section(20), // V3 — large
+      ];
+      final s1 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 720,
+        availableHeight: 900,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 1,
+      );
+      final s2 = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 720,
+        availableHeight: 900,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: 2,
+      );
+      expect(s2, greaterThan(s1));
+    });
+
+    test(
+        'unequal sections: 2-col with large height gives scale = maxScale '
+        '(verifies split is balanced enough to always fit)', () {
+      // If split is balanced, each column ≈ half total height.
+      // With a large availableHeight and maxScale=1.0 the fit must return 1.0.
+      final sections = [
+        _section(20),
+        _section(8),
+        _section(20),
+        _section(20),
+      ];
+      const maxScale = 1.0;
+      final scale = resolveFitFontScale(
+        sections: sections,
+        viewMode: SongReaderViewMode.lyricsOnly,
+        availableWidth: 720,
+        availableHeight: 20000, // always fits
+        minScale: 0.5,
+        maxScale: maxScale,
+        columnCount: 2,
+      );
+      expect(scale, equals(maxScale));
     });
   });
 

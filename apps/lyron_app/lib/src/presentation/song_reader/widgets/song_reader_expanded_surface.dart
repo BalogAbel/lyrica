@@ -128,6 +128,7 @@ class _SongReaderExpandedSurfaceState
         availableHeight: availableHeight,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
+        columnCount: widget.contentColumnCount,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);

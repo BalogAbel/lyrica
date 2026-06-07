@@ -275,7 +275,11 @@ void main() {
     );
   });
 
-  testWidgets('two-column split keeps heavier side on the first column', (
+  // The split algorithm uses abs-diff minimisation so both sides are considered.
+  // For [A=1, B=1, C=1, D=3, E=3] (total≈9) the most balanced partition is
+  // split=3 → [A,B,C] | [D,E]  (diff=3 each way — same as split=4 but found
+  // first, so the tie is broken in favour of the earlier / left-leaning split).
+  testWidgets('two-column split finds the most balanced partition', (
     tester,
   ) async {
     SongReaderSectionProjection section(String label, int lineCount) {
@@ -327,10 +331,12 @@ void main() {
     final dX = tester.getTopLeft(find.text('D')).dx;
     final eX = tester.getTopLeft(find.text('E')).dx;
 
+    // [A, B, C] land in the left column — same x-origin.
     expect((bX - aX).abs(), lessThan(1));
     expect((cX - aX).abs(), lessThan(1));
-    expect((dX - aX).abs(), lessThan(1));
-    expect(eX, greaterThan(aX));
+    // [D, E] land in the right column — larger x than A.
+    expect(dX, greaterThan(aX));
+    expect((eX - dX).abs(), lessThan(1));
   });
 
   testWidgets('counts the injected capo directive in column height', (
