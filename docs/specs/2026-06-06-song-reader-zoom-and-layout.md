@@ -6,7 +6,7 @@
 
 ## Goal
 
-Make the song reader comfortable to read and scroll on every screen width, and give musicians direct font-size control through pinch-to-zoom and a one-gesture fit-to-screen, with the chosen zoom remembered per song and per user.
+Make the song reader comfortable to read and scroll on every screen width — including tablets in landscape — and give musicians direct font-size control through pinch-to-zoom and a one-gesture fit-to-screen, with the chosen zoom remembered per song and per user. Tablets always receive the compact (overlay-controls, full-width-content) shell; the expanded side-panel shell is reserved for large desktop windows.
 
 ## Problem
 
@@ -29,6 +29,15 @@ The reader has three concrete UX defects, worst on mobile:
 - Repurpose double-tap to fit the whole song to the screen (height-based), toggling back to the previous scale on a second double-tap.
 - Persist the chosen zoom level locally, keyed by user and song; restore it when the song is reopened.
 - Keep the scrollbar visible only while scrolling (native fade behavior), but at the edge.
+
+## Shell Assignment
+
+The reader has two shells: **compact** (overlay controls, full-width content, single or auto-dual column) and **expanded** (permanent side-panel tools). Shell is assigned by viewport width at render time:
+
+- Viewports **< 1600 px** (phones, all tablets including landscape) → compact shell.
+- Viewports **≥ 1600 px** (large desktop windows) → expanded shell.
+
+In the compact shell on wide viewports (≥ 1180 px) the section grid automatically uses two columns when the song is too tall for a single screen at the current font scale, and collapses to one column when zoomed in past scale 1.15. This provides a natural tablet landscape reading experience without permanent UI chrome.
 
 ## Non-Goals
 
