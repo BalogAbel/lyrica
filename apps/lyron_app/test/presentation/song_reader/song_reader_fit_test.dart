@@ -543,6 +543,123 @@ void main() {
     );
   });
 
+  // ---------------------------------------------------------------------------
+  // Fix 4: column-balance guard — dominant section forces 1-column layout
+  // ---------------------------------------------------------------------------
+
+  group('column-balance guard', () {
+    // Helper: a header-only section (tiny: just the header + sectionGap).
+    SongReaderSectionProjection headerOnlySection(String label) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: label,
+          number: null,
+          isUnknown: false,
+          lines: const [],
+        );
+
+    test('empty Intro + dominant Verse stays one column', () {
+      // Section A: header-only "Intro" — tiny (~60 px: just header + sectionGap).
+      // Section B: dominant "Verse" with 8 short-text lines.
+      //
+      // At availableWidth=400: full charsPerLine=37, short text (10 chars) wraps
+      // only once at both full and half width, so verseTileH ≈ verseFullH = 492px.
+      // With singleH = 60 + 492 = 552:
+      //   usefulSplit guard: taller=492 <= 552*0.9=496.8 → PASSES (guard alone fails!)
+      //   balance ratio: shorter=60 / taller=492 ≈ 0.12 << 0.5 → balance guard rejects
+      //
+      // This test FAILS before the balance guard is added (2 columns rendered),
+      // and PASSES after (1 column, because the split is too lopsided).
+      final sectionA = headerOnlySection('Intro');
+      final sectionB = _lyricSection(lineCount: 8, label: 'Verse', number: 1);
+      final sections = [sectionA, sectionB];
+
+      // Compute single-col height to set availableHeight just under it.
+      final singleH = estimateSongContentHeight(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        fontScale: fontScale,
+      );
+
+      final result = estimateRenderedLayout(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        availableHeight: singleH - 1, // force overflow so 2-col path is tried
+        fontScale: fontScale,
+        allowTwoColumns: true,
+      );
+
+      expect(
+        result.columnCount,
+        equals(1),
+        reason:
+            'Intro(60px) beside Verse(492px): ratio≈0.12 << 0.5 → '
+            'balance guard must reject 2 columns',
+      );
+    });
+
+    test('two balanced sections still use two columns (no regression)', () {
+      // Two equal 15-line sections: balance ratio = 1.0 ≥ 0.5 → 2 columns.
+      final sectionA = _lyricSection(lineCount: 15, label: 'Verse', number: 1);
+      final sectionB = _lyricSection(lineCount: 15, label: 'Chorus', number: 1);
+      final sections = [sectionA, sectionB];
+
+      final singleH = estimateSongContentHeight(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        fontScale: fontScale,
+      );
+
+      final result = estimateRenderedLayout(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        availableHeight: singleH - 1,
+        fontScale: fontScale,
+        allowTwoColumns: true,
+      );
+
+      expect(
+        result.columnCount,
+        equals(2),
+        reason: 'Two equal sections are perfectly balanced → 2 columns',
+      );
+    });
+
+    test('many balanced sections still use two columns (no regression)', () {
+      // 6 equal 10-line sections: balanced split → 2 columns.
+      final sections = List.generate(
+        6,
+        (i) => _lyricSection(lineCount: 10, label: 'Verse', number: i + 1),
+      );
+
+      final singleH = estimateSongContentHeight(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        fontScale: fontScale,
+      );
+
+      final result = estimateRenderedLayout(
+        sections: sections,
+        viewMode: viewMode,
+        availableWidth: availableWidth,
+        availableHeight: singleH - 1,
+        fontScale: fontScale,
+        allowTwoColumns: true,
+      );
+
+      expect(
+        result.columnCount,
+        equals(2),
+        reason: '6 equal sections are well-balanced → 2 columns',
+      );
+    });
+  });
+
   group('estimateSectionHeight', () {
     test('unlabeled section has no header height contribution', () {
       final labeled = SongReaderSectionProjection(

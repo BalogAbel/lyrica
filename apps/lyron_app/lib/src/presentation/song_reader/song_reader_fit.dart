@@ -19,6 +19,10 @@ const double columnUsefulMaxRatio =
     0.9; // 2 cols must shave >=10% off single-col height
 const double columnHeightToleranceFactor =
     1.15; // 2-col fallback if taller col overflows this
+// A 2-column split is only worthwhile when the shorter column is at least this
+// fraction of the taller column. Prevents one trivial section (e.g. an empty
+// Intro) from leaving a near-empty column beside a dominant one.
+const double columnBalanceMinRatio = 0.5;
 
 /// Returns an estimated pixel height for a single [section] when rendered at
 /// the given [fontScale] and [maxWidth].
@@ -98,26 +102,29 @@ double estimateSongContentHeight({
   );
 }
 
-/// Returns the height of the TALLER column when [sections] are split into two
+/// Returns the heights of both columns when [sections] are split into two
 /// columns using the most balanced split (minimum absolute height difference).
 ///
-/// This mirrors the corrected `_bestTwoColumnSplitIndex` algorithm (abs-diff,
-/// no left ≥ right constraint) so that fit-to-screen uses the same logic as
-/// the section-grid layout.
-double _estimateTwoColumnTallerHeight({
+/// The record `(taller, shorter)` mirrors the corrected
+/// `_bestTwoColumnSplitIndex` algorithm (abs-diff, no left ≥ right constraint)
+/// so that fit-to-screen uses the same split logic as the section-grid layout.
+/// Returning both columns lets callers apply a balance guard in addition to the
+/// existing height-gain ("useful split") guard.
+({double taller, double shorter}) _estimateTwoColumnSplit({
   required List<SongReaderSectionProjection> sections,
   required SongReaderViewMode viewMode,
   required double availableWidth,
   required double fontScale,
 }) {
-  if (sections.isEmpty) return 0;
+  if (sections.isEmpty) return (taller: 0, shorter: 0);
   if (sections.length == 1) {
-    return estimateSectionHeight(
+    final h = estimateSectionHeight(
       section: sections[0],
       viewMode: viewMode,
       maxWidth: availableWidth,
       fontScale: fontScale,
     );
+    return (taller: h, shorter: 0);
   }
 
   final tileWidth = (availableWidth - sectionGap) / 2;
@@ -144,7 +151,8 @@ double _estimateTwoColumnTallerHeight({
   }
 
   // taller column = (total + |left - right|) / 2
-  return (total + bestDiff) / 2;
+  // shorter column = (total - |left - right|) / 2
+  return (taller: (total + bestDiff) / 2, shorter: (total - bestDiff) / 2);
 }
 
 /// Result of [estimateRenderedLayout]: estimated pixel height and effective
@@ -164,7 +172,8 @@ class RenderedHeightEstimate {
 ///  - 2 columns only when [allowTwoColumns] AND >=2 sections AND single-column
 ///    height (incl. [leadingDirectiveHeight]) overflows [availableHeight] AND the
 ///    split is "useful" (taller column <= single * [columnUsefulMaxRatio]) AND the
-///    taller column fits [availableHeight] * [columnHeightToleranceFactor].
+///    split is "balanced" (shorter column >= taller * [columnBalanceMinRatio]) AND
+///    the taller column fits [availableHeight] * [columnHeightToleranceFactor].
 ///
 /// The [leadingDirectiveHeight] is added pessimistically to the taller column
 /// (col 0 always receives the directive in the grid; adding it to `taller`
@@ -192,19 +201,30 @@ RenderedHeightEstimate estimateRenderedLayout({
     return RenderedHeightEstimate(height: single, columnCount: 1);
   }
 
-  final taller =
-      _estimateTwoColumnTallerHeight(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        fontScale: fontScale,
-      ) +
-      leadingDirectiveHeight; // directive sits on column 0; pessimistic but safe
+  final split = _estimateTwoColumnSplit(
+    sections: sections,
+    viewMode: viewMode,
+    availableWidth: availableWidth,
+    fontScale: fontScale,
+  );
 
-  final usefulSplit = taller <= single * columnUsefulMaxRatio;
-  final fitsTolerance = taller <= availableHeight * columnHeightToleranceFactor;
-  if (usefulSplit && fitsTolerance) {
-    return RenderedHeightEstimate(height: taller, columnCount: 2);
+  // Add the leading directive to the taller column (col 0 always receives the
+  // directive in the grid; pessimistic but safe).
+  final tallerWithDirective = split.taller + leadingDirectiveHeight;
+
+  final usefulSplit = tallerWithDirective <= single * columnUsefulMaxRatio;
+
+  // Balance guard: reject splits where one column is nearly empty. The check
+  // uses the raw section split (not including leadingDirectiveHeight, which is
+  // decorative on col 0 and would distort the balance ratio).
+  final balancedSplit =
+      split.taller > 0 && split.shorter >= split.taller * columnBalanceMinRatio;
+
+  final fitsTolerance =
+      tallerWithDirective <= availableHeight * columnHeightToleranceFactor;
+
+  if (usefulSplit && balancedSplit && fitsTolerance) {
+    return RenderedHeightEstimate(height: tallerWithDirective, columnCount: 2);
   }
   return RenderedHeightEstimate(height: single, columnCount: 1);
 }
