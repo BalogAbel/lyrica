@@ -25,17 +25,23 @@ void main() {
       expect(result, closeTo(1.6, 0.0001));
     });
 
-    test('zoom is keyed by userId + songId — different user returns null', () async {
-      await store.writeZoom(userId: 'u1', songId: 'song-1', zoom: 1.6);
-      final result = await store.readZoom(userId: 'u2', songId: 'song-1');
-      expect(result, isNull);
-    });
+    test(
+      'zoom is keyed by userId + songId — different user returns null',
+      () async {
+        await store.writeZoom(userId: 'u1', songId: 'song-1', zoom: 1.6);
+        final result = await store.readZoom(userId: 'u2', songId: 'song-1');
+        expect(result, isNull);
+      },
+    );
 
-    test('zoom is keyed by userId + songId — different song returns null', () async {
-      await store.writeZoom(userId: 'u1', songId: 'song-1', zoom: 1.6);
-      final result = await store.readZoom(userId: 'u1', songId: 'song-2');
-      expect(result, isNull);
-    });
+    test(
+      'zoom is keyed by userId + songId — different song returns null',
+      () async {
+        await store.writeZoom(userId: 'u1', songId: 'song-1', zoom: 1.6);
+        final result = await store.readZoom(userId: 'u1', songId: 'song-2');
+        expect(result, isNull);
+      },
+    );
 
     test('multiple entries stored independently', () async {
       await store.writeZoom(userId: 'u1', songId: 'song-1', zoom: 1.6);

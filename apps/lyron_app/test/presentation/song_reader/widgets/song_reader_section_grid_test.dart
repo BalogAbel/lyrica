@@ -412,45 +412,42 @@ void main() {
       },
     );
 
-    testWidgets(
-      'many balanced sections still use two columns',
-      (tester) async {
-        // 6 equal 2-line sections (short text, no wrap):
-        //   singleColumnHeight ≈ 6 × 168 = 1008px > 900 → multi-col triggers
-        //   tallestColumn (3 sections) ≈ 504px
-        //   availableHeight=900 → 504 <= 1035 (tolerance OK) and 504 <= 907 (useful OK)
-        //   → columns-2.
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: SizedBox(
-                  width: 1280,
-                  child: SongReaderSectionGrid(
-                    sections: [
-                      for (var i = 0; i < 6; i++) dominantSection('Verse', 2),
-                    ],
-                    viewMode: SongReaderViewMode.chordsAndLyrics,
-                    sharedFontScale: 1,
-                    columnCount: 2,
-                    availableHeight: 900,
-                  ),
+    testWidgets('many balanced sections still use two columns', (tester) async {
+      // 6 equal 2-line sections (short text, no wrap):
+      //   singleColumnHeight ≈ 6 × 168 = 1008px > 900 → multi-col triggers
+      //   tallestColumn (3 sections) ≈ 504px
+      //   availableHeight=900 → 504 <= 1035 (tolerance OK) and 504 <= 907 (useful OK)
+      //   → columns-2.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SizedBox(
+                width: 1280,
+                child: SongReaderSectionGrid(
+                  sections: [
+                    for (var i = 0; i < 6; i++) dominantSection('Verse', 2),
+                  ],
+                  viewMode: SongReaderViewMode.chordsAndLyrics,
+                  sharedFontScale: 1,
+                  columnCount: 2,
+                  availableHeight: 900,
                 ),
               ),
             ),
           ),
-        );
+        ),
+      );
 
-        expect(
-          find.byKey(const Key('song-reader-section-grid-columns-2')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('song-reader-section-grid-columns-1')),
-          findsNothing,
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('song-reader-section-grid-columns-1')),
+        findsNothing,
+      );
+    });
   });
 
   // ── existing tests below ────────────────────────────────────────────────────

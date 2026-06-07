@@ -128,138 +128,139 @@ void main() {
           lessThan(1.0),
           reason: 'fit scale for a tall song must be less than 1.0',
         );
-        expect(persistCalls, greaterThan(0), reason: 'onPersistFontScale must be called');
+        expect(
+          persistCalls,
+          greaterThan(0),
+          reason: 'onPersistFontScale must be called',
+        );
       },
     );
 
-    testWidgets(
-      'second double-tap restores the original scale',
-      (tester) async {
-        tester.view.physicalSize = const Size(viewportWidth, viewportHeight);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    testWidgets('second double-tap restores the original scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(viewportWidth, viewportHeight);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        // We need to drive the widget with a mutable scale so didUpdateWidget
-        // correctly sees scale changes. Use a StatefulWidget wrapper.
-        double currentScale = 1.0;
-        final scaleCalls = <double>[];
+      // We need to drive the widget with a mutable scale so didUpdateWidget
+      // correctly sees scale changes. Use a StatefulWidget wrapper.
+      double currentScale = 1.0;
+      final scaleCalls = <double>[];
 
-        late StateSetter setStateOuter;
+      late StateSetter setStateOuter;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: StatefulBuilder(
-                builder: (context, setState) {
-                  setStateOuter = setState;
-                  final projection = _buildTallProjection(fontScale: currentScale);
-                  return SongReaderCompactSurface(
-                    projection: projection,
-                    areControlsVisible: false,
-                    currentTitle: projection.title,
-                    onSurfaceTap: () {},
-                    hasRecoverableWarnings: false,
-                    warningCount: 0,
-                    contentColumnCount: 1,
-                    onToggleViewMode: () {},
-                    onTransposeDown: () {},
-                    onTransposeUp: () {},
-                    onDecreaseFontScale: () {},
-                    onIncreaseFontScale: () {},
-                    showBottomContextBar: false,
-                    maxContentWidth: 960,
-                    contentPadding: const EdgeInsets.all(24),
-                    onSetFontScale: (s) {
-                      scaleCalls.add(s);
-                      // Simulate the parent updating the projection scale.
-                      setStateOuter(() => currentScale = s);
-                    },
-                    onPersistFontScale: () {},
-                  );
-                },
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                setStateOuter = setState;
+                final projection = _buildTallProjection(
+                  fontScale: currentScale,
+                );
+                return SongReaderCompactSurface(
+                  projection: projection,
+                  areControlsVisible: false,
+                  currentTitle: projection.title,
+                  onSurfaceTap: () {},
+                  hasRecoverableWarnings: false,
+                  warningCount: 0,
+                  contentColumnCount: 1,
+                  onToggleViewMode: () {},
+                  onTransposeDown: () {},
+                  onTransposeUp: () {},
+                  onDecreaseFontScale: () {},
+                  onIncreaseFontScale: () {},
+                  showBottomContextBar: false,
+                  maxContentWidth: 960,
+                  contentPadding: const EdgeInsets.all(24),
+                  onSetFontScale: (s) {
+                    scaleCalls.add(s);
+                    // Simulate the parent updating the projection scale.
+                    setStateOuter(() => currentScale = s);
+                  },
+                  onPersistFontScale: () {},
+                );
+              },
             ),
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        final center = tester.getCenter(find.byType(SongReaderCompactSurface));
+      final center = tester.getCenter(find.byType(SongReaderCompactSurface));
 
-        // --- First double-tap: fit ---
-        await tester.tapAt(center);
-        await tester.pump(kDoubleTapMinTime);
-        await tester.tapAt(center);
-        await tester.pumpAndSettle();
+      // --- First double-tap: fit ---
+      await tester.tapAt(center);
+      await tester.pump(kDoubleTapMinTime);
+      await tester.tapAt(center);
+      await tester.pumpAndSettle();
 
-        expect(scaleCalls, isNotEmpty);
-        final fitScale = scaleCalls.last;
-        expect(fitScale, lessThan(1.0));
+      expect(scaleCalls, isNotEmpty);
+      final fitScale = scaleCalls.last;
+      expect(fitScale, lessThan(1.0));
 
-        // --- Second double-tap: restore ---
-        await tester.tapAt(center);
-        await tester.pump(kDoubleTapMinTime);
-        await tester.tapAt(center);
-        await tester.pumpAndSettle();
+      // --- Second double-tap: restore ---
+      await tester.tapAt(center);
+      await tester.pump(kDoubleTapMinTime);
+      await tester.tapAt(center);
+      await tester.pumpAndSettle();
 
-        expect(scaleCalls.length, greaterThan(1));
-        expect(
-          scaleCalls.last,
-          moreOrLessEquals(1.0, epsilon: 1e-9),
-          reason: 'second double-tap must restore original scale 1.0',
-        );
-      },
-    );
+      expect(scaleCalls.length, greaterThan(1));
+      expect(
+        scaleCalls.last,
+        moreOrLessEquals(1.0, epsilon: 1e-9),
+        reason: 'second double-tap must restore original scale 1.0',
+      );
+    });
 
-    testWidgets(
-      'fit scale matches resolveFitFontScale for the same viewport',
-      (tester) async {
-        tester.view.physicalSize = const Size(viewportWidth, viewportHeight);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    testWidgets('fit scale matches resolveFitFontScale for the same viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(viewportWidth, viewportHeight);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        final scaleCalls = <double>[];
-        final projection = _buildTallProjection(fontScale: 1.0);
+      final scaleCalls = <double>[];
+      final projection = _buildTallProjection(fontScale: 1.0);
 
-        await tester.pumpWidget(
-          _buildSurface(
-            projection: projection,
-            onSetFontScale: scaleCalls.add,
-          ),
-        );
-        await tester.pump();
+      await tester.pumpWidget(
+        _buildSurface(projection: projection, onSetFontScale: scaleCalls.add),
+      );
+      await tester.pump();
 
-        // Measure actual LayoutBuilder height from the rendered tree.
-        // The Scaffold body height minus any chrome (AppBar ~56px) is what the
-        // LayoutBuilder sees. Use the rendered size of the scrollable area.
-        final scrollableSize = tester.getSize(find.byType(SingleChildScrollView));
-        final availableWidth = scrollableSize.width;
-        final availableHeight = scrollableSize.height;
+      // Measure actual LayoutBuilder height from the rendered tree.
+      // The Scaffold body height minus any chrome (AppBar ~56px) is what the
+      // LayoutBuilder sees. Use the rendered size of the scrollable area.
+      final scrollableSize = tester.getSize(find.byType(SingleChildScrollView));
+      final availableWidth = scrollableSize.width;
+      final availableHeight = scrollableSize.height;
 
-        // Content render width is min(availableWidth, maxContentWidth=960).
-        final contentRenderWidth = availableWidth < 960 ? availableWidth : 960.0;
+      // Content render width is min(availableWidth, maxContentWidth=960).
+      final contentRenderWidth = availableWidth < 960 ? availableWidth : 960.0;
 
-        final expectedFit = resolveFitFontScale(
-          sections: projection.sections,
-          viewMode: projection.viewMode,
-          availableWidth: contentRenderWidth,
-          availableHeight: availableHeight,
-          minScale: SongReaderState.minSharedFontScale,
-          maxScale: SongReaderState.maxSharedFontScale,
-        );
+      final expectedFit = resolveFitFontScale(
+        sections: projection.sections,
+        viewMode: projection.viewMode,
+        availableWidth: contentRenderWidth,
+        availableHeight: availableHeight,
+        minScale: SongReaderState.minSharedFontScale,
+        maxScale: SongReaderState.maxSharedFontScale,
+      );
 
-        final center = tester.getCenter(find.byType(SongReaderCompactSurface));
-        await tester.tapAt(center);
-        await tester.pump(kDoubleTapMinTime);
-        await tester.tapAt(center);
-        await tester.pumpAndSettle();
+      final center = tester.getCenter(find.byType(SongReaderCompactSurface));
+      await tester.tapAt(center);
+      await tester.pump(kDoubleTapMinTime);
+      await tester.tapAt(center);
+      await tester.pumpAndSettle();
 
-        expect(scaleCalls, isNotEmpty);
-        expect(
-          scaleCalls.last,
-          moreOrLessEquals(expectedFit, epsilon: 1e-6),
-          reason: 'applied fit scale must match resolveFitFontScale output',
-        );
-      },
-    );
+      expect(scaleCalls, isNotEmpty);
+      expect(
+        scaleCalls.last,
+        moreOrLessEquals(expectedFit, epsilon: 1e-6),
+        reason: 'applied fit scale must match resolveFitFontScale output',
+      );
+    });
   });
 }

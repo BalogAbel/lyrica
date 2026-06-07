@@ -47,10 +47,13 @@ class SongReaderExpandedSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+
   /// Padding applied around the song content grid inside the scroll view.
   final EdgeInsetsGeometry contentPadding;
+
   /// Called continuously during a two-finger pinch with the new absolute scale.
   final ValueChanged<double>? onSetFontScale;
+
   /// Called once when the pinch gesture ends (e.g. to persist the scale).
   final VoidCallback? onPersistFontScale;
 
@@ -59,8 +62,7 @@ class SongReaderExpandedSurface extends StatefulWidget {
       _SongReaderExpandedSurfaceState();
 }
 
-class _SongReaderExpandedSurfaceState
-    extends State<SongReaderExpandedSurface> {
+class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
   late final ScrollController _scrollController;
 
   // Pinch-to-zoom state.
@@ -185,15 +187,16 @@ class _SongReaderExpandedSurfaceState
           child: RawGestureDetector(
             gestures: {
               TwoPointerScaleRecognizer:
-                  GestureRecognizerFactoryWithHandlers<TwoPointerScaleRecognizer>(
-                () => TwoPointerScaleRecognizer(debugOwner: this),
-                (instance) {
-                  instance
-                    ..onStart = _handleScaleStart
-                    ..onUpdate = _handleScaleUpdate
-                    ..onEnd = _handleScaleEnd;
-                },
-              ),
+                  GestureRecognizerFactoryWithHandlers<
+                    TwoPointerScaleRecognizer
+                  >(() => TwoPointerScaleRecognizer(debugOwner: this), (
+                    instance,
+                  ) {
+                    instance
+                      ..onStart = _handleScaleStart
+                      ..onUpdate = _handleScaleUpdate
+                      ..onEnd = _handleScaleEnd;
+                  }),
             },
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,

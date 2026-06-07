@@ -163,9 +163,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           : _controller.state.sharedFontScale;
 
       try {
-        final store = await ref.read(
-          songReaderPreferencesStoreProvider.future,
-        );
+        final store = await ref.read(songReaderPreferencesStoreProvider.future);
         await store.writeZoom(
           userId: userId,
           songId: widget.songId,

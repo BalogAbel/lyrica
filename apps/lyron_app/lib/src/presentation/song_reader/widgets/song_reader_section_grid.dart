@@ -238,7 +238,6 @@ class SongReaderSectionGrid extends StatelessWidget {
 
     return bestIndex;
   }
-
 }
 
 class _DirectiveLine extends StatelessWidget {

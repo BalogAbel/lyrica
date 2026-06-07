@@ -117,34 +117,36 @@ void main() {
     const min = SongReaderState.minSharedFontScale;
     const max = SongReaderState.maxSharedFontScale;
 
-    test('returned scale fits content within availableHeight (+0.5 tolerance)',
-        () {
-      final sections = [
-        _lyricSection(lineCount: 5),
-        _lyricSection(lineCount: 5, label: 'Chorus', number: 1),
-      ];
-      const availableHeight = 600.0;
+    test(
+      'returned scale fits content within availableHeight (+0.5 tolerance)',
+      () {
+        final sections = [
+          _lyricSection(lineCount: 5),
+          _lyricSection(lineCount: 5, label: 'Chorus', number: 1),
+        ];
+        const availableHeight = 600.0;
 
-      final scale = resolveFitFontScale(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        availableHeight: availableHeight,
-        minScale: min,
-        maxScale: max,
-      );
+        final scale = resolveFitFontScale(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: availableHeight,
+          minScale: min,
+          maxScale: max,
+        );
 
-      expect(scale, greaterThanOrEqualTo(min));
-      expect(scale, lessThanOrEqualTo(max));
+        expect(scale, greaterThanOrEqualTo(min));
+        expect(scale, lessThanOrEqualTo(max));
 
-      final h = estimateSongContentHeight(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        fontScale: scale,
-      );
-      expect(h, lessThanOrEqualTo(availableHeight + 0.5));
-    });
+        final h = estimateSongContentHeight(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          fontScale: scale,
+        );
+        expect(h, lessThanOrEqualTo(availableHeight + 0.5));
+      },
+    );
 
     test('short song with huge availableHeight returns maxScale', () {
       final sections = [_lyricSection(lineCount: 1)];
@@ -235,12 +237,7 @@ void main() {
       //   single-col total ≈ 1520 px > 900 px  → 1-col returns minScale.
       //   taller 2-col     ≈  760 px < 900 px  → 2-col binary-searches above minScale.
       // Therefore scale2 > scale1.
-      final sections = [
-        _section(20),
-        _section(20),
-        _section(20),
-        _section(20),
-      ];
+      final sections = [_section(20), _section(20), _section(20), _section(20)];
       final scale1 = resolveFitFontScale(
         sections: sections,
         viewMode: SongReaderViewMode.lyricsOnly,
@@ -262,29 +259,27 @@ void main() {
       expect(scale2, greaterThan(scale1));
     });
 
-    test('taller-column height ≤ total/2 + epsilon for balanced 4-section content', () {
-      // 4 equal sections → balanced 2-2 split → each column holds 2 sections.
-      // At scale=0.25 (minScale here) and tileW=170: section(4 lines) ≈ 124px,
-      // so taller-2col ≈ 248px.  Use availableHeight=300 > 248 so it fits at
-      // minScale → binary-search finds a scale above minScale.
-      final sections = [
-        _section(4),
-        _section(4),
-        _section(4),
-        _section(4),
-      ];
-      final twoColScale = resolveFitFontScale(
-        sections: sections,
-        viewMode: SongReaderViewMode.lyricsOnly,
-        availableWidth: 360,
-        availableHeight: 300,
-        minScale: 0.25,
-        maxScale: 3.0,
-        columnCount: 2,
-      );
-      // Scale should be > 0.25 meaning it actually fits at non-minimum scale.
-      expect(twoColScale, greaterThan(0.25));
-    });
+    test(
+      'taller-column height ≤ total/2 + epsilon for balanced 4-section content',
+      () {
+        // 4 equal sections → balanced 2-2 split → each column holds 2 sections.
+        // At scale=0.25 (minScale here) and tileW=170: section(4 lines) ≈ 124px,
+        // so taller-2col ≈ 248px.  Use availableHeight=300 > 248 so it fits at
+        // minScale → binary-search finds a scale above minScale.
+        final sections = [_section(4), _section(4), _section(4), _section(4)];
+        final twoColScale = resolveFitFontScale(
+          sections: sections,
+          viewMode: SongReaderViewMode.lyricsOnly,
+          availableWidth: 360,
+          availableHeight: 300,
+          minScale: 0.25,
+          maxScale: 3.0,
+          columnCount: 2,
+        );
+        // Scale should be > 0.25 meaning it actually fits at non-minimum scale.
+        expect(twoColScale, greaterThan(0.25));
+      },
+    );
 
     test('single section: 2-column behaves same as 1-column', () {
       final sections = [_section(6)];
@@ -329,8 +324,7 @@ void main() {
   // ---------------------------------------------------------------------------
 
   group('balanced 2-column split via 2-column resolveFitFontScale', () {
-    test(
-        'unequal sections [V1=large, Chorus=small, V2=large, V3=large]: '
+    test('unequal sections [V1=large, Chorus=small, V2=large, V3=large]: '
         '2-col scale > 1-col scale', () {
       // Old buggy split (left≥right constraint): [V1,Chorus,V2]|[V3] → taller≈948px
       // New balanced split (abs-diff):            [V1,Chorus]|[V2,V3] → taller≈760px
@@ -341,7 +335,7 @@ void main() {
       // Therefore scale2 > scale1.
       final sections = [
         _section(20), // V1 — large
-        _section(8),  // Chorus — small
+        _section(8), // Chorus — small
         _section(20), // V2 — large
         _section(20), // V3 — large
       ];
@@ -366,17 +360,11 @@ void main() {
       expect(s2, greaterThan(s1));
     });
 
-    test(
-        'unequal sections: 2-col with large height gives scale = maxScale '
+    test('unequal sections: 2-col with large height gives scale = maxScale '
         '(verifies split is balanced enough to always fit)', () {
       // If split is balanced, each column ≈ half total height.
       // With a large availableHeight and maxScale=1.0 the fit must return 1.0.
-      final sections = [
-        _section(20),
-        _section(8),
-        _section(20),
-        _section(20),
-      ];
+      final sections = [_section(20), _section(8), _section(20), _section(20)];
       const maxScale = 1.0;
       final scale = resolveFitFontScale(
         sections: sections,

@@ -57,12 +57,16 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+
   /// Called continuously during a two-finger pinch with the new absolute scale.
   final ValueChanged<double>? onSetFontScale;
+
   /// Called once when the pinch gesture ends (e.g. to persist the scale).
   final VoidCallback? onPersistFontScale;
+
   /// Maximum logical width of the song content area (centering cap).
   final double maxContentWidth;
+
   /// Padding applied around the song content grid inside the scroll view.
   final EdgeInsetsGeometry contentPadding;
 
@@ -244,14 +248,14 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
           gestures: {
             TwoPointerScaleRecognizer:
                 GestureRecognizerFactoryWithHandlers<TwoPointerScaleRecognizer>(
-              () => TwoPointerScaleRecognizer(debugOwner: this),
-              (instance) {
-                instance
-                  ..onStart = _handleScaleStart
-                  ..onUpdate = _handleScaleUpdate
-                  ..onEnd = _handleScaleEnd;
-              },
-            ),
+                  () => TwoPointerScaleRecognizer(debugOwner: this),
+                  (instance) {
+                    instance
+                      ..onStart = _handleScaleStart
+                      ..onUpdate = _handleScaleUpdate
+                      ..onEnd = _handleScaleEnd;
+                  },
+                ),
           },
           child: Listener(
             onPointerDown: _handlePointerDown,

@@ -57,10 +57,8 @@ class _NoopSongReaderPreferencesStore implements SongReaderPreferencesStore {
 
 /// Convenience override that silences the SharedPreferences dependency so tests
 /// do not need `SharedPreferences.setMockInitialValues({})`.
-final _noopPreferencesStoreOverride =
-    songReaderPreferencesStoreProvider.overrideWith(
-      (_) async => _NoopSongReaderPreferencesStore(),
-    );
+final _noopPreferencesStoreOverride = songReaderPreferencesStoreProvider
+    .overrideWith((_) async => _NoopSongReaderPreferencesStore());
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -863,9 +861,7 @@ void main() {
             (value) => FutureProvider.autoDispose((ref) async => buildResult()),
           ),
         ],
-        child: const MaterialApp(
-          home: SongReaderScreen(songId: testSongId),
-        ),
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
       ),
     );
 
@@ -920,9 +916,7 @@ void main() {
             (value) => FutureProvider.autoDispose((ref) async => buildResult()),
           ),
         ],
-        child: const MaterialApp(
-          home: SongReaderScreen(songId: testSongId),
-        ),
+        child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
       ),
     );
 

@@ -20,14 +20,14 @@ double estimateSectionHeight({
   required double maxWidth,
   required double fontScale,
 }) {
-  final hasHeader =
-      !(section.label == 'Unlabeled' && section.number == null);
+  final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
   final h = hasHeader ? headerHeight : 0.0;
   final effectiveLineWidth = (maxWidth - linePadding).clamp(120.0, 1200.0);
   final charsPerLine =
-      (effectiveLineWidth / (characterWidthEstimate * fontScale))
-          .floor()
-          .clamp(12, 140);
+      (effectiveLineWidth / (characterWidthEstimate * fontScale)).floor().clamp(
+        12,
+        140,
+      );
   var linesHeight = 0.0;
   for (final item in section.lines) {
     switch (item) {

@@ -116,17 +116,11 @@ void main() {
     });
 
     test('clamps above maxSharedFontScale', () {
-      expect(
-        applyPinchScale(2.0, 2.0),
-        SongReaderState.maxSharedFontScale,
-      );
+      expect(applyPinchScale(2.0, 2.0), SongReaderState.maxSharedFontScale);
     });
 
     test('clamps below minSharedFontScale', () {
-      expect(
-        applyPinchScale(0.3, 0.1),
-        SongReaderState.minSharedFontScale,
-      );
+      expect(applyPinchScale(0.3, 0.1), SongReaderState.minSharedFontScale);
     });
 
     test('baseline * 1.0 = baseline', () {
@@ -138,54 +132,53 @@ void main() {
   // Widget tests
   // -------------------------------------------------------------------------
   group('SongReaderCompactSurface pinch-to-zoom', () {
-    testWidgets(
-      'two-finger pinch increases font scale via onSetFontScale',
-      (tester) async {
-        tester.view.physicalSize = const Size(400, 800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    testWidgets('two-finger pinch increases font scale via onSetFontScale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        double? lastScale;
-        final projection = _buildProjection(fontScale: 1.0);
+      double? lastScale;
+      final projection = _buildProjection(fontScale: 1.0);
 
-        await tester.pumpWidget(
-          _buildSurface(
-            projection: projection,
-            onSetFontScale: (s) => lastScale = s,
-          ),
-        );
-        await tester.pump();
+      await tester.pumpWidget(
+        _buildSurface(
+          projection: projection,
+          onSetFontScale: (s) => lastScale = s,
+        ),
+      );
+      await tester.pump();
 
-        // Two-finger pinch: start two touches near centre, spread them apart.
-        final centre = tester.getCenter(find.byType(SongReaderCompactSurface));
-        final finger1Start = centre + const Offset(-20, 0);
-        final finger2Start = centre + const Offset(20, 0);
+      // Two-finger pinch: start two touches near centre, spread them apart.
+      final centre = tester.getCenter(find.byType(SongReaderCompactSurface));
+      final finger1Start = centre + const Offset(-20, 0);
+      final finger2Start = centre + const Offset(20, 0);
 
-        final touch1 = await tester.startGesture(finger1Start);
-        final touch2 = await tester.startGesture(finger2Start);
-        await tester.pump();
+      final touch1 = await tester.startGesture(finger1Start);
+      final touch2 = await tester.startGesture(finger2Start);
+      await tester.pump();
 
-        // Spread outward — simulate scale ~2x.
-        await touch1.moveBy(const Offset(-60, 0));
-        await touch2.moveBy(const Offset(60, 0));
-        await tester.pump();
+      // Spread outward — simulate scale ~2x.
+      await touch1.moveBy(const Offset(-60, 0));
+      await touch2.moveBy(const Offset(60, 0));
+      await tester.pump();
 
-        await touch1.up();
-        await touch2.up();
-        await tester.pumpAndSettle();
+      await touch1.up();
+      await touch2.up();
+      await tester.pumpAndSettle();
 
-        expect(
-          lastScale,
-          isNotNull,
-          reason: 'onSetFontScale must be called during two-finger pinch',
-        );
-        expect(
-          lastScale!,
-          greaterThan(1.0),
-          reason: 'Spreading fingers should increase font scale above baseline',
-        );
-      },
-    );
+      expect(
+        lastScale,
+        isNotNull,
+        reason: 'onSetFontScale must be called during two-finger pinch',
+      );
+      expect(
+        lastScale!,
+        greaterThan(1.0),
+        reason: 'Spreading fingers should increase font scale above baseline',
+      );
+    });
 
     testWidgets(
       'one-finger drag scrolls content and does not call onSetFontScale',
@@ -198,10 +191,7 @@ void main() {
         final projection = _buildTallProjection();
 
         await tester.pumpWidget(
-          _buildSurface(
-            projection: projection,
-            onSetFontScale: calls.add,
-          ),
+          _buildSurface(projection: projection, onSetFontScale: calls.add),
         );
         await tester.pumpAndSettle();
 
@@ -232,38 +222,35 @@ void main() {
       },
     );
 
-    testWidgets(
-      'onPersistFontScale called when pinch ends',
-      (tester) async {
-        tester.view.physicalSize = const Size(400, 800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    testWidgets('onPersistFontScale called when pinch ends', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        var persistCalls = 0;
-        final projection = _buildProjection();
+      var persistCalls = 0;
+      final projection = _buildProjection();
 
-        await tester.pumpWidget(
-          _buildSurface(
-            projection: projection,
-            onSetFontScale: (_) {},
-            onPersistFontScale: () => persistCalls++,
-          ),
-        );
-        await tester.pump();
+      await tester.pumpWidget(
+        _buildSurface(
+          projection: projection,
+          onSetFontScale: (_) {},
+          onPersistFontScale: () => persistCalls++,
+        ),
+      );
+      await tester.pump();
 
-        final centre = tester.getCenter(find.byType(SongReaderCompactSurface));
-        final touch1 = await tester.startGesture(centre + const Offset(-20, 0));
-        final touch2 = await tester.startGesture(centre + const Offset(20, 0));
-        await tester.pump();
-        await touch1.moveBy(const Offset(-40, 0));
-        await touch2.moveBy(const Offset(40, 0));
-        await tester.pump();
-        await touch1.up();
-        await touch2.up();
-        await tester.pumpAndSettle();
+      final centre = tester.getCenter(find.byType(SongReaderCompactSurface));
+      final touch1 = await tester.startGesture(centre + const Offset(-20, 0));
+      final touch2 = await tester.startGesture(centre + const Offset(20, 0));
+      await tester.pump();
+      await touch1.moveBy(const Offset(-40, 0));
+      await touch2.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await touch1.up();
+      await touch2.up();
+      await tester.pumpAndSettle();
 
-        expect(persistCalls, greaterThan(0));
-      },
-    );
+      expect(persistCalls, greaterThan(0));
+    });
   });
 }

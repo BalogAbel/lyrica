@@ -113,11 +113,7 @@ class _SongLineSegmentView extends StatelessWidget {
         if (showLyric)
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxWidth),
-            child: Text(
-              segment.text,
-              style: lyricStyle,
-              softWrap: true,
-            ),
+            child: Text(segment.text, style: lyricStyle, softWrap: true),
           ),
       ],
     );
