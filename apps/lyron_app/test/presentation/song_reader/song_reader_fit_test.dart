@@ -558,47 +558,49 @@ void main() {
           lines: const [],
         );
 
-    test('empty Intro + dominant Verse stays one column', () {
-      // Section A: header-only "Intro" — tiny (~60 px: just header + sectionGap).
-      // Section B: dominant "Verse" with 8 short-text lines.
-      //
-      // At availableWidth=400: full charsPerLine=37, short text (10 chars) wraps
-      // only once at both full and half width, so verseTileH ≈ verseFullH = 492px.
-      // With singleH = 60 + 492 = 552:
-      //   usefulSplit guard: taller=492 <= 552*0.9=496.8 → PASSES (guard alone fails!)
-      //   balance ratio: shorter=60 / taller=492 ≈ 0.12 << 0.5 → balance guard rejects
-      //
-      // This test FAILS before the balance guard is added (2 columns rendered),
-      // and PASSES after (1 column, because the split is too lopsided).
-      final sectionA = headerOnlySection('Intro');
-      final sectionB = _lyricSection(lineCount: 8, label: 'Verse', number: 1);
-      final sections = [sectionA, sectionB];
+    test(
+      'empty Intro + dominant Verse now uses TWO columns via mid-section flow',
+      () {
+        // With item-level flow the Verse lines can be distributed across
+        // both columns, producing a balanced split even when a section-boundary
+        // split would be lopsided.  The old section-atomic balance guard that
+        // forced 1 column is superseded by resolveFlowLayout's mid-section
+        // fallback.
+        //
+        // Section A: header-only "Intro" — tiny (~60 px: just header + sectionGap).
+        // Section B: dominant "Verse" with 8 short-text lines.
+        //
+        // Before this refactor: balance ratio (60/492 ≈ 0.12) forced 1 column.
+        // After this refactor: mid-section split of the Verse balances columns.
+        final sectionA = headerOnlySection('Intro');
+        final sectionB = _lyricSection(lineCount: 8, label: 'Verse', number: 1);
+        final sections = [sectionA, sectionB];
 
-      // Compute single-col height to set availableHeight just under it.
-      final singleH = estimateSongContentHeight(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        fontScale: fontScale,
-      );
+        // Compute single-col height to set availableHeight just under it.
+        final singleH = estimateSongContentHeight(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          fontScale: fontScale,
+        );
 
-      final result = estimateRenderedLayout(
-        sections: sections,
-        viewMode: viewMode,
-        availableWidth: availableWidth,
-        availableHeight: singleH - 1, // force overflow so 2-col path is tried
-        fontScale: fontScale,
-        allowTwoColumns: true,
-      );
+        final result = estimateRenderedLayout(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: singleH - 1, // force overflow so 2-col path is tried
+          fontScale: fontScale,
+          allowTwoColumns: true,
+        );
 
-      expect(
-        result.columnCount,
-        equals(1),
-        reason:
-            'Intro(60px) beside Verse(492px): ratio≈0.12 << 0.5 → '
-            'balance guard must reject 2 columns',
-      );
-    });
+        expect(
+          result.columnCount,
+          equals(2),
+          reason:
+              'Item-level flow splits Verse mid-section to balance columns → 2 columns',
+        );
+      },
+    );
 
     test('two balanced sections still use two columns (no regression)', () {
       // Two equal 15-line sections: balance ratio = 1.0 ≥ 0.5 → 2 columns.
@@ -658,6 +660,532 @@ void main() {
         reason: '6 equal sections are well-balanced → 2 columns',
       );
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Flow blocks — buildFlowBlocks
+  // ---------------------------------------------------------------------------
+
+  group('buildFlowBlocks', () {
+    SongReaderSectionProjection emptyLabeledSection(String label) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: label,
+          number: null,
+          isUnknown: false,
+          lines: const [],
+        );
+
+    SongReaderSectionProjection verseSection(int lineCount) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          isUnknown: false,
+          lines: List.generate(
+            lineCount,
+            (_) => SongReaderLyricLineProjection(
+              segments: const [
+                SongReaderSegmentProjection(displayChord: 'C', text: 'Hello'),
+              ],
+            ),
+          ),
+        );
+
+    test(
+      'leadingDirective + emptyIntro(header) + Verse(5 lines) → correct block list',
+      () {
+        final intro = emptyLabeledSection('Intro');
+        final verse = verseSection(5);
+        final blocks = buildFlowBlocks(
+          sections: [intro, verse],
+          hasLeadingDirective: true,
+        );
+
+        // Expected order:
+        //  [0] leadingDirective
+        //  [1] sectionHeader(sectionIndex=0)  — Intro header, isSectionStart=true
+        //  [2] sectionHeader(sectionIndex=1)  — Verse header, isSectionStart=true
+        //  [3..7] line × 5 (sectionIndex=1)
+        expect(
+          blocks.length,
+          equals(8),
+          reason: '1 directive + 1 Intro header + 1 Verse header + 5 lines',
+        );
+
+        expect(blocks[0].kind, equals(FlowBlockKind.leadingDirective));
+        expect(blocks[0].sectionIndex, equals(-1));
+
+        expect(blocks[1].kind, equals(FlowBlockKind.sectionHeader));
+        expect(blocks[1].sectionIndex, equals(0));
+        expect(blocks[1].isSectionStart, isTrue);
+
+        expect(blocks[2].kind, equals(FlowBlockKind.sectionHeader));
+        expect(blocks[2].sectionIndex, equals(1));
+        expect(blocks[2].isSectionStart, isTrue);
+
+        for (var i = 3; i < 8; i++) {
+          expect(
+            blocks[i].kind,
+            equals(FlowBlockKind.line),
+            reason: 'block[$i] should be a line',
+          );
+          expect(blocks[i].sectionIndex, equals(1));
+        }
+
+        // First line block: isSectionStart=false (header already covers it).
+        expect(blocks[3].isSectionStart, isFalse);
+      },
+    );
+
+    test('unlabeled section produces no sectionHeader block', () {
+      final unlabeled = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Unlabeled',
+        number: null,
+        isUnknown: false,
+        lines: [
+          SongReaderLyricLineProjection(
+            segments: const [
+              SongReaderSegmentProjection(displayChord: null, text: 'Line'),
+            ],
+          ),
+        ],
+      );
+      final blocks = buildFlowBlocks(
+        sections: [unlabeled],
+        hasLeadingDirective: false,
+      );
+
+      // No header → 1 line block; first line is isSectionStart=true.
+      expect(blocks.length, equals(1));
+      expect(blocks[0].kind, equals(FlowBlockKind.line));
+      expect(
+        blocks[0].isSectionStart,
+        isTrue,
+        reason: 'first block of unlabeled section is the section start',
+      );
+    });
+
+    test('empty unlabeled section produces zero blocks', () {
+      final unlabeled = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Unlabeled',
+        number: null,
+        isUnknown: false,
+        lines: const [],
+      );
+      final blocks = buildFlowBlocks(
+        sections: [unlabeled],
+        hasLeadingDirective: false,
+      );
+      expect(
+        blocks,
+        isEmpty,
+        reason: 'empty unlabeled section has no header and no lines',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // resolveFlowLayout — mid-section split (dominant section)
+  // ---------------------------------------------------------------------------
+
+  group('resolveFlowLayout', () {
+    // Helper: compute block heights at tile width for the given sections.
+    List<double> blockHeightsAtTileWidth(
+      List<FlowBlock> blocks,
+      double tileWidth,
+    ) {
+      return blocks
+          .map(
+            (b) => flowBlockHeight(
+              block: b,
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              columnWidth: tileWidth,
+              fontScale: 1.0,
+            ),
+          )
+          .toList();
+    }
+
+    SongReaderSectionProjection emptyLabeled(String label) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: label,
+          number: null,
+          isUnknown: false,
+          lines: const [],
+        );
+
+    SongReaderSectionProjection bigVerse(int lineCount) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          isUnknown: false,
+          lines: List.generate(
+            lineCount,
+            (i) => SongReaderLyricLineProjection(
+              segments: [
+                SongReaderSegmentProjection(
+                  displayChord: 'C',
+                  text: 'Line $i word word word word',
+                ),
+              ],
+            ),
+          ),
+        );
+
+    test(
+      'empty Intro + dominant Verse → columnCount 2 via mid-section split, balanced',
+      () {
+        // Previously this was forced to 1 column by the balance guard.
+        // With item-level flow, the verse lines can be split across columns
+        // to produce a balanced layout.
+        //
+        // Heights at tileWidth=390:
+        //   Intro header block: 40+20 = 60
+        //   Verse header block: 40+20 = 60
+        //   Each of 12 verse lines ("Line N word word word word" ~26 chars):
+        //     chord=20, lyric=24, gap=10 → 54 each
+        //   Total ≈ 60 + 60 + 12*54 = 768
+        //   Balanced split ≈ 384 per column.
+        //   availableHeight=500: single(768)>500 → 2-col path;
+        //     taller(384) ≤ 500*1.15=575 ✓, 384 ≤ 768*0.9=691 ✓, balanced ✓
+        const availableWidth = 800.0;
+        const tileWidth = (availableWidth - sectionGap) / 2;
+        const availableHeight = 500.0;
+
+        final sections = [emptyLabeled('Intro'), bigVerse(12)];
+        final blocks = buildFlowBlocks(
+          sections: sections,
+          hasLeadingDirective: false,
+        );
+        final blockHeights = blockHeightsAtTileWidth(blocks, tileWidth);
+        final sectionStartFlags = blocks.map((b) => b.isSectionStart).toList();
+
+        final layout = resolveFlowLayout(
+          blocks: blocks,
+          blockHeights: blockHeights,
+          sectionStartFlags: sectionStartFlags,
+          availableHeight: availableHeight,
+          allowTwoColumns: true,
+        );
+
+        expect(
+          layout.columnCount,
+          equals(2),
+          reason:
+              'Dominant Verse must now split mid-section to produce 2 columns',
+        );
+
+        // Both columns must be non-empty.
+        expect(layout.splitIndex, greaterThan(0));
+        expect(layout.splitIndex, lessThan(blocks.length));
+
+        // Balance check: min(left,right) >= max(left,right) * columnBalanceMinRatio.
+        final left = blockHeights
+            .sublist(0, layout.splitIndex)
+            .fold(0.0, (a, b) => a + b);
+        final right = blockHeights
+            .sublist(layout.splitIndex)
+            .fold(0.0, (a, b) => a + b);
+        final taller = left > right ? left : right;
+        final shorter = left < right ? left : right;
+        expect(
+          shorter,
+          greaterThanOrEqualTo(taller * columnBalanceMinRatio - 0.1),
+          reason:
+              'columns must be balanced (min/max >= $columnBalanceMinRatio)',
+        );
+      },
+    );
+
+    test(
+      'several balanced sections → split at a section boundary (isSectionStart)',
+      () {
+        // Heights at tileWidth=390 ("Hello world" = 11 chars, no wrap):
+        //   Each section: header+sectionGap=60, 4*(20+24+10)=216 → 276
+        //   Total for 4 sections ≈ 1104
+        //   Boundary split at 2: taller ≈ 552
+        //   availableHeight=600: single(1104)>600, taller(552)≤600*1.15=690 ✓,
+        //     552 ≤ 1104*0.9=993.6 ✓, balanced(552/552=1.0) ✓
+        const availableWidth = 800.0;
+        const tileWidth = (availableWidth - sectionGap) / 2;
+        const availableHeight = 600.0;
+
+        // 4 equal sections → best boundary split = at index 2 (half).
+        final sections = List.generate(
+          4,
+          (i) => SongReaderSectionProjection(
+            kind: SongSectionKind.verse,
+            label: 'Verse',
+            number: i + 1,
+            isUnknown: false,
+            lines: List.generate(
+              4,
+              (_) => SongReaderLyricLineProjection(
+                segments: const [
+                  SongReaderSegmentProjection(
+                    displayChord: 'C',
+                    text: 'Hello world',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final blocks = buildFlowBlocks(
+          sections: sections,
+          hasLeadingDirective: false,
+        );
+        final blockHeights = blockHeightsAtTileWidth(blocks, tileWidth);
+        final sectionStartFlags = blocks.map((b) => b.isSectionStart).toList();
+
+        final layout = resolveFlowLayout(
+          blocks: blocks,
+          blockHeights: blockHeights,
+          sectionStartFlags: sectionStartFlags,
+          availableHeight: availableHeight,
+          allowTwoColumns: true,
+        );
+
+        expect(layout.columnCount, equals(2));
+
+        // The chosen splitIndex must land on a section boundary
+        // (isSectionStart=true at that index).
+        expect(
+          blocks[layout.splitIndex].isSectionStart,
+          isTrue,
+          reason:
+              'Balanced sections: split must be at a section boundary, not mid-section',
+        );
+      },
+    );
+
+    test('split never strands a header at the bottom of the left column', () {
+      const availableWidth = 800.0;
+      const tileWidth = (availableWidth - sectionGap) / 2;
+      // 10-line verse total ≈ 60+60+10*54=660; balanced ≈ 330;
+      // need availableHeight > 330/1.15≈287 so tolerance allows 2 cols.
+      const availableHeight = 400.0;
+
+      final sections = [emptyLabeled('Intro'), bigVerse(10)];
+      final blocks = buildFlowBlocks(
+        sections: sections,
+        hasLeadingDirective: false,
+      );
+      final blockHeights = blockHeightsAtTileWidth(blocks, tileWidth);
+      final sectionStartFlags = blocks.map((b) => b.isSectionStart).toList();
+
+      final layout = resolveFlowLayout(
+        blocks: blocks,
+        blockHeights: blockHeights,
+        sectionStartFlags: sectionStartFlags,
+        availableHeight: availableHeight,
+        allowTwoColumns: true,
+      );
+
+      if (layout.columnCount == 2) {
+        // The block just before the split must NOT be a sectionHeader
+        // (that would strand the header alone in the left column).
+        expect(
+          blocks[layout.splitIndex - 1].kind,
+          isNot(equals(FlowBlockKind.sectionHeader)),
+          reason:
+              'A sectionHeader must not be the last block in the left column',
+        );
+      }
+    });
+
+    test('single block → always 1 column', () {
+      const tileWidth = 200.0;
+      final section = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Verse',
+        number: 1,
+        isUnknown: false,
+        lines: [
+          SongReaderLyricLineProjection(
+            segments: const [
+              SongReaderSegmentProjection(displayChord: null, text: 'Hello'),
+            ],
+          ),
+        ],
+      );
+      final blocks = buildFlowBlocks(
+        sections: [section],
+        hasLeadingDirective: false,
+      );
+      final blockHeights = blocks
+          .map(
+            (b) => flowBlockHeight(
+              block: b,
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              columnWidth: tileWidth,
+              fontScale: 1.0,
+            ),
+          )
+          .toList();
+      final sectionStartFlags = blocks.map((b) => b.isSectionStart).toList();
+
+      final layout = resolveFlowLayout(
+        blocks: blocks,
+        blockHeights: blockHeights,
+        sectionStartFlags: sectionStartFlags,
+        availableHeight: 10000, // huge — fits in 1 column
+        allowTwoColumns: true,
+      );
+
+      expect(layout.columnCount, equals(1));
+    });
+
+    test('allowTwoColumns:false → always 1 column regardless', () {
+      const tileWidth = 200.0;
+      final sections = List.generate(
+        6,
+        (i) => SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: i + 1,
+          isUnknown: false,
+          lines: List.generate(
+            5,
+            (_) => SongReaderLyricLineProjection(
+              segments: const [
+                SongReaderSegmentProjection(displayChord: 'C', text: 'Hello'),
+              ],
+            ),
+          ),
+        ),
+      );
+      final blocks = buildFlowBlocks(
+        sections: sections,
+        hasLeadingDirective: false,
+      );
+      final blockHeights = blocks
+          .map(
+            (b) => flowBlockHeight(
+              block: b,
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              columnWidth: tileWidth,
+              fontScale: 1.0,
+            ),
+          )
+          .toList();
+      final sectionStartFlags = blocks.map((b) => b.isSectionStart).toList();
+
+      final layout = resolveFlowLayout(
+        blocks: blocks,
+        blockHeights: blockHeights,
+        sectionStartFlags: sectionStartFlags,
+        availableHeight: 1.0, // tiny — would overflow
+        allowTwoColumns: false,
+      );
+
+      expect(layout.columnCount, equals(1));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // resolveFitFontScale — dominant-section now produces 2 columns (flow)
+  // ---------------------------------------------------------------------------
+
+  group('resolveFitFontScale — dominant section now 2 columns with flow', () {
+    SongReaderSectionProjection emptyIntro() => SongReaderSectionProjection(
+      kind: SongSectionKind.verse,
+      label: 'Intro',
+      number: null,
+      isUnknown: false,
+      lines: const [],
+    );
+
+    SongReaderSectionProjection bigVerse(int lineCount) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          isUnknown: false,
+          lines: List.generate(
+            lineCount,
+            (i) => SongReaderLyricLineProjection(
+              segments: [
+                SongReaderSegmentProjection(
+                  displayChord: 'C',
+                  text: 'Line $i word word word',
+                ),
+              ],
+            ),
+          ),
+        );
+
+    test(
+      'empty Intro + dominant Verse: estimateRenderedLayout returns 2 columns',
+      () {
+        // With item-level flow the verse can be split mid-section
+        // → balance guard passes → 2 columns.
+        final sections = [emptyIntro(), bigVerse(12)];
+        const availableWidth = 800.0;
+
+        final singleH = estimateSongContentHeight(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          fontScale: fontScale,
+        );
+
+        final result = estimateRenderedLayout(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: singleH - 1,
+          fontScale: fontScale,
+          allowTwoColumns: true,
+        );
+
+        expect(
+          result.columnCount,
+          equals(2),
+          reason:
+              'Item-level flow allows mid-section split of dominant Verse → 2 columns',
+        );
+      },
+    );
+
+    test(
+      'fit scale at allowTwoColumns:true renders within availableHeight for dominant section',
+      () {
+        final sections = [emptyIntro(), bigVerse(12)];
+        const availableWidth = 800.0;
+        const availableHeight = 400.0;
+
+        final fit = resolveFitFontScale(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: availableHeight,
+          minScale: SongReaderState.minSharedFontScale,
+          maxScale: SongReaderState.maxSharedFontScale,
+          allowTwoColumns: true,
+        );
+
+        final rendered = estimateRenderedLayout(
+          sections: sections,
+          viewMode: viewMode,
+          availableWidth: availableWidth,
+          availableHeight: availableHeight,
+          fontScale: fit,
+          allowTwoColumns: true,
+        );
+
+        expect(
+          rendered.height,
+          lessThanOrEqualTo(availableHeight + 1),
+          reason: 'fit scale must not cause post-fit overflow',
+        );
+      },
+    );
   });
 
   group('estimateSectionHeight', () {

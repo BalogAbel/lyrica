@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_section_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/directive_line_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/tab_block_view.dart';
 
 class SongReaderSectionGrid extends StatelessWidget {
   const SongReaderSectionGrid({
@@ -24,7 +27,6 @@ class SongReaderSectionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final normalizedSections = sections;
     final normalizedColumns = columnCount < 1 ? 1 : columnCount;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -35,172 +37,182 @@ class SongReaderSectionGrid extends StatelessWidget {
         final effectiveHeight = availableHeight.isFinite
             ? availableHeight
             : MediaQuery.sizeOf(context).height;
-        // The leading directive renders as a directive line plus the section
-        // gap below it, so reserve both. This must match the value the fit
-        // calculator is given in the surfaces' _handleDoubleTap so the grid
-        // and resolveFitFontScale agree on the column decision.
-        final leadingDirectiveHeight = leadingDirectiveText == null
-            ? 0.0
-            : directiveLineHeight + sectionGap;
 
-        // Use the shared estimateRenderedLayout so the grid's column decision
-        // exactly mirrors the logic used by resolveFitFontScale. This is the
-        // single source of truth that eliminates the pre-fix column-count
-        // disagreement between the fit calculator and the rendered layout.
-        final layout = estimateRenderedLayout(
-          sections: normalizedSections,
+        final hasLeadingDirective = leadingDirectiveText != null;
+
+        // Build flow blocks once — both the column decision and the renderer
+        // walk the same block list so height estimates and rendering always agree.
+        final blocks = buildFlowBlocks(
+          sections: sections,
+          hasLeadingDirective: hasLeadingDirective,
+        );
+
+        // Use [resolveFlowLayoutForSections] so the grid's column decision uses
+        // the same logic as [estimateRenderedLayout] / [resolveFitFontScale].
+        // This is the single source of truth: the fit calculator and the grid
+        // both call the same resolver with the same tile width.
+        final tileWidth = (availableWidth - sectionGap) / 2;
+        final layout = resolveFlowLayoutForSections(
+          sections: sections,
           viewMode: viewMode,
-          availableWidth: availableWidth,
+          tileWidth: tileWidth,
           availableHeight: effectiveHeight,
           fontScale: sharedFontScale,
           allowTwoColumns: normalizedColumns > 1,
-          leadingDirectiveHeight: leadingDirectiveHeight,
+          hasLeadingDirective: hasLeadingDirective,
         );
         final effectiveColumns = layout.columnCount;
 
         if (effectiveColumns == 1) {
-          return _buildSingleColumn(normalizedSections);
+          return Column(
+            key: const Key('song-reader-section-grid-columns-1'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _buildBlockWidgets(
+              blocks: blocks,
+              startIndex: 0,
+              endIndex: blocks.length,
+              context: context,
+            ),
+          );
         }
 
-        const spacing = sectionGap;
-        final tileWidth =
-            (availableWidth - (effectiveColumns - 1) * spacing) /
-            effectiveColumns;
-        final columns = _buildColumnMajorSections(
-          sections: normalizedSections,
-          columnCount: effectiveColumns,
-          maxColumnWidth: tileWidth,
-        );
-
+        // Two-column layout: left = blocks[0:splitIndex], right = blocks[splitIndex:].
+        final splitIndex = layout.splitIndex;
         return Row(
           key: Key('song-reader-section-grid-columns-$effectiveColumns'),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var index = 0; index < columns.length; index++) ...[
-              SizedBox(
-                width: tileWidth,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (index == 0 && leadingDirectiveText != null) ...[
-                      _DirectiveLine(text: leadingDirectiveText!),
-                      const SizedBox(height: spacing),
-                    ],
-                    for (final section in columns[index]) ...[
-                      SongSectionView(
-                        section: section,
-                        viewMode: viewMode,
-                        sharedFontScale: sharedFontScale,
-                      ),
-                      const SizedBox(height: spacing),
-                    ],
-                  ],
+            SizedBox(
+              width: tileWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _buildBlockWidgets(
+                  blocks: blocks,
+                  startIndex: 0,
+                  endIndex: splitIndex,
+                  context: context,
                 ),
               ),
-              if (index < columns.length - 1) const SizedBox(width: spacing),
-            ],
+            ),
+            const SizedBox(width: sectionGap),
+            SizedBox(
+              width: tileWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _buildBlockWidgets(
+                  blocks: blocks,
+                  startIndex: splitIndex,
+                  endIndex: blocks.length,
+                  context: context,
+                ),
+              ),
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _buildSingleColumn(List<SongReaderSectionProjection> sections) {
-    return Column(
-      key: const Key('song-reader-section-grid-columns-1'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (leadingDirectiveText != null) ...[
-          _DirectiveLine(text: leadingDirectiveText!),
-          const SizedBox(height: sectionGap),
-        ],
-        for (final section in sections) ...[
-          SongSectionView(
-            section: section,
-            viewMode: viewMode,
-            sharedFontScale: sharedFontScale,
-          ),
-          const SizedBox(height: sectionGap),
-        ],
-      ],
-    );
-  }
-
-  List<List<SongReaderSectionProjection>> _buildColumnMajorSections({
-    required List<SongReaderSectionProjection> sections,
-    required int columnCount,
-    required double maxColumnWidth,
+  /// Builds the widget list for blocks[startIndex:endIndex].
+  ///
+  /// Gap strategy (mirrors block-height accounting in [flowBlockHeight]):
+  ///   - [FlowBlockKind.leadingDirective]: widget + SizedBox(sectionGap)
+  ///   - [FlowBlockKind.sectionHeader]: widget + SizedBox(12) then lines follow
+  ///   - [FlowBlockKind.line]: widget + SizedBox(lineGap=10)
+  ///   - Between sections (wherever isSectionStart=true and the previous block was
+  ///     a line), no extra gap is needed because sectionGap is already baked into
+  ///     the first block of each section in the height estimate.  However, for the
+  ///     RENDER we do not use height-budgeted SizedBoxes — we use the same visual
+  ///     spacing that SongSectionView used: 12 after the header, 10 after each
+  ///     line, and sectionGap between sections.
+  ///
+  /// The render inserts sectionGap before each section's first block (except for
+  /// the very first block in a column) and uses the standard 12/10 px gaps within
+  /// a section.  This matches the single-column behavior of the original
+  /// _buildSingleColumn / SongSectionView.
+  List<Widget> _buildBlockWidgets({
+    required List<FlowBlock> blocks,
+    required int startIndex,
+    required int endIndex,
+    required BuildContext context,
   }) {
-    if (columnCount == 2) {
-      final splitIndex = _bestTwoColumnSplitIndex(
-        sections,
-        maxColumnWidth: maxColumnWidth,
-      );
-      return [
-        sections.sublist(0, splitIndex),
-        sections.sublist(splitIndex),
-      ].where((column) => column.isNotEmpty).toList(growable: false);
-    }
+    final widgets = <Widget>[];
+    var isFirstInColumn = true;
 
-    final columns = List.generate(
-      columnCount,
-      (_) => <SongReaderSectionProjection>[],
-    );
-    var start = 0;
-    for (var columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-      final columnsLeft = columnCount - columnIndex;
-      final chunkSize = ((sections.length - start) / columnsLeft).ceil();
-      final end = (start + chunkSize).clamp(start, sections.length);
-      columns[columnIndex].addAll(sections.sublist(start, end));
-      start = end;
-      if (start >= sections.length) {
-        break;
+    for (var i = startIndex; i < endIndex; i++) {
+      final block = blocks[i];
+
+      // Insert sectionGap before the start of each section (except the very
+      // first block in this column).
+      if (block.isSectionStart && !isFirstInColumn) {
+        widgets.add(const SizedBox(height: sectionGap));
+      }
+      isFirstInColumn = false;
+
+      switch (block.kind) {
+        case FlowBlockKind.leadingDirective:
+          widgets.add(_DirectiveLine(text: leadingDirectiveText!));
+          // sectionGap follows the leading directive (same as before).
+          widgets.add(const SizedBox(height: sectionGap));
+          // Mark as consumed — next block won't insert an extra sectionGap.
+          isFirstInColumn = true; // suppress gap before the next block
+          break;
+
+        case FlowBlockKind.sectionHeader:
+          widgets.add(_buildHeaderWidget(block, context));
+          widgets.add(const SizedBox(height: 12));
+          break;
+
+        case FlowBlockKind.line:
+          widgets.add(_buildLineWidget(block, context));
+          widgets.add(const SizedBox(height: 10));
+          break;
       }
     }
 
-    return columns.where((column) => column.isNotEmpty).toList(growable: false);
+    return widgets;
   }
 
-  int _bestTwoColumnSplitIndex(
-    List<SongReaderSectionProjection> sections, {
-    required double maxColumnWidth,
-  }) {
-    if (sections.length <= 1) {
-      return sections.length;
-    }
-
-    final sectionHeights = sections
-        .map(
-          (section) => estimateSectionHeight(
-            section: section,
-            viewMode: viewMode,
-            maxWidth: maxColumnWidth,
-            fontScale: sharedFontScale,
-          ),
-        )
-        .toList(growable: false);
-    final totalHeight = sectionHeights.fold<double>(
-      0,
-      (sum, value) => sum + value,
+  Widget _buildHeaderWidget(FlowBlock block, BuildContext context) {
+    final theme = Theme.of(context);
+    final section = sections[block.sectionIndex];
+    final label = _sectionLabel(section)!;
+    final labelColor = section.isUnknown
+        ? theme.colorScheme.tertiary
+        : theme.colorScheme.primary;
+    return Text(
+      label,
+      style: theme.textTheme.titleLarge?.copyWith(color: labelColor),
     );
+  }
 
-    var runningLeft = 0.0;
-    var bestIndex = 1;
-    var bestDiff = double.infinity;
+  Widget _buildLineWidget(FlowBlock block, BuildContext context) {
+    final item = block.line!;
+    return switch (item) {
+      SongReaderLyricLineProjection() => SongLineView(
+        line: item,
+        viewMode: viewMode,
+        sharedFontScale: sharedFontScale,
+      ),
+      SongReaderCommentProjection() => CommentLineView(
+        projection: item,
+        sharedFontScale: sharedFontScale,
+      ),
+      SongReaderTabProjection() => TabBlockView(
+        projection: item,
+        sharedFontScale: sharedFontScale,
+      ),
+      SongReaderDirectiveProjection() => DirectiveLineView(projection: item),
+    };
+  }
 
-    for (var split = 1; split < sections.length; split += 1) {
-      runningLeft += sectionHeights[split - 1];
-      final right = totalHeight - runningLeft;
-      // Use the absolute difference so splits where left < right are also
-      // considered — this gives the globally most balanced partition.
-      final diff = (runningLeft - right).abs();
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        bestIndex = split;
-      }
-    }
-
-    return bestIndex;
+  /// Returns a display label for [section], or null if the section is unlabeled.
+  /// Mirrors the [_sectionLabel] logic from [SongSectionView].
+  static String? _sectionLabel(SongReaderSectionProjection section) {
+    final isUnlabeled = section.label == 'Unlabeled' && section.number == null;
+    if (isUnlabeled) return null;
+    if (section.number == null) return section.label;
+    return '${section.label} ${section.number}';
   }
 }
 

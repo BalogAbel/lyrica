@@ -371,14 +371,12 @@ void main() {
     }
 
     testWidgets(
-      'dominant single section falls back to one column even when content overflows',
+      'dominant Verse with empty Intro now splits into TWO columns via mid-section flow',
       (tester) async {
-        // Intro (0 lines, header only ≈ 60px) + Verse (12 short lines ≈ 708px).
-        // singleColumnHeight ≈ 768px > availableHeight=700 → multi-col triggers.
-        // Balanced split: [Intro] | [Verse] — the Verse column at half-width
-        // does NOT wrap (short text), so tallestColumn ≈ 708px.
-        // Old guard: 708 <= 700*1.15=805 → does NOT fire.
-        // New guard: 708 > 768*0.9=691 → fires → falls back to one column.
+        // Intro (0 lines, header only) + Verse (12 short lines).
+        // Old section-atomic guard: forced 1 column (lopsided boundary split).
+        // New item-level flow: Verse lines distributed across both columns
+        // → balanced split → 2 columns.
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
@@ -402,11 +400,13 @@ void main() {
         );
 
         expect(
-          find.byKey(const Key('song-reader-section-grid-columns-1')),
+          find.byKey(const Key('song-reader-section-grid-columns-2')),
           findsOneWidget,
+          reason:
+              'Mid-section flow splits Verse across both columns → 2 columns',
         );
         expect(
-          find.byKey(const Key('song-reader-section-grid-columns-2')),
+          find.byKey(const Key('song-reader-section-grid-columns-1')),
           findsNothing,
         );
       },
