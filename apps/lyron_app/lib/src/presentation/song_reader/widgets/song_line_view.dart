@@ -47,7 +47,7 @@ class SongLineView extends StatelessWidget {
         // segment can apply a ConstrainedBox that forces internal text wrapping.
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
-            : MediaQuery.sizeOf(context).width;
+            : (MediaQuery.maybeSizeOf(context)?.width ?? 800.0);
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 2),

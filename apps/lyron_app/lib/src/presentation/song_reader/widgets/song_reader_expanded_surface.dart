@@ -221,7 +221,7 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
                   // Store constraints and resolved padding so _handleDoubleTap
                   // can use the viewport dimensions without a stale BuildContext.
                   final resolved = widget.contentPadding.resolve(
-                    Directionality.of(context),
+                    Directionality.maybeOf(context) ?? TextDirection.ltr,
                   );
                   _contentPaddingH = resolved.horizontal;
                   _contentPaddingV = resolved.vertical;

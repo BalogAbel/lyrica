@@ -291,7 +291,8 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                             // _handleDoubleTap can use the viewport dimensions
                             // without capturing a stale BuildContext.
                             final resolved = widget.contentPadding.resolve(
-                              Directionality.of(context),
+                              Directionality.maybeOf(context) ??
+                                  TextDirection.ltr,
                             );
                             _contentPaddingH = resolved.horizontal;
                             _contentPaddingV = resolved.vertical;

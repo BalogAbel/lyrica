@@ -35,7 +35,7 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 /// a real [SupabaseClient].
 final readerUserIdProvider = Provider<String?>((ref) {
   try {
-    return ref.read(supabaseClientProvider).auth.currentUser?.id;
+    return ref.watch(supabaseClientProvider).auth.currentUser?.id;
   } catch (_) {
     return null;
   }
