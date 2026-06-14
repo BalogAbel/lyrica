@@ -115,13 +115,16 @@ is removed.
 - `widgets/song_reader_compact_surface.dart` — host the bottom control bar instead
   of the top overlay; remove `onToggleViewMode` plumbing for the overlay.
 - `widgets/song_reader_compact_overlay.dart` — deleted.
-- `widgets/song_reader_header.dart` — deleted (or reduced to nothing used);
-  Key chip, warning surface, transpose/capo/font/view sections removed.
+- `widgets/song_reader_header.dart` — reduced (NOT deleted; the expanded tools
+  panel still renders it for the side panel). Removed: view-mode section, source
+  Key `_MetadataChip`, `_WarningSurface`. Kept: transpose/capo/font sections.
+  Params `onToggleViewMode`, `hasRecoverableWarnings`, `warningCount` dropped.
 - `song_reader_projection.dart` — add `effectiveKey`.
 - `shared/app_strings.dart` — any new labels/semantics (warning dialog title, etc.).
 - Expanded surface (`song_reader_expanded_surface.dart` /
-  `song_reader_expanded_tools_panel.dart`) — view-mode toggle moved to the menu;
-  otherwise unchanged.
+  `song_reader_expanded_tools_panel.dart`) — drop `onToggleViewMode`,
+  `hasRecoverableWarnings`, `warningCount` plumbing (view-mode now in the shared
+  menu; key + warnings now in the shared AppBar). Layout otherwise unchanged.
 
 ## Testing
 
