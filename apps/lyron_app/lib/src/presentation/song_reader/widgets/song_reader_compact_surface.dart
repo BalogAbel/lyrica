@@ -199,12 +199,13 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
       return;
     }
 
-    final shouldToggle = !_movedBeyondTapSlop;
+    final shouldRevealOverlay =
+        !_movedBeyondTapSlop && !widget.areControlsVisible;
     _activePointer = null;
     _pointerDownPosition = null;
     _movedBeyondTapSlop = false;
 
-    if (shouldToggle) {
+    if (shouldRevealOverlay) {
       widget.onSurfaceTap();
     }
   }
@@ -275,6 +276,7 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
             onPointerCancel: (event) => _handlePointerEnd(event.pointer),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
               onDoubleTap: _handleDoubleTap,
               child: Stack(
                 children: [

@@ -1719,10 +1719,10 @@ void main() {
 
     modeCalls.clear();
     await tester.tap(find.byType(SongReaderCompactSurface));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
     expect(modeCalls, contains('SystemUiMode.edgeToEdge'));
 
-    // Drain double-tap recognizer timer and any persist-zoom debounce.
+    // Drain any persist-zoom debounce.
     await tester.pump(const Duration(milliseconds: 500));
   });
 
