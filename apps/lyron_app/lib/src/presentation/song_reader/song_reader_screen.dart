@@ -654,11 +654,16 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           children: [
             Text(currentTitle),
             if (projection?.effectiveKey != null)
-              Text(
-                '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              Builder(
+                builder: (context) {
+                  final theme = Theme.of(context);
+                  return Text(
+                    '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
               ),
           ],
         ),
