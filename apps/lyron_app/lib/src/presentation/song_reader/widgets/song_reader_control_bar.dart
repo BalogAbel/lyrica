@@ -157,7 +157,16 @@ class _ValueChip extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(value, style: theme.textTheme.labelLarge),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(value, style: theme.textTheme.labelLarge),
+        ),
+      ),
     );
   }
 }
