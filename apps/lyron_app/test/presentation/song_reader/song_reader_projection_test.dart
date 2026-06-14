@@ -207,8 +207,7 @@ void main() {
       state: SongReaderState(transposeOffset: 1),
     );
 
-    expect(projection.effectiveKey, isNot('G'));
-    expect(projection.effectiveKey, isNotNull);
+    expect(projection.effectiveKey, 'G#');
   });
 
   test('effective key is null when the song has no source key', () {
