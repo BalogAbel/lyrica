@@ -1783,6 +1783,42 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
+  testWidgets('restores system UI mode when the reader is disposed', (
+    tester,
+  ) async {
+    final modeCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+          modeCalls.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    // Enter immersive.
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    await tester.pump();
+    expect(modeCalls, contains('SystemUiMode.immersiveSticky'));
+
+    // Unmount the reader -> dispose must restore edge-to-edge.
+    modeCalls.clear();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+    expect(modeCalls, contains('SystemUiMode.edgeToEdge'));
+  });
+
   testWidgets('tapping increase-font button persists zoom after debounce', (
     tester,
   ) async {

@@ -84,7 +84,6 @@ class AppStrings {
   static const songReaderTitle = 'Song reader';
   static const routeNotFoundMessage = 'The requested page was not found.';
   static const songReaderBackAction = 'Back to song list';
-  static const songReaderViewSectionLabel = 'View';
   static const songReaderTransposeSectionLabel = 'Transpose';
   static const songReaderCapoSectionLabel = 'Capo';
   static const songReaderScaleSectionLabel = 'Scale';
