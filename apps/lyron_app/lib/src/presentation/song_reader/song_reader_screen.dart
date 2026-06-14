@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -66,10 +67,8 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
   static const _contentPadding = EdgeInsets.all(24);
-  static const _compactOverlayInactivity = Duration(seconds: 3);
 
   late final SongReaderController _controller = SongReaderController();
-  Timer? _compactOverlayHideTimer;
   Timer? _persistZoomTimer;
   bool _seededZoom = false;
 
@@ -99,8 +98,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   @override
   void dispose() {
-    _compactOverlayHideTimer?.cancel();
     _persistZoomTimer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -186,12 +185,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .toggleViewMode();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.toggleViewMode());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeDown() {
@@ -199,12 +196,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeDown();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeDown());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeUp() {
@@ -212,12 +207,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeUp();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeUp());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _capoDown() {
@@ -225,12 +218,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .capoDown();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.capoDown());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _capoUp() {
@@ -238,12 +229,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .capoUp();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.capoUp());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
@@ -251,12 +240,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .setInstrumentDisplayMode(mode);
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.setInstrumentDisplayMode(mode));
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _adjustSharedFontScale(double delta) {
@@ -267,7 +254,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       runtimeController.setSharedFontScale(
         runtimeController.state.readerState.sharedFontScale + delta,
       );
-      _bumpCompactOverlayInactivityIfVisible();
       _persistFontScale();
       return;
     }
@@ -275,7 +261,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     _updateState((controller) {
       controller.setSharedFontScale(controller.state.sharedFontScale + delta);
     });
-    _bumpCompactOverlayInactivityIfVisible();
     _persistFontScale();
   }
 
@@ -285,14 +270,18 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         sessionScopedReaderRuntimeControllerProvider(_sessionKey),
       );
       runtimeController.setSharedFontScale(scale);
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) {
       controller.setSharedFontScale(scale);
     });
-    _bumpCompactOverlayInactivityIfVisible();
+  }
+
+  void _applyImmersiveMode(bool active) {
+    SystemChrome.setEnabledSystemUIMode(
+      active ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
   }
 
   void _toggleCompactControls() {
@@ -301,59 +290,14 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         sessionScopedReaderRuntimeControllerProvider(_sessionKey),
       );
       runtimeController.toggleCompactControls();
-      _handleCompactOverlayVisibilityChanged(
+      _applyImmersiveMode(
         runtimeController.state.readerState.areCompactControlsVisible,
       );
       return;
     }
 
     _updateState((controller) => controller.toggleCompactControls());
-    _handleCompactOverlayVisibilityChanged(
-      _controller.state.areCompactControlsVisible,
-    );
-  }
-
-  void _handleCompactOverlayVisibilityChanged(bool isVisible) {
-    _compactOverlayHideTimer?.cancel();
-    if (!isVisible) {
-      return;
-    }
-
-    _compactOverlayHideTimer = Timer(_compactOverlayInactivity, () {
-      if (!mounted) {
-        return;
-      }
-
-      if (_isScopedMode) {
-        final runtimeController = ref.read(
-          sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-        );
-        if (runtimeController.state.readerState.areCompactControlsVisible) {
-          runtimeController.hideCompactControls();
-        }
-        return;
-      }
-
-      if (_controller.state.areCompactControlsVisible) {
-        setState(() {
-          _controller.hideCompactControls();
-        });
-      }
-    });
-  }
-
-  void _bumpCompactOverlayInactivityIfVisible() {
-    final isVisible = _isScopedMode
-        ? ref
-              .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-              .state
-              .readerState
-              .areCompactControlsVisible
-        : _controller.state.areCompactControlsVisible;
-    if (!isVisible) {
-      return;
-    }
-    _handleCompactOverlayVisibilityChanged(true);
+    _applyImmersiveMode(_controller.state.areCompactControlsVisible);
   }
 
   void _handleBack(BuildContext context) {

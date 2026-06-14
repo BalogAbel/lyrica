@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -421,14 +422,13 @@ void main() {
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump();
 
-    expect(find.text('Lyrics only'), findsOneWidget);
+    expect(find.byType(SongReaderControlBar), findsOneWidget);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
 
     await tester.tapAt(compactSurfaceCenter);
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('Lyrics only'), findsNothing);
+    expect(find.byType(SongReaderControlBar), findsNothing);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsNothing);
   });
 
@@ -538,47 +538,6 @@ void main() {
       expect(find.byType(SongReaderCompactSurface), findsOneWidget);
     },
   );
-
-  testWidgets('compact overlay hides after inactivity timeout', (tester) async {
-    await pumpWithViewport(
-      tester,
-      size: const Size(800, 1200),
-      child: buildApp(result: buildResult()),
-    );
-
-    await tester.tapAt(tester.getCenter(find.byType(SongReaderCompactSurface)));
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.text('Lyrics only'), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 4));
-    expect(find.text('Lyrics only'), findsNothing);
-  });
-
-  testWidgets('compact overlay timeout resets after control interaction', (
-    tester,
-  ) async {
-    await pumpWithViewport(
-      tester,
-      size: const Size(800, 1200),
-      child: buildApp(result: buildResult()),
-    );
-
-    await tester.tapAt(tester.getCenter(find.byType(SongReaderCompactSurface)));
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.text('Lyrics only'), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 2));
-    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
-    await tester.pumpAndSettle();
-
-    await tester.pump(const Duration(seconds: 2));
-    expect(find.text('Lyrics only'), findsOneWidget);
-
-    await tester.pump(const Duration(seconds: 2));
-    expect(find.text('Lyrics only'), findsNothing);
-  });
 
   testWidgets('compact reader moves edit and delete into overflow menu', (
     tester,
@@ -1730,6 +1689,42 @@ void main() {
       expect(find.text('Plan Fixture'), findsOneWidget);
     },
   );
+
+  testWidgets('tapping the surface toggles immersive system UI mode', (
+    tester,
+  ) async {
+    final modeCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+          modeCalls.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    await tester.pump();
+    expect(modeCalls, contains('SystemUiMode.immersiveSticky'));
+
+    modeCalls.clear();
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    await tester.pump();
+    expect(modeCalls, contains('SystemUiMode.edgeToEdge'));
+
+    // Drain double-tap recognizer timer and any persist-zoom debounce.
+    await tester.pump(const Duration(milliseconds: 500));
+  });
 
   testWidgets('tapping increase-font button persists zoom after debounce', (
     tester,
