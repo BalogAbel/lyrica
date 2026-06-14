@@ -50,7 +50,6 @@ void main() {
               hasRecoverableWarnings: false,
               warningCount: 0,
               contentColumnCount: 1,
-              onToggleViewMode: () {},
               onTransposeDown: () {},
               onTransposeUp: () {},
               onDecreaseFontScale: () {},
@@ -87,10 +86,7 @@ void main() {
             body: SongReaderExpandedSurface(
               projection: _buildProjection(),
               showContextPanel: false,
-              hasRecoverableWarnings: false,
-              warningCount: 0,
               contentColumnCount: 1,
-              onToggleViewMode: () {},
               onTransposeDown: () {},
               onTransposeUp: () {},
               onDecreaseFontScale: () {},

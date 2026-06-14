@@ -6,9 +6,6 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
   const SongReaderExpandedToolsPanel({
     super.key,
     required this.projection,
-    required this.hasRecoverableWarnings,
-    required this.warningCount,
-    required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
     this.onCapoDown,
@@ -18,9 +15,6 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
   });
 
   final SongReaderProjection projection;
-  final bool hasRecoverableWarnings;
-  final int warningCount;
-  final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
   final VoidCallback? onCapoDown;
@@ -32,9 +26,6 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return SongReaderHeader(
       projection: projection,
-      hasRecoverableWarnings: hasRecoverableWarnings,
-      warningCount: warningCount,
-      onToggleViewMode: onToggleViewMode,
       onTransposeDown: onTransposeDown,
       onTransposeUp: onTransposeUp,
       onCapoDown: onCapoDown,

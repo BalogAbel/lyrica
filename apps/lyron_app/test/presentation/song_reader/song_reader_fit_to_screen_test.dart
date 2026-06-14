@@ -60,7 +60,7 @@ Widget _buildSurface({
         hasRecoverableWarnings: false,
         warningCount: 0,
         contentColumnCount: 1,
-        onToggleViewMode: () {},
+
         onTransposeDown: () {},
         onTransposeUp: () {},
         onDecreaseFontScale: () {},
@@ -167,7 +167,7 @@ void main() {
                   hasRecoverableWarnings: false,
                   warningCount: 0,
                   contentColumnCount: 1,
-                  onToggleViewMode: () {},
+          
                   onTransposeDown: () {},
                   onTransposeUp: () {},
                   onDecreaseFontScale: () {},

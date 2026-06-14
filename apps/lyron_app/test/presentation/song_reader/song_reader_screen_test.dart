@@ -450,7 +450,6 @@ void main() {
     expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
     expect(find.byType(SongReaderControlBar), findsNothing);
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
-    expect(find.text('Lyrics only'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
     expect(find.byIcon(Icons.more_horiz), findsOneWidget);
@@ -600,7 +599,7 @@ void main() {
 
     expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
-    expect(find.text('Key: G'), findsWidgets);
+    expect(find.text('Key: G'), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
     expect(
       tester
@@ -743,7 +742,9 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    await tester.tap(find.text('Lyrics only'));
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction));
     await tester.pumpAndSettle();
 
     expect(find.text('F#m'), findsNothing);
@@ -903,6 +904,9 @@ void main() {
         ),
       );
 
+      expect(find.byIcon(Icons.warning_amber_outlined), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.warning_amber_outlined));
+      await tester.pumpAndSettle();
       expect(find.textContaining('warning'), findsWidgets);
     },
   );
@@ -937,6 +941,8 @@ void main() {
       ),
     );
 
+    await tester.tap(find.byIcon(Icons.warning_amber_outlined));
+    await tester.pumpAndSettle();
     expect(
       find.text('1 recoverable warning while reading this song.'),
       findsOneWidget,
@@ -1389,7 +1395,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Lyrics only'));
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
       await tester.pumpAndSettle();

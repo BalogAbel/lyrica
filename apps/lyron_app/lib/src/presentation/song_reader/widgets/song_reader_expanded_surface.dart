@@ -12,10 +12,7 @@ class SongReaderExpandedSurface extends StatefulWidget {
     super.key,
     required this.projection,
     required this.showContextPanel,
-    required this.hasRecoverableWarnings,
-    required this.warningCount,
     required this.contentColumnCount,
-    required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
     this.onCapoDown,
@@ -37,10 +34,7 @@ class SongReaderExpandedSurface extends StatefulWidget {
   final String? nextTitle;
   final VoidCallback? onPreviousTap;
   final VoidCallback? onNextTap;
-  final bool hasRecoverableWarnings;
-  final int warningCount;
   final int contentColumnCount;
-  final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
   final VoidCallback? onCapoDown;
@@ -260,9 +254,6 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
           width: 320,
           child: SongReaderExpandedToolsPanel(
             projection: widget.projection,
-            hasRecoverableWarnings: widget.hasRecoverableWarnings,
-            warningCount: widget.warningCount,
-            onToggleViewMode: widget.onToggleViewMode,
             onTransposeDown: widget.onTransposeDown,
             onTransposeUp: widget.onTransposeUp,
             onCapoDown: widget.onCapoDown,

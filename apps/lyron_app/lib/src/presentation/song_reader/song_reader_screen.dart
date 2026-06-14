@@ -846,11 +846,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 showContextPanel: showExpandedContextPanel,
                                 previousTitle: previousTitle,
                                 nextTitle: nextTitle,
-                                hasRecoverableWarnings:
-                                    result.hasRecoverableWarnings,
-                                warningCount: recoverableWarningCount,
                                 contentColumnCount: layout.contentColumnCount,
-                                onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
                                 onCapoDown: projection.effectiveCapo > 0
