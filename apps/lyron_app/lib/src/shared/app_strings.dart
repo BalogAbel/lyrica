@@ -101,6 +101,10 @@ class AppStrings {
   static const songReaderCapoUpSemantics = 'Capo up';
   static const songReaderDecreaseFontSemantics = 'Decrease text size';
   static const songReaderIncreaseFontSemantics = 'Increase text size';
+  static const songReaderKeyLabelPrefix = 'Key: ';
+  static const songReaderWarningDialogTitle = 'Reading warnings';
+  static const songReaderWarningsSemantics = 'Show reading warnings';
+  static const songReaderCloseAction = 'Close';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
       'This session-scoped reader route is unavailable.';

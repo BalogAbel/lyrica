@@ -600,7 +600,7 @@ void main() {
 
     expect(find.byKey(const Key('song-reader-capo-up')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
-    expect(find.text('Key: G'), findsOneWidget);
+    expect(find.text('Key: G'), findsWidgets);
     expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
     expect(
       tester
@@ -945,6 +945,55 @@ void main() {
       find.text('3 recoverable warnings while reading this song.'),
       findsNothing,
     );
+  });
+
+  testWidgets('overflow menu toggles the view mode', (tester) async {
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction).last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(AppStrings.songReaderChordsAndLyricsAction),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('app bar shows the effective key', (tester) async {
+    await tester.pumpWidget(buildApp(result: buildResult()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining(AppStrings.songReaderKeyLabelPrefix),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('warning action appears and opens a dialog', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        result: buildResult(
+          diagnostics: [
+            ParseDiagnostic(
+              severity: ParseDiagnosticSeverity.warning,
+              message: 'Unknown directive',
+              line: const ParseDiagnosticLineMetadata(lineNumber: 3),
+              context: 'unknown:token',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.warning_amber_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.songReaderWarningDialogTitle), findsOneWidget);
   });
 
   testWidgets('shows an unavailable state when the song cannot be found', (

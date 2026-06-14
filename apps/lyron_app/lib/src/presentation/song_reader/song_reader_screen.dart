@@ -42,7 +42,7 @@ final readerUserIdProvider = Provider<String?>((ref) {
   }
 });
 
-enum _SongReaderOverflowAction { guitarView, pianoView, edit, delete }
+enum _SongReaderOverflowAction { toggleViewMode, guitarView, pianoView, edit, delete }
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -525,6 +525,25 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
+  Future<void> _showWarningsDialog(BuildContext context, int count) {
+    final message = count == 1
+        ? '1 recoverable warning while reading this song.'
+        : '$count recoverable warnings while reading this song.';
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.songReaderWarningDialogTitle),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.songReaderCloseAction),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final readerAsync = ref.watch(songLibraryReaderProvider(widget.songId));
@@ -588,6 +607,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
             scopedContext: resolvedScopedContext,
             projection: projection,
           );
+    final hasRecoverableWarnings =
+        readerResult?.hasRecoverableWarnings ?? false;
+    final recoverableWarningCount = readerResult == null
+        ? 0
+        : readerResult.song.diagnostics
+              .where((d) => d.severity == ParseDiagnosticSeverity.warning)
+              .length;
 
     if (_isScopedMode && scopedContextAsync != null) {
       final scopedValue = scopedContextAsync.valueOrNull;
@@ -622,13 +648,36 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           onPressed: () => _handleBack(context),
           icon: const BackButtonIcon(),
         ),
-        title: Text(currentTitle),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(currentTitle),
+            if (projection?.effectiveKey != null)
+              Text(
+                '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
         actions: [
+          if (hasRecoverableWarnings)
+            IconButton(
+              tooltip: AppStrings.songReaderWarningsSemantics,
+              icon: const Icon(Icons.warning_amber_outlined),
+              onPressed: () =>
+                  _showWarningsDialog(context, recoverableWarningCount),
+            ),
           if (readerResult != null)
             PopupMenuButton<_SongReaderOverflowAction>(
               icon: const Icon(Icons.more_horiz),
               onSelected: (action) {
                 switch (action) {
+                  case _SongReaderOverflowAction.toggleViewMode:
+                    _toggleViewMode();
+                    break;
                   case _SongReaderOverflowAction.guitarView:
                     _setInstrumentDisplayMode(
                       SongReaderInstrumentDisplayMode.guitar,
@@ -648,6 +697,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 }
               },
               itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.toggleViewMode,
+                  child: Text(
+                    readerState.viewMode == SongReaderViewMode.chordsAndLyrics
+                        ? AppStrings.songReaderLyricsOnlyAction
+                        : AppStrings.songReaderChordsAndLyricsAction,
+                  ),
+                ),
+                const PopupMenuDivider(),
                 PopupMenuItem(
                   value: _SongReaderOverflowAction.guitarView,
                   child: Text(AppStrings.songReaderGuitarViewAction),
