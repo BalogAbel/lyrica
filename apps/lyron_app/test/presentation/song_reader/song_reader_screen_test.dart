@@ -28,8 +28,8 @@ import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
@@ -391,7 +391,7 @@ void main() {
 
       expect(find.byType(SongReaderBottomContextBar), findsNothing);
       expect(find.byType(SongReaderTitleBar), findsNothing);
-      expect(find.byType(SongReaderCompactOverlay), findsOneWidget);
+      expect(find.byType(SongReaderControlBar), findsNothing);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
       expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
       expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
@@ -448,7 +448,7 @@ void main() {
       greaterThan(960),
     );
     expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
-    expect(find.byType(SongReaderCompactOverlay), findsNothing);
+    expect(find.byType(SongReaderControlBar), findsNothing);
     expect(find.byType(SongReaderBottomContextBar), findsNothing);
     expect(find.text('Lyrics only'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);

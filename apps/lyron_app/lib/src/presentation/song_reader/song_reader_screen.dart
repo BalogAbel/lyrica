@@ -884,7 +884,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 contentColumnCount: layout.contentColumnCount,
                                 showBottomContextBar:
                                     showCompactBottomContextBar,
-                                onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
                                 onCapoDown: projection.effectiveCapo > 0
