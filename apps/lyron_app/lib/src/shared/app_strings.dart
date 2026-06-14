@@ -95,6 +95,12 @@ class AppStrings {
   static const songReaderCapoDirectivePrefix = 'Capo ';
   static const songReaderShowControlsSemantics = 'Show reader controls';
   static const songReaderHideControlsSemantics = 'Hide reader controls';
+  static const songReaderTransposeDownSemantics = 'Transpose down';
+  static const songReaderTransposeUpSemantics = 'Transpose up';
+  static const songReaderCapoDownSemantics = 'Capo down';
+  static const songReaderCapoUpSemantics = 'Capo up';
+  static const songReaderDecreaseFontSemantics = 'Decrease text size';
+  static const songReaderIncreaseFontSemantics = 'Increase text size';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
       'This session-scoped reader route is unavailable.';
