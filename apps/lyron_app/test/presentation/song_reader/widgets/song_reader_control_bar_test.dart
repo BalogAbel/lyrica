@@ -26,7 +26,10 @@ void main() {
     await tester.pumpWidget(
       _host(
         SongReaderControlBar(
-          projection: SongReaderProjection(song: _song(), state: SongReaderState()),
+          projection: SongReaderProjection(
+            song: _song(),
+            state: SongReaderState(),
+          ),
           onTransposeDown: () {},
           onTransposeUp: () {},
           onCapoDown: () {},
@@ -38,7 +41,10 @@ void main() {
     );
 
     expect(find.byKey(const Key('song-reader-transpose-down')), findsOneWidget);
-    expect(find.byKey(const Key('song-reader-transpose-value')), findsOneWidget);
+    expect(
+      find.byKey(const Key('song-reader-transpose-value')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-down')), findsOneWidget);
     expect(find.byKey(const Key('song-reader-capo-value')), findsOneWidget);
@@ -99,7 +105,10 @@ void main() {
     await tester.pumpWidget(
       _host(
         SongReaderControlBar(
-          projection: SongReaderProjection(song: _song(), state: SongReaderState()),
+          projection: SongReaderProjection(
+            song: _song(),
+            state: SongReaderState(),
+          ),
           onTransposeDown: () {},
           onTransposeUp: () => transposeUp += 1,
           onCapoDown: () {},

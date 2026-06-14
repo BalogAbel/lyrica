@@ -1,7 +1,7 @@
 # Song Reader Immersive Controls
 
 Date: 2026-06-14
-Status: Draft
+Status: Accepted
 
 ## Problem
 

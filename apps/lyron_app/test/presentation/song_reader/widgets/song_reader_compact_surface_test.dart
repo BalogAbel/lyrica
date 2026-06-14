@@ -82,7 +82,9 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: buildSurface(areControlsVisible: false))),
+      MaterialApp(
+        home: Scaffold(body: buildSurface(areControlsVisible: false)),
+      ),
     );
     expect(find.byType(SongReaderControlBar), findsNothing);
 

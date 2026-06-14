@@ -42,7 +42,13 @@ final readerUserIdProvider = Provider<String?>((ref) {
   }
 });
 
-enum _SongReaderOverflowAction { toggleViewMode, guitarView, pianoView, edit, delete }
+enum _SongReaderOverflowAction {
+  toggleViewMode,
+  guitarView,
+  pianoView,
+  edit,
+  delete,
+}
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({

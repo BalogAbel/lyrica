@@ -73,7 +73,8 @@ class SongReaderControlBar extends StatelessWidget {
                       ),
                       _ValueChip(
                         key: const Key('song-reader-capo-value'),
-                        value: '${AppStrings.songReaderCapoDirectivePrefix}'
+                        value:
+                            '${AppStrings.songReaderCapoDirectivePrefix}'
                             '${projection.effectiveCapo}',
                       ),
                       IconButton(

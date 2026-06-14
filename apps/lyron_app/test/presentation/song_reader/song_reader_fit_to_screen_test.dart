@@ -167,7 +167,7 @@ void main() {
                   hasRecoverableWarnings: false,
                   warningCount: 0,
                   contentColumnCount: 1,
-          
+
                   onTransposeDown: () {},
                   onTransposeUp: () {},
                   onDecreaseFontScale: () {},
