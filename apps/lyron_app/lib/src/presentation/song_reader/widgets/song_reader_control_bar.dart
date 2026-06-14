@@ -34,6 +34,7 @@ class SongReaderControlBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: SafeArea(
         top: false,
+        bottom: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: SingleChildScrollView(
