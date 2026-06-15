@@ -14,33 +14,36 @@ void main() {
   );
 
   group('resolveSessionItemBySongSlug', () {
-    test('matches against the canonical library slug when plan detail lacks it', () {
-      // Offline plan detail: the cached song has no slug, so SongSummary falls
-      // back to the song id. Neighbor navigation builds the URL from the
-      // library's canonical slug, so the resolver must canonicalize too.
-      final session = sessionWith(const [
-        SessionItemSummary(
-          id: 'item-1',
-          position: 10,
-          song: SongSummary(id: 'song-1', title: 'A forrásnál'),
-        ),
-      ]);
-      final songsById = {
-        'song-1': const SongSummary(
-          id: 'song-1',
-          slug: 'a-forrasnal',
-          title: 'A forrásnál',
-        ),
-      };
+    test(
+      'matches against the canonical library slug when plan detail lacks it',
+      () {
+        // Offline plan detail: the cached song has no slug, so SongSummary falls
+        // back to the song id. Neighbor navigation builds the URL from the
+        // library's canonical slug, so the resolver must canonicalize too.
+        final session = sessionWith(const [
+          SessionItemSummary(
+            id: 'item-1',
+            position: 10,
+            song: SongSummary(id: 'song-1', title: 'A forrásnál'),
+          ),
+        ]);
+        final songsById = {
+          'song-1': const SongSummary(
+            id: 'song-1',
+            slug: 'a-forrasnal',
+            title: 'A forrásnál',
+          ),
+        };
 
-      final item = resolveSessionItemBySongSlug(
-        session: session,
-        songSlug: 'a-forrasnal',
-        songsById: songsById,
-      );
+        final item = resolveSessionItemBySongSlug(
+          session: session,
+          songSlug: 'a-forrasnal',
+          songsById: songsById,
+        );
 
-      expect(item?.id, 'item-1');
-    });
+        expect(item?.id, 'item-1');
+      },
+    );
 
     test('matches against the song id (legacy/initial url form)', () {
       final session = sessionWith(const [
