@@ -584,8 +584,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   Future<void> _showWarningsDialog(BuildContext context, int count) {
     final message = count == 1
-        ? '1 recoverable warning while reading this song.'
-        : '$count recoverable warnings while reading this song.';
+        ? AppStrings.songReaderWarningSingular
+        : AppStrings.songReaderWarningPlural(count);
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(

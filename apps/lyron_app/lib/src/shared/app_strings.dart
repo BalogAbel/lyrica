@@ -103,6 +103,10 @@ class AppStrings {
   static const songReaderKeyLabelPrefix = 'Key: ';
   static const songReaderWarningDialogTitle = 'Reading warnings';
   static const songReaderWarningsSemantics = 'Show reading warnings';
+  static const songReaderWarningSingular =
+      '1 recoverable warning while reading this song.';
+  static String songReaderWarningPlural(int count) =>
+      '$count recoverable warnings while reading this song.';
   static const songReaderCloseAction = 'Close';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
