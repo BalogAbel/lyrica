@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 const _sectionSpacing = 16.0;
-const _warningSpacing = 14.0;
 const _controlSpacing = 12.0;
 const _chipHorizontalPadding = 12.0;
 const _chipVerticalPadding = 8.0;
@@ -14,9 +12,6 @@ class SongReaderHeader extends StatelessWidget {
   const SongReaderHeader({
     super.key,
     required this.projection,
-    required this.hasRecoverableWarnings,
-    required this.warningCount,
-    required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
     this.onCapoDown,
@@ -26,9 +21,6 @@ class SongReaderHeader extends StatelessWidget {
   });
 
   final SongReaderProjection projection;
-  final bool hasRecoverableWarnings;
-  final int warningCount;
-  final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
   final VoidCallback? onCapoDown;
@@ -48,28 +40,6 @@ class SongReaderHeader extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (projection.sourceKey != null) ...[
-              _MetadataChip(label: 'Key', value: projection.sourceKey!),
-            ],
-            if (hasRecoverableWarnings) ...[
-              const SizedBox(height: _warningSpacing),
-              _WarningSurface(warningCount: warningCount),
-            ],
-            const SizedBox(height: _sectionSpacing),
-            _ControlSection(
-              label: AppStrings.songReaderViewSectionLabel,
-              child: Wrap(
-                spacing: _controlSpacing,
-                runSpacing: _controlSpacing,
-                children: [
-                  OutlinedButton(
-                    onPressed: onToggleViewMode,
-                    child: Text(_viewModeLabel(projection.viewMode)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: _sectionSpacing),
             _ControlSection(
               label: AppStrings.songReaderTransposeSectionLabel,
               child: Wrap(
@@ -145,43 +115,8 @@ class SongReaderHeader extends StatelessWidget {
     );
   }
 
-  String _viewModeLabel(SongReaderViewMode viewMode) {
-    switch (viewMode) {
-      case SongReaderViewMode.chordsAndLyrics:
-        return AppStrings.songReaderLyricsOnlyAction;
-      case SongReaderViewMode.lyricsOnly:
-        return AppStrings.songReaderChordsAndLyricsAction;
-    }
-  }
-
   String _signed(int value) {
     return value > 0 ? '+$value' : '$value';
-  }
-}
-
-class _MetadataChip extends StatelessWidget {
-  const _MetadataChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: _chipHorizontalPadding,
-          vertical: _chipVerticalPadding,
-        ),
-        child: Text('$label: $value', style: theme.textTheme.labelLarge),
-      ),
-    );
   }
 }
 
@@ -233,47 +168,6 @@ class _ControlSection extends StatelessWidget {
         const SizedBox(height: _labelValueGap),
         child,
       ],
-    );
-  }
-}
-
-class _WarningSurface extends StatelessWidget {
-  const _WarningSurface({required this.warningCount});
-
-  final int warningCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.32),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.tertiaryContainer),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(
-              Icons.warning_amber_outlined,
-              color: theme.colorScheme.onTertiaryContainer,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                warningCount == 1
-                    ? '1 recoverable warning while reading this song.'
-                    : '$warningCount recoverable warnings while reading this song.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onTertiaryContainer,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -5,7 +5,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_overlay.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -20,7 +20,6 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.hasRecoverableWarnings,
     required this.warningCount,
     required this.contentColumnCount,
-    required this.onToggleViewMode,
     required this.onTransposeDown,
     required this.onTransposeUp,
     this.onCapoDown,
@@ -50,7 +49,6 @@ class SongReaderCompactSurface extends StatefulWidget {
   final int warningCount;
   final int contentColumnCount;
   final bool showBottomContextBar;
-  final VoidCallback onToggleViewMode;
   final VoidCallback onTransposeDown;
   final VoidCallback onTransposeUp;
   final VoidCallback? onCapoDown;
@@ -329,6 +327,18 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                           },
                         ),
                       ),
+                      if (widget.areControlsVisible) ...[
+                        const SizedBox(height: 12),
+                        SongReaderControlBar(
+                          projection: widget.projection,
+                          onTransposeDown: widget.onTransposeDown,
+                          onTransposeUp: widget.onTransposeUp,
+                          onCapoDown: widget.onCapoDown,
+                          onCapoUp: widget.onCapoUp,
+                          onDecreaseFontScale: widget.onDecreaseFontScale,
+                          onIncreaseFontScale: widget.onIncreaseFontScale,
+                        ),
+                      ],
                       if (widget.showBottomContextBar) ...[
                         const SizedBox(height: 16),
                         SongReaderBottomContextBar(
@@ -340,19 +350,6 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                         ),
                       ],
                     ],
-                  ),
-                  SongReaderCompactOverlay(
-                    isVisible: widget.areControlsVisible,
-                    projection: widget.projection,
-                    hasRecoverableWarnings: widget.hasRecoverableWarnings,
-                    warningCount: widget.warningCount,
-                    onToggleViewMode: widget.onToggleViewMode,
-                    onTransposeDown: widget.onTransposeDown,
-                    onTransposeUp: widget.onTransposeUp,
-                    onCapoDown: widget.onCapoDown,
-                    onCapoUp: widget.onCapoUp,
-                    onDecreaseFontScale: widget.onDecreaseFontScale,
-                    onIncreaseFontScale: widget.onIncreaseFontScale,
                   ),
                 ],
               ),

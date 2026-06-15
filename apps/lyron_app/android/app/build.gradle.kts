@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val keyProps = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -19,8 +26,18 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keyProps["keyAlias"] as String? ?: System.getenv("ANDROID_KEY_ALIAS") ?: ""
+            keyPassword = keyProps["keyPassword"] as String? ?: System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+            storeFile = (keyProps["storeFile"] as String? ?: System.getenv("ANDROID_KEYSTORE_PATH"))
+                ?.let { file(it) }
+            storePassword = keyProps["storePassword"] as String? ?: System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+        }
+    }
+
     defaultConfig {
-        applicationId = "com.lyron.lyron_app"
+        applicationId = "io.lyron.chords"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -29,7 +46,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

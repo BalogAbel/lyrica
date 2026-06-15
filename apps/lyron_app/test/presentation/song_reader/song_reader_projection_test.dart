@@ -177,4 +177,49 @@ void main() {
       'B',
     );
   });
+
+  test('effective key follows the displayed-chord path in guitar mode', () {
+    // sourceKey G, baseTranspose 2, baseCapo 2, guitar:
+    // sounding = G + 2 = A, then - capo(2) = G.
+    final projection = SongReaderProjection(
+      song: _buildParsedSong(),
+      state: SongReaderState(),
+    );
+
+    expect(projection.effectiveKey, 'G');
+  });
+
+  test('effective key omits the capo offset in piano mode', () {
+    // sounding = G + 2 = A; piano keeps the sounding key.
+    final projection = SongReaderProjection(
+      song: _buildParsedSong(),
+      state: SongReaderState(
+        instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
+      ),
+    );
+
+    expect(projection.effectiveKey, 'A');
+  });
+
+  test('effective key tracks transpose offset', () {
+    final projection = SongReaderProjection(
+      song: _buildParsedSong(),
+      state: SongReaderState(transposeOffset: 1),
+    );
+
+    expect(projection.effectiveKey, 'G#');
+  });
+
+  test('effective key is null when the song has no source key', () {
+    final projection = SongReaderProjection(
+      song: ParsedSong(
+        title: 'No key',
+        sections: const [],
+        diagnostics: const [],
+      ),
+      state: SongReaderState(),
+    );
+
+    expect(projection.effectiveKey, isNull);
+  });
 }

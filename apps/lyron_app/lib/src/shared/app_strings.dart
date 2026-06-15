@@ -84,7 +84,6 @@ class AppStrings {
   static const songReaderTitle = 'Song reader';
   static const routeNotFoundMessage = 'The requested page was not found.';
   static const songReaderBackAction = 'Back to song list';
-  static const songReaderViewSectionLabel = 'View';
   static const songReaderTransposeSectionLabel = 'Transpose';
   static const songReaderCapoSectionLabel = 'Capo';
   static const songReaderScaleSectionLabel = 'Scale';
@@ -95,6 +94,20 @@ class AppStrings {
   static const songReaderCapoDirectivePrefix = 'Capo ';
   static const songReaderShowControlsSemantics = 'Show reader controls';
   static const songReaderHideControlsSemantics = 'Hide reader controls';
+  static const songReaderTransposeDownSemantics = 'Transpose down';
+  static const songReaderTransposeUpSemantics = 'Transpose up';
+  static const songReaderCapoDownSemantics = 'Capo down';
+  static const songReaderCapoUpSemantics = 'Capo up';
+  static const songReaderDecreaseFontSemantics = 'Decrease text size';
+  static const songReaderIncreaseFontSemantics = 'Increase text size';
+  static const songReaderKeyLabelPrefix = 'Key: ';
+  static const songReaderWarningDialogTitle = 'Reading warnings';
+  static const songReaderWarningsSemantics = 'Show reading warnings';
+  static const songReaderWarningSingular =
+      '1 recoverable warning while reading this song.';
+  static String songReaderWarningPlural(int count) =>
+      '$count recoverable warnings while reading this song.';
+  static const songReaderCloseAction = 'Close';
   static const planDetailUnavailableMessage = 'This plan is unavailable.';
   static const scopedReaderRouteUnavailableMessage =
       'This session-scoped reader route is unavailable.';

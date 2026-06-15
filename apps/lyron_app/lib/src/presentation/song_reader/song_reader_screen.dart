@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -41,7 +42,13 @@ final readerUserIdProvider = Provider<String?>((ref) {
   }
 });
 
-enum _SongReaderOverflowAction { guitarView, pianoView, edit, delete }
+enum _SongReaderOverflowAction {
+  toggleViewMode,
+  guitarView,
+  pianoView,
+  edit,
+  delete,
+}
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -66,10 +73,8 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentWidth = 960.0;
   static const _contentPadding = EdgeInsets.all(24);
-  static const _compactOverlayInactivity = Duration(seconds: 3);
 
   late final SongReaderController _controller = SongReaderController();
-  Timer? _compactOverlayHideTimer;
   Timer? _persistZoomTimer;
   bool _seededZoom = false;
 
@@ -85,6 +90,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     super.initState();
     _syncScopedRuntimeState();
     _seedZoomFromStorage();
+    // A sibling reader's `dispose` (scoped song-to-song navigation via
+    // `context.replace`) resets the global system UI to edgeToEdge. Re-apply
+    // immersive mode here so a freshly opened reader honors the persisted
+    // control visibility instead of dropping out of immersive silently.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncImmersiveToControls();
+    });
   }
 
   @override
@@ -99,8 +111,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   @override
   void dispose() {
-    _compactOverlayHideTimer?.cancel();
     _persistZoomTimer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -186,12 +198,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .toggleViewMode();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.toggleViewMode());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeDown() {
@@ -199,12 +209,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeDown();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeDown());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _transposeUp() {
@@ -212,12 +220,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .transposeUp();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.transposeUp());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _capoDown() {
@@ -225,12 +231,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .capoDown();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.capoDown());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _capoUp() {
@@ -238,12 +242,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .capoUp();
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.capoUp());
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
@@ -251,12 +253,10 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
           .setInstrumentDisplayMode(mode);
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) => controller.setInstrumentDisplayMode(mode));
-    _bumpCompactOverlayInactivityIfVisible();
   }
 
   void _adjustSharedFontScale(double delta) {
@@ -267,7 +267,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       runtimeController.setSharedFontScale(
         runtimeController.state.readerState.sharedFontScale + delta,
       );
-      _bumpCompactOverlayInactivityIfVisible();
       _persistFontScale();
       return;
     }
@@ -275,7 +274,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     _updateState((controller) {
       controller.setSharedFontScale(controller.state.sharedFontScale + delta);
     });
-    _bumpCompactOverlayInactivityIfVisible();
     _persistFontScale();
   }
 
@@ -285,14 +283,51 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         sessionScopedReaderRuntimeControllerProvider(_sessionKey),
       );
       runtimeController.setSharedFontScale(scale);
-      _bumpCompactOverlayInactivityIfVisible();
       return;
     }
 
     _updateState((controller) {
       controller.setSharedFontScale(scale);
     });
-    _bumpCompactOverlayInactivityIfVisible();
+  }
+
+  /// Reads whether the compact controls are currently visible from the active
+  /// state source (scoped runtime controller or local controller).
+  bool get _areControlsVisible {
+    if (_isScopedMode) {
+      return ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .state
+          .readerState
+          .areCompactControlsVisible;
+    }
+    return _controller.state.areCompactControlsVisible;
+  }
+
+  /// Last immersive value pushed to [SystemChrome]. Guards against redundant
+  /// platform channel calls and lets us detect when the global state has drifted
+  /// out of sync with this screen (e.g. after a `dispose` from a sibling screen
+  /// or returning from a pushed route).
+  bool? _lastAppliedImmersive;
+
+  void _applyImmersiveMode(bool active) {
+    if (_lastAppliedImmersive == active) {
+      return;
+    }
+    _lastAppliedImmersive = active;
+    SystemChrome.setEnabledSystemUIMode(
+      active ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    );
+  }
+
+  /// Re-applies immersive mode to match the current control visibility. Used on
+  /// open and when this screen regains focus after a sibling screen's `dispose`
+  /// or a pushed route's pop reset the global system UI state.
+  void _syncImmersiveToControls() {
+    if (!mounted) {
+      return;
+    }
+    _applyImmersiveMode(_areControlsVisible);
   }
 
   void _toggleCompactControls() {
@@ -301,62 +336,18 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         sessionScopedReaderRuntimeControllerProvider(_sessionKey),
       );
       runtimeController.toggleCompactControls();
-      _handleCompactOverlayVisibilityChanged(
+      _applyImmersiveMode(
         runtimeController.state.readerState.areCompactControlsVisible,
       );
       return;
     }
 
     _updateState((controller) => controller.toggleCompactControls());
-    _handleCompactOverlayVisibilityChanged(
-      _controller.state.areCompactControlsVisible,
-    );
-  }
-
-  void _handleCompactOverlayVisibilityChanged(bool isVisible) {
-    _compactOverlayHideTimer?.cancel();
-    if (!isVisible) {
-      return;
-    }
-
-    _compactOverlayHideTimer = Timer(_compactOverlayInactivity, () {
-      if (!mounted) {
-        return;
-      }
-
-      if (_isScopedMode) {
-        final runtimeController = ref.read(
-          sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-        );
-        if (runtimeController.state.readerState.areCompactControlsVisible) {
-          runtimeController.hideCompactControls();
-        }
-        return;
-      }
-
-      if (_controller.state.areCompactControlsVisible) {
-        setState(() {
-          _controller.hideCompactControls();
-        });
-      }
-    });
-  }
-
-  void _bumpCompactOverlayInactivityIfVisible() {
-    final isVisible = _isScopedMode
-        ? ref
-              .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-              .state
-              .readerState
-              .areCompactControlsVisible
-        : _controller.state.areCompactControlsVisible;
-    if (!isVisible) {
-      return;
-    }
-    _handleCompactOverlayVisibilityChanged(true);
+    _applyImmersiveMode(_controller.state.areCompactControlsVisible);
   }
 
   void _handleBack(BuildContext context) {
+    _applyImmersiveMode(false);
     if (context.canPop()) {
       context.pop();
       return;
@@ -523,7 +514,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
-    context.push(AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug));
+    // Capture control visibility before the async gap so we can restore the
+    // immersive state on return. The editor is pushed (not replaced), so this
+    // screen is not disposed and must restore the system UI itself.
+    final wasImmersive = _areControlsVisible;
+    _applyImmersiveMode(false);
+    await context.push(
+      AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug),
+    );
+    if (context.mounted) {
+      _applyImmersiveMode(wasImmersive);
+    }
   }
 
   Future<void> _deleteSong(BuildContext context) async {
@@ -575,6 +576,25 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text(AppStrings.songCancelAction),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showWarningsDialog(BuildContext context, int count) {
+    final message = count == 1
+        ? AppStrings.songReaderWarningSingular
+        : AppStrings.songReaderWarningPlural(count);
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.songReaderWarningDialogTitle),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(AppStrings.songReaderCloseAction),
           ),
         ],
       ),
@@ -644,6 +664,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
             scopedContext: resolvedScopedContext,
             projection: projection,
           );
+    final hasRecoverableWarnings =
+        readerResult?.hasRecoverableWarnings ?? false;
+    final recoverableWarningCount = readerResult == null
+        ? 0
+        : readerResult.song.diagnostics
+              .where((d) => d.severity == ParseDiagnosticSeverity.warning)
+              .length;
 
     if (_isScopedMode && scopedContextAsync != null) {
       final scopedValue = scopedContextAsync.valueOrNull;
@@ -678,13 +705,41 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           onPressed: () => _handleBack(context),
           icon: const BackButtonIcon(),
         ),
-        title: Text(currentTitle),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(currentTitle),
+            if (projection?.effectiveKey != null)
+              Builder(
+                builder: (context) {
+                  final theme = Theme.of(context);
+                  return Text(
+                    '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
         actions: [
+          if (hasRecoverableWarnings)
+            IconButton(
+              tooltip: AppStrings.songReaderWarningsSemantics,
+              icon: const Icon(Icons.warning_amber_outlined),
+              onPressed: () =>
+                  _showWarningsDialog(context, recoverableWarningCount),
+            ),
           if (readerResult != null)
             PopupMenuButton<_SongReaderOverflowAction>(
               icon: const Icon(Icons.more_horiz),
               onSelected: (action) {
                 switch (action) {
+                  case _SongReaderOverflowAction.toggleViewMode:
+                    _toggleViewMode();
+                    break;
                   case _SongReaderOverflowAction.guitarView:
                     _setInstrumentDisplayMode(
                       SongReaderInstrumentDisplayMode.guitar,
@@ -704,6 +759,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 }
               },
               itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _SongReaderOverflowAction.toggleViewMode,
+                  child: Text(
+                    readerState.viewMode == SongReaderViewMode.chordsAndLyrics
+                        ? AppStrings.songReaderLyricsOnlyAction
+                        : AppStrings.songReaderChordsAndLyricsAction,
+                  ),
+                ),
+                const PopupMenuDivider(),
                 PopupMenuItem(
                   value: _SongReaderOverflowAction.guitarView,
                   child: Text(AppStrings.songReaderGuitarViewAction),
@@ -839,11 +903,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 showContextPanel: showExpandedContextPanel,
                                 previousTitle: previousTitle,
                                 nextTitle: nextTitle,
-                                hasRecoverableWarnings:
-                                    result.hasRecoverableWarnings,
-                                warningCount: recoverableWarningCount,
                                 contentColumnCount: layout.contentColumnCount,
-                                onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
                                 onCapoDown: projection.effectiveCapo > 0
@@ -884,7 +944,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                                 contentColumnCount: layout.contentColumnCount,
                                 showBottomContextBar:
                                     showCompactBottomContextBar,
-                                onToggleViewMode: _toggleViewMode,
                                 onTransposeDown: _transposeDown,
                                 onTransposeUp: _transposeUp,
                                 onCapoDown: projection.effectiveCapo > 0
