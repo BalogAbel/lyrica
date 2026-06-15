@@ -307,6 +307,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   }
 
   void _handleBack(BuildContext context) {
+    _applyImmersiveMode(false);
     if (context.canPop()) {
       context.pop();
       return;
@@ -473,6 +474,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
+    _applyImmersiveMode(false);
     context.push(AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug));
   }
 
