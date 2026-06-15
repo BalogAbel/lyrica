@@ -90,6 +90,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     super.initState();
     _syncScopedRuntimeState();
     _seedZoomFromStorage();
+    // A sibling reader's `dispose` (scoped song-to-song navigation via
+    // `context.replace`) resets the global system UI to edgeToEdge. Re-apply
+    // immersive mode here so a freshly opened reader honors the persisted
+    // control visibility instead of dropping out of immersive silently.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncImmersiveToControls();
+    });
   }
 
   @override
@@ -284,10 +291,43 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     });
   }
 
+  /// Reads whether the compact controls are currently visible from the active
+  /// state source (scoped runtime controller or local controller).
+  bool get _areControlsVisible {
+    if (_isScopedMode) {
+      return ref
+          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+          .state
+          .readerState
+          .areCompactControlsVisible;
+    }
+    return _controller.state.areCompactControlsVisible;
+  }
+
+  /// Last immersive value pushed to [SystemChrome]. Guards against redundant
+  /// platform channel calls and lets us detect when the global state has drifted
+  /// out of sync with this screen (e.g. after a `dispose` from a sibling screen
+  /// or returning from a pushed route).
+  bool? _lastAppliedImmersive;
+
   void _applyImmersiveMode(bool active) {
+    if (_lastAppliedImmersive == active) {
+      return;
+    }
+    _lastAppliedImmersive = active;
     SystemChrome.setEnabledSystemUIMode(
       active ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
+  }
+
+  /// Re-applies immersive mode to match the current control visibility. Used on
+  /// open and when this screen regains focus after a sibling screen's `dispose`
+  /// or a pushed route's pop reset the global system UI state.
+  void _syncImmersiveToControls() {
+    if (!mounted) {
+      return;
+    }
+    _applyImmersiveMode(_areControlsVisible);
   }
 
   void _toggleCompactControls() {
@@ -474,8 +514,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       return;
     }
 
+    // Capture control visibility before the async gap so we can restore the
+    // immersive state on return. The editor is pushed (not replaced), so this
+    // screen is not disposed and must restore the system UI itself.
+    final wasImmersive = _areControlsVisible;
     _applyImmersiveMode(false);
-    context.push(AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug));
+    await context.push(
+      AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug),
+    );
+    if (context.mounted) {
+      _applyImmersiveMode(wasImmersive);
+    }
   }
 
   Future<void> _deleteSong(BuildContext context) async {

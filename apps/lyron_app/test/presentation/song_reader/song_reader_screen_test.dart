@@ -1819,6 +1819,63 @@ void main() {
     expect(modeCalls, contains('SystemUiMode.edgeToEdge'));
   });
 
+  testWidgets('restores immersive mode after returning from the song editor', (
+    tester,
+  ) async {
+    final modeCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+          modeCalls.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildRoutedApp(
+        result: buildResult(),
+        songLibraryService: SongLibraryService(
+          _ReaderFakeSongRepository(),
+          _ReaderFakeSongRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Enter immersive by revealing the controls.
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    await tester.pump();
+    expect(modeCalls, contains('SystemUiMode.immersiveSticky'));
+
+    // Open the editor: immersive must be disabled while pushed.
+    modeCalls.clear();
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songEditAction));
+    await tester.pumpAndSettle();
+    expect(find.byType(SongReaderScreen), findsNothing);
+    expect(modeCalls, contains('SystemUiMode.edgeToEdge'));
+
+    // Return from the editor: immersive must be restored since controls are
+    // still visible on the reader.
+    modeCalls.clear();
+    await tester.tap(find.byKey(const ValueKey('song-editor-back-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SongReaderScreen), findsOneWidget);
+    expect(modeCalls, contains('SystemUiMode.immersiveSticky'));
+
+    // Drain any persist-zoom debounce.
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
   testWidgets('tapping increase-font button persists zoom after debounce', (
     tester,
   ) async {
