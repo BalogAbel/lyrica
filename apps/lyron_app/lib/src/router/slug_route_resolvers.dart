@@ -3,12 +3,43 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
+import 'package:lyron_app/src/domain/planning/session_summary.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_providers.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+/// Resolves the session item whose song matches [songSlug].
+///
+/// Plan detail data does not always carry the canonical song slug: the offline
+/// store has no slug column, so cached session items fall back to the song id
+/// as their slug. The session-scoped reader canonicalizes neighbor songs
+/// against the song library before building navigation URLs, so neighbor links
+/// use the library slug (e.g. `a-forrasnal`) even when the cached plan detail
+/// only knows the song id. This matcher mirrors that canonicalization so the
+/// route resolves regardless of which slug form the URL carries.
+///
+/// Returns the first matching item, or `null` when nothing matches. When a
+/// session contains the same song more than once (e.g. a reprise), the URL
+/// cannot distinguish the occurrences, so the first one is resolved instead of
+/// failing the route.
+@visibleForTesting
+SessionItemSummary? resolveSessionItemBySongSlug({
+  required SessionSummary session,
+  required String songSlug,
+  required Map<String, SongSummary> songsById,
+}) {
+  return session.items.firstWhereOrNull((item) {
+    if (item.song.slug == songSlug || item.song.id == songSlug) {
+      return true;
+    }
+    return songsById[item.song.id]?.slug == songSlug;
+  });
+}
 
 class SongSlugRouteResolver extends ConsumerWidget {
   const SongSlugRouteResolver({super.key, required this.songSlug});
@@ -195,15 +226,20 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
           );
         }
 
-        final matchingItems = session.items
-            .where((candidate) => candidate.song.slug == songSlug)
-            .toList(growable: false);
-        if (matchingItems.length != 1) {
+        final songsById = {
+          for (final song in songsAsync.valueOrNull ?? const <SongSummary>[])
+            song.id: song,
+        };
+        final selectedItem = resolveSessionItemBySongSlug(
+          session: session,
+          songSlug: songSlug,
+          songsById: songsById,
+        );
+        if (selectedItem == null) {
           return const _RouteStateScaffold(
             message: AppStrings.routeNotFoundMessage,
           );
         }
-        final selectedItem = matchingItems.single;
 
         return SongReaderScreen(
           songId: selectedItem.song.id,
