@@ -23,26 +23,22 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 /// only knows the song id. This matcher mirrors that canonicalization so the
 /// route resolves regardless of which slug form the URL carries.
 ///
-/// Returns the single matching item, or `null` when there is no unambiguous
-/// match.
+/// Returns the first matching item, or `null` when nothing matches. When a
+/// session contains the same song more than once (e.g. a reprise), the URL
+/// cannot distinguish the occurrences, so the first one is resolved instead of
+/// failing the route.
 @visibleForTesting
 SessionItemSummary? resolveSessionItemBySongSlug({
   required SessionSummary session,
   required String songSlug,
   required Map<String, SongSummary> songsById,
 }) {
-  final matches = session.items
-      .where((item) {
-        if (item.song.slug == songSlug || item.song.id == songSlug) {
-          return true;
-        }
-        return songsById[item.song.id]?.slug == songSlug;
-      })
-      .toList(growable: false);
-  if (matches.length != 1) {
-    return null;
-  }
-  return matches.single;
+  return session.items.firstWhereOrNull((item) {
+    if (item.song.slug == songSlug || item.song.id == songSlug) {
+      return true;
+    }
+    return songsById[item.song.id]?.slug == songSlug;
+  });
 }
 
 class SongSlugRouteResolver extends ConsumerWidget {

@@ -103,7 +103,7 @@ void main() {
       expect(item, isNull);
     });
 
-    test('returns null when the match is ambiguous', () {
+    test('resolves the first item when the match is ambiguous', () {
       final session = sessionWith(const [
         SessionItemSummary(
           id: 'item-1',
@@ -136,7 +136,7 @@ void main() {
         songsById: songsById,
       );
 
-      expect(item, isNull);
+      expect(item?.id, 'item-1');
     });
   });
 }
