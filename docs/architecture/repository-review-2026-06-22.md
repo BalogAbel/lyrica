@@ -62,6 +62,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | SEC-1 | Security | `redeem_invitation` token is bearer-only, no email binding, no rate limit | High |
 | UX-1 | UI/UX | Mobile reader wraps lyric lines mid-word, breaking chord alignment | High |
 | UX-2 | UI/UX | Plan date edited as raw ISO-8601 text field (no picker) | High |
+| UX-8 | UI/UX | Failed local edits silently revert in the main UI (same mechanism as LF-4) | High |
 | ARCH-1 | Architecture | `providers.dart` god-file (762 lines) incl. 110-line inline reconcile switch | High |
 | SEC-4 | Security | Song shadow fields client-authoritative, not backend-derived from ChordPro | Medium |
 | SEC-5 | Security | No DB `unique(session_id, song_id)`; "song once per session" only RPC-enforced | Medium |
@@ -80,7 +81,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | SEC-2 | Security | `create_invitation` null-caller admin gate relies on grant scope only | Low |
 | SEC-3 | Security | `has_capability`/`current_organization_ids`/`get_my_capabilities` lack `set search_path` | Low |
 | LF-9 | Local-first | Slug-by-slug lookup re-merges all mutations (N+1 reads) | Low |
-| LF-T5..T9 | Local-first | OCC divergence grows with offline time; clock skew; schema drift; server TTL cleanup | Low–Med |
+| LF-T5..T8 | Local-first | OCC divergence grows with offline time; clock skew; schema drift; server TTL cleanup | Low–Med |
 | ARCH-4 | Architecture | Melos monorepo overhead for a single package | Low |
 | ARCH-5 | Architecture | Active-organization resolution spread across providers (high implicit coupling) | Medium |
 | UX-5 | UI/UX | Internal gap positions ("10.", "20.") shown to user | Low |
