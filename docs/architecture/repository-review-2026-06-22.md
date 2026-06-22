@@ -188,7 +188,7 @@ lifecycle**.
 
 | ID | Problem | Evidence | Why time-bound | Needed for "indefinite" |
 |----|---------|----------|----------------|-------------------------|
-| **LF-T1** | Session expiry **wipes** authenticated local data (catalog + planning), even with no sign-out and possibly still offline | `application/auth/app_auth_controller.dart:75-78`; `application/planning/planning_sync_controller.dart:255-276`; `application/song_library/song_catalog_controller.dart:322`; cleanup `providers.dart:85,104` | Expiry == data wipe | Make expiry **non-destructive**: durable local "last-known membership proof"; on expiry show a re-auth banner + gate writes, keep data. Only explicit sign-out wipes. |
+| **LF-T1** | Session expiry **wipes** authenticated local data (catalog + planning), even with no sign-out and possibly still offline | `application/auth/app_auth_controller.dart:75-78`; `application/planning/planning_sync_controller.dart:255-276`; `application/song_library/song_catalog_controller.dart:322`; cleanup `providers.dart:85,104` | Expiry == data wipe | Make expiry **non-destructive**: durable local "last-known membership proof"; on expiry show a re-auth banner + gate writes, keep data. Distinguish two cases: **unknown / connectivity-failed** session (offline or transient) stays non-destructive, while **authoritative revocation** (verified-empty membership, already handled by `verifiedEmptyMembershipCleanup`) and **explicit sign-out** delete local data **immediately** — do not quarantine or soft-delete revoked data, to avoid hidden-read rules, unblock semantics, and extra mutation-state handling. |
 | **LF-T2** | No offline token refresh; gotrue emits null session when refresh token can't renew → triggers LF-T1 | `infrastructure/auth/supabase_auth_repository.dart:20` (`onAuthStateChange`) | Refresh-token TTL is the hard wall | Longer/rotating refresh token + decouple local access from live session validity (covered by LF-T1) |
 | **LF-T3** | Mutation store grows unbounded over long offline; compaction only helps collection edits | `application/planning/drift_planning_mutation_store.dart` (compaction); no size cap | Not time-keyed, but unbounded growth | Mutation size budget + squash + threshold warning |
 | **LF-T4** | No storage quota / eviction; full catalog snapshot + projection + mutations can exceed web IndexedDB quota → **silent browser eviction** | `architecture.md` Offline Strategy ("one active snapshot") | Finite storage | Size monitor + eviction policy (mutations protected, snapshot pieces droppable) |
@@ -284,7 +284,12 @@ screen-reader pass is still outstanding.
 and migration-lint CI gates, mandatory persistence stubbing, `context.mounted` discipline,
 0 TODO/FIXME. **Gaps**: no accessibility/contrast tests; no live offline/conflict e2e; no
 screen-reader pass; no mutation-preservation-across-migration test (LF-T7); no reader
-fit-layout performance regression test.
+fit-layout performance regression test. A fit-layout regression test must also assert
+**estimate/render consistency**: the fit-to-screen calculator and the render grid must
+receive the **same padding-adjusted dimensions** (resolved content padding subtracted),
+and the height-estimation logic must **mirror the actual render logic exactly** (including
+conditional checks such as string trimming and collapsing empty elements), or the estimated
+fit and the rendered output drift apart.
 
 ## 11. Open / Untested Areas (next slices)
 
@@ -306,7 +311,10 @@ fit-layout performance regression test.
 7. **Screen-reader pass** (VoiceOver/TalkBack on the CanvasKit surface).
 
 **Team-known deferred items** (`docs/deferred/`): popup-row recovery `WidgetRef` lifetime
-(stale UI if popup closed mid-op), planning reorder optimistic-overlay cleanup, and
+(stale UI if popup closed mid-op — fix by delegating recovery actions to a long-lived
+controller with `ProviderRef` so invalidations/refreshes fire regardless of popup mount
+state, rather than relying on the transient `WidgetRef`/`context.mounted`), planning
+reorder optimistic-overlay cleanup, and
 SEC-4 (song shadow fields). Per `docs/deferred/README.md`, these become priority work
 when a slice re-enters their area.
 
