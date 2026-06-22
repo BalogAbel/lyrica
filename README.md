@@ -52,6 +52,7 @@ This repository is the canonical source of truth for:
 - [FreeShow integration boundary](docs/integrations/freeshow.md)
 - [Specs](docs/specs/) — implementation history
 - [Plans](docs/plans/) — implementation history
+- [Repository deep-dive review (2026-06-22)](docs/architecture/repository-review-2026-06-22.md) — consolidated architecture, security, local-first, and UI/UX findings
 
 ## Development Workflow
 

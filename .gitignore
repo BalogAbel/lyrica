@@ -31,3 +31,10 @@ apps/lyron_app/ios/Flutter/Generated.xcconfig
 apps/lyron_app/ios/Flutter/flutter_export_environment.sh
 apps/lyron_app/macos/Flutter/GeneratedPluginRegistrant.swift
 GAGy/
+
+# Graphify: commit report artifacts (graph.json, graph.html, manifest.json,
+# GRAPH_REPORT.md, labels); ignore local-only, regenerable, and machine-specific files
+graphify-out/cost.json
+graphify-out/cache/
+graphify-out/.graphify_root
+graphify-out/.graphify_python
