@@ -42,11 +42,7 @@ void main() {
 
   test('clear removes the identity', () async {
     await store.write(
-      const LastKnownIdentity(
-        userId: 'u1',
-        email: 'e@x',
-        organizationId: null,
-      ),
+      const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
     );
 
     await store.clear();

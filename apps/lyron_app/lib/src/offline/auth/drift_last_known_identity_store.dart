@@ -33,27 +33,29 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
 
   @override
   Future<void> write(LastKnownIdentity identity) async {
-    await _database.into(_database.lastKnownIdentityRows).insertOnConflictUpdate(
-      LastKnownIdentityRowsCompanion.insert(
-        rowId: const Value(1),
-        userId: identity.userId,
-        email: identity.email,
-        organizationId: Value(identity.organizationId),
-        updatedAt: Value(identity.updatedAt?.toUtc()),
-      ),
-    );
+    await _database
+        .into(_database.lastKnownIdentityRows)
+        .insertOnConflictUpdate(
+          LastKnownIdentityRowsCompanion.insert(
+            rowId: const Value(1),
+            userId: identity.userId,
+            email: identity.email,
+            organizationId: Value(identity.organizationId),
+            updatedAt: Value(identity.updatedAt?.toUtc()),
+          ),
+        );
   }
 
   @override
   Future<void> clear() async {
-    await (_database.delete(_database.lastKnownIdentityRows)
-          ..where((table) => table.rowId.equals(1)))
-        .go();
+    await (_database.delete(
+      _database.lastKnownIdentityRows,
+    )..where((table) => table.rowId.equals(1))).go();
   }
 
   Future<LastKnownIdentityRow?> _readRow() {
-    return (_database.select(_database.lastKnownIdentityRows)
-          ..where((table) => table.rowId.equals(1)))
-        .getSingleOrNull();
+    return (_database.select(
+      _database.lastKnownIdentityRows,
+    )..where((table) => table.rowId.equals(1))).getSingleOrNull();
   }
 }

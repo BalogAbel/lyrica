@@ -5,11 +5,7 @@ import 'last_known_identity_tables.dart';
 
 part 'last_known_identity_database.g.dart';
 
-@DriftDatabase(
-  tables: [
-    LastKnownIdentityRows,
-  ],
-)
+@DriftDatabase(tables: [LastKnownIdentityRows])
 class LastKnownIdentityDatabase extends _$LastKnownIdentityDatabase {
   LastKnownIdentityDatabase._(super.connection);
 
@@ -28,9 +24,8 @@ class LastKnownIdentityDatabase extends _$LastKnownIdentityDatabase {
   }
 
   @override
-  MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) async => m.createAll(),
-  );
+  MigrationStrategy get migration =>
+      MigrationStrategy(onCreate: (m) async => m.createAll());
 
   @override
   int get schemaVersion => 1;

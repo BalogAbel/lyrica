@@ -8,7 +8,9 @@ import 'package:path_provider/path_provider.dart';
 QueryExecutor openLastKnownIdentityConnection() {
   return LazyDatabase(() async {
     final directory = await getApplicationDocumentsDirectory();
-    final file = File(p.join(directory.path, 'lyron_last_known_identity.sqlite'));
+    final file = File(
+      p.join(directory.path, 'lyron_last_known_identity.sqlite'),
+    );
     return NativeDatabase.createInBackground(file);
   });
 }

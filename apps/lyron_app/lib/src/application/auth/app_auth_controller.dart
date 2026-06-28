@@ -79,9 +79,7 @@ class AppAuthController extends ChangeNotifier {
     _setState(_stateForSession(session, fromStream: true));
   }
 
-  Future<AppAuthState> _stateForRestoredSession(
-    AppAuthSession? session,
-  ) async {
+  Future<AppAuthState> _stateForRestoredSession(AppAuthSession? session) async {
     if (session != null) {
       return AppAuthState(status: AppAuthStatus.signedIn, session: session);
     }

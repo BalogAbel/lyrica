@@ -142,7 +142,9 @@ void main() {
       );
 
       final restore = controller.restoreSession();
-      repo.emit(const AppAuthSession(userId: 'live', email: 'live@example.com'));
+      repo.emit(
+        const AppAuthSession(userId: 'live', email: 'live@example.com'),
+      );
       await Future<void>.delayed(Duration.zero);
       identityRead.complete(
         const LastKnownIdentity(
@@ -158,32 +160,29 @@ void main() {
     },
   );
 
-  test(
-    'explicit signOut wins over stale cold-start identity read',
-    () async {
-      final repo = _FakeAuthRepository();
-      final identityRead = Completer<LastKnownIdentity?>();
-      final identityStore = _FakeLastKnownIdentityStore()
-        ..readCompleter = identityRead;
-      final controller = AppAuthController(
-        repo,
-        lastKnownIdentityStore: identityStore,
-      );
+  test('explicit signOut wins over stale cold-start identity read', () async {
+    final repo = _FakeAuthRepository();
+    final identityRead = Completer<LastKnownIdentity?>();
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..readCompleter = identityRead;
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
 
-      final restore = controller.restoreSession();
-      await controller.signOut();
-      identityRead.complete(
-        const LastKnownIdentity(
-          userId: 'stale',
-          email: 'stale@example.com',
-          organizationId: null,
-        ),
-      );
-      await restore;
+    final restore = controller.restoreSession();
+    await controller.signOut();
+    identityRead.complete(
+      const LastKnownIdentity(
+        userId: 'stale',
+        email: 'stale@example.com',
+        organizationId: null,
+      ),
+    );
+    await restore;
 
-      expect(controller.state.status, AppAuthStatus.signedOut);
-    },
-  );
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
 
   test('restoreSession surfaces signedIn when a session exists', () async {
     final repo = _FakeAuthRepository();
