@@ -23,22 +23,24 @@ All evidence in `application/planning/planning_mutation_sync_controller.dart` un
 ## Design
 
 ### Step 0 — extract `PlanningMutationReconciler` (`ARCH-1`, behavior-preserving)
-Move the inline reconcile `switch` (`providers.dart:387-504`) into a standalone `PlanningMutationReconciler` class with one public method per the current closure signature. No behavior change; lock it with characterization tests over every aggregate kind (plan create/edit, session create/rename/delete/reorder, session-item create/delete/reorder). The provider wires the class instead of the closure. This is the enabling refactor — it earns its place by making Steps 1–4 testable, not as standalone cleanup.
+Move the inline reconcile `switch` (`providers.dart:387-504`) into a standalone `PlanningMutationReconciler` class with one public method per the current closure signature. The class takes its dependencies via **injected readers/parameters** (mutation store, context) and must **not** capture the provider `ref` — the current closure captures `ref` (`providers.dart:387`), so the migration must thread those dependencies explicitly to preserve behavior. No behavior change; lock it with characterization tests over every aggregate kind (plan create/edit, session create/rename/delete/reorder, session-item create/delete/reorder) asserting byte-identical reconcile output before any later step. The provider wires the class instead of the closure. This is the enabling refactor — it earns its place by making Steps 1–4 testable, not as standalone cleanup.
 
 ### Step 1 — `LF-2` hoist refresh out of the loop
-Sync all pending mutations first, then `_refreshPlanning()` **once**. On refresh failure, reconcile the accepted-but-unrefreshed mutations via the extracted reconciler (preserving today's fallback semantics, now applied to the batch).
+Sync all pending mutations first, accumulating the accepted-but-uncleared set, then `_refreshPlanning()` **once**. Error handling within the batch is per-mutation and unchanged in kind: auth/dependency/conflict failures are still recorded individually against their mutation; a connectivity failure still **breaks** the loop early (no point hammering an offline backend). After the single refresh: on success, clear the accepted set; on refresh failure, reconcile **all** accepted-but-uncleared mutations via the extracted reconciler (today's per-mutation fallback, now applied to the whole accepted batch) and then clear them. This keeps the accepted→reconcile→clear invariant while collapsing N refreshes to one.
 
 ### Step 2 — `LF-1` exactly-once marker
-Persist an **accepted-but-uncleared** marker (or idempotency key) the moment `syncMutation` returns accepted, before `clearMutation`. On a subsequent run, a mutation already marked accepted is reconciled/cleared rather than re-sent, so a crash between accept and clear no longer produces a false conflict.
+No `accepted` state exists today: `PlanningMutationSyncStatus` is `{pending, failedAuthorization, failedDependency, failedRemoteDelete, conflict}` (`planning_mutation_sync_types.dart`), and the Drift schema has no marker column. This step therefore **adds** a durable accepted marker — a new `PlanningMutationSyncStatus.accepted` value persisted via an **additive Drift migration** on `planning_local_database` (no destructive schema change; additive only, per `LF-T7` guidance). The marker is written the moment `syncMutation` returns accepted, before `clearMutation`. On a subsequent run, a mutation already marked `accepted` is reconciled/cleared rather than re-sent, so a crash between accept and clear no longer produces a false conflict. The merge (Step 5) treats `accepted` as still-applied-locally so the edit does not flicker.
 
 ### Step 3 — `LF-3` single-flight guard
-Add an internal single-flight guard to `syncPendingMutations`: a concurrent call awaits the in-flight run (or is coalesced) instead of starting a second pass. Removes the double-send / `clearMutation` race.
+`PlanningMutationSyncController` is currently a `const`/stateless class (`planning_mutation_sync_controller.dart:17`), so it cannot hold a guard field. Convert it to a stateful instance (drop `const`) holding a `Future<void>? _inFlight`: `syncPendingMutations` returns the in-flight future when a run is already active (coalescing concurrent callers — write-service scheduler, retry, discard, unified trigger) instead of starting a second pass. Removes the double-send / `clearMutation` race. (Alternative considered: a provider-level wrapper guard; rejected because retry/discard call `syncPendingMutations` re-entrantly and a controller-owned guard is the single choke point.)
 
 ### Step 4 — `LF-7` offline discard/retry
 Drop the leading `_refreshPlanning()` gate from `discardMutation`/`retryMutation`. Discard clears local intent unconditionally (offline-safe). Retry re-queues locally and attempts sync; if offline, the mutation simply stays pending. The post-op refresh becomes best-effort, not a precondition.
 
 ### Step 5 — `LF-4` keep failed edits visible
-Surface `failed`/`conflict` mutations in the main plan view, not only the sync popup. The read merge consumes non-`pending` actionable statuses so the user's edit stays on screen with a clear state indicator, instead of silently reverting to server state. (Recovery actions themselves remain in the sync surface.)
+Surface `failed`/`conflict` mutations in the main plan view, not only the sync popup. The read merge consumes non-`pending` actionable statuses (`failed*`, `conflict`, and the new `accepted` from Step 2) so the user's edit stays on screen with a clear state indicator, instead of silently reverting to server state. (Recovery actions themselves remain in the sync surface.)
+
+**Interaction risk with `LF-5` (out of scope but exposed here):** making non-`pending` edits visible can surface the latent `planEdit` field-blanking — the merge sets `description`/`scheduledFor` directly from the mutation with no `?? existing` fallback (`planning_local_read_repository.dart:143-147`), unlike `name`. A partial edit that didn't re-snapshot those fields would now render blanked instead of silently disappearing. Add a regression test asserting a visible failed/conflict `planEdit` does not blank unset fields; if it does, apply the minimal `?? existing` guard for the visible-edit path only (full `LF-5` fix remains a separate slice).
 
 ## Behaviour Matrix
 
@@ -55,7 +57,7 @@ Surface `failed`/`conflict` mutations in the main plan view, not only the sync p
 
 - **No** session/auth-lifecycle changes — covered by `docs/specs/2026-06-28-non-destructive-session-and-offline-relaunch.md`.
 - **No** `LF-8` reconcile null-coercion hardening in this slice (the extraction makes it a cheap follow-up; tracked separately).
-- **No** `LF-5`/`LF-6` merge-completeness/dedup fixes, `LF-9` N+1 read, or `ARCH-2` invalidation — not in this bouquet.
+- **No** full `LF-5`/`LF-6` merge-completeness/dedup fixes, `LF-9` N+1 read, or `ARCH-2` invalidation — not in this bouquet. Exception: a minimal `?? existing` guard on the visible-edit path may be applied if Step 5's regression test proves blanking (full `LF-5` fix still deferred).
 - **No** broad `providers.dart` domain-file split beyond the reconciler extraction (`ARCH-1` wide part stays out).
 - **No** backend RPC, schema, RLS, or authorization changes (AGENTS.md rule 5).
 - **No** change to the song-side mutation controller (shares `LF-1`/`LF-2`/`LF-3` but out of scope here; note parity as future work).
@@ -70,10 +72,10 @@ Surface `failed`/`conflict` mutations in the main plan view, not only the sync p
 
 - Characterization (Step 0): `PlanningMutationReconciler` reproduces current reconcile output for every aggregate kind before any behavior change.
 - Unit (`LF-2`): N pending mutations → exactly one `_refreshPlanning()`; refresh-failure path reconciles the batch.
-- Unit (`LF-1`): simulated crash between accept and clear → next run does not re-send and does not surface a false conflict.
+- Unit (`LF-1`): simulated crash between accept and clear → next run does not re-send and does not surface a false conflict; the `accepted` marker survives an additive Drift migration (open-with-pending-data migration test).
 - Unit (`LF-3`): concurrent `syncPendingMutations` calls → single in-flight run; no duplicate `syncMutation`/`clearMutation`.
 - Unit (`LF-7`): `discardMutation`/`retryMutation` with refresh unavailable → discard clears intent; retry re-queues and stays pending.
-- Provider/widget (`LF-4`): an edit transitioning to `failed`/`conflict` stays rendered in the plan view with a state indicator.
+- Provider/widget (`LF-4`): an edit transitioning to `failed`/`conflict`/`accepted` stays rendered in the plan view with a state indicator; a visible `planEdit` does not blank unset `description`/`scheduledFor` (LF-5 interaction guard).
 
 ## Acceptance Criteria
 

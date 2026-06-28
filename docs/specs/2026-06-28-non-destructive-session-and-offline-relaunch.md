@@ -39,7 +39,9 @@ Introduce a small, testable identity unit that answers three questions used by t
 2. **Is the live session valid right now?**
 3. **What is the cold-start identity** when there is no live session?
 
-Persist a durable `LastKnownIdentity { userId, email, organizationId, updatedAt }` record, written on every successful sign-in. Source priority for cold-start identity: (a) a gotrue-persisted expired session exposing `user.id` if available; (b) the `LastKnownIdentity` record as the reliable fallback. This consolidates the scattered `_lastAuthenticatedUserId` / cached-org logic behind one seam without rewriting unrelated providers.
+Persist a durable `LastKnownIdentity { userId, email, organizationId, updatedAt }` record, written on every successful sign-in. **Persistence mechanism**: an own Drift-backed record (consistent with the existing offline stores), not a reliance on gotrue. The `LastKnownIdentity` record is the **primary** source of cold-start identity; a gotrue-persisted expired session exposing `user.id` is only an opportunistic optimization — its readability across an app restart is not guaranteed, so the design must not depend on it. This consolidates the scattered `_lastAuthenticatedUserId` / cached-org logic behind one seam without rewriting unrelated providers.
+
+This record is cleared on explicit sign-out and on verified-empty membership revocation (the destructive paths), and rewritten on each successful sign-in.
 
 ### Auth controller mapping (`app_auth_controller.dart`)
 - Cold start: `restoreSession()` returns `null` **and** a `LastKnownIdentity` exists → emit `sessionExpired` (offline-authenticated), carrying `lastKnownSession`. `null` **and** no identity → `signedOut` (unchanged).
@@ -50,7 +52,7 @@ Persist a durable `LastKnownIdentity { userId, email, organizationId, updatedAt 
 - `handleExplicitSignOut` (`signedOut`) and `handleVerifiedEmptyMembership`: remain **destructive** (unchanged). Authoritative revocation (`verifiedEmptyMembership`) only fires on a verified-empty membership over a live connection — not affected by offline/unknown loss.
 
 ### Write queue while offline-authenticated
-Mutation creation is allowed (same as offline). Sync attempts find no live session → mutations stay `pending` → they flush after re-auth. The sync loop must treat "no live session" as a non-fatal, non-destructive condition (no cleanup, no failed/conflict downgrade).
+Mutation creation is allowed (same as offline). With no live session the sync loop does not attempt to flush — queued mutations stay `pending` and flush **only after re-auth** (there is no background flush while offline-authenticated). The sync loop must treat "no live session" as a non-fatal, non-destructive condition (no cleanup, no failed/conflict downgrade).
 
 ### Re-auth resolution
 - **Same `userId`** re-authenticates → existing `signedIn` path runs refresh + sync → the queued mutations flush.
@@ -79,6 +81,7 @@ Mutation creation is allowed (same as offline). Sync attempts find no live sessi
 - **No** mutation-size budget, squash, or storage-eviction policy (`LF-T3`/`LF-T4`) — separate strategic slice.
 - **No** broad `ARCH-5` rewrite — only the identity seam LF-T1 requires.
 - **No** change to backend-enforced authorization (AGENTS.md rule 5). Authoritative revocation stays backend-driven and destructive.
+- **No** attempt to enforce membership offline. While offline, cached data may outlive a server-side membership revocation; this is intended — authorization is backend-enforced and cannot be evaluated offline. Convergence happens on reconnect, when `verifiedEmptyMembership` fires and destructively cleans up. The offline window is accepted.
 - **No** planning mutation reconciliation changes — covered by `docs/specs/2026-06-28-planning-mutation-sync-correctness.md`.
 
 ## Documentation Requirements
