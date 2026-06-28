@@ -22,16 +22,27 @@ T _required<T>(T? value, String field, PlanningMutationKind kind) =>
 class PlanningMutationReconciler {
   const PlanningMutationReconciler({
     required PlanningLocalStore Function() localStore,
-  }) : _localStore = localStore;
+    DateTime Function() now = _wallClockNow,
+  }) : _localStore = localStore,
+       _now = now;
 
   final PlanningLocalStore Function() _localStore;
+
+  // LF-T6: the clock used to stamp reconciled records. Defaults to the
+  // device wall clock (unchanged behaviour); injectable so tests can
+  // characterize clock-skew behaviour. This does NOT add a server-clock
+  // anchor -- the reconciled timestamp is still whatever clock is passed
+  // in, device or otherwise. A real server-clock anchor is deferred.
+  final DateTime Function() _now;
+
+  static DateTime _wallClockNow() => DateTime.now().toUtc();
 
   Future<void> reconcile(
     ActivePlanningReadContext context,
     PlanningMutationRecord record,
   ) async {
     final localStore = _localStore();
-    final reconciledAt = DateTime.now().toUtc();
+    final reconciledAt = _now();
 
     switch (record.kind) {
       case PlanningMutationKind.planCreate:
