@@ -56,7 +56,8 @@ void main() {
         expect(
           remote.syncedAggregateIds,
           isEmpty,
-          reason: 'accepted record must not be re-sent to remote (no double-send)',
+          reason:
+              'accepted record must not be re-sent to remote (no double-send)',
         );
         expect(reconcileCalls, 1, reason: 'accepted record must be reconciled');
         expect(store.clearedAggregateIds, hasLength(1));

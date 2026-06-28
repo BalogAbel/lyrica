@@ -152,7 +152,8 @@ class _GatedSongMutationStore implements SongMutationStore {
   }) async => 'unused';
 }
 
-class _GatedSongMutationRemoteRepository implements SongMutationRemoteRepository {
+class _GatedSongMutationRemoteRepository
+    implements SongMutationRemoteRepository {
   _GatedSongMutationRemoteRepository({required this.onSend});
 
   final Future<void> Function() onSend;
