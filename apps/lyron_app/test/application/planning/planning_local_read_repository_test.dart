@@ -160,39 +160,36 @@ void main() {
       },
     );
 
-    test(
-      'merge keeps a failed planEdit visible instead of reverting',
-      () async {
-        // arrange: projection has plan P (name "Server Name"); mutation store has a planEdit on P
-        //          with name "Edited Name", syncStatus=failedDependency
-        await mutationStore.recordPlanEdit(
-          context: context,
-          draft: const PlanningPlanEditMutationDraft(
-            planId: 'plan-1',
-            name: 'Edited Name',
-            description: null,
-            scheduledFor: null,
-            baseVersion: 1,
-          ),
-        );
+    test('merge keeps a failed planEdit visible instead of reverting', () async {
+      // arrange: projection has plan P (name "Server Name"); mutation store has a planEdit on P
+      //          with name "Edited Name", syncStatus=failedDependency
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Edited Name',
+          description: null,
+          scheduledFor: null,
+          baseVersion: 1,
+        ),
+      );
 
-        // simulate sync failure
-        await mutationStore.saveSyncAttemptResult(
-          userId: context.userId,
-          organizationId: context.organizationId,
-          aggregateType: 'plan',
-          aggregateId: 'plan-1',
-          syncStatus: PlanningMutationSyncStatus.failedDependency,
-        );
+      // simulate sync failure
+      await mutationStore.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.failedDependency,
+      );
 
-        // act
-        final plans = await repository.listPlans();
+      // act
+      final plans = await repository.listPlans();
 
-        // assert: the plan P in result has name "Edited Name" (the edit), NOT "Server Name"
-        final plan = plans.firstWhere((p) => p.id == 'plan-1');
-        expect(plan.name, equals('Edited Name'));
-      },
-    );
+      // assert: the plan P in result has name "Edited Name" (the edit), NOT "Server Name"
+      final plan = plans.firstWhere((p) => p.id == 'plan-1');
+      expect(plan.name, equals('Edited Name'));
+    });
 
     test(
       'a visible failed planEdit does not blank description/scheduledFor',

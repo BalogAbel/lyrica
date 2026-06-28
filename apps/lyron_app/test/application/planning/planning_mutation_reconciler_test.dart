@@ -155,7 +155,9 @@ void main() {
         );
         expect(detail, isNotNull);
         expect(detail!.sessions.length, 3);
-        final newSession = detail.sessions.firstWhere((s) => s.id == 'session-3');
+        final newSession = detail.sessions.firstWhere(
+          (s) => s.id == 'session-3',
+        );
         expect(newSession.name, 'Outro');
       });
 
@@ -334,57 +336,62 @@ void main() {
         expect(session.items[1].id, 'item-1');
       });
 
-      test('sessionItemCreateSong with ordered siblings reorders items', () async {
-        // Seed second item via reconciler create.
-        await reconciler.reconcile(
-          testContext,
-          PlanningMutationRecord(
-            aggregateId: 'item-2',
+      test(
+        'sessionItemCreateSong with ordered siblings reorders items',
+        () async {
+          // Seed second item via reconciler create.
+          await reconciler.reconcile(
+            testContext,
+            PlanningMutationRecord(
+              aggregateId: 'item-2',
+              organizationId: organizationId,
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026, 4, 11, 10, 30),
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-2',
+              songTitle: 'Beta',
+              position: 20,
+              baseVersion: 1,
+            ),
+          );
+
+          final record = PlanningMutationRecord(
+            aggregateId: 'item-3',
             organizationId: organizationId,
             kind: PlanningMutationKind.sessionItemCreateSong,
             syncStatus: PlanningMutationSyncStatus.pending,
             orderKey: 1,
-            updatedAt: DateTime.utc(2026, 4, 11, 10, 30),
+            updatedAt: DateTime.utc(2026, 4, 11, 11),
             planId: 'plan-1',
             sessionId: 'session-1',
-            songId: 'song-2',
-            songTitle: 'Beta',
-            position: 20,
+            songId: 'song-3',
+            songTitle: 'Gamma',
+            position: 15,
+            orderedSiblingIds: const ['item-1', 'item-3', 'item-2'],
+            orderedSiblingPositions: const [10, 15, 20],
             baseVersion: 1,
-          ),
-        );
+          );
 
-        final record = PlanningMutationRecord(
-          aggregateId: 'item-3',
-          organizationId: organizationId,
-          kind: PlanningMutationKind.sessionItemCreateSong,
-          syncStatus: PlanningMutationSyncStatus.pending,
-          orderKey: 1,
-          updatedAt: DateTime.utc(2026, 4, 11, 11),
-          planId: 'plan-1',
-          sessionId: 'session-1',
-          songId: 'song-3',
-          songTitle: 'Gamma',
-          position: 15,
-          orderedSiblingIds: const ['item-1', 'item-3', 'item-2'],
-          orderedSiblingPositions: const [10, 15, 20],
-          baseVersion: 1,
-        );
+          await reconciler.reconcile(testContext, record);
 
-        await reconciler.reconcile(testContext, record);
-
-        final detail = await localStore.readPlanDetail(
-          userId: userId,
-          organizationId: organizationId,
-          planId: 'plan-1',
-        );
-        expect(detail, isNotNull);
-        final session = detail!.sessions.firstWhere((s) => s.id == 'session-1');
-        expect(session.items.length, 3);
-        expect(session.items[0].id, 'item-1');
-        expect(session.items[1].id, 'item-3');
-        expect(session.items[2].id, 'item-2');
-      });
+          final detail = await localStore.readPlanDetail(
+            userId: userId,
+            organizationId: organizationId,
+            planId: 'plan-1',
+          );
+          expect(detail, isNotNull);
+          final session = detail!.sessions.firstWhere(
+            (s) => s.id == 'session-1',
+          );
+          expect(session.items.length, 3);
+          expect(session.items[0].id, 'item-1');
+          expect(session.items[1].id, 'item-3');
+          expect(session.items[2].id, 'item-2');
+        },
+      );
 
       test('sessionItemDelete with ordered siblings reorders items', () async {
         // Seed second item via reconciler create.

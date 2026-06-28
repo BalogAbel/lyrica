@@ -49,12 +49,15 @@ class PlanningMutationSyncController {
     );
 
     final candidates = allMutations
-        .where((m) =>
-            m.syncStatus == PlanningMutationSyncStatus.pending ||
-            m.syncStatus == PlanningMutationSyncStatus.accepted)
+        .where(
+          (m) =>
+              m.syncStatus == PlanningMutationSyncStatus.pending ||
+              m.syncStatus == PlanningMutationSyncStatus.accepted,
+        )
         .toList(growable: false);
 
-    final acceptedRecords = <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
+    final acceptedRecords =
+        <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
 
     for (final mutation in candidates) {
       if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {

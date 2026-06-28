@@ -5,7 +5,10 @@ void main() {
   group('PlanningMutationSyncStatus', () {
     test('accepted status maps to and from "accepted"', () {
       expect(PlanningMutationSyncStatus.accepted.value, 'accepted');
-      expect(planningMutationSyncStatusFromValue('accepted'), PlanningMutationSyncStatus.accepted);
+      expect(
+        planningMutationSyncStatusFromValue('accepted'),
+        PlanningMutationSyncStatus.accepted,
+      );
     });
   });
 }
