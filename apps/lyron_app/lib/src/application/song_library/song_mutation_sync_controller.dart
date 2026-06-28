@@ -3,7 +3,7 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 typedef SongCatalogRefresh = Future<void> Function(SongMutationContext context);
 
 class SongMutationSyncController {
-  const SongMutationSyncController({
+  SongMutationSyncController({
     required SongMutationStore store,
     required SongMutationRemoteRepository remoteRepository,
     SongCatalogRefresh? refreshCatalog,
@@ -15,7 +15,17 @@ class SongMutationSyncController {
   final SongMutationRemoteRepository _remoteRepository;
   final SongCatalogRefresh? _refreshCatalog;
 
-  Future<void> syncPendingSongs(SongMutationContext context) async {
+  Future<void>? _inFlight;
+
+  Future<void> syncPendingSongs(SongMutationContext context) {
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+    final run = _runSync(context).whenComplete(() => _inFlight = null);
+    _inFlight = run;
+    return run;
+  }
+
+  Future<void> _runSync(SongMutationContext context) async {
     final pendingSongs = await _store.readPendingSongs(
       userId: context.userId,
       organizationId: context.organizationId,
