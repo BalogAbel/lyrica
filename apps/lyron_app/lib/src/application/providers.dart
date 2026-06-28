@@ -18,6 +18,7 @@ import 'package:lyron_app/src/application/planning/active_planning_context_contr
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_reconciler.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
@@ -384,124 +385,9 @@ final planningMutationSyncControllerProvider =
               activeContext.userId == context.userId &&
               activeContext.organizationId == context.organizationId;
         },
-        reconcileAcceptedMutation: (context, record) async {
-          final localStore = ref.read(planningLocalStoreProvider);
-          final reconciledAt = DateTime.now().toUtc();
-
-          switch (record.kind) {
-            case PlanningMutationKind.planCreate:
-            case PlanningMutationKind.planEdit:
-              await localStore.upsertSyncedPlan(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                plan: CachedPlanRecord(
-                  id: record.aggregateId,
-                  slug: record.slug ?? record.aggregateId,
-                  name: record.name ?? '',
-                  description: record.description,
-                  scheduledFor: record.scheduledFor,
-                  updatedAt: reconciledAt,
-                  version: record.baseVersion ?? 1,
-                ),
-              );
-              return;
-            case PlanningMutationKind.sessionCreate:
-            case PlanningMutationKind.sessionRename:
-              await localStore.upsertSyncedSession(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                session: CachedSessionRecord(
-                  id: record.aggregateId,
-                  planId: record.planId ?? '',
-                  slug: record.slug ?? record.aggregateId,
-                  position: record.position ?? 0,
-                  name: record.name ?? '',
-                  version: record.baseVersion ?? 1,
-                ),
-              );
-              return;
-            case PlanningMutationKind.sessionDelete:
-              await localStore.deleteSyncedSession(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.aggregateId,
-                refreshedAt: reconciledAt,
-              );
-              return;
-            case PlanningMutationKind.sessionReorder:
-              await localStore.replaceSyncedSessionOrder(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                planId: record.planId ?? record.aggregateId,
-                orderedSessionIds: record.orderedSiblingIds ?? const [],
-                orderedSessionPositions: record.orderedSiblingPositions,
-                planVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              return;
-            case PlanningMutationKind.sessionItemCreateSong:
-              await localStore.upsertSyncedSessionItem(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                sessionVersion: record.baseVersion ?? 1,
-                item: CachedSessionItemRecord(
-                  id: record.aggregateId,
-                  planId: record.planId ?? '',
-                  sessionId: record.sessionId ?? '',
-                  position: record.position ?? 0,
-                  songId: record.songId ?? '',
-                  songTitle: record.songTitle ?? '',
-                ),
-              );
-              if (record.orderedSiblingIds != null) {
-                await localStore.replaceSyncedSessionItemOrder(
-                  userId: context.userId,
-                  organizationId: context.organizationId,
-                  sessionId: record.sessionId ?? '',
-                  orderedSessionItemIds: record.orderedSiblingIds!,
-                  orderedSessionItemPositions: record.orderedSiblingPositions,
-                  sessionVersion: record.baseVersion ?? 1,
-                  refreshedAt: reconciledAt,
-                );
-              }
-              return;
-            case PlanningMutationKind.sessionItemDelete:
-              await localStore.deleteSyncedSessionItem(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.sessionId ?? '',
-                sessionItemId: record.aggregateId,
-                sessionVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              if (record.orderedSiblingIds != null) {
-                await localStore.replaceSyncedSessionItemOrder(
-                  userId: context.userId,
-                  organizationId: context.organizationId,
-                  sessionId: record.sessionId ?? '',
-                  orderedSessionItemIds: record.orderedSiblingIds!,
-                  orderedSessionItemPositions: record.orderedSiblingPositions,
-                  sessionVersion: record.baseVersion ?? 1,
-                  refreshedAt: reconciledAt,
-                );
-              }
-              return;
-            case PlanningMutationKind.sessionItemReorder:
-              await localStore.replaceSyncedSessionItemOrder(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.sessionId ?? '',
-                orderedSessionItemIds: record.orderedSiblingIds ?? const [],
-                orderedSessionItemPositions: record.orderedSiblingPositions,
-                sessionVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              return;
-          }
-        },
+        reconcileAcceptedMutation: PlanningMutationReconciler(
+          localStore: () => ref.read(planningLocalStoreProvider),
+        ).reconcile,
       );
     });
 
