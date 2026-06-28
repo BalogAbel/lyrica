@@ -929,6 +929,12 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => pending;
 
   @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) async => pending;
+
+  @override
   Future<void> retryMutation({
     required String userId,
     required String organizationId,

@@ -50,8 +50,8 @@ class PlanningLocalReadRepository implements PlanningRepository {
       userId: context.userId,
       organizationId: context.organizationId,
     );
-    final pendingMutations = await _readPendingMutations(context);
-    return _mergePlanSummaries(basePlans, pendingMutations);
+    final actionableMutations = await _readActionableMutations(context);
+    return _mergePlanSummaries(basePlans, actionableMutations);
   }
 
   @override
@@ -62,8 +62,8 @@ class PlanningLocalReadRepository implements PlanningRepository {
       organizationId: context.organizationId,
       planId: planId,
     );
-    final pendingMutations = await _readPendingMutations(context);
-    final merged = _mergePlanDetail(detail, planId, pendingMutations);
+    final actionableMutations = await _readActionableMutations(context);
+    final merged = _mergePlanDetail(detail, planId, actionableMutations);
     if (merged == null) {
       throw StateError('Plan not found in local planning projection: $planId');
     }
@@ -100,7 +100,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
     return context;
   }
 
-  Future<List<PlanningMutationRecord>> _readPendingMutations(
+  Future<List<PlanningMutationRecord>> _readActionableMutations(
     ActivePlanningReadContext context,
   ) async {
     final mutationStore = _mutationStore;
@@ -108,7 +108,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
       return const [];
     }
 
-    return mutationStore.readPendingMutations(
+    return mutationStore.readActionableMutations(
       userId: context.userId,
       organizationId: context.organizationId,
     );
@@ -141,8 +141,8 @@ class PlanningLocalReadRepository implements PlanningRepository {
             id: existing.id,
             slug: existing.slug,
             name: mutation.name ?? existing.name,
-            description: mutation.description,
-            scheduledFor: mutation.scheduledFor,
+            description: mutation.description ?? existing.description,
+            scheduledFor: mutation.scheduledFor ?? existing.scheduledFor,
             updatedAt: mutation.updatedAt,
             version: existing.version,
           );
@@ -209,8 +209,8 @@ class PlanningLocalReadRepository implements PlanningRepository {
           id: plan.id,
           slug: plan.slug,
           name: mutation.name ?? plan.name,
-          description: mutation.description,
-          scheduledFor: mutation.scheduledFor,
+          description: mutation.description ?? plan.description,
+          scheduledFor: mutation.scheduledFor ?? plan.scheduledFor,
           updatedAt: mutation.updatedAt,
           version: plan.version,
         );

@@ -225,7 +225,7 @@ void main() {
     );
 
     test(
-      'failed authorization and dependency mutations no longer overlay the normal merged view',
+      'failed authorization and dependency mutations are visible in merged view',
       () async {
         await seedProjection();
 
@@ -264,10 +264,10 @@ void main() {
         final plans = await repository.listPlans();
         final detail = await repository.getPlanDetail('plan-1');
 
-        expect(plans.single.name, 'Sunday AM');
+        expect(plans.single.name, 'Blocked name');
         expect(
           detail.sessions.map((session) => session.id),
-          orderedEquals(const ['session-1', 'session-2']),
+          orderedEquals(const ['session-1']),
         );
       },
     );

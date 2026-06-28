@@ -1463,6 +1463,12 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async => entries;
 
   @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) async => entries;
+
+  @override
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,

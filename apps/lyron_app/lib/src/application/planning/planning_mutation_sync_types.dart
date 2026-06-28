@@ -445,6 +445,11 @@ abstract interface class PlanningMutationStore {
     required String organizationId,
   });
 
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  });
+
   Future<List<PlanningMutationRecord>> readAllMutations({
     required String userId,
     required String organizationId,

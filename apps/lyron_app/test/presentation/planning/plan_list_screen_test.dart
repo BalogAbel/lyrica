@@ -478,6 +478,12 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => const [];
 
   @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) async => const [];
+
+  @override
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,
