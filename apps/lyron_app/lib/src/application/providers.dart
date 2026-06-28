@@ -208,7 +208,17 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         if (session == null) {
           return;
         }
-        final resolution = await ref.read(membershipResolutionProvider)();
+        ActiveOrganizationResolution? resolution;
+        try {
+          resolution = await ref.read(membershipResolutionProvider)();
+        } catch (_) {
+          // Membership resolution unavailable (offline, a non-connectivity
+          // error, or an uninitialized backend). Persist the identity with an
+          // unknown organization instead of letting this fire-and-forget auth
+          // listener throw an unhandled exception; the org is refined on a
+          // later successful resolution.
+          resolution = null;
+        }
         final currentState = authController.state;
         final currentSession = currentState.session;
         if (currentState.status != AppAuthStatus.signedIn ||
@@ -231,6 +241,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             await identityStore.clear();
           case ActiveOrganizationUnknownConnectivityFailure():
           case ActiveOrganizationUnknownNonConnectivityFailure():
+          case null:
             await identityStore.write(
               LastKnownIdentity(
                 userId: session.userId,

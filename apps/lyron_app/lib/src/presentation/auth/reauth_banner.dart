@@ -6,8 +6,34 @@ import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-class ReauthBanner extends ConsumerWidget {
+/// Persistent re-auth affordance shown only in the offline-authenticated
+/// (`AppAuthStatus.sessionExpired`) state.
+///
+/// The auth controller is resolved defensively (mirroring
+/// `UnifiedSyncHeaderControl`): if the auth provider is not available — e.g. in
+/// widget tests that render this screen without an initialized Supabase instance
+/// or an `appAuthControllerProvider` override — the banner renders nothing rather
+/// than crashing the host screen. In the real app the provider always builds, so
+/// the reactive body below tracks status changes normally.
+class ReauthBanner extends StatelessWidget {
   const ReauthBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    try {
+      ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(appAuthControllerProvider);
+    } catch (_) {
+      return const SizedBox.shrink(key: ValueKey('reauth-banner-empty'));
+    }
+    return const _ReauthBannerBody();
+  }
+}
+
+class _ReauthBannerBody extends ConsumerWidget {
+  const _ReauthBannerBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
