@@ -532,7 +532,7 @@ final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
 
 final activePlanningContextControllerProvider =
     ChangeNotifierProvider<ActivePlanningContextController>((ref) {
-      final authController = ref.watch(appAuthControllerProvider);
+      final authController = ref.read(appAuthControllerProvider);
       final controller = ActivePlanningContextController(
         authSessionReader: () => authController.state.session,
         organizationReader: () => ref.read(activeOrganizationReaderProvider)(),
@@ -551,8 +551,9 @@ final activePlanningContextControllerProvider =
           case AppAuthStatus.initializing:
             return;
           case AppAuthStatus.signedOut:
-          case AppAuthStatus.sessionExpired:
             controller.resetForSessionLifecycle();
+            return;
+          case AppAuthStatus.sessionExpired:
             return;
           case AppAuthStatus.signedIn:
             unawaited(
@@ -686,7 +687,7 @@ final appForegroundStateProvider = Provider<AppForegroundState>((ref) {
 
 final songCatalogControllerProvider =
     ChangeNotifierProvider.autoDispose<SongCatalogController>((ref) {
-      final authController = ref.watch(appAuthControllerProvider);
+      final authController = ref.read(appAuthControllerProvider);
       final controller = SongCatalogController(
         store: ref.watch(songCatalogStoreProvider),
         remoteRepository: ref.watch(supabaseSongRepositoryProvider),

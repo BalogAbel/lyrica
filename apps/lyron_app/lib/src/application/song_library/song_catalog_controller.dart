@@ -321,11 +321,7 @@ class SongCatalogController extends ChangeNotifier {
 
   void handleSessionExpired() {
     _resetSessionLifecycle();
-    _setState(
-      const CatalogSnapshotState.initial().copyWith(
-        sessionStatus: CatalogSessionStatus.expired,
-      ),
-    );
+    _setState(_state.copyWith(sessionStatus: CatalogSessionStatus.expired));
   }
 
   void handleSessionAvailable() {
