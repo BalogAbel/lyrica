@@ -38,22 +38,15 @@ class PlanningMutationSyncController {
       organizationId: context.organizationId,
     );
 
+    final acceptedRecords = <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
+
     for (final mutation in pending) {
       try {
         final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
           record: mutation,
         );
-        final refreshed = await _refreshPlanning();
-        if (!refreshed && await _shouldReconcileAcceptedMutation(context)) {
-          await _reconcileAcceptedMutation(context, syncedMutation);
-        }
-        await _mutationStore().clearMutation(
-          userId: context.userId,
-          organizationId: context.organizationId,
-          aggregateType: mutation.kind.aggregateType,
-          aggregateId: mutation.aggregateId,
-        );
+        acceptedRecords.add((mutation, syncedMutation));
       } on PlanningMutationSyncException catch (error) {
         final syncStatus = switch (error.code) {
           PlanningMutationSyncErrorCode.authorizationDenied =>
@@ -80,6 +73,34 @@ class PlanningMutationSyncController {
         if (error.code == PlanningMutationSyncErrorCode.connectivityFailure) {
           break;
         }
+      }
+    }
+
+    if (acceptedRecords.isEmpty) {
+      return;
+    }
+
+    final refreshed = await _refreshPlanning();
+    if (refreshed) {
+      for (final (original, _) in acceptedRecords) {
+        await _mutationStore().clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: original.kind.aggregateType,
+          aggregateId: original.aggregateId,
+        );
+      }
+    } else {
+      for (final (original, synced) in acceptedRecords) {
+        if (await _shouldReconcileAcceptedMutation(context)) {
+          await _reconcileAcceptedMutation(context, synced);
+        }
+        await _mutationStore().clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: original.kind.aggregateType,
+          aggregateId: original.aggregateId,
+        );
       }
     }
   }
