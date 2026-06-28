@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
@@ -25,7 +26,6 @@ import 'package:lyron_app/src/application/planning/planning_remote_refresh_repos
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
-import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -40,9 +40,9 @@ import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
-import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
+import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';

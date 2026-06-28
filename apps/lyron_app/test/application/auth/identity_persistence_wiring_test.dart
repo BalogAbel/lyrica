@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -10,11 +10,11 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/domain/song/song_source.dart';
+import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
-import 'package:lyron_app/src/domain/song/song_source.dart';
-import 'package:lyron_app/src/domain/song/song_summary.dart';
 
 import '../../support/drift_test_setup.dart';
 
