@@ -14,7 +14,7 @@ typedef PlanningAcceptedMutationGuard =
     Future<bool> Function(ActivePlanningReadContext context);
 
 class PlanningMutationSyncController {
-  const PlanningMutationSyncController({
+  PlanningMutationSyncController({
     required PlanningMutationStoreReader mutationStore,
     required PlanningMutationRemoteRepositoryReader remoteRepository,
     required PlanningRefreshTrigger refreshPlanning,
@@ -32,7 +32,17 @@ class PlanningMutationSyncController {
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
   final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
 
-  Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
+  Future<void>? _inFlight;
+
+  Future<void> syncPendingMutations(ActivePlanningReadContext context) {
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+    final run = _run(context).whenComplete(() => _inFlight = null);
+    _inFlight = run;
+    return run;
+  }
+
+  Future<void> _run(ActivePlanningReadContext context) async {
     final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
