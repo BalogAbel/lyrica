@@ -24,6 +24,7 @@ Cover:
 - Song CRUD remote-delete convergence behavior, including persisted remote-deletion classification, same-id recreate routing, delete-sourced accepted convergence, and no-fetch discard when the canonical row is gone
 - Planning repository boundary behavior, including plan ordering and plan-detail mapping
 - Planning write orchestration behavior, including optimistic-concurrency base-version capture, provisional slug allocation, retryable failed mutations, empty-session delete enforcement, and session/session-item collection-edit compaction
+- Planning sync-correctness regression coverage: exactly-once accepted-marker (already-accepted mutation reconciled/cleared, not re-sent), single-flight coalescing of concurrent `syncPendingMutations`, one batch refresh for N mutations (and zero refresh when none accepted), offline discard/retry of stuck mutations, actionable-merge keeping failed/conflict planEdits visible without blanking unset fields, and `PlanningMutationReconciler` characterization tests across all mutation kinds
 - Slug-routing boundary behavior for route resolution, including explicit not-found surfaces for missing song, plan, and session slugs
 - Slug-routing boundary behavior for scoped reader song resolution within a session, including the assumption that a song appears at most once per session
 - Slug-routing boundary behavior for route generation, including canonical slug URLs and no id-based fallback when the canonical song slug is unavailable at the presentation edge
