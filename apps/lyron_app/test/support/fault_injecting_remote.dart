@@ -6,10 +6,6 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 /// mutation but fail the subsequent refresh, simulating a partial RPC success
 /// (LF-2) and a crash window before the local clear (LF-1).
 class FaultInjectingPlanningRemote implements PlanningMutationRemoteRepository {
-  FaultInjectingPlanningRemote({this.failAfterAccept = false});
-
-  final bool failAfterAccept;
-
   final List<String> syncedAggregateIds = [];
   int concurrentPeak = 0;
   int _inFlight = 0;
