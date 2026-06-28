@@ -28,6 +28,7 @@ void main() {
   setUp(() async {
     identityStore = _RecordingLastKnownIdentityStore();
     authRepository = _FakeAuthRepository();
+    addTearDown(authRepository.dispose);
     authController = AppAuthController(authRepository);
   });
 
@@ -289,6 +290,10 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
 class _FakeAuthRepository implements AuthRepository {
   final _controller = StreamController<AppAuthSession?>.broadcast();
   AppAuthSession? currentSession;
+
+  void dispose() {
+    _controller.close();
+  }
 
   @override
   Future<AppAuthSession?> restoreSession() async => currentSession;

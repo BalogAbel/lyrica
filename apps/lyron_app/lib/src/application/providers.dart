@@ -188,7 +188,7 @@ final class _LastKnownIdentityPersistenceEpoch {
 }
 
 final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
-  final authController = ref.watch(appAuthControllerProvider);
+  final authController = ref.read(appAuthControllerProvider);
   final identityStore = ref.watch(lastKnownIdentityStoreProvider);
   final epoch = ref.watch(_lastKnownIdentityPersistenceEpochProvider);
 
