@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
@@ -20,12 +22,17 @@ void main() {
   group('PlanningSyncController', () {
     late PlanningLocalDatabase database;
     late DriftPlanningLocalStore store;
+    late DriftPlanningMutationStore mutationStore;
     late _FakePlanningRemoteRefreshRepository remoteRepository;
     late AppAuthSession? session;
 
     setUp(() {
       database = PlanningLocalDatabase.inMemory();
       store = DriftPlanningLocalStore(database);
+      mutationStore = DriftPlanningMutationStore(
+        database: database,
+        localStore: store,
+      );
       remoteRepository = _FakePlanningRemoteRefreshRepository();
       session = const AppAuthSession(
         userId: 'user-1',
@@ -227,6 +234,17 @@ void main() {
           ),
         );
 
+        await mutationStore.recordPlanEdit(
+          context: const PlanningMutationContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Weekend Service',
+          ),
+        );
+
         session = null;
         await controller.handleVerifiedEmptyMembership(userId: 'user-1');
         await controller.handleExplicitSignOut();
@@ -237,6 +255,10 @@ void main() {
             organizationId: 'org-1',
           ),
           isEmpty,
+        );
+        expect(
+          await mutationStore.hasUnsyncedMutations(userId: 'user-1'),
+          isFalse,
         );
       },
     );
@@ -282,7 +304,7 @@ void main() {
     );
 
     test(
-      'session expiry clears persisted planning data for the previous user',
+      'session expiry keeps persisted planning data and pending mutations',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -297,10 +319,21 @@ void main() {
           ),
         );
 
+        await mutationStore.recordPlanEdit(
+          context: const PlanningMutationContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Weekend Service',
+          ),
+        );
+
         session = null;
         await controller.handleSessionExpired();
 
-        expect(controller.state.accessStatus, PlanningAccessStatus.signedOut);
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
         expect(controller.state.userId, isNull);
         expect(controller.state.organizationId, isNull);
         expect(
@@ -308,7 +341,56 @@ void main() {
             userId: 'user-1',
             organizationId: 'org-1',
           ),
+          hasLength(1),
+        );
+        expect(
+          await mutationStore.hasUnsyncedMutations(userId: 'user-1'),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'explicit sign-out after session expiry still deletes planning data',
+      () async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+        await mutationStore.recordPlanEdit(
+          context: const PlanningMutationContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Weekend Service',
+          ),
+        );
+
+        session = null;
+        await controller.handleSessionExpired();
+        await controller.handleExplicitSignOut();
+
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedOut);
+        expect(
+          await store.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
           isEmpty,
+        );
+        expect(
+          await mutationStore.hasUnsyncedMutations(userId: 'user-1'),
+          isFalse,
         );
       },
     );
