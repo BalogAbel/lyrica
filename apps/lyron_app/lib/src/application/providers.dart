@@ -25,6 +25,7 @@ import 'package:lyron_app/src/application/planning/planning_remote_refresh_repos
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -40,6 +41,8 @@ import 'package:lyron_app/src/infrastructure/planning/supabase_planning_reposito
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -57,11 +60,18 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
     required PlanningLocalStore planningLocalStore,
     required SongCatalogStore songCatalogStore,
+    required LastKnownIdentityStore lastKnownIdentityStore,
+    required void Function() invalidateLastKnownIdentityPersistence,
   }) : _planningLocalStore = planningLocalStore,
-       _songCatalogStore = songCatalogStore;
+       _songCatalogStore = songCatalogStore,
+       _lastKnownIdentityStore = lastKnownIdentityStore,
+       _invalidateLastKnownIdentityPersistence =
+           invalidateLastKnownIdentityPersistence;
 
   final PlanningLocalStore _planningLocalStore;
   final SongCatalogStore _songCatalogStore;
+  final LastKnownIdentityStore _lastKnownIdentityStore;
+  final void Function() _invalidateLastKnownIdentityPersistence;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -73,6 +83,7 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   }
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
+    _invalidateLastKnownIdentityPersistence();
     final handlers = _handlers.toList(growable: false);
     final planningCleanup = handlers.isEmpty
         ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
@@ -84,6 +95,7 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     return Future.wait([
       planningCleanup,
       _songCatalogStore.deleteCatalogsForUser(userId: userId),
+      _lastKnownIdentityStore.clear(),
     ]);
   }
 
@@ -138,6 +150,102 @@ final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
   final controller = AppAuthController(ref.read(authRepositoryProvider));
   unawaited(controller.restoreSession());
   return controller;
+});
+
+final lastKnownIdentityDatabaseProvider = Provider<LastKnownIdentityDatabase>((
+  ref,
+) {
+  final database = Platform.environment.containsKey('FLUTTER_TEST')
+      ? LastKnownIdentityDatabase.inMemory()
+      : LastKnownIdentityDatabase.local();
+  ref.onDispose(database.close);
+  return database;
+});
+
+final lastKnownIdentityStoreProvider = Provider<LastKnownIdentityStore>((ref) {
+  return DriftLastKnownIdentityStore(
+    ref.watch(lastKnownIdentityDatabaseProvider),
+  );
+});
+
+final _lastKnownIdentityPersistenceEpochProvider =
+    Provider<_LastKnownIdentityPersistenceEpoch>(
+      (_) => _LastKnownIdentityPersistenceEpoch(),
+    );
+
+final class _LastKnownIdentityPersistenceEpoch {
+  var _value = 0;
+
+  int invalidate() {
+    _value += 1;
+    return _value;
+  }
+
+  bool isCurrent(int value) => _value == value;
+}
+
+final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
+  final authController = ref.watch(appAuthControllerProvider);
+  final identityStore = ref.watch(lastKnownIdentityStoreProvider);
+  final epoch = ref.watch(_lastKnownIdentityPersistenceEpochProvider);
+
+  Future<void> persistIdentity(AppAuthState authState) async {
+    final generation = epoch.invalidate();
+
+    switch (authState.status) {
+      case AppAuthStatus.initializing:
+        return;
+      case AppAuthStatus.signedOut:
+        await identityStore.clear();
+        return;
+      case AppAuthStatus.sessionExpired:
+        return;
+      case AppAuthStatus.signedIn:
+        final session = authState.session;
+        if (session == null) {
+          return;
+        }
+        final resolution = await ref.read(membershipResolutionProvider)();
+        final currentState = authController.state;
+        final currentSession = currentState.session;
+        if (currentState.status != AppAuthStatus.signedIn ||
+            currentSession == null ||
+            currentSession.userId != session.userId ||
+            currentSession.email != session.email ||
+            !epoch.isCurrent(generation)) {
+          return;
+        }
+        switch (resolution) {
+          case ActiveOrganizationSelected(:final organizationId):
+            await identityStore.write(
+              LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: organizationId,
+              ),
+            );
+          case ActiveOrganizationVerifiedEmpty():
+            await identityStore.clear();
+          case ActiveOrganizationUnknownConnectivityFailure():
+          case ActiveOrganizationUnknownNonConnectivityFailure():
+            await identityStore.write(
+              LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: null,
+              ),
+            );
+        }
+    }
+  }
+
+  void authListener() {
+    unawaited(persistIdentity(authController.state));
+  }
+
+  authController.addListener(authListener);
+  ref.onDispose(() => authController.removeListener(authListener));
+  unawaited(persistIdentity(authController.state));
 });
 
 final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {
@@ -251,6 +359,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
+  ref.watch(lastKnownIdentityPersistenceProvider);
   return Listenable.merge([
     ref.read(appAuthControllerProvider),
     ref.read(activeMembershipControllerProvider),
@@ -304,6 +413,10 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
       return VerifiedEmptyMembershipCleanupCoordinator(
         planningLocalStore: ref.watch(planningLocalStoreProvider),
         songCatalogStore: ref.watch(songCatalogStoreProvider),
+        lastKnownIdentityStore: ref.watch(lastKnownIdentityStoreProvider),
+        invalidateLastKnownIdentityPersistence: () {
+          ref.read(_lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
       );
     });
 
