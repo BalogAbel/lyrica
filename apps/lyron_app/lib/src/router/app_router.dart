@@ -78,6 +78,23 @@ GoRouter createAppRouter({
         return null;
       }
 
+      if (status == AppAuthStatus.sessionExpired) {
+        if (isOnBootstrap) {
+          return restoreTarget ?? AppRoutes.home.path;
+        }
+        // Membership-flow routes are accessible without an active membership
+        final isMembershipFlowRoute =
+            loc == AppRoutes.inviteRequired.path ||
+            loc == AppRoutes.redeem.path;
+        if (membershipController != null &&
+            !isPublicRoute &&
+            !isMembershipFlowRoute &&
+            membershipController.last is! ActiveOrganizationSelected) {
+          return AppRoutes.home.path;
+        }
+        return null;
+      }
+
       if (isOnBootstrap) {
         return AppRoutes.signIn.path;
       }

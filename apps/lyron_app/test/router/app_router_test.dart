@@ -10,6 +10,7 @@ import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
@@ -367,6 +368,126 @@ void main() {
     expect(find.text('Sunday Morning'), findsOneWidget);
     expect(router.routeInformationProvider.value.uri.toString(), '/plans');
   });
+
+  testWidgets(
+    'session-expired users stay on a protected route (offline-authenticated)',
+    (WidgetTester tester) async {
+      final repository = _TestAuthRepository();
+      final fakeIdentityStore = _FakeLastKnownIdentityStore(
+        identity: const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        ),
+      );
+      final controller = AppAuthController(
+        repository,
+        lastKnownIdentityStore: fakeIdentityStore,
+      );
+      await controller.restoreSession();
+
+      final router = createAppRouter(
+        authController: controller,
+        membershipController: ActiveMembershipController()
+          ..update(const ActiveOrganizationSelected('org-1')),
+        refreshListenable: controller,
+        initialLocation: AppRoutes.planList.path,
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        isolatedSongCatalogProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWith((_) => controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            activeMembershipControllerProvider.overrideWith(
+              (_) =>
+                  ActiveMembershipController()
+                    ..update(const ActiveOrganizationSelected('org-1')),
+            ),
+            catalogSnapshotStateProvider.overrideWithValue(
+              const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.offlineCached,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: false,
+              ),
+            ),
+            songLibraryListProvider.overrideWith((ref) async => const []),
+            planningPlanListProvider.overrideWith(
+              (ref) async => [
+                PlanSummary(
+                  id: 'plan-1',
+                  slug: 'sunday-morning',
+                  name: 'Sunday Morning',
+                  description: 'Single-session Sunday fixture',
+                  scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                  updatedAt: DateTime(2026, 3, 31, 8),
+                ),
+              ],
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign in'), findsNothing);
+      expect(find.text(AppStrings.planListTitle), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'session-expired users can still reach the sign-in route for re-auth',
+    (WidgetTester tester) async {
+      final repository = _TestAuthRepository();
+      final fakeIdentityStore = _FakeLastKnownIdentityStore(
+        identity: const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        ),
+      );
+      final controller = AppAuthController(
+        repository,
+        lastKnownIdentityStore: fakeIdentityStore,
+      );
+      await controller.restoreSession();
+
+      final router = createAppRouter(
+        authController: controller,
+        membershipController: ActiveMembershipController()
+          ..update(const ActiveOrganizationSelected('org-1')),
+        refreshListenable: controller,
+        initialLocation: AppRoutes.signIn.path,
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        isolatedSongCatalogProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(repository),
+            appAuthControllerProvider.overrideWith((_) => controller),
+            appAuthListenableProvider.overrideWithValue(controller),
+            activeMembershipControllerProvider.overrideWith(
+              (_) =>
+                  ActiveMembershipController()
+                    ..update(const ActiveOrganizationSelected('org-1')),
+            ),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sign in'), findsOneWidget);
+    },
+  );
 
   testWidgets('signed-in users can reach the plan detail route', (
     WidgetTester tester,
@@ -1164,6 +1285,21 @@ void main() {
       expect(router.routeInformationProvider.value.uri.toString(), '/');
     },
   );
+}
+
+class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
+  _FakeLastKnownIdentityStore({this.identity});
+
+  final LastKnownIdentity? identity;
+
+  @override
+  Future<LastKnownIdentity?> read() async => identity;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) async {}
+
+  @override
+  Future<void> clear() async {}
 }
 
 class _FakePlanningRepository implements PlanningRepository {
