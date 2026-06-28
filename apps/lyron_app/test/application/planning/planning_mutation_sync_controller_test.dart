@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -187,52 +189,51 @@ void main() {
         expect(store.retriedAggregateIds, ['plan-1']);
         expect(repository.calls, 1);
         expect(store.clearedAggregateIds, ['plan-1']);
-        expect(refreshCalls, 2);
+        expect(refreshCalls, 1);
       },
     );
 
-    test(
-      'retrying a conflict waits for a refreshed planning baseline',
-      () async {
-        final store = _FakePlanningMutationStore(
-          pending: [],
-          all: [
-            PlanningMutationRecord(
-              aggregateId: 'plan-1',
-              organizationId: 'org-1',
-              name: 'Plan One',
-              kind: PlanningMutationKind.planEdit,
-              syncStatus: PlanningMutationSyncStatus.conflict,
-              errorCode: PlanningMutationSyncErrorCode.conflict,
-              errorMessage: 'base_version_conflict',
-              orderKey: 1,
-              updatedAt: DateTime.utc(2026),
-            ),
-          ],
-        );
-        final repository = _FakePlanningMutationRemoteRepository();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
-
-        await controller.retryMutation(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
+    test('retrying a conflict works offline and requeues mutation', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
             organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
           ),
-          aggregateType: PlanningMutationKind.planEdit.aggregateType,
-          aggregateId: 'plan-1',
-        );
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => false,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        expect(store.retriedAggregateIds, isEmpty);
-        expect(repository.calls, 0);
-        expect(store.clearedAggregateIds, isEmpty);
-      },
-    );
+      await controller.retryMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+
+      // Offline: retryMutation succeeds locally, then syncPendingMutations
+      // attempts to send (repository.calls==1), but refresh fails so reconciles locally
+      expect(store.retriedAggregateIds, contains('plan-1'));
+      expect(repository.calls, 1);
+      expect(store.clearedAggregateIds, contains('plan-1'));
+    });
 
     test(
       'discarding a conflicted mutation syncs the remaining queue',
@@ -274,50 +275,47 @@ void main() {
 
         expect(store.clearedAggregateIds, ['plan-1', 'plan-2']);
         expect(repository.calls, 1);
-        expect(refreshCalls, 2);
+        expect(refreshCalls, 1);
       },
     );
 
-    test(
-      'discarding a conflict waits for a refreshed planning baseline',
-      () async {
-        final store = _FakePlanningMutationStore(
-          pending: [
-            PlanningMutationRecord(
-              aggregateId: 'plan-1',
-              organizationId: 'org-1',
-              name: 'Plan One',
-              kind: PlanningMutationKind.planEdit,
-              syncStatus: PlanningMutationSyncStatus.conflict,
-              errorCode: PlanningMutationSyncErrorCode.conflict,
-              errorMessage: 'base_version_conflict',
-              orderKey: 1,
-              updatedAt: DateTime.utc(2026),
-            ),
-          ],
-        );
-        final repository = _FakePlanningMutationRemoteRepository();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
-
-        await controller.discardMutation(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
+    test('discarding a conflict works offline and clears mutation', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
             organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
           ),
-          aggregateType: PlanningMutationKind.planEdit.aggregateType,
-          aggregateId: 'plan-1',
-        );
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => false,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        expect(store.clearedAggregateIds, isEmpty);
-        expect(repository.calls, 0);
-      },
-    );
+      await controller.discardMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+
+      expect(store.clearedAggregateIds, contains('plan-1'));
+      expect(repository.calls, 0);
+    });
 
     test(
       'successful sync reconciles the accepted mutation locally when refresh fails',
@@ -482,6 +480,384 @@ void main() {
         expect(store.clearedAggregateIds, ['plan-1']);
       },
     );
+
+    test(
+      'syncPendingMutations refreshes once for N accepted mutations',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+            PlanningMutationRecord(
+              aggregateId: 'plan-2',
+              organizationId: 'org-1',
+              name: 'Plan Two',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 2,
+              updatedAt: DateTime.utc(2026),
+            ),
+            PlanningMutationRecord(
+              aggregateId: 'plan-3',
+              organizationId: 'org-1',
+              name: 'Plan Three',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 3,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        var refreshCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async {
+            refreshCalls += 1;
+            return true;
+          },
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(refreshCalls, 1);
+        expect(store.clearedAggregateIds, ['plan-1', 'plan-2', 'plan-3']);
+      },
+    );
+
+    test(
+      'syncPendingMutations does not refresh when no mutations accepted',
+      () async {
+        final store = _FakePlanningMutationStore(pending: []);
+        final repository = _FakePlanningMutationRemoteRepository();
+        var refreshCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async {
+            refreshCalls += 1;
+            return true;
+          },
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(refreshCalls, 0);
+        expect(repository.calls, 0);
+        expect(store.clearedAggregateIds, isEmpty);
+      },
+    );
+
+    test(
+      'a mutation already marked accepted is reconciled/cleared, not re-sent',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.accepted,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.unknown,
+          ),
+        );
+        var reconcileCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {
+            reconcileCalls += 1;
+          },
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(
+          repository.calls,
+          0,
+          reason: 'syncMutation should not be called for accepted',
+        );
+        expect(reconcileCalls, 1, reason: 'reconcile should be called');
+        expect(store.clearedAggregateIds, [
+          'plan-1',
+        ], reason: 'mutation should be cleared');
+      },
+    );
+
+    test('concurrent syncPendingMutations calls do not double-send', () async {
+      final syncCompleter = Completer<void>();
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planCreate,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository(
+        slowCompleter: syncCompleter,
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final context = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      // Start two concurrent calls
+      final a = controller.syncPendingMutations(context);
+      final b = controller.syncPendingMutations(context);
+
+      // Both should be awaiting the same in-flight future
+      expect(
+        identical(a, b),
+        true,
+        reason: 'concurrent calls should return same future',
+      );
+
+      // Release the remote sync
+      syncCompleter.complete();
+      await Future.wait([a, b]);
+
+      // Each pending mutation sent exactly once
+      expect(
+        repository.calls,
+        1,
+        reason: 'remote.syncMutation called exactly once',
+      );
+      expect(store.clearedAggregateIds, [
+        'plan-1',
+      ], reason: 'mutation cleared once');
+    });
+
+    test(
+      'retryMutation awaits syncPendingMutations without deadlock',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              errorMessage: 'conflict',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        var refreshCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async {
+            refreshCalls += 1;
+            return true;
+          },
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final context = const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        // retryMutation calls syncPendingMutations internally
+        await controller.retryMutation(
+          context,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.retriedAggregateIds, ['plan-1']);
+        expect(repository.calls, 1);
+        expect(store.clearedAggregateIds, ['plan-1']);
+        expect(refreshCalls, 1);
+      },
+    );
+
+    test(
+      'discardMutation awaits syncPendingMutations without deadlock',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-2',
+              organizationId: 'org-1',
+              name: 'Plan Two',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 2,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        var refreshCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async {
+            refreshCalls += 1;
+            return true;
+          },
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final context = const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        // discardMutation calls syncPendingMutations internally
+        await controller.discardMutation(
+          context,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.clearedAggregateIds, ['plan-1', 'plan-2']);
+        expect(repository.calls, 1);
+        expect(refreshCalls, 1);
+      },
+    );
+
+    test(
+      'discardMutation clears local intent when refresh is unavailable',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              errorMessage: 'conflict',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.discardMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.clearedAggregateIds, contains('plan-1'));
+      },
+    );
+
+    test(
+      'retryMutation re-queues local intent when refresh is unavailable',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              errorMessage: 'conflict',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.retryMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.retriedAggregateIds, contains('plan-1'));
+        expect(store.clearedAggregateIds, contains('plan-1'));
+      },
+    );
   });
 }
 
@@ -530,7 +906,27 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<List<PlanningMutationRecord>> readAllMutations({
     required String userId,
     required String organizationId,
-  }) async => all;
+  }) async {
+    // Combine pending and all, preferring pending versions (retried mutations)
+    final seen = <String>{};
+    final merged = <PlanningMutationRecord>[];
+    for (final p in pending) {
+      merged.add(p);
+      seen.add(p.aggregateId);
+    }
+    for (final a in all) {
+      if (!seen.contains(a.aggregateId)) {
+        merged.add(a);
+      }
+    }
+    // Sort by orderKey asc, then aggregateId asc (match drift query)
+    merged.sort((x, y) {
+      final cmp = x.orderKey.compareTo(y.orderKey);
+      if (cmp != 0) return cmp;
+      return x.aggregateId.compareTo(y.aggregateId);
+    });
+    return merged;
+  }
 
   @override
   Future<PlanningMutationRecord?> readMutation({
@@ -550,6 +946,12 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
 
   @override
   Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) async => pending;
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
     required String userId,
     required String organizationId,
   }) async => pending;
@@ -638,10 +1040,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
 
 class _FakePlanningMutationRemoteRepository
     implements PlanningMutationRemoteRepository {
-  _FakePlanningMutationRemoteRepository({this.error, this.result});
+  _FakePlanningMutationRemoteRepository({
+    this.error,
+    this.result,
+    this.slowCompleter,
+  });
 
   final PlanningMutationSyncException? error;
   final PlanningMutationRecord? result;
+  final Completer<void>? slowCompleter;
   int calls = 0;
 
   @override
@@ -650,6 +1057,9 @@ class _FakePlanningMutationRemoteRepository
     required PlanningMutationRecord record,
   }) async {
     calls += 1;
+    if (slowCompleter != null) {
+      await slowCompleter!.future;
+    }
     if (error != null) {
       throw error!;
     }

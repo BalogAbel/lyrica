@@ -3,16 +3,22 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 
 class AppAuthState {
-  const AppAuthState({required this.status, this.session});
+  const AppAuthState({
+    required this.status,
+    this.session,
+    this.lastKnownSession,
+  });
 
   final AppAuthStatus status;
   final AppAuthSession? session;
+  final AppAuthSession? lastKnownSession;
 
   @override
   bool operator ==(Object other) {
     return other is AppAuthState &&
         other.status == status &&
-        _sessionEquals(other.session, session);
+        _sessionEquals(other.session, session) &&
+        _sessionEquals(other.lastKnownSession, lastKnownSession);
   }
 
   @override
@@ -21,6 +27,9 @@ class AppAuthState {
     session?.userId,
     session?.email,
     Object.hashAll(session?.linkedProviders ?? const <String>[]),
+    lastKnownSession?.userId,
+    lastKnownSession?.email,
+    Object.hashAll(lastKnownSession?.linkedProviders ?? const <String>[]),
   );
 
   static bool _sessionEquals(AppAuthSession? left, AppAuthSession? right) {

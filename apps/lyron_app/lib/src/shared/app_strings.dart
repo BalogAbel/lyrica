@@ -11,6 +11,17 @@ class AppStrings {
   static const passwordLabel = 'Password';
   static const sessionExpiredMessage =
       'Your session expired. Please sign in again.';
+  static const reauthRequiredMessage =
+      'You are offline. Sign in again to sync your changes.';
+  static const reauthSignInAction = 'Sign in';
+  static const reauthDifferentUserTitle = 'Másik fiók jelentkezett be.';
+  static String reauthDifferentUserPendingMessage({
+    required String email,
+    required int count,
+  }) =>
+      'Másik fiók jelentkezett be. $email-nek $count mentetlen változtatása van. A folytatás törli ezeket.';
+  static const reauthConfirmWipeAction = 'Folytatás';
+  static const reauthCancelAction = 'Mégse';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';

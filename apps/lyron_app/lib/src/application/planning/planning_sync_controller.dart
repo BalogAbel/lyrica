@@ -253,34 +253,14 @@ class PlanningSyncController extends ChangeNotifier {
   }
 
   Future<void> handleSessionExpired() async {
-    final generation = _advanceAuthGeneration();
+    _advanceAuthGeneration();
     _advanceBoundaryGeneration();
-    final userId =
-        _state.userId ??
-        _authSessionReader()?.userId ??
-        _lastAuthenticatedUserId;
     _invalidateRefreshGeneration();
     _setState(
       const PlanningSyncState.initial().copyWith(
-        accessStatus: PlanningAccessStatus.signedOut,
+        accessStatus: PlanningAccessStatus.signedIn,
       ),
     );
-    if (userId != null) {
-      try {
-        await _localStore().deletePlanningDataForUser(
-          userId: userId,
-          shouldContinue: () =>
-              !_disposed &&
-              generation == _authGeneration &&
-              _state.accessStatus == PlanningAccessStatus.signedOut,
-        );
-      } on PlanningProjectionAbortedException {
-        return;
-      }
-    }
-    if (generation == _authGeneration) {
-      _lastAuthenticatedUserId = null;
-    }
   }
 
   Future<void> _replaceProjection({

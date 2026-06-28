@@ -159,5 +159,91 @@ void main() {
         expect(session.items.first.song.title, 'Gamma');
       },
     );
+
+    test('merge keeps a failed planEdit visible instead of reverting', () async {
+      // arrange: projection has plan P (name "Server Name"); mutation store has a planEdit on P
+      //          with name "Edited Name", syncStatus=failedDependency
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Edited Name',
+          description: null,
+          scheduledFor: null,
+          baseVersion: 1,
+        ),
+      );
+
+      // simulate sync failure
+      await mutationStore.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.failedDependency,
+      );
+
+      // act
+      final plans = await repository.listPlans();
+
+      // assert: the plan P in result has name "Edited Name" (the edit), NOT "Server Name"
+      final plan = plans.firstWhere((p) => p.id == 'plan-1');
+      expect(plan.name, equals('Edited Name'));
+    });
+
+    test(
+      'a visible failed planEdit does not blank description/scheduledFor',
+      () async {
+        // arrange: plan P has description D and scheduledFor S in projection;
+        //          a planEdit mutation changed ONLY the name, syncStatus=conflict
+        final planWithDetails = CachedPlanRecord(
+          id: 'plan-2',
+          slug: 'detailed-plan',
+          name: 'Original Name',
+          description: 'Important description',
+          scheduledFor: DateTime.utc(2026, 5, 1),
+          updatedAt: DateTime.utc(2026, 4, 11, 10),
+        );
+
+        await localStore.replaceActiveProjection(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          plans: [planWithDetails],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 11, 10),
+        );
+
+        // record edit that changes only name (description and scheduledFor are null in mutation)
+        await mutationStore.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-2',
+            name: 'Updated Name',
+            description: null,
+            scheduledFor: null,
+            baseVersion: 1,
+          ),
+        );
+
+        // simulate sync conflict
+        await mutationStore.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'plan-2',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+        );
+
+        // act
+        final plans = await repository.listPlans();
+        final plan = plans.firstWhere((p) => p.id == 'plan-2');
+
+        // assert: returned plan keeps description D and scheduledFor S (NOT blanked), and shows edited name
+        expect(plan.name, equals('Updated Name'));
+        expect(plan.description, equals('Important description'));
+        expect(plan.scheduledFor, equals(DateTime.utc(2026, 5, 1)));
+      },
+    );
   });
 }

@@ -14,7 +14,7 @@ typedef PlanningAcceptedMutationGuard =
     Future<bool> Function(ActivePlanningReadContext context);
 
 class PlanningMutationSyncController {
-  const PlanningMutationSyncController({
+  PlanningMutationSyncController({
     required PlanningMutationStoreReader mutationStore,
     required PlanningMutationRemoteRepositoryReader remoteRepository,
     required PlanningRefreshTrigger refreshPlanning,
@@ -32,28 +32,54 @@ class PlanningMutationSyncController {
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
   final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
 
-  Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
-    final pending = await _mutationStore().readPendingMutations(
+  Future<void>? _inFlight;
+
+  Future<void> syncPendingMutations(ActivePlanningReadContext context) {
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+    final run = _run(context).whenComplete(() => _inFlight = null);
+    _inFlight = run;
+    return run;
+  }
+
+  Future<void> _run(ActivePlanningReadContext context) async {
+    final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
     );
 
-    for (final mutation in pending) {
+    final candidates = allMutations
+        .where(
+          (m) =>
+              m.syncStatus == PlanningMutationSyncStatus.pending ||
+              m.syncStatus == PlanningMutationSyncStatus.accepted,
+        )
+        .toList(growable: false);
+
+    final acceptedRecords =
+        <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
+
+    for (final mutation in candidates) {
+      if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {
+        // Durable marker: already accepted, skip remote send
+        acceptedRecords.add((mutation, mutation));
+        continue;
+      }
+
       try {
         final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
           record: mutation,
         );
-        final refreshed = await _refreshPlanning();
-        if (!refreshed && await _shouldReconcileAcceptedMutation(context)) {
-          await _reconcileAcceptedMutation(context, syncedMutation);
-        }
-        await _mutationStore().clearMutation(
+        // Durable marker: save accepted status immediately (survives crash)
+        await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: mutation.kind.aggregateType,
           aggregateId: mutation.aggregateId,
+          syncStatus: PlanningMutationSyncStatus.accepted,
         );
+        acceptedRecords.add((mutation, syncedMutation));
       } on PlanningMutationSyncException catch (error) {
         final syncStatus = switch (error.code) {
           PlanningMutationSyncErrorCode.authorizationDenied =>
@@ -82,6 +108,34 @@ class PlanningMutationSyncController {
         }
       }
     }
+
+    if (acceptedRecords.isEmpty) {
+      return;
+    }
+
+    final refreshed = await _refreshPlanning();
+    if (refreshed) {
+      for (final (original, _) in acceptedRecords) {
+        await _mutationStore().clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: original.kind.aggregateType,
+          aggregateId: original.aggregateId,
+        );
+      }
+    } else {
+      for (final (original, synced) in acceptedRecords) {
+        if (await _shouldReconcileAcceptedMutation(context)) {
+          await _reconcileAcceptedMutation(context, synced);
+        }
+        await _mutationStore().clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: original.kind.aggregateType,
+          aggregateId: original.aggregateId,
+        );
+      }
+    }
   }
 
   Future<void> retryMutation(
@@ -89,9 +143,6 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
-    if (!await _refreshPlanning()) {
-      return;
-    }
     await _mutationStore().retryMutation(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -106,9 +157,6 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
-    if (!await _refreshPlanning()) {
-      return;
-    }
     await _mutationStore().clearMutation(
       userId: context.userId,
       organizationId: context.organizationId,

@@ -433,6 +433,34 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final rows =
+        await (_database.select(_database.cachedPlanningMutations)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.syncStatus.isIn([
+                      PlanningMutationSyncStatus.pending.value,
+                      PlanningMutationSyncStatus.accepted.value,
+                      PlanningMutationSyncStatus.failedAuthorization.value,
+                      PlanningMutationSyncStatus.failedDependency.value,
+                      PlanningMutationSyncStatus.failedRemoteDelete.value,
+                      PlanningMutationSyncStatus.conflict.value,
+                    ]),
+              )
+              ..orderBy([
+                (table) => OrderingTerm.asc(table.orderKey),
+                (table) => OrderingTerm.asc(table.aggregateId),
+              ]))
+            .get();
+    return rows.map(_toRecord).toList(growable: false);
+  }
+
+  @override
   Future<List<PlanningMutationRecord>> readAllMutations({
     required String userId,
     required String organizationId,

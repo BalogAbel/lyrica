@@ -12,12 +12,14 @@ import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_reconciler.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
@@ -38,6 +40,8 @@ import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
@@ -56,11 +60,18 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
     required PlanningLocalStore planningLocalStore,
     required SongCatalogStore songCatalogStore,
+    required LastKnownIdentityStore lastKnownIdentityStore,
+    required void Function() invalidateLastKnownIdentityPersistence,
   }) : _planningLocalStore = planningLocalStore,
-       _songCatalogStore = songCatalogStore;
+       _songCatalogStore = songCatalogStore,
+       _lastKnownIdentityStore = lastKnownIdentityStore,
+       _invalidateLastKnownIdentityPersistence =
+           invalidateLastKnownIdentityPersistence;
 
   final PlanningLocalStore _planningLocalStore;
   final SongCatalogStore _songCatalogStore;
+  final LastKnownIdentityStore _lastKnownIdentityStore;
+  final void Function() _invalidateLastKnownIdentityPersistence;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -72,6 +83,7 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   }
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
+    _invalidateLastKnownIdentityPersistence();
     final handlers = _handlers.toList(growable: false);
     final planningCleanup = handlers.isEmpty
         ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
@@ -83,6 +95,7 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     return Future.wait([
       planningCleanup,
       _songCatalogStore.deleteCatalogsForUser(userId: userId),
+      _lastKnownIdentityStore.clear(),
     ]);
   }
 
@@ -134,9 +147,119 @@ final activeOrganizationResolutionProvider =
 final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
   ref,
 ) {
-  final controller = AppAuthController(ref.read(authRepositoryProvider));
+  final controller = AppAuthController(
+    ref.read(authRepositoryProvider),
+    lastKnownIdentityStore: ref.read(lastKnownIdentityStoreProvider),
+  );
   unawaited(controller.restoreSession());
   return controller;
+});
+
+final lastKnownIdentityDatabaseProvider = Provider<LastKnownIdentityDatabase>((
+  ref,
+) {
+  final database = Platform.environment.containsKey('FLUTTER_TEST')
+      ? LastKnownIdentityDatabase.inMemory()
+      : LastKnownIdentityDatabase.local();
+  ref.onDispose(database.close);
+  return database;
+});
+
+final lastKnownIdentityStoreProvider = Provider<LastKnownIdentityStore>((ref) {
+  return DriftLastKnownIdentityStore(
+    ref.watch(lastKnownIdentityDatabaseProvider),
+  );
+});
+
+final _lastKnownIdentityPersistenceEpochProvider =
+    Provider<_LastKnownIdentityPersistenceEpoch>(
+      (_) => _LastKnownIdentityPersistenceEpoch(),
+    );
+
+final class _LastKnownIdentityPersistenceEpoch {
+  var _value = 0;
+
+  int invalidate() {
+    _value += 1;
+    return _value;
+  }
+
+  bool isCurrent(int value) => _value == value;
+}
+
+final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
+  final authController = ref.read(appAuthControllerProvider);
+  final identityStore = ref.watch(lastKnownIdentityStoreProvider);
+  final epoch = ref.watch(_lastKnownIdentityPersistenceEpochProvider);
+
+  Future<void> persistIdentity(AppAuthState authState) async {
+    final generation = epoch.invalidate();
+
+    switch (authState.status) {
+      case AppAuthStatus.initializing:
+        return;
+      case AppAuthStatus.signedOut:
+        await identityStore.clear();
+        return;
+      case AppAuthStatus.sessionExpired:
+        return;
+      case AppAuthStatus.signedIn:
+        final session = authState.session;
+        if (session == null) {
+          return;
+        }
+        ActiveOrganizationResolution? resolution;
+        try {
+          resolution = await ref.read(membershipResolutionProvider)();
+        } catch (_) {
+          // Membership resolution unavailable (offline, a non-connectivity
+          // error, or an uninitialized backend). Persist the identity with an
+          // unknown organization instead of letting this fire-and-forget auth
+          // listener throw an unhandled exception; the org is refined on a
+          // later successful resolution.
+          resolution = null;
+        }
+        final currentState = authController.state;
+        final currentSession = currentState.session;
+        if (currentState.status != AppAuthStatus.signedIn ||
+            currentSession == null ||
+            currentSession.userId != session.userId ||
+            currentSession.email != session.email ||
+            !epoch.isCurrent(generation)) {
+          return;
+        }
+        switch (resolution) {
+          case ActiveOrganizationSelected(:final organizationId):
+            await identityStore.write(
+              LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: organizationId,
+              ),
+            );
+          case ActiveOrganizationVerifiedEmpty():
+            await identityStore.clear();
+          case ActiveOrganizationUnknownConnectivityFailure():
+          case ActiveOrganizationUnknownNonConnectivityFailure():
+          case null:
+            await identityStore.write(
+              LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: null,
+              ),
+            );
+        }
+    }
+  }
+
+  void authListener() {
+    unawaited(persistIdentity(authController.state));
+  }
+
+  authController.addListener(authListener);
+  ref.onDispose(() => authController.removeListener(authListener));
+  unawaited(persistIdentity(authController.state));
 });
 
 final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {
@@ -250,6 +373,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
+  ref.watch(lastKnownIdentityPersistenceProvider);
   return Listenable.merge([
     ref.read(appAuthControllerProvider),
     ref.read(activeMembershipControllerProvider),
@@ -303,6 +427,10 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
       return VerifiedEmptyMembershipCleanupCoordinator(
         planningLocalStore: ref.watch(planningLocalStoreProvider),
         songCatalogStore: ref.watch(songCatalogStoreProvider),
+        lastKnownIdentityStore: ref.watch(lastKnownIdentityStoreProvider),
+        invalidateLastKnownIdentityPersistence: () {
+          ref.read(_lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
       );
     });
 
@@ -384,124 +512,9 @@ final planningMutationSyncControllerProvider =
               activeContext.userId == context.userId &&
               activeContext.organizationId == context.organizationId;
         },
-        reconcileAcceptedMutation: (context, record) async {
-          final localStore = ref.read(planningLocalStoreProvider);
-          final reconciledAt = DateTime.now().toUtc();
-
-          switch (record.kind) {
-            case PlanningMutationKind.planCreate:
-            case PlanningMutationKind.planEdit:
-              await localStore.upsertSyncedPlan(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                plan: CachedPlanRecord(
-                  id: record.aggregateId,
-                  slug: record.slug ?? record.aggregateId,
-                  name: record.name ?? '',
-                  description: record.description,
-                  scheduledFor: record.scheduledFor,
-                  updatedAt: reconciledAt,
-                  version: record.baseVersion ?? 1,
-                ),
-              );
-              return;
-            case PlanningMutationKind.sessionCreate:
-            case PlanningMutationKind.sessionRename:
-              await localStore.upsertSyncedSession(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                session: CachedSessionRecord(
-                  id: record.aggregateId,
-                  planId: record.planId ?? '',
-                  slug: record.slug ?? record.aggregateId,
-                  position: record.position ?? 0,
-                  name: record.name ?? '',
-                  version: record.baseVersion ?? 1,
-                ),
-              );
-              return;
-            case PlanningMutationKind.sessionDelete:
-              await localStore.deleteSyncedSession(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.aggregateId,
-                refreshedAt: reconciledAt,
-              );
-              return;
-            case PlanningMutationKind.sessionReorder:
-              await localStore.replaceSyncedSessionOrder(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                planId: record.planId ?? record.aggregateId,
-                orderedSessionIds: record.orderedSiblingIds ?? const [],
-                orderedSessionPositions: record.orderedSiblingPositions,
-                planVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              return;
-            case PlanningMutationKind.sessionItemCreateSong:
-              await localStore.upsertSyncedSessionItem(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                refreshedAt: reconciledAt,
-                sessionVersion: record.baseVersion ?? 1,
-                item: CachedSessionItemRecord(
-                  id: record.aggregateId,
-                  planId: record.planId ?? '',
-                  sessionId: record.sessionId ?? '',
-                  position: record.position ?? 0,
-                  songId: record.songId ?? '',
-                  songTitle: record.songTitle ?? '',
-                ),
-              );
-              if (record.orderedSiblingIds != null) {
-                await localStore.replaceSyncedSessionItemOrder(
-                  userId: context.userId,
-                  organizationId: context.organizationId,
-                  sessionId: record.sessionId ?? '',
-                  orderedSessionItemIds: record.orderedSiblingIds!,
-                  orderedSessionItemPositions: record.orderedSiblingPositions,
-                  sessionVersion: record.baseVersion ?? 1,
-                  refreshedAt: reconciledAt,
-                );
-              }
-              return;
-            case PlanningMutationKind.sessionItemDelete:
-              await localStore.deleteSyncedSessionItem(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.sessionId ?? '',
-                sessionItemId: record.aggregateId,
-                sessionVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              if (record.orderedSiblingIds != null) {
-                await localStore.replaceSyncedSessionItemOrder(
-                  userId: context.userId,
-                  organizationId: context.organizationId,
-                  sessionId: record.sessionId ?? '',
-                  orderedSessionItemIds: record.orderedSiblingIds!,
-                  orderedSessionItemPositions: record.orderedSiblingPositions,
-                  sessionVersion: record.baseVersion ?? 1,
-                  refreshedAt: reconciledAt,
-                );
-              }
-              return;
-            case PlanningMutationKind.sessionItemReorder:
-              await localStore.replaceSyncedSessionItemOrder(
-                userId: context.userId,
-                organizationId: context.organizationId,
-                sessionId: record.sessionId ?? '',
-                orderedSessionItemIds: record.orderedSiblingIds ?? const [],
-                orderedSessionItemPositions: record.orderedSiblingPositions,
-                sessionVersion: record.baseVersion ?? 1,
-                refreshedAt: reconciledAt,
-              );
-              return;
-          }
-        },
+        reconcileAcceptedMutation: PlanningMutationReconciler(
+          localStore: () => ref.read(planningLocalStoreProvider),
+        ).reconcile,
       );
     });
 
@@ -530,7 +543,7 @@ final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
 
 final activePlanningContextControllerProvider =
     ChangeNotifierProvider<ActivePlanningContextController>((ref) {
-      final authController = ref.watch(appAuthControllerProvider);
+      final authController = ref.read(appAuthControllerProvider);
       final controller = ActivePlanningContextController(
         authSessionReader: () => authController.state.session,
         organizationReader: () => ref.read(activeOrganizationReaderProvider)(),
@@ -549,8 +562,9 @@ final activePlanningContextControllerProvider =
           case AppAuthStatus.initializing:
             return;
           case AppAuthStatus.signedOut:
-          case AppAuthStatus.sessionExpired:
             controller.resetForSessionLifecycle();
+            return;
+          case AppAuthStatus.sessionExpired:
             return;
           case AppAuthStatus.signedIn:
             unawaited(
@@ -684,7 +698,7 @@ final appForegroundStateProvider = Provider<AppForegroundState>((ref) {
 
 final songCatalogControllerProvider =
     ChangeNotifierProvider.autoDispose<SongCatalogController>((ref) {
-      final authController = ref.watch(appAuthControllerProvider);
+      final authController = ref.read(appAuthControllerProvider);
       final controller = SongCatalogController(
         store: ref.watch(songCatalogStoreProvider),
         remoteRepository: ref.watch(supabaseSongRepositoryProvider),

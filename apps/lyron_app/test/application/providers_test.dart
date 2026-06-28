@@ -333,7 +333,7 @@ void main() {
   );
 
   test(
-    'session expired clears active song context and blocks cached reads until re-sign-in',
+    'session expired keeps the cached catalog and active song context readable',
     () async {
       final authRepository = _ControllableAuthRepository();
       final authController = AppAuthController(authRepository);
@@ -385,12 +385,28 @@ void main() {
         container.dispose();
         await songDatabase.close();
       });
+      final activeCatalogSubscription = container.listen(
+        activeCatalogContextProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      final songLibrarySubscription = container.listen(
+        songLibraryListProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(activeCatalogSubscription.close);
+      addTearDown(songLibrarySubscription.close);
 
       await container.read(songCatalogControllerProvider).refreshCatalog();
 
       expect(
         container.read(activeCatalogContextProvider),
         const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+      expect(
+        container.read(catalogSnapshotStateProvider).sessionStatus,
+        CatalogSessionStatus.verified,
       );
       expect(
         await container.read(songLibraryListProvider.future),
@@ -400,8 +416,18 @@ void main() {
       authRepository.emitSession(null);
       await Future<void>.delayed(Duration.zero);
 
-      expect(container.read(activeCatalogContextProvider), isNull);
-      expect(await container.read(songLibraryListProvider.future), isEmpty);
+      expect(
+        container.read(catalogSnapshotStateProvider).sessionStatus,
+        CatalogSessionStatus.expired,
+      );
+      expect(
+        container.read(activeCatalogContextProvider),
+        const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+      expect(
+        await container.read(songLibraryListProvider.future),
+        hasLength(1),
+      );
       expect(
         await songStore.readActiveSummaries(
           userId: 'user-1',
@@ -409,11 +435,75 @@ void main() {
         ),
         hasLength(1),
       );
+    },
+  );
 
-      await authController.signInWithOAuth(
-        SignInMethod.google,
-        redirectTo: 'lyron://auth',
+  test(
+    'explicit sign-out still clears the active song context and cache',
+    () async {
+      final authRepository = _ControllableAuthRepository();
+      final authController = AppAuthController(authRepository);
+      await authController.restoreSession();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final foregroundState = _TestAppForegroundState();
+      final remoteRepository = SupabaseSongRepository.testing(
+        listSongsRows: () async => const [
+          {
+            'id': 'song-1',
+            'slug': 'cached-song',
+            'title': 'Cached Song',
+            'version': 1,
+          },
+        ],
+        getSongRow: (id) async => const {
+          'id': 'song-1',
+          'slug': 'cached-song',
+          'chordpro_source': '{title: Cached Song}',
+        },
       );
+
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 5, 1, 12),
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          songCatalogStoreProvider.overrideWithValue(songStore),
+          supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+          catalogSessionVerifierProvider.overrideWithValue(
+            () async => CatalogSessionStatus.verified,
+          ),
+          activeOrganizationReaderProvider.overrideWithValue(
+            () async => 'org-1',
+          ),
+          appForegroundStateProvider.overrideWithValue(foregroundState),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await songDatabase.close();
+      });
+      final activeCatalogSubscription = container.listen(
+        activeCatalogContextProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      final songLibrarySubscription = container.listen(
+        songLibraryListProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(activeCatalogSubscription.close);
+      addTearDown(songLibrarySubscription.close);
+
       await container.read(songCatalogControllerProvider).refreshCatalog();
 
       expect(
@@ -423,6 +513,19 @@ void main() {
       expect(
         await container.read(songLibraryListProvider.future),
         hasLength(1),
+      );
+
+      await authController.signOut();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(activeCatalogContextProvider), isNull);
+      expect(await container.read(songLibraryListProvider.future), isEmpty);
+      expect(
+        await songStore.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
       );
     },
   );
@@ -745,7 +848,8 @@ void main() {
       );
 
       authRepository.emitSession(null);
-      await blockingStore.deleteStarted.future;
+      await Future<void>.delayed(Duration.zero);
+      expect(blockingStore.deleteStarted.isCompleted, isFalse);
 
       await authController.signInWithOAuth(
         SignInMethod.google,
@@ -760,7 +864,6 @@ void main() {
             ),
             refresh: false,
           );
-      blockingStore.releaseDelete();
       await container.read(planningSyncControllerProvider).refreshPlanning();
 
       expect(
@@ -1458,6 +1561,12 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
 
   @override
   Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) async => entries;
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
     required String userId,
     required String organizationId,
   }) async => entries;

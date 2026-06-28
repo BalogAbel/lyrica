@@ -31,7 +31,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'boots into the signed-in song list, opens the reader, and redirects to sign in when the session expires',
+    'boots into the signed-in song list, opens the reader, and stays offline-authenticated when the session expires',
     (tester) async {
       final authRepository = _StreamingAuthRepository(
         restoredSession: const AppAuthSession(
@@ -117,11 +117,19 @@ void main() {
       authRepository.expireSession();
       await tester.pumpAndSettle();
 
-      expect(find.text('Sign in'), findsOneWidget);
+      // Task 7 / ADR-020: in-session expiry is non-destructive. The user stays
+      // in the app (offline-authenticated) instead of being bounced to the
+      // sign-in screen. Match the sign-in screen by its unique summary, since
+      // 'Sign in' also labels the re-auth banner action.
+      expect(find.text(AppStrings.signInSummary), findsNothing);
       expect(
         find.text('Your session expired. Please sign in again.'),
-        findsOneWidget,
+        findsNothing,
       );
+      // Cached catalog stays readable and the persistent re-auth banner renders.
+      expect(find.text(AppStrings.appName), findsOneWidget);
+      expect(find.text('Egy út'), findsOneWidget);
+      expect(find.text(AppStrings.reauthRequiredMessage), findsOneWidget);
     },
   );
 
