@@ -87,3 +87,14 @@ verified-empty revocation) and consolidates the previously scattered in-memory
 - The different-user re-auth coordinator and its confirmation dialog are implemented and tested as a
   ready seam; the live provider→dialog integration is intentionally deferred and tracked in
   `docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`.
+
+## Validation
+
+The local-first-validation slice (2026-06-29) added
+`apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`, an integration
+suite covering the `LF-T1` scenario this ADR addresses: offline edit → app relaunch →
+reconnect → sync, against the real local Supabase stack. The suite is **skip-gated** on
+`SUPABASE_URL`/`SUPABASE_ANON_KEY` (the same convention as the existing authenticated
+integration suites) and is faithfully wired to the live RPC/auth contracts, but has not yet
+been run against a running stack in this slice. See
+`docs/deferred/2026-06-29-integration-live-stack-verification.md` for live-run status.

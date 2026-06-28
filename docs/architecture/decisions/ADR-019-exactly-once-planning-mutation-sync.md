@@ -59,3 +59,23 @@ Implement exactly-once planning mutation sync with the following controls:
 
 - Realtime subscription events should request a refresh rather than directly mutating mutation state; this contract does not change that decision from ADR-015.
 - Conflict resolution, remote-delete recovery, and authorization-failure replay remain explicit and manual in the MVP; automatic retry policies are deferred.
+
+## Validation
+
+The local-first-validation slice (2026-06-29) added adversarial regression coverage that
+exercises this decision's exactly-once contract directly, rather than relying solely on the
+happy-path coverage already listed under "Testable architecture":
+
+- `apps/lyron_app/test/offline/adversarial/planning_fault_injection_test.dart` validates the
+  durable-accepted-marker contract (`LF-1`: a crash between backend acceptance and local
+  clear does not re-send the mutation on the next run) and the batch-refresh contract
+  (`LF-2`: a partial-RPC-success batch followed by a failed refresh still reconciles
+  correctly afterward).
+- `apps/lyron_app/test/offline/adversarial/song_single_flight_test.dart` validates the
+  single-flight guard (`LF-3`) for the song mutation sync path. The planning path was
+  already guarded by this ADR; this suite closes the equivalent gap on
+  `SongMutationSyncController.syncPendingSongs`, which previously had no internal
+  single-flight coalescing.
+
+Both suites are part of the broader adversarial offline/sync validation effort recorded in
+`docs/testing/testing-strategy.md`.

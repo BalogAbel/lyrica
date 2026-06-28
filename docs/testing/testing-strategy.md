@@ -52,6 +52,53 @@ Active local-first regression coverage includes:
 - Provider/local-store accepted-write fallback regression coverage for planning mutations when remote refresh fails.
 - Song pending mutation persistence across Drift reopen for pending create, pending update, pending delete, and overlay replay behavior.
 
+### Adversarial Offline/Sync Validation
+
+The local-first-validation slice (`docs/specs/2026-06-29-local-first-validation.md`,
+`docs/plans/2026-06-29-local-first-validation.md`) added a dedicated adversarial suite under
+`apps/lyron_app/test/offline/adversarial/` plus two skip-gated integration suites, targeting
+the correctness/robustness findings in `docs/architecture/repository-review-2026-06-22.md`
+(`LF-1` through `LF-8`, `LF-T4`, `LF-T6`, `LF-T7`). Each suite proves or characterizes a
+specific finding:
+
+- `planning_fault_injection_test.dart` — `LF-1` (crash between backend acceptance and local
+  clear does not re-send an already-accepted mutation) and `LF-2` (a partial-RPC-success
+  batch followed by a failed refresh still reconciles correctly on the next run). Both were
+  already shipped by ADR-019 and are validated, not newly fixed, by this suite.
+- `song_single_flight_test.dart` — `LF-3` for the song sync path. Added a single-flight guard
+  to `SongMutationSyncController.syncPendingSongs` (mirroring the existing planning guard from
+  ADR-019) so concurrent sync triggers coalesce into one in-flight run instead of double-sending.
+- `planning_merge_visibility_test.dart` — `LF-4` (a conflicted edit stays visible in the merged
+  read instead of silently reverting) and `LF-5` (a partial edit preserves untouched fields
+  instead of blanking them), both validating existing ADR-019 behavior; and `LF-6` (the merge
+  now dedups a duplicate offline song-add by `songId`, a fix, not just a validation).
+- `planning_reconcile_nullfield_test.dart` — `LF-8`. The reconciler now throws a typed
+  `ReconcileFieldError` for a null required-on-create field instead of silently coercing it to
+  `''`/`0`, replacing the prior silent-corruption path with an explicit, testable failure.
+- `planning_migration_test.dart` — `LF-T7` (planning half): a pending planning mutation
+  survives a Drift database close/reopen. Validates existing behavior.
+- `song_catalog_migration_test.dart` — `LF-T7` (catalog half): `SongCatalogDatabase` now
+  declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
+  pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
+  just a validation.
+- `storage_pressure_probe_test.dart` — `LF-T4` probe. Confirms a storage write failure
+  propagates as an exception instead of being silently swallowed. Characterizes current
+  behavior; the full size-monitor/eviction policy remains deferred
+  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`).
+- `clock_skew_probe_test.dart` — `LF-T6` probe. Adds an injectable clock seam to
+  `PlanningMutationReconciler` (default wall-clock behavior unchanged) and confirms an
+  injected skewed clock flows straight through into reconciled timestamps uncorrected. A
+  server-clock anchor remains deferred (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
+- `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart` — `LF-T1`
+  scenario: offline edit → relaunch → reconnect → sync, skip-gated on a live local Supabase
+  stack. Faithfully wired but unverified against a running stack
+  (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
+- `apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart` — two-device
+  concurrent-edit conflict matrix, skip-gated. Rename-vs-rename, reorder-vs-reorder, and
+  add-same-song-twice pairs are fully wired; edit-vs-remote-delete and
+  partial-edit-vs-full-edit pairs are structure-only pending live error-code/semantics
+  confirmation (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
+
 ### Widget Tests
 
 Cover:
