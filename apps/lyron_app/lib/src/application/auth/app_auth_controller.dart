@@ -3,26 +3,37 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 
 class AppAuthController extends ChangeNotifier {
-  AppAuthController(this._repository)
-    : _state = const AppAuthState(status: AppAuthStatus.initializing);
+  AppAuthController(
+    this._repository, {
+    LastKnownIdentityStore? lastKnownIdentityStore,
+  }) : _lastKnownIdentityStore = lastKnownIdentityStore,
+       _state = const AppAuthState(status: AppAuthStatus.initializing);
 
   final AuthRepository _repository;
+  final LastKnownIdentityStore? _lastKnownIdentityStore;
 
   AppAuthState _state;
   StreamSubscription<AppAuthSession?>? _subscription;
   bool _isSigningOut = false;
+  bool _isDisposed = false;
+  int _authGeneration = 0;
 
   AppAuthState get state => _state;
 
   Future<void> restoreSession() async {
     _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
+    final generation = _authGeneration;
     final session = await _repository.restoreSession();
-    _setState(_stateForSession(session, fromStream: false));
+    final nextState = await _stateForRestoredSession(session);
+    if (generation == _authGeneration) {
+      _setState(nextState);
+    }
   }
 
   Future<void> signInWithOAuth(
@@ -42,6 +53,7 @@ class AppAuthController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    _authGeneration += 1;
     _isSigningOut = true;
     try {
       await _repository.signOut();
@@ -52,6 +64,7 @@ class AppAuthController extends ChangeNotifier {
   }
 
   Future<void> deleteAccount() async {
+    _authGeneration += 1;
     _isSigningOut = true;
     try {
       await _repository.deleteAccount();
@@ -62,7 +75,32 @@ class AppAuthController extends ChangeNotifier {
   }
 
   void _handleSessionUpdate(AppAuthSession? session) {
+    _authGeneration += 1;
     _setState(_stateForSession(session, fromStream: true));
+  }
+
+  Future<AppAuthState> _stateForRestoredSession(
+    AppAuthSession? session,
+  ) async {
+    if (session != null) {
+      return AppAuthState(status: AppAuthStatus.signedIn, session: session);
+    }
+    final identityStore = _lastKnownIdentityStore;
+    if (identityStore == null) {
+      return const AppAuthState(status: AppAuthStatus.signedOut);
+    }
+    final identity = await identityStore.read();
+    if (identity == null) {
+      return const AppAuthState(status: AppAuthStatus.signedOut);
+    }
+    return AppAuthState(
+      status: AppAuthStatus.sessionExpired,
+      lastKnownSession: AppAuthSession(
+        userId: identity.userId,
+        email: identity.email,
+        linkedProviders: const [],
+      ),
+    );
   }
 
   AppAuthState _stateForSession(
@@ -75,12 +113,18 @@ class AppAuthController extends ChangeNotifier {
     if (fromStream &&
         !_isSigningOut &&
         _state.status == AppAuthStatus.signedIn) {
-      return const AppAuthState(status: AppAuthStatus.sessionExpired);
+      return AppAuthState(
+        status: AppAuthStatus.sessionExpired,
+        lastKnownSession: _state.session,
+      );
     }
     return const AppAuthState(status: AppAuthStatus.signedOut);
   }
 
   void _setState(AppAuthState nextState) {
+    if (_isDisposed) {
+      return;
+    }
     if (_state == nextState) {
       return;
     }
@@ -90,6 +134,7 @@ class AppAuthController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _subscription?.cancel();
     super.dispose();
   }

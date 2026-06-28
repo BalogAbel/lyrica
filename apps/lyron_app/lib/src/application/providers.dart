@@ -147,7 +147,10 @@ final activeOrganizationResolutionProvider =
 final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
   ref,
 ) {
-  final controller = AppAuthController(ref.read(authRepositoryProvider));
+  final controller = AppAuthController(
+    ref.read(authRepositoryProvider),
+    lastKnownIdentityStore: ref.read(lastKnownIdentityStoreProvider),
+  );
   unawaited(controller.restoreSession());
   return controller;
 });
