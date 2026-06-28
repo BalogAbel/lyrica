@@ -571,6 +571,52 @@ void main() {
         expect(store.clearedAggregateIds, isEmpty);
       },
     );
+
+    test(
+      'a mutation already marked accepted is reconciled/cleared, not re-sent',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planCreate,
+              syncStatus: PlanningMutationSyncStatus.accepted,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.unknown,
+          ),
+        );
+        var reconcileCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => false,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {
+            reconcileCalls += 1;
+          },
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(repository.calls, 0, reason: 'syncMutation should not be called for accepted');
+        expect(reconcileCalls, 1, reason: 'reconcile should be called');
+        expect(store.clearedAggregateIds, ['plan-1'], reason: 'mutation should be cleared');
+      },
+    );
   });
 }
 
@@ -619,7 +665,27 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   Future<List<PlanningMutationRecord>> readAllMutations({
     required String userId,
     required String organizationId,
-  }) async => all;
+  }) async {
+    // Combine pending and all, preferring pending versions (retried mutations)
+    final seen = <String>{};
+    final merged = <PlanningMutationRecord>[];
+    for (final p in pending) {
+      merged.add(p);
+      seen.add(p.aggregateId);
+    }
+    for (final a in all) {
+      if (!seen.contains(a.aggregateId)) {
+        merged.add(a);
+      }
+    }
+    // Sort by orderKey asc, then aggregateId asc (match drift query)
+    merged.sort((x, y) {
+      final cmp = x.orderKey.compareTo(y.orderKey);
+      if (cmp != 0) return cmp;
+      return x.aggregateId.compareTo(y.aggregateId);
+    });
+    return merged;
+  }
 
   @override
   Future<PlanningMutationRecord?> readMutation({

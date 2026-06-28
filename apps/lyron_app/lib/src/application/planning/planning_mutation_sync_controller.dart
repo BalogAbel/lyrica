@@ -33,18 +33,38 @@ class PlanningMutationSyncController {
   final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
 
   Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
-    final pending = await _mutationStore().readPendingMutations(
+    final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
     );
 
+    final candidates = allMutations
+        .where((m) =>
+            m.syncStatus == PlanningMutationSyncStatus.pending ||
+            m.syncStatus == PlanningMutationSyncStatus.accepted)
+        .toList(growable: false);
+
     final acceptedRecords = <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
 
-    for (final mutation in pending) {
+    for (final mutation in candidates) {
+      if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {
+        // Durable marker: already accepted, skip remote send
+        acceptedRecords.add((mutation, mutation));
+        continue;
+      }
+
       try {
         final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
           record: mutation,
+        );
+        // Durable marker: save accepted status immediately (survives crash)
+        await _mutationStore().saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: mutation.kind.aggregateType,
+          aggregateId: mutation.aggregateId,
+          syncStatus: PlanningMutationSyncStatus.accepted,
         );
         acceptedRecords.add((mutation, syncedMutation));
       } on PlanningMutationSyncException catch (error) {

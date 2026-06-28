@@ -14,6 +14,7 @@ enum PlanningMutationKind {
 
 enum PlanningMutationSyncStatus {
   pending,
+  accepted,
   failedAuthorization,
   failedDependency,
   failedRemoteDelete,
@@ -57,6 +58,7 @@ extension PlanningMutationKindX on PlanningMutationKind {
 extension PlanningMutationSyncStatusX on PlanningMutationSyncStatus {
   String get value => switch (this) {
     PlanningMutationSyncStatus.pending => 'pending',
+    PlanningMutationSyncStatus.accepted => 'accepted',
     PlanningMutationSyncStatus.failedAuthorization => 'failed_authorization',
     PlanningMutationSyncStatus.failedDependency => 'failed_dependency',
     PlanningMutationSyncStatus.failedRemoteDelete => 'failed_remote_delete',
@@ -86,6 +88,7 @@ PlanningMutationKind planningMutationKindFromValue(String value) {
 PlanningMutationSyncStatus planningMutationSyncStatusFromValue(String value) {
   return switch (value) {
     'pending' => PlanningMutationSyncStatus.pending,
+    'accepted' => PlanningMutationSyncStatus.accepted,
     'failed_authorization' => PlanningMutationSyncStatus.failedAuthorization,
     'failed_dependency' => PlanningMutationSyncStatus.failedDependency,
     'failed_remote_delete' => PlanningMutationSyncStatus.failedRemoteDelete,
