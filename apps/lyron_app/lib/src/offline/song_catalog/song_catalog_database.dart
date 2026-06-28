@@ -29,5 +29,16 @@ class SongCatalogDatabase extends _$SongCatalogDatabase {
   }
 
   @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async => m.createAll(),
+    // schemaVersion 2 was the initial shipped schema; no historical column
+    // delta exists. This explicit onUpgrade is the forward-safe seam for
+    // future bumps and documents the migration contract (LF-T7).
+    onUpgrade: (m, from, to) async {
+      // No historical upgrades yet. Future column additions go here.
+    },
+  );
+
+  @override
   int get schemaVersion => 2;
 }
