@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
+import 'package:lyron_app/src/presentation/auth/reauth_banner.dart';
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
@@ -173,6 +174,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
             ),
             child: Column(
               children: [
+                const ReauthBanner(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     SongListScreen._horizontalPadding,

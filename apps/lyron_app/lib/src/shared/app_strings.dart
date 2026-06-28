@@ -11,6 +11,9 @@ class AppStrings {
   static const passwordLabel = 'Password';
   static const sessionExpiredMessage =
       'Your session expired. Please sign in again.';
+  static const reauthRequiredMessage =
+      'You are offline. Sign in again to sync your changes.';
+  static const reauthSignInAction = 'Sign in';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';
