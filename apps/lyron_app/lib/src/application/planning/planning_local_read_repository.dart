@@ -270,7 +270,12 @@ class PlanningLocalReadRepository implements PlanningRepository {
               sessionId,
               () => <SessionItemSummary>[],
             );
-            sessionItems.removeWhere((item) => item.id == mutation.aggregateId);
+            final newSongId = mutation.songId;
+            sessionItems.removeWhere(
+              (item) =>
+                  item.id == mutation.aggregateId ||
+                  (newSongId != null && item.song.id == newSongId),
+            );
             sessionItems.add(
               SessionItemSummary(
                 id: mutation.aggregateId,

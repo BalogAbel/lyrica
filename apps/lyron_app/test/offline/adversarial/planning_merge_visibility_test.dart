@@ -10,7 +10,8 @@ import '../../support/drift_test_setup.dart';
 /// Adversarial coverage for the offline merge in
 /// `PlanningLocalReadRepository`: confirms actionable mutations
 /// (pending/accepted/failed*/conflict) stay visible over the base
-/// projection (LF-4), and partial edits do not blank untouched fields (LF-5).
+/// projection (LF-4), partial edits do not blank untouched fields (LF-5),
+/// and duplicate offline song-adds collapse to a single visible item (LF-6).
 void main() {
   suppressDriftMultipleDatabaseWarnings();
 
@@ -145,6 +146,84 @@ void main() {
         expect(detail.plan.name, equals('Updated Name'));
         expect(detail.plan.description, equals('Important description'));
         expect(detail.plan.scheduledFor, equals(scheduledFor));
+      },
+    );
+
+    test(
+      'LF-6: two offline song-adds with different item ids but the same songId '
+      'collapse to a single visible session item',
+      () async {
+        // arrange: base plan with one empty session
+        await localStore.replaceActiveProjection(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-3',
+              slug: 'duplicate-song-plan',
+              name: 'Duplicate Song Plan',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 11, 10),
+            ),
+          ],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-3',
+              planId: 'plan-3',
+              slug: 'set-1',
+              position: 10,
+              name: 'Set 1',
+            ),
+          ],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 11, 10),
+        );
+
+        // act: same songId added twice offline with different item ids
+        // (e.g. a retry after an ambiguous failure, or a double-tap that
+        // raced two local mutation records before sync settled).
+        await mutationStore.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-local-a',
+            sessionId: 'session-3',
+            planId: 'plan-3',
+            songId: 'song-dup',
+            songTitle: 'Duplicate Song',
+            position: 10,
+            baseVersion: 1,
+          ),
+        );
+        await mutationStore.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-local-b',
+            sessionId: 'session-3',
+            planId: 'plan-3',
+            songId: 'song-dup',
+            songTitle: 'Duplicate Song',
+            position: 20,
+            baseVersion: 1,
+          ),
+        );
+
+        final detail = await repository.getPlanDetail('plan-3');
+        final session = detail.sessions.firstWhere(
+          (value) => value.id == 'session-3',
+        );
+
+        final matchingItems = session.items
+            .where((item) => item.song.id == 'song-dup')
+            .toList(growable: false);
+
+        expect(
+          matchingItems,
+          hasLength(1),
+          reason:
+              'The same songId added twice offline with different item ids '
+              'must appear exactly once in the merged session, not twice.',
+        );
       },
     );
   });
