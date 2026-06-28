@@ -22,6 +22,7 @@ Lyron is **online-preferred, offline-safe, local-first**:
 - Local writes survive app restart until accepted, discarded, or cleared by sign-out.
 - The UI distinguishes "saved locally" from "accepted by the backend" where that distinction matters.
 - Sync and refresh failures preserve the last usable local state rather than degrading to unavailability.
+- Local read and write access is decoupled from live-session validity: an expired session or an offline relaunch with a dead token keeps a previously authenticated user reading cached data and queueing writes (an offline-authenticated state). Local data is destroyed only on explicit sign-out or authoritative membership revocation, never on connectivity-driven or unknown session loss (see ADR-020).
 
 The full sync contract is defined in [ADR-015](../architecture/decisions/ADR-015-online-preferred-local-first-sync.md). The sync UX contract (header status, manual sync, popup) is defined in [sync-ux-contract.md](sync-ux-contract.md).
 
