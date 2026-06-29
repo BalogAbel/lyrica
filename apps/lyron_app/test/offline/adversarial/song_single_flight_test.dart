@@ -50,6 +50,55 @@ void main() {
         expect(identical(first, second), isTrue);
       },
     );
+
+    test(
+      'concurrent syncPendingSongs for different contexts do not coalesce',
+      () async {
+        // Regression for the gemini-review finding: the controller is an
+        // app-scoped singleton, so a global in-flight future would make a sync
+        // for org-2 reuse org-1's run and skip org-2's pending songs. Keying
+        // the in-flight map by context must keep the two runs independent.
+        final gate = Completer<void>();
+        var sendCount = 0;
+        final store = _GatedSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _GatedSongMutationRemoteRepository(
+          onSend: () async {
+            sendCount += 1;
+            await gate.future;
+          },
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        final first = controller.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        final second = controller.syncPendingSongs(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-2'),
+        );
+
+        gate.complete();
+        await Future.wait([first, second]);
+
+        expect(sendCount, 2);
+        expect(identical(first, second), isFalse);
+      },
+    );
   });
 }
 

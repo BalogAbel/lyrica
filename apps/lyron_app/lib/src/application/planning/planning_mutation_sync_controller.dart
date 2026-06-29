@@ -33,13 +33,24 @@ class PlanningMutationSyncController {
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
   final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
 
-  Future<void>? _inFlight;
+  // Single-flight keyed by sync context. This controller is an app-scoped
+  // singleton, so a global in-flight future would let a sync for one
+  // user/organization coalesce a concurrent sync for a *different* one,
+  // skipping the second context's pending mutations. Key by user +
+  // organization so coalescing only ever merges triggers for the same context.
+  final Map<String, Future<void>> _inFlight = {};
 
   Future<void> syncPendingMutations(ActivePlanningReadContext context) {
-    final inFlight = _inFlight;
+    final key = '${context.userId}_${context.organizationId}';
+    final inFlight = _inFlight[key];
     if (inFlight != null) return inFlight;
-    final run = _run(context).whenComplete(() => _inFlight = null);
-    _inFlight = run;
+    // Block body: Map.remove returns the removed future, and a whenComplete
+    // callback that returns a future would wait on it (here, the very future
+    // being completed) and deadlock. Discard the return value.
+    final run = _run(context).whenComplete(() {
+      _inFlight.remove(key);
+    });
+    _inFlight[key] = run;
     return run;
   }
 
