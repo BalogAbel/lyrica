@@ -91,13 +91,13 @@ specific finding:
   server-clock anchor remains deferred (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
 - `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart` — `LF-T1`
   scenario: offline edit → relaunch → reconnect → sync, skip-gated on a live local Supabase
-  stack. Faithfully wired but unverified against a running stack
-  (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
+  stack. Verified passing against a running stack.
 - `apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart` — two-device
-  concurrent-edit conflict matrix, skip-gated. Rename-vs-rename, reorder-vs-reorder, and
-  add-same-song-twice pairs are fully wired; edit-vs-remote-delete and
-  partial-edit-vs-full-edit pairs are structure-only pending live error-code/semantics
-  confirmation (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
+  concurrent-edit conflict matrix, skip-gated. Rename-vs-rename, reorder-vs-reorder,
+  add-same-song-twice, edit-vs-remote-delete, and partial-edit-vs-full-edit pairs are all
+  fully wired and verified passing against a running stack; the edit-vs-remote-delete and
+  partial-edit-vs-full-edit error-code/semantics contracts are now pinned (see Backend
+  Verification below).
 
 ### Widget Tests
 
@@ -156,6 +156,9 @@ Cover:
 - Local demo auth provisioning through `./scripts/provision-local-demo-user.sh`
 - Regression coverage for repeated local demo auth provisioning where workflow scripts depend on idempotency
 - Migration regression coverage for repair paths that must succeed on previously duplicated local membership data
+- Overflow-safe slug-suffix numbering for plan/session names: a name ending in a number at or above 2^31 still creates successfully and keeps its full text slug, with collision numbering falling back to the slug root (e.g. `set-2`), verified in `scripts/tests/planning-write-contract-test.sh`
+- Unique-song-per-session enforcement (SEC-5) at the database layer through the partial index `session_items_unique_song_per_session`: a direct duplicate insert is rejected with SQLSTATE 23505, and the `create_song_session_item` RPC re-raises it as `duplicate_song_in_session_blocked` (P0001)
+- Pinned RPC error-code contracts for planning edits: editing a remotely-deleted plan raises `plan_not_found` (P0002, mapped to remoteMissing on the client), and `update_plan_fields` performs a full overwrite rather than a field-level merge, so a name-only edit also clears `description` and `scheduled_for`
 
 ## Pre-Merge Quality Gates
 

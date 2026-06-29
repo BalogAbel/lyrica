@@ -1017,5 +1017,139 @@ read_only_item_error = capture_error(
 assert read_only_item_error[0] == "P0002", f"expected P0002, got {read_only_item_error[0]!r}"
 assert read_only_item_error[1] == "session_not_found", f"unexpected: {read_only_item_error[1]!r}"
 
+# --- Slug suffix overflow (large numeric suffix must not raise 22003) ---
+# A name whose slug ends in a number >= 2^31 must create successfully and keep
+# its full text slug; a forced collision must fall back to the slug root.
+overflow_plan = create_plan(
+    plan_id="a1111111-1111-1111-1111-111111111111",
+    slug="",
+    name="Set 1782711809759068",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert overflow_plan["slug"] == "set-1782711809759068", overflow_plan["slug"]
+
+overflow_plan_collision = create_plan(
+    plan_id="a2222222-2222-2222-2222-222222222222",
+    slug="",
+    name="Set 1782711809759068",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+# On collision the regex strips the (overflowing) trailing number to the root
+# "set" and the fallback slug_number=1 increments to 2, yielding "set-2".
+assert overflow_plan_collision["slug"] == "set-2", overflow_plan_collision["slug"]
+
+overflow_session = create_session(
+    session_id="a3333333-3333-3333-3333-333333333333",
+    plan_id=overflow_plan["id"],
+    slug="",
+    name="Cue 9999999999999999",
+    user_id=demo_user_id,
+)
+assert overflow_session["slug"] == "cue-9999999999999999", overflow_session["slug"]
+
+# Boundary: a suffix of exactly int4-max (2147483647) casts successfully, so it
+# is NOT caught by the out-of-range fallback. On collision the increment must
+# not overflow int4 (slug_number is bigint); numbering continues to 2147483648.
+boundary_plan = create_plan(
+    plan_id="a4444444-4444-4444-4444-444444444444",
+    slug="",
+    name="Set 2147483647",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert boundary_plan["slug"] == "set-2147483647", boundary_plan["slug"]
+
+boundary_plan_collision = create_plan(
+    plan_id="a5555555-5555-5555-5555-555555555555",
+    slug="",
+    name="Set 2147483647",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert boundary_plan_collision["slug"] == "set-2147483648", (
+    boundary_plan_collision["slug"]
+)
+
+# --- SEC-5: DB-level unique(session_id, song_id) where item_type='song' ---
+# A direct insert bypassing the app-level pre-check must still be rejected by
+# the partial unique index.
+sec5_direct_dup = capture_error(
+    dedent(
+        f"""
+        insert into public.session_items (
+          id, organization_id, session_id, song_id, item_type, position, version
+        )
+        values (
+          '15151515-1515-1515-1515-151515151515'::uuid,
+          {sql_quote(organization_id)}::uuid,
+          {sql_quote(created_session["id"])}::uuid,
+          '33333333-3333-3333-3333-333333333333'::uuid,
+          'song',
+          9001,
+          1
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert sec5_direct_dup[0] == "23505", sec5_direct_dup
+assert "session_items_unique_song_per_session" in (
+    sec5_direct_dup[1] + " " + sec5_direct_dup[2]
+), sec5_direct_dup
+
+# --- RPC contract pin 1: edit vs remote-delete -> P0002 plan_not_found ---
+# update_plan_fields against a plan id that does not exist (the remote-delete
+# case) must raise P0002 plan_not_found, which the dart layer maps to
+# remoteMissing (not conflict).
+edit_vs_delete = capture_error(
+    dedent(
+        f"""
+        perform public.update_plan_fields(
+          p_organization_id => {sql_quote(organization_id)},
+          p_plan_id => 'deadbeef-0000-0000-0000-000000000001'::uuid,
+          p_base_version => 1,
+          p_name => 'Edit after remote delete',
+          p_description => null,
+          p_scheduled_for => null
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert edit_vs_delete[0] == "P0002", edit_vs_delete
+assert edit_vs_delete[1] == "plan_not_found", edit_vs_delete
+
+# --- RPC contract pin 2: LF-5 partial (name-only) edit is a full overwrite ---
+# update_plan_fields always writes name, description and scheduled_for. A
+# "name only" edit that passes null description/scheduled_for OVERWRITES the
+# stored values (no field-level merge). Pin this so the contract is explicit.
+lf5_plan = create_plan(
+    plan_id="b1111111-1111-1111-1111-111111111111",
+    slug="lf5-overwrite",
+    name="LF5 Original",
+    description="original description",
+    scheduled_for="2026-07-01T09:00:00Z",
+    user_id=demo_user_id,
+)
+assert lf5_plan["description"] == "original description", lf5_plan
+lf5_updated = update_plan_fields(
+    plan_id=lf5_plan["id"],
+    base_version=lf5_plan["version"],
+    name="LF5 Renamed",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert lf5_updated["name"] == "LF5 Renamed", lf5_updated
+assert lf5_updated["description"] is None, lf5_updated
+assert lf5_updated["scheduled_for"] is None, lf5_updated
+assert lf5_updated["version"] == lf5_plan["version"] + 1, lf5_updated
+
 print("planning write contract verification passed")
 PY

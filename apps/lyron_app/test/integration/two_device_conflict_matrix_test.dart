@@ -260,25 +260,12 @@ void main() {
 
         // Device A creates a throwaway session (so the delete path never
         // touches the shared seeded fixture) and both devices seed it.
-        //
-        // The session name is suffixed with "-run$runId" (not a bare
-        // trailing number) deliberately: `session_next_slug` in
-        // 202604100001_planning_write_contract.sql matches a *bare*
-        // trailing "-[0-9]+" on the slugified name and casts it to
-        // `integer` to continue a numbering sequence. A bare
-        // microsecondsSinceEpoch suffix (16 digits) overflows int4 and
-        // crashes slug allocation with an unhandled 22003 error - a
-        // genuine, reproducible product bug (any plan/session name ending
-        // in a number >= 2^31 crashes create_plan/create_session's slug
-        // allocation instead of falling back gracefully). Padding the
-        // suffix with a non-digit avoids exercising that bug here, since
-        // this test isn't about slug numbering.
         final ownerDetail = await deviceA.seedPlan(_planId);
         await deviceA.writeService.createSession(
           context: deviceA.writeContext,
           draft: SessionCreateDraft(
             planId: _planId,
-            name: 'Scratch session (edit-vs-delete run$runId)',
+            name: 'Scratch session (edit-vs-delete $runId)',
           ),
         );
         await deviceA.sync();
