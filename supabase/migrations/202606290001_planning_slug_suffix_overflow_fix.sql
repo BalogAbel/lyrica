@@ -7,6 +7,13 @@
 -- out-of-range (or otherwise unparseable) suffix falls back to numbering from
 -- 1. The full text slug is still used for the first insert; the fallback only
 -- affects collision numbering ("<root>-2", "<root>-3", ...).
+--
+-- slug_number is a bigint so the collision-resolution increment
+-- (slug_number := slug_number + 1) cannot overflow int4 even when the parsed
+-- suffix is exactly int4-max (2147483647): that value casts successfully, so it
+-- is not caught by the exception below, and a collision would otherwise push
+-- the increment to 2147483648 and raise an unhandled 22003 inside the loop. The
+-- cast stays ::integer so any suffix >= 2^31 still falls back to 1.
 create or replace function public.plan_next_slug(
   target_organization_id uuid,
   base_slug text
@@ -19,7 +26,7 @@ as $$
 declare
   normalized_base_slug text := coalesce(nullif(public.slugify(base_slug), ''), 'plan');
   slug_root text := normalized_base_slug;
-  slug_number integer := 1;
+  slug_number bigint := 1;
   candidate_slug text := normalized_base_slug;
 begin
   if normalized_base_slug ~ '^(.*)-([0-9]+)$' then
@@ -58,7 +65,7 @@ as $$
 declare
   normalized_base_slug text := coalesce(nullif(public.slugify(base_slug), ''), 'session');
   slug_root text := normalized_base_slug;
-  slug_number integer := 1;
+  slug_number bigint := 1;
   candidate_slug text := normalized_base_slug;
 begin
   if normalized_base_slug ~ '^(.*)-([0-9]+)$' then

@@ -1051,6 +1051,31 @@ overflow_session = create_session(
 )
 assert overflow_session["slug"] == "cue-9999999999999999", overflow_session["slug"]
 
+# Boundary: a suffix of exactly int4-max (2147483647) casts successfully, so it
+# is NOT caught by the out-of-range fallback. On collision the increment must
+# not overflow int4 (slug_number is bigint); numbering continues to 2147483648.
+boundary_plan = create_plan(
+    plan_id="a4444444-4444-4444-4444-444444444444",
+    slug="",
+    name="Set 2147483647",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert boundary_plan["slug"] == "set-2147483647", boundary_plan["slug"]
+
+boundary_plan_collision = create_plan(
+    plan_id="a5555555-5555-5555-5555-555555555555",
+    slug="",
+    name="Set 2147483647",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert boundary_plan_collision["slug"] == "set-2147483648", (
+    boundary_plan_collision["slug"]
+)
+
 # --- SEC-5: DB-level unique(session_id, song_id) where item_type='song' ---
 # A direct insert bypassing the app-level pre-check must still be rejected by
 # the partial unique index.
