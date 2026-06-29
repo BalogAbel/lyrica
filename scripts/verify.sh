@@ -88,4 +88,18 @@ fi
       --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
 )
 
+(
+  cd apps/lyron_app &&
+    "$flutter_bin" test test/integration/offline_edit_relaunch_sync_flow_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)
+
+(
+  cd apps/lyron_app &&
+    "$flutter_bin" test test/integration/two_device_conflict_matrix_test.dart \
+      --dart-define=SUPABASE_URL="$API_URL" \
+      --dart-define=SUPABASE_ANON_KEY="$ANON_KEY"
+)
+
 "$manual_validation_scripts_test_script"

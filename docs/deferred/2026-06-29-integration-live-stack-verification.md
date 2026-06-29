@@ -1,55 +1,41 @@
-# Live-Stack Verification of New Integration Suites
+# Live-Stack Verification of New Integration Suites — RESOLVED (with residual contract questions)
 
 **Slice:** local-first-validation
 **Files:**
-- `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart` (LF-T1 scenario, skip-gated)
-- `apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart` (scenario 2, skip-gated)
+- `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart` (LF-T1 scenario)
+- `apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart` (scenario 2)
 
-## Problem
+## Status: resolved
 
-Two new integration suites were added against the real local Supabase stack contract
-(`SUPABASE_URL`/`SUPABASE_ANON_KEY` skip-gated, matching the existing integration-test
-convention): `offline_edit_relaunch_sync_flow_test.dart` (offline edit → relaunch → sync,
-`LF-T1`) and `two_device_conflict_matrix_test.dart` (concurrent-edit conflict matrix across
-two simulated devices). Both are faithfully wired to the real RPC/auth contracts, but
-neither has been **run** against a live local Supabase stack in this slice — `flutter test`
-without the env vars set skips them, which is what happened here.
+Both suites have now been **run against a live local Supabase stack** and pass (relaunch 1/1,
+two-device matrix 5/5). They are wired into `scripts/verify.sh`'s online section (alongside the
+existing authenticated integration suites), so CI/`verify.sh` exercises them with the
+`SUPABASE_URL`/`SUPABASE_ANON_KEY` dart-defines rather than skipping them.
 
-Within `two_device_conflict_matrix_test.dart`, three pairs are fully wired and exercise real
-expected behavior end to end:
+Live verification exposed and fixed real test-wiring gaps (each device must seed its own local
+projection before its offline edit; the scratch-session id generator must produce UUIDs) and
+corrected one assertion (see below). It also surfaced a genuine backend product bug, tracked
+separately in `2026-06-29-slug-suffix-integer-overflow.md`.
 
-- rename vs rename (device A wins, device B conflict stays visible — `LF-1`, `LF-4`)
-- reorder vs reorder (device A wins, device B conflict stays visible — `LF-1`, `LF-4`)
-- add-same-song twice: distinct item ids race on one `songId` (`LF-6`)
+## Residual open questions (not blocking; worth a follow-up ticket)
 
-Two further pairs are **structure-only** — the test bodies are written against the intended
-flow but the exact backend error code/semantics they assert on have not been confirmed live:
+These two pairs pass live but their exact backend error-code contract was not pinned down — the
+tests assert on the observed shape, which should be confirmed as the intended contract:
 
-- edit vs remote-delete (surviving device converges on the delete)
-- partial edit (name only) vs full edit (preserves untouched fields)
+- **edit vs remote-delete** — the surviving device converges on the delete, but the precise RPC
+  error code for a delete-vs-edit race (`remoteMissing` vs `conflict`) is asserted loosely.
+- **partial edit (name only) vs full edit** — passes, but the backend's field-level
+  no-op/merge semantics for `update_plan_fields` (LF-5) were not independently confirmed.
 
-## Deferred Because
-
-Running these requires a local Supabase stack bootstrap (`./scripts/supabase.sh` /
-`./scripts/verify.sh`) in an environment with Docker available, which was not exercised as
-part of this documentation-focused finish to the slice. Confirming the two structure-only
-pairs additionally requires observing the actual RPC error code/conflict shape the backend
-returns for remote-delete-vs-edit and partial-vs-full-edit races, which can only be done
-against a running stack, not by reasoning about the SQL alone.
-
-## What This Slice Did Instead
-
-Wrote both suites to the same skip-gated convention as the existing authenticated
-integration suites (`local_first_authenticated_song_reader_flow_test.dart` and friends), so
-they are ready to run the moment `SUPABASE_URL`/`SUPABASE_ANON_KEY` are present, and so CI
-configurations that already provide those env vars will pick them up without further
-wiring.
+Additionally, the **add-same-song twice** pair documents that a truly-concurrent double-insert
+sharing one stale `base_version` is unreachable from a sequential awaited test (the version
+check fires before the app-level duplicate check; there is no DB-level
+`unique(session_id, song_id)` constraint). A real concurrency stress test (parallel un-awaited
+transactions) would be a separate effort if that invariant needs backend-level proof.
 
 ## Trigger Condition
 
-Run both suites against a live local Supabase stack (`./scripts/verify.sh` or equivalent)
-before treating `LF-T1` (non-destructive offline relaunch) or the two-device conflict matrix
-as backend-verified rather than structurally-verified. If the two structure-only pairs
-reveal a different error code/shape than assumed, update the test bodies and this entry
-together; once all five pairs are confirmed live, fold this note into the testing strategy
-instead of carrying it here.
+Open a follow-up ticket to pin the RPC error-code contract for the two residual pairs, and
+decide whether the add-same-song concurrency invariant needs a DB constraint
+(cf. review SEC-5: `unique(session_id, song_id) where item_type='song'`) plus a true-concurrency
+test. Fold the residuals into `docs/testing/testing-strategy.md` when addressed.
