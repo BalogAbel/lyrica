@@ -1051,5 +1051,32 @@ overflow_session = create_session(
 )
 assert overflow_session["slug"] == "cue-9999999999999999", overflow_session["slug"]
 
+# --- SEC-5: DB-level unique(session_id, song_id) where item_type='song' ---
+# A direct insert bypassing the app-level pre-check must still be rejected by
+# the partial unique index.
+sec5_direct_dup = capture_error(
+    dedent(
+        f"""
+        insert into public.session_items (
+          id, organization_id, session_id, song_id, item_type, position, version
+        )
+        values (
+          '15151515-1515-1515-1515-151515151515'::uuid,
+          {sql_quote(organization_id)}::uuid,
+          {sql_quote(created_session["id"])}::uuid,
+          '33333333-3333-3333-3333-333333333333'::uuid,
+          'song',
+          9001,
+          1
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+assert sec5_direct_dup[0] == "23505", sec5_direct_dup
+assert "session_items_unique_song_per_session" in (
+    sec5_direct_dup[1] + " " + sec5_direct_dup[2]
+), sec5_direct_dup
+
 print("planning write contract verification passed")
 PY
