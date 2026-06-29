@@ -240,7 +240,7 @@ void main() {
     );
 
     test('edit vs remote delete: surviving device converges on the delete '
-        '(LF-1) - DONE_WITH_CONCERNS', () async {
+        '(LF-1)', () async {
       // Structure-only, modelled on the rename case above: this pair
       // exercises a *different* backend error path than the version
       // conflict (P0001/conflict) - deleting the aggregate makes the
@@ -340,7 +340,7 @@ void main() {
         // LF-4-style visibility: device B's rename mutation must not be
         // silently lost - it should be readable as a failed/actionable
         // mutation locally even though we have not pinned down the exact
-        // error code live (see DONE_WITH_CONCERNS note above).
+        // error code live (see the structure-only note above).
         final mutationAfterB = await deviceB.mutationStore.readMutation(
           userId: deviceB.context.userId,
           organizationId: deviceB.context.organizationId,
@@ -490,7 +490,7 @@ void main() {
     );
 
     test('partial edit (name only) vs full edit: preserves untouched fields '
-        '(LF-5) - DONE_WITH_CONCERNS', () async {
+        '(LF-5)', () async {
       // Structure-only, modelled on the rename case: PlanEditDraft always
       // carries name/description/scheduledFor together (see
       // planning_write_service.dart's PlanEditDraft + _editPlanInternal),

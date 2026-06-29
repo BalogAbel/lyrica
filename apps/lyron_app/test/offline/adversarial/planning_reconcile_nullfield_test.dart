@@ -137,5 +137,52 @@ void main() {
         throwsA(isA<ReconcileFieldError>()),
       );
     });
+
+    test(
+      'sessionItemDelete with null sessionId throws ReconcileFieldError',
+      () async {
+        final record = PlanningMutationRecord(
+          aggregateId: 'item-1',
+          organizationId: organizationId,
+          kind: PlanningMutationKind.sessionItemDelete,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026, 4, 11, 11),
+          planId: 'plan-1',
+          // sessionId is required by the delete draft; null means corruption.
+          sessionId: null,
+          baseVersion: 1,
+        );
+
+        expect(
+          () => reconciler.reconcile(testContext, record),
+          throwsA(isA<ReconcileFieldError>()),
+        );
+      },
+    );
+
+    test(
+      'sessionItemReorder with null sessionId throws ReconcileFieldError',
+      () async {
+        final record = PlanningMutationRecord(
+          aggregateId: 'session-1',
+          organizationId: organizationId,
+          kind: PlanningMutationKind.sessionItemReorder,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026, 4, 11, 11),
+          planId: 'plan-1',
+          // sessionId is required by the reorder draft; null means corruption.
+          sessionId: null,
+          orderedSiblingIds: const ['item-1', 'item-2'],
+          baseVersion: 1,
+        );
+
+        expect(
+          () => reconciler.reconcile(testContext, record),
+          throwsA(isA<ReconcileFieldError>()),
+        );
+      },
+    );
   });
 }

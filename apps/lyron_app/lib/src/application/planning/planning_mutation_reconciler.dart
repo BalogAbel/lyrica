@@ -151,13 +151,14 @@ class PlanningMutationReconciler {
         }
         return;
       case PlanningMutationKind.sessionItemDelete:
-        // sessionId/sessionItemId here identify an EXISTING row to delete,
-        // not a field on a create draft, so this is out of scope for the
-        // create-path corruption fix (LF-8); left as-is.
+        // sessionId is required by the delete/reorder drafts (it identifies the
+        // existing row's session), so a null here is a corrupt record -- reject
+        // it via _required rather than coercing to '' and silently deleting /
+        // reordering against the wrong (empty) session key (LF-8).
         await localStore.deleteSyncedSessionItem(
           userId: context.userId,
           organizationId: context.organizationId,
-          sessionId: record.sessionId ?? '',
+          sessionId: _required(record.sessionId, 'sessionId', record.kind),
           sessionItemId: record.aggregateId,
           // version default for a freshly reconciled aggregate.
           sessionVersion: record.baseVersion ?? 1,
@@ -167,7 +168,7 @@ class PlanningMutationReconciler {
           await localStore.replaceSyncedSessionItemOrder(
             userId: context.userId,
             organizationId: context.organizationId,
-            sessionId: record.sessionId ?? '',
+            sessionId: _required(record.sessionId, 'sessionId', record.kind),
             orderedSessionItemIds: record.orderedSiblingIds!,
             orderedSessionItemPositions: record.orderedSiblingPositions,
             // version default for a freshly reconciled aggregate.
@@ -180,7 +181,7 @@ class PlanningMutationReconciler {
         await localStore.replaceSyncedSessionItemOrder(
           userId: context.userId,
           organizationId: context.organizationId,
-          sessionId: record.sessionId ?? '',
+          sessionId: _required(record.sessionId, 'sessionId', record.kind),
           orderedSessionItemIds: record.orderedSiblingIds ?? const [],
           orderedSessionItemPositions: record.orderedSiblingPositions,
           // version default for a freshly reconciled aggregate.
