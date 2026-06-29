@@ -1017,5 +1017,39 @@ read_only_item_error = capture_error(
 assert read_only_item_error[0] == "P0002", f"expected P0002, got {read_only_item_error[0]!r}"
 assert read_only_item_error[1] == "session_not_found", f"unexpected: {read_only_item_error[1]!r}"
 
+# --- Slug suffix overflow (large numeric suffix must not raise 22003) ---
+# A name whose slug ends in a number >= 2^31 must create successfully and keep
+# its full text slug; a forced collision must fall back to the slug root.
+overflow_plan = create_plan(
+    plan_id="a1111111-1111-1111-1111-111111111111",
+    slug="",
+    name="Set 1782711809759068",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+assert overflow_plan["slug"] == "set-1782711809759068", overflow_plan["slug"]
+
+overflow_plan_collision = create_plan(
+    plan_id="a2222222-2222-2222-2222-222222222222",
+    slug="",
+    name="Set 1782711809759068",
+    description=None,
+    scheduled_for=None,
+    user_id=demo_user_id,
+)
+# On collision the regex strips the (overflowing) trailing number to the root
+# "set" and the fallback slug_number=1 increments to 2, yielding "set-2".
+assert overflow_plan_collision["slug"] == "set-2", overflow_plan_collision["slug"]
+
+overflow_session = create_session(
+    session_id="a3333333-3333-3333-3333-333333333333",
+    plan_id=overflow_plan["id"],
+    slug="",
+    name="Cue 9999999999999999",
+    user_id=demo_user_id,
+)
+assert overflow_session["slug"] == "cue-9999999999999999", overflow_session["slug"]
+
 print("planning write contract verification passed")
 PY
