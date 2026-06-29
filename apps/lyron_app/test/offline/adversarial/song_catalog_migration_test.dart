@@ -11,6 +11,11 @@ void main() {
     'a pending song mutation survives a catalog database reopen (LF-T7)',
     () async {
       final file = await createRelaunchDbFile('catalog-migration');
+      addTearDown(() async {
+        if (await file.parent.exists()) {
+          await file.parent.delete(recursive: true);
+        }
+      });
 
       var db = SongCatalogDatabase.connect(openRelaunchExecutor(file));
 

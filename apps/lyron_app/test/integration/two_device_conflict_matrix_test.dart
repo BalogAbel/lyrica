@@ -61,11 +61,9 @@ void main() {
         await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
           final runId = DateTime.now().microsecondsSinceEpoch;
           final deviceA = await _Device.signIn('rename-rename-a-$runId');
+          addTearDown(deviceA.dispose);
           final deviceB = await _Device.signIn('rename-rename-b-$runId');
-          addTearDown(() async {
-            await deviceA.dispose();
-            await deviceB.dispose();
-          });
+          addTearDown(deviceB.dispose);
 
           // Both devices seed their local projection from the same backend
           // session, at the same base_version, then independently rename it
@@ -162,11 +160,9 @@ void main() {
         await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
           final runId = DateTime.now().microsecondsSinceEpoch;
           final deviceA = await _Device.signIn('reorder-reorder-a-$runId');
+          addTearDown(deviceA.dispose);
           final deviceB = await _Device.signIn('reorder-reorder-b-$runId');
-          addTearDown(() async {
-            await deviceA.dispose();
-            await deviceB.dispose();
-          });
+          addTearDown(deviceB.dispose);
 
           final detailA = await deviceA.seedPlan(_planId);
           await deviceB.seedPlan(_planId);
@@ -258,11 +254,9 @@ void main() {
       await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
         final runId = DateTime.now().microsecondsSinceEpoch;
         final deviceA = await _Device.signIn('edit-delete-a-$runId');
+        addTearDown(deviceA.dispose);
         final deviceB = await _Device.signIn('edit-delete-b-$runId');
-        addTearDown(() async {
-          await deviceA.dispose();
-          await deviceB.dispose();
-        });
+        addTearDown(deviceB.dispose);
 
         // Device A creates a throwaway session (so the delete path never
         // touches the shared seeded fixture) and both devices seed it.
@@ -375,16 +369,14 @@ void main() {
               SongSummary(id: _raceSongId, title: _raceSongTitle),
             ],
           );
+          addTearDown(deviceA.dispose);
           final deviceB = await _Device.signIn(
             'add-same-song-b-$runId',
             visibleSongs: const [
               SongSummary(id: _raceSongId, title: _raceSongTitle),
             ],
           );
-          addTearDown(() async {
-            await deviceA.dispose();
-            await deviceB.dispose();
-          });
+          addTearDown(deviceB.dispose);
 
           await deviceA.seedPlan(_planId);
           await deviceB.seedPlan(_planId);
@@ -508,11 +500,9 @@ void main() {
       await runWithSuppressedDriftMultipleDatabaseWarnings(() async {
         final runId = DateTime.now().microsecondsSinceEpoch;
         final deviceA = await _Device.signIn('partial-full-a-$runId');
+        addTearDown(deviceA.dispose);
         final deviceB = await _Device.signIn('partial-full-b-$runId');
-        addTearDown(() async {
-          await deviceA.dispose();
-          await deviceB.dispose();
-        });
+        addTearDown(deviceB.dispose);
 
         final detailA = await deviceA.seedPlan(_planId);
         await deviceB.seedPlan(_planId);

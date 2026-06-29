@@ -14,6 +14,11 @@ void main() {
     'a pending planning mutation survives a database reopen across the v5 schema (LF-T7)',
     () async {
       final file = await createRelaunchDbFile('planning-migration');
+      addTearDown(() async {
+        if (await file.parent.exists()) {
+          await file.parent.delete(recursive: true);
+        }
+      });
 
       var db = PlanningLocalDatabase.connect(openRelaunchExecutor(file));
       var localStore = DriftPlanningLocalStore(db);
