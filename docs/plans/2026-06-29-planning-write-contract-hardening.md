@@ -91,7 +91,10 @@ overflow_plan_collision = create_plan(
     scheduled_for=None,
     user_id=demo_user_id,
 )
-assert overflow_plan_collision["slug"] == "set-1782711809759068-2", (
+# On collision the regex strips the (overflowing) trailing number to the root
+# "set" and the fallback slug_number=1 increments to 2, yielding "set-2" --
+# NOT "set-1782711809759068-2". This matches the spec's "<root>-2" target.
+assert overflow_plan_collision["slug"] == "set-2", (
     overflow_plan_collision["slug"]
 )
 
