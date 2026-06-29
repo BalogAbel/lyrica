@@ -266,12 +266,25 @@ void main() {
 
         // Device A creates a throwaway session (so the delete path never
         // touches the shared seeded fixture) and both devices seed it.
+        //
+        // The session name is suffixed with "-run$runId" (not a bare
+        // trailing number) deliberately: `session_next_slug` in
+        // 202604100001_planning_write_contract.sql matches a *bare*
+        // trailing "-[0-9]+" on the slugified name and casts it to
+        // `integer` to continue a numbering sequence. A bare
+        // microsecondsSinceEpoch suffix (16 digits) overflows int4 and
+        // crashes slug allocation with an unhandled 22003 error - a
+        // genuine, reproducible product bug (any plan/session name ending
+        // in a number >= 2^31 crashes create_plan/create_session's slug
+        // allocation instead of falling back gracefully). Padding the
+        // suffix with a non-digit avoids exercising that bug here, since
+        // this test isn't about slug numbering.
         final ownerDetail = await deviceA.seedPlan(_planId);
         await deviceA.writeService.createSession(
           context: deviceA.writeContext,
           draft: SessionCreateDraft(
             planId: _planId,
-            name: 'Scratch session (edit-vs-delete $runId)',
+            name: 'Scratch session (edit-vs-delete run$runId)',
           ),
         );
         await deviceA.sync();
@@ -377,9 +390,30 @@ void main() {
           await deviceB.seedPlan(_planId);
 
           // Both devices independently add the SAME song to the SAME
-          // session, generating distinct local session-item ids - the
-          // backend's unique (session_id, song_id) constraint must reject
-          // the loser (LF-6).
+          // session from the same observed base_version, generating
+          // distinct local session-item ids.
+          //
+          // NOTE on what this actually exercises: there is no DB-level
+          // unique (session_id, song_id) constraint on session_items (see
+          // \d session_items - the only unique index is
+          // (session_id, position)). "duplicate_song_in_session_blocked"
+          // is an application-level check-then-raise inside
+          // create_song_session_item (202604110001_planning_session_item_
+          // write_contract.sql), guarded by a base_version equality check
+          // that runs *first* and that *every* successful session-item
+          // create bumps (it increments the parent session's `version`,
+          // the same token used for session renames/reorders). So two
+          // devices racing a session-item create from one shared stale
+          // base_version always collide on session_version_conflict
+          // first, identically to the rename/reorder pairs above - the
+          // duplicate-song-specific branch is unreachable from this
+          // sequential, single-stale-base_version race shape; reaching it
+          // would require genuinely concurrent (overlapping-transaction)
+          // inserts, which an awaited, sequential test cannot produce
+          // deterministically. This is still a valid LF-6-flavored
+          // assertion: the loser's mutation is NOT silently dropped, it
+          // surfaces as a visible/actionable conflict (LF-4), and the
+          // backend converges on exactly one item for the song.
           await deviceA.writeService.addSongSessionItem(
             context: deviceA.writeContext,
             draft: SessionItemCreateSongDraft(
@@ -403,7 +437,7 @@ void main() {
               userId: deviceA.context.userId,
             ),
             isFalse,
-            reason: 'device A wins the unique-constraint race',
+            reason: 'device A wins the base_version race and syncs clean',
           );
 
           await deviceB.sync();
@@ -422,16 +456,17 @@ void main() {
             loserMutation,
             isNotEmpty,
             reason:
-                "LF-6: device B's duplicate-song add stays visible/"
+                "LF-6/LF-4: device B's duplicate-song add stays visible/"
                 'actionable locally rather than disappearing',
           );
           expect(
             loserMutation.first.syncStatus,
-            PlanningMutationSyncStatus.failedDependency,
+            PlanningMutationSyncStatus.conflict,
             reason:
-                'duplicate_song_in_session_blocked maps to a dependency '
-                'failure, not a silent drop (see '
-                'supabase_planning_mutation_repository_test.dart)',
+                "device B's add raced device A from the same stale "
+                'session base_version, so create_song_session_item\'s '
+                'session_version_conflict guard rejects it before its '
+                'duplicate-song guard is ever reached (see NOTE above)',
           );
 
           // Backend convergence: exactly one session item for this song in
@@ -611,16 +646,20 @@ class _Device {
       mutationStore: mutationStore,
       contextReader: () async => context,
     );
-    var idCounter = 0;
+    // Use the default UUID v4 id generator: the backend's session/session-item
+    // primary keys are `uuid` columns, so a human-readable label-based id
+    // (as previously used here) fails with "invalid input syntax for type
+    // uuid" once a mutation actually reaches the backend (surfaced as a
+    // silently-pending mutation, since per-mutation sync errors don't throw
+    // in the test's `sync()` helper). The default generator already
+    // produces a fresh UUID per call, which is all the uniqueness these
+    // tests need.
     final writeService = PlanningWriteService(
       repository,
       mutationStore: mutationStore,
       listVisibleSongs: ({required userId, required organizationId}) async =>
           visibleSongs,
       activeContextReader: () async => context,
-      idGenerator: () =>
-          'two-device-$label-${DateTime.now().microsecondsSinceEpoch}-'
-          '${idCounter++}',
     );
 
     return _Device._(
@@ -652,13 +691,20 @@ class _Device {
   /// Seeds the local projection for [planId] from the live backend so there
   /// is a base plan present to mutate offline, mirroring
   /// `offline_edit_relaunch_sync_flow_test.dart`'s seeding step.
+  ///
+  /// Unlike the single-plan relaunch test, the conflict matrix exercises
+  /// writes that look up a *session* (or session item) by id in the local
+  /// projection (`PlanningWriteService`'s internal `firstWhere` calls), so
+  /// every session and item the device might mutate must also be projected
+  /// locally - seeding the plan row alone is not enough.
   Future<PlanDetail> seedPlan(String planId) async {
     final seedRepository = SupabasePlanningRepository(client);
     final detail = await seedRepository.getPlanDetail(planId);
+    final refreshedAt = DateTime.now().toUtc();
     await localStore.upsertSyncedPlan(
       userId: context.userId,
       organizationId: context.organizationId,
-      refreshedAt: DateTime.now().toUtc(),
+      refreshedAt: refreshedAt,
       plan: CachedPlanRecord(
         id: detail.plan.id,
         slug: detail.plan.slug,
@@ -669,6 +715,37 @@ class _Device {
         version: detail.plan.version,
       ),
     );
+    for (final session in detail.sessions) {
+      await localStore.upsertSyncedSession(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        refreshedAt: refreshedAt,
+        session: CachedSessionRecord(
+          id: session.id,
+          planId: planId,
+          slug: session.slug,
+          position: session.position,
+          name: session.name,
+          version: session.version,
+        ),
+      );
+      for (final item in session.items) {
+        await localStore.upsertSyncedSessionItem(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          refreshedAt: refreshedAt,
+          sessionVersion: session.version,
+          item: CachedSessionItemRecord(
+            id: item.id,
+            planId: planId,
+            sessionId: session.id,
+            position: item.position,
+            songId: item.song.id,
+            songTitle: item.song.title,
+          ),
+        );
+      }
+    }
     return detail;
   }
 
