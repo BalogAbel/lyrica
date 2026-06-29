@@ -11,13 +11,19 @@ void main() {
     'a pending song mutation survives a catalog database reopen (LF-T7)',
     () async {
       final file = await createRelaunchDbFile('catalog-migration');
+      // Track the currently-open database so a mid-test failure still closes
+      // the live connection (and frees the sqlite file) before the temp dir is
+      // removed, instead of relying on the explicit close() calls below.
+      SongCatalogDatabase? openDb;
       addTearDown(() async {
+        await openDb?.close();
         if (await file.parent.exists()) {
           await file.parent.delete(recursive: true);
         }
       });
 
       var db = SongCatalogDatabase.connect(openRelaunchExecutor(file));
+      openDb = db;
 
       await db
           .into(db.cachedCatalogSongMutations)
@@ -35,8 +41,10 @@ void main() {
           );
 
       await db.close();
+      openDb = null;
 
       db = SongCatalogDatabase.connect(openRelaunchExecutor(file));
+      openDb = db;
 
       final rows = await db.select(db.cachedCatalogSongMutations).get();
 
@@ -48,6 +56,7 @@ void main() {
       expect(rows.single.syncStatus, 'pending_create');
 
       await db.close();
+      openDb = null;
     },
   );
 }

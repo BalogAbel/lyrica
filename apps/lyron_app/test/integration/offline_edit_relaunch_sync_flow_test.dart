@@ -50,7 +50,13 @@ void main() {
           'offline-edit-relaunch-sync-flow',
         );
 
+        // Track the currently-open database so a mid-test failure still
+        // closes the live connection (freeing the sqlite file) before the
+        // temp dir is removed, instead of relying on the explicit close()
+        // calls below.
+        PlanningLocalDatabase? openDb;
         addTearDown(() async {
+          await openDb?.close();
           await client.auth.signOut();
           await client.dispose();
           if (await dbFile.parent.exists()) {
@@ -74,6 +80,7 @@ void main() {
         var database = PlanningLocalDatabase.connect(
           NativeDatabase.createInBackground(dbFile),
         );
+        openDb = database;
         var localStore = DriftPlanningLocalStore(database);
         var mutationStore = DriftPlanningMutationStore(
           database: database,
@@ -133,7 +140,9 @@ void main() {
 
         // 3. Close the planning DB and reopen from the same file (relaunch).
         await database.close();
+        openDb = null;
         database = PlanningLocalDatabase.connect(openRelaunchExecutor(dbFile));
+        openDb = database;
         localStore = DriftPlanningLocalStore(database);
         mutationStore = DriftPlanningMutationStore(
           database: database,
@@ -202,6 +211,7 @@ void main() {
         expect(convergedDetail.plan.name, editedName);
 
         await database.close();
+        openDb = null;
       });
     },
     skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,

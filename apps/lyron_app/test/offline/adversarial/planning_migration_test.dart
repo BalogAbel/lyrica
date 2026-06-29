@@ -14,13 +14,19 @@ void main() {
     'a pending planning mutation survives a database reopen across the v5 schema (LF-T7)',
     () async {
       final file = await createRelaunchDbFile('planning-migration');
+      // Track the currently-open database so a mid-test failure still closes
+      // the live connection (and frees the sqlite file) before the temp dir is
+      // removed, instead of relying on the explicit close() calls below.
+      PlanningLocalDatabase? openDb;
       addTearDown(() async {
+        await openDb?.close();
         if (await file.parent.exists()) {
           await file.parent.delete(recursive: true);
         }
       });
 
       var db = PlanningLocalDatabase.connect(openRelaunchExecutor(file));
+      openDb = db;
       var localStore = DriftPlanningLocalStore(db);
       var store = DriftPlanningMutationStore(
         database: db,
@@ -42,8 +48,10 @@ void main() {
       );
 
       await db.close();
+      openDb = null;
 
       db = PlanningLocalDatabase.connect(openRelaunchExecutor(file));
+      openDb = db;
       localStore = DriftPlanningLocalStore(db);
       store = DriftPlanningMutationStore(database: db, localStore: localStore);
 
@@ -62,6 +70,7 @@ void main() {
       expect(pending.single.scheduledFor, DateTime.utc(2026, 4, 12, 9));
 
       await db.close();
+      openDb = null;
     },
   );
 }
