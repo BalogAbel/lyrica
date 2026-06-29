@@ -1,4 +1,5 @@
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_reconciler.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 
 typedef PlanningMutationStoreReader = PlanningMutationStore Function();
@@ -125,8 +126,31 @@ class PlanningMutationSyncController {
       }
     } else {
       for (final (original, synced) in acceptedRecords) {
-        if (await _shouldReconcileAcceptedMutation(context)) {
-          await _reconcileAcceptedMutation(context, synced);
+        try {
+          if (await _shouldReconcileAcceptedMutation(context)) {
+            await _reconcileAcceptedMutation(context, synced);
+          }
+        } on ReconcileFieldError catch (error) {
+          // LF-8 follow-up: a corrupt backend-accepted mutation must not
+          // abort this loop (other accepted records still need to clear)
+          // nor escape syncPendingMutations (callers like
+          // PlanningWriteService._scheduleSync do not catch broadly, so an
+          // uncontained throw here could make an unrelated NEW write fail
+          // because of an old, unrelated corrupt mutation). Mark it failed
+          // and visible (LF-4 sync UI) instead, and leave it un-cleared so
+          // it can be inspected/discarded. failedDependency is not in the
+          // pending||accepted candidate filter above, so it will not be
+          // auto-resent and loop forever.
+          await _mutationStore().saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: original.kind.aggregateType,
+            aggregateId: original.aggregateId,
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            errorCode: PlanningMutationSyncErrorCode.unknown,
+            errorMessage: error.toString(),
+          );
+          continue;
         }
         await _mutationStore().clearMutation(
           userId: context.userId,
