@@ -200,6 +200,20 @@ lifecycle**.
 **Headline**: the key to "indefinite" is **LF-T1** — convert session expiry from
 destructive to non-destructive. LF-T3/LF-T4 are the secondary real blockers.
 
+**Status (2026-06-29, local-first-validation slice)**:
+- `LF-T4` — **characterized (probe) + deferred**. `storage_pressure_probe_test.dart` confirms
+  a storage write failure propagates rather than being silently swallowed; the size-monitor
+  and eviction policy itself remain deferred
+  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`).
+- `LF-T6` — **characterized (probe) + deferred**. `clock_skew_probe_test.dart` plus an
+  injectable clock seam on `PlanningMutationReconciler` confirm device-clock skew flows
+  through uncorrected; the server-clock anchor remains deferred
+  (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
+- `LF-T7` — **fixed (catalog) + validated (planning)**. `song_catalog_migration_test.dart`
+  added an explicit `MigrationStrategy` to `SongCatalogDatabase` (previously `schemaVersion 2`
+  with none) and confirmed reopen survival; `planning_migration_test.dart` validated existing
+  reopen survival for pending planning mutations.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |
@@ -213,6 +227,24 @@ destructive to non-destructive. LF-T3/LF-T4 are the secondary real blockers.
 | **LF-7** | `discard`/`retry` call `_refreshPlanning()` first and return on failure → cannot discard a stuck mutation **offline** | `planning_mutation_sync_controller.dart:92,109` | Dropping local intent should not need the network |
 | **LF-8** | Reconcile coerces missing fields silently (`?? ''`×11, `?? 0`×2) into the projection | `providers.dart:387-504` | Unexpected null field → silent empty/zero in projection |
 | LF-9 | `getPlanDetailBySlug` → `listPlans` (merge all) + `getPlanDetail` (merge again) | `planning_local_read_repository.dart:74-92` | N+1 read/merge per plan open; scales with mutation count |
+
+**Status (2026-06-29, local-first-validation slice)**:
+- `LF-1` — **validated**, already shipped (ADR-019). Guarded by
+  `apps/lyron_app/test/offline/adversarial/planning_fault_injection_test.dart`.
+- `LF-2` — **validated**, already shipped (ADR-019). Guarded by
+  `planning_fault_injection_test.dart`.
+- `LF-3` — **fixed** for the song path (planning side was already guarded by ADR-019). Guarded
+  by `apps/lyron_app/test/offline/adversarial/song_single_flight_test.dart`, which added a
+  single-flight guard to `SongMutationSyncController.syncPendingSongs`.
+- `LF-4` — **validated**, already shipped (ADR-019). Guarded by
+  `apps/lyron_app/test/offline/adversarial/planning_merge_visibility_test.dart`.
+- `LF-5` — **validated**, already shipped (ADR-019). Guarded by `planning_merge_visibility_test.dart`.
+- `LF-6` — **fixed**. The merge now dedups offline song-adds by `songId`. Guarded by
+  `planning_merge_visibility_test.dart`.
+- `LF-8` — **fixed**. The reconciler now throws a typed `ReconcileFieldError` instead of
+  silently coercing a null required-on-create field to `''`/`0`. Guarded by
+  `apps/lyron_app/test/offline/adversarial/planning_reconcile_nullfield_test.dart`.
+- `LF-7`, `LF-9` — unchanged by this slice.
 
 **Two root patterns**: (1) **missing exactly-once / idempotency** (LF-1, LF-3) — sync is
 at-least-once with no dedup or single-flight; (2) **merge assumes mutation-record
@@ -282,14 +314,24 @@ screen-reader pass is still outstanding.
 
 99 test files, strong pyramid (unit/widget/integration/backend), backend write-contract
 and migration-lint CI gates, mandatory persistence stubbing, `context.mounted` discipline,
-0 TODO/FIXME. **Gaps**: no accessibility/contrast tests; no live offline/conflict e2e; no
-screen-reader pass; no mutation-preservation-across-migration test (LF-T7); no reader
+0 TODO/FIXME. **Gaps**: no accessibility/contrast tests; no screen-reader pass; no reader
 fit-layout performance regression test. A fit-layout regression test must also assert
 **estimate/render consistency**: the fit-to-screen calculator and the render grid must
 receive the **same padding-adjusted dimensions** (resolved content padding subtracted),
 and the height-estimation logic must **mirror the actual render logic exactly** (including
 conditional checks such as string trimming and collapsing empty elements), or the estimated
 fit and the rendered output drift apart.
+
+**Update (2026-06-29, local-first-validation slice)**: the two gaps formerly listed here —
+"no live offline/conflict e2e" and "no mutation-preservation-across-migration test
+(LF-T7)" — are now covered for the **native** target. Native offline/conflict e2e is
+covered by `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`
+(`LF-T1`) and `two_device_conflict_matrix_test.dart` (both skip-gated on a live local
+Supabase stack; see `docs/deferred/2026-06-29-integration-live-stack-verification.md` for
+live-run status). Mutation-preservation-across-migration (`LF-T7`) is covered by
+`apps/lyron_app/test/offline/adversarial/planning_migration_test.dart` and
+`song_catalog_migration_test.dart`. The **web**/IndexedDB e2e gap remains open and is
+tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
 
 ## 11. Open / Untested Areas (next slices)
 
@@ -298,6 +340,16 @@ fit and the rendered output drift apart.
    matrix; fault injection (kill mid-sync, partial RPC success + refresh failure → the
    reconcile path); LF-8 reconcile hardening with null-field tests; Drift migration test
    with pending mutations (LF-T7); storage-pressure test (LF-T4); clock-skew (LF-T6).
+   **Done (2026-06-29) for the native target** — see the adversarial suite under
+   `apps/lyron_app/test/offline/adversarial/` and the two skip-gated integration suites
+   under `apps/lyron_app/test/integration/`, recorded in
+   `docs/testing/testing-strategy.md` ("Adversarial offline/sync validation"). The web
+   harness half is deferred (`docs/deferred/2026-06-29-web-offline-e2e.md`), LF-T4/LF-T6
+   were characterized via probes and remain deferred for the full fix
+   (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`,
+   `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`), and the two new integration
+   suites are unverified against a live Supabase stack
+   (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
 2. **Schema-vs-app gap**: DB has `groups`, group roles, `attachments`, and session-item
    `note`/`attachment` types; the app only exercises org-level membership and song items.
    Decide which are roadmap vs dead schema.
