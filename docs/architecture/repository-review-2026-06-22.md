@@ -91,6 +91,41 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | DX-1 | Tooling | `file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor | Medium |
 | DX-2 | Tooling | No dependency-audit / coverage gate in CI | Medium |
 
+### Resolution status (updated 2026-06-29)
+
+Findings closed since the 2026-06-22 review, by slice. Per-section status blocks
+carry the detail; this is the digest.
+
+**Fixed**
+- **LF-T1** (offline-session-resilience slice, PR #55) — session expiry is now
+  **non-destructive**: offline cold-start maps to `sessionExpired` (not `signedOut`),
+  offline-authenticated users stay in the app behind a re-auth banner, local data is
+  retained. ADR + architecture recorded. Residual: different-user re-auth **live dialog
+  wiring** is deferred (`docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`).
+- **SEC-5** (planning write-contract hardening slice, PR #57) — partial unique index
+  `unique(session_id, song_id) where item_type='song'` added
+  (`supabase/migrations/202606290002_session_item_unique_song_index.sql`), DB-pinned by a
+  failing-then-passing contract test.
+- **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
+  — see §6 status blocks.
+
+**Validated (already shipped under ADR-019, now guarded by adversarial tests)**
+- **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
+
+**Characterized + still deferred** (probes added, real fix outstanding)
+- **LF-T4** (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`),
+  **LF-T6** (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
+
+**Partial / corrected**
+- **LF-T2** — the "decouple local access from live session validity" half is delivered
+  by LF-T1; the refresh-token TTL ceiling itself is unchanged.
+- **SEC-3** — `current_organization_ids` already carries `set search_path = public`
+  (`20260323220000`), so the review over-counted it; `has_capability` (regressed in
+  `202605250002`) and `get_my_capabilities` (`202605280001`) still lack it. 2 of 3 open.
+
+**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
+ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
+
 ## 4. Architecture Review
 
 **Strengths [verified]**: clean DDD layering with one-directional dependencies and
@@ -165,12 +200,19 @@ treat client shadow fields as provisional only.
 duplicate and a non-deterministic `songSlug → session_item` resolution.
 **Recommendation**: add a partial unique index
 `unique(session_id, song_id) where item_type='song'`.
+**Status (2026-06-29, planning write-contract hardening slice, PR #57): fixed.** Added in
+`supabase/migrations/202606290002_session_item_unique_song_index.sql`; pinned by a
+failing-then-passing DB-level contract test.
 
 **SEC-2 [inferred]** — `create_invitation` skips the admin check when `auth.uid()` is
 null (only `service_role`); safe today via grant scope, but fragile to future grant
-changes. **SEC-3 [verified]** — `has_capability`, `current_organization_ids`,
-`get_my_capabilities` lack `set search_path` (invoker-rights, so low risk, but
-inconsistent with the hardening migration and flagged by Supabase advisors).
+changes. **SEC-3 [verified, corrected 2026-06-29]** — `has_capability` and
+`get_my_capabilities` lack `set search_path` (invoker-rights, low risk, but inconsistent
+with the hardening migration and flagged by Supabase advisors). The review's third helper,
+`current_organization_ids`, **already** carries `security definer set search_path = public`
+(`supabase/migrations/20260323220000_fix_membership_helper_rls_recursion.sql`) and was
+over-counted; note `has_capability` had it there too but **regressed** when redefined
+without it in `202605250002_organization_read_only_role_constraints.sql`. 2 of 3 open.
 
 ## 6. Local-First Review (the highest-risk subsystem)
 
@@ -197,8 +239,21 @@ lifecycle**.
 | LF-T7 | Long offline spans app upgrades; planning migration is additive (good) but no structural-change strategy; catalog DB has `schemaVersion 2` with **no** MigrationStrategy | `offline/planning/planning_local_database.dart:33-64`; `offline/song_catalog/song_catalog_database.dart:32` | More versions crossed over time | Structural-migration playbook + migration test with pending mutations present |
 | LF-T8 | Server-side TTL cleanup (`pg_cron`) deletes unredeemed users >24h and expires invitations (30d) | `supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql` | Server TTLs outside client horizon | Audit: active-member data must never be TTL-collected |
 
-**Headline**: the key to "indefinite" is **LF-T1** — convert session expiry from
-destructive to non-destructive. LF-T3/LF-T4 are the secondary real blockers.
+**Headline**: the key to "indefinite" was **LF-T1** — convert session expiry from
+destructive to non-destructive. **LF-T1 is now done** (offline-session-resilience slice,
+PR #55). LF-T3/LF-T4 are the remaining real blockers.
+
+**Status (2026-06-29, offline-session-resilience slice, PR #55)**:
+- `LF-T1` — **fixed**. Session expiry no longer wipes authenticated local data. Offline
+  cold-start maps to `sessionExpired` (not `signedOut`); offline-authenticated users stay
+  in the app behind a re-auth banner with writes gated; explicit sign-out and authoritative
+  verified-empty-membership revocation still delete immediately. ADR + architecture recorded;
+  e2e-covered by `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`.
+  Residual deferred: different-user re-auth **live dialog wiring**
+  (`docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`).
+- `LF-T2` — **partial**. The "decouple local access from live session validity" half is
+  delivered by LF-T1 (offline cold-start = `sessionExpired`). The refresh-token TTL hard
+  wall itself (longer/rotating refresh token) is unchanged.
 
 **Status (2026-06-29, local-first-validation slice)**:
 - `LF-T4` — **characterized (probe) + deferred**. `storage_pressure_probe_test.dart` confirms
@@ -381,14 +436,16 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 ## 13. Prioritized Roadmap
 
 **Quick wins (1-2 days)**
-- SEC-5: add `unique(session_id, song_id) where item_type='song'`.
-- SEC-3: `set search_path = public` on the three invoker-rights helpers.
+- ~~SEC-5: add `unique(session_id, song_id) where item_type='song'`.~~ **Done (PR #57).**
+- SEC-3: `set search_path = public` on the two remaining invoker-rights helpers
+  (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.
 - LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.
 - UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.
 - A11y: add the missing `semanticLabel`/`Semantics` on the few non-tooltip surfaces.
 
 **Medium (1-2 weeks)**
-- LF-T1: make session expiry non-destructive (the "indefinite offline" keystone).
+- ~~LF-T1: make session expiry non-destructive (the "indefinite offline" keystone).~~
+  **Done (PR #55).** Residual: different-user re-auth live dialog wiring (deferred).
 - LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.
 - LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
