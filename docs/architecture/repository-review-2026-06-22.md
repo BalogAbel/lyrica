@@ -327,8 +327,8 @@ fit and the rendered output drift apart.
 (LF-T7)" — are now covered for the **native** target. Native offline/conflict e2e is
 covered by `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`
 (`LF-T1`) and `two_device_conflict_matrix_test.dart` (both skip-gated on a live local
-Supabase stack; see `docs/deferred/2026-06-29-integration-live-stack-verification.md` for
-live-run status). Mutation-preservation-across-migration (`LF-T7`) is covered by
+Supabase stack; both have since been run and pass against a live stack — see
+`docs/testing/testing-strategy.md`, "Adversarial Offline/Sync Validation"). Mutation-preservation-across-migration (`LF-T7`) is covered by
 `apps/lyron_app/test/offline/adversarial/planning_migration_test.dart` and
 `song_catalog_migration_test.dart`. The **web**/IndexedDB e2e gap remains open and is
 tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
@@ -348,8 +348,8 @@ tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
    were characterized via probes and remain deferred for the full fix
    (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`,
    `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`), and the two new integration
-   suites are unverified against a live Supabase stack
-   (`docs/deferred/2026-06-29-integration-live-stack-verification.md`).
+   suites have since been verified against a live Supabase stack (see
+   `docs/testing/testing-strategy.md`).
 2. **Schema-vs-app gap**: DB has `groups`, group roles, `attachments`, and session-item
    `note`/`attachment` types; the app only exercises org-level membership and song items.
    Decide which are roadmap vs dead schema.

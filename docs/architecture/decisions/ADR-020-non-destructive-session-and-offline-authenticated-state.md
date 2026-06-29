@@ -95,6 +95,6 @@ The local-first-validation slice (2026-06-29) added
 suite covering the `LF-T1` scenario this ADR addresses: offline edit → app relaunch →
 reconnect → sync, against the real local Supabase stack. The suite is **skip-gated** on
 `SUPABASE_URL`/`SUPABASE_ANON_KEY` (the same convention as the existing authenticated
-integration suites) and is faithfully wired to the live RPC/auth contracts, but has not yet
-been run against a running stack in this slice. See
-`docs/deferred/2026-06-29-integration-live-stack-verification.md` for live-run status.
+integration suites) and is faithfully wired to the live RPC/auth contracts. It has since been
+run and passes against a live local Supabase stack — see `docs/testing/testing-strategy.md`,
+"Adversarial Offline/Sync Validation".
