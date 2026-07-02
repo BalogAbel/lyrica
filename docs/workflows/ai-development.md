@@ -41,13 +41,13 @@ Each step must leave an artifact in the repository when it changes durable proje
 
 ## Knowledge-Graph-First Context Gathering
 
-`graphify-out/` is a committed repository artifact (query engine, not a tool-local cache) and is the first stop for codebase context in every phase below, before falling back to a manual file/grep sweep:
+`graphify-out/` is a committed repository artifact (the knowledge graph index, not a tool-local cache) queried via the `graphify` CLI tool, and is the first stop for codebase context in every phase below, before falling back to a manual file/grep sweep:
 
 - **Spec**: `graphify query "<topic/feature>"` to pull existing architecture and related components before drafting `docs/specs/`.
 - **Plan**: `graphify path "<component A>" "<component B>"` to trace dependency/impact paths between the pieces the plan touches.
 - **Implementation**: `graphify explain "<Symbol/Module>"` to locate and understand a symbol before opening files; fall back to Explore/Grep only for what the graph doesn't cover (very recent, uncommitted, or non-code content).
 - **Review**: `graphify query "what depends on <changed component>"` to check blast radius before/instead of a full-repo scan.
-- **Keep it fresh**: run `graphify . --update` after a merge that changes file/module structure, and before starting a spec for a slice touching an area that has drifted since the last graph build. A stale graph gives wrong answers cheaper, which costs more tokens than it saves.
+- **Keep it fresh**: run `graphify . --update` after a merge that changes file/module structure, and before starting a spec for a slice touching an area that has drifted since the last graph build. A stale graph gives incorrect answers at a lower initial token cost, but ultimately costs more tokens in debugging and retries than it saves.
 
 ## Library Docs: Context7-First
 
