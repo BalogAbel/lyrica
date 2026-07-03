@@ -20,6 +20,8 @@ This repository uses AI-assisted development, but the repository itself remains 
 12. Do not keep critical workflow knowledge only inside tooling folders; mirror durable rules in repository docs.
 13. Do not develop directly on `main`; start every change from a branch and integrate back through a pull request.
 14. Name branches using the Conventional Branch pattern `<type>/<description>` such as `feat/song-library-refresh`, `fix/offline-relaunch`, or `chore/update-docs`.
+15. Query the codebase graph via `graphify` (stored in `graphify-out/`) before a manual file/grep sweep in spec, plan, implementation, and review phases; see `docs/workflows/ai-development.md`.
+16. Resolve third-party library/API docs via the `context7` MCP server before relying on memory or web search in spec, plan, implementation, and review phases; see `docs/workflows/ai-development.md`.
 
 ## Documentation Duties
 
