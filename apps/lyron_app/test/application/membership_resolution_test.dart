@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
-import 'package:lyron_app/src/application/providers.dart';
 
 void main() {
   group('resolveMembershipWithCachedFallback', () {

@@ -5,6 +5,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/active_organization_resolver.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
@@ -170,56 +171,24 @@ final activeMembershipControllerProvider =
       (_) => ActiveMembershipController(),
     );
 
-/// Returns [resolution] unchanged unless it is an
-/// [ActiveOrganizationUnknownConnectivityFailure] AND a [userId] is present AND
-/// a cached organization id can be read for that user — in which case it returns
-/// `ActiveOrganizationResolution.selected(cachedOrgId)`. If the cache read
-/// throws, the original [resolution] is returned — the fallback is best-effort
-/// and must never escalate a recoverable connectivity failure into a crash.
-///
-/// Extracted as a pure top-level function so it can be unit-tested without any
-/// Riverpod or Supabase dependency.
-Future<ActiveOrganizationResolution> resolveMembershipWithCachedFallback({
-  required ActiveOrganizationResolution resolution,
-  required String? userId,
-  required Future<String?> Function({required String userId})
-  readCachedOrganizationId,
-}) async {
-  if (resolution is! ActiveOrganizationUnknownConnectivityFailure) {
-    return resolution;
-  }
-  if (userId == null) return resolution;
-  try {
-    final cachedOrgId = await readCachedOrganizationId(userId: userId);
-    if (cachedOrgId == null) return resolution;
-    return ActiveOrganizationResolution.selected(cachedOrgId);
-  } catch (_) {
-    // Best-effort fallback: a cache read error must not escalate a recoverable
-    // connectivity failure into an unhandled crash. Keep the original
-    // resolution so the gate shows the connectivity message instead.
-    return resolution;
-  }
-}
+final activeOrganizationResolverProvider = Provider<ActiveOrganizationResolver>(
+  (ref) {
+    return ActiveOrganizationResolver(
+      resolveRawReader: ref.watch(activeOrganizationResolutionProvider),
+      readUserId: () =>
+          ref.read(appAuthControllerProvider).state.session?.userId,
+      readCachedOrganizationId: ref
+          .read(songCatalogStoreProvider)
+          .readLatestCachedOrganizationId,
+    );
+  },
+);
 
 final membershipResolutionProvider =
     Provider<ActiveOrganizationResolutionReader>((ref) {
-      return () async {
-        final resolution = await ref.read(
-          activeOrganizationResolutionProvider,
-        )();
-        final userId = ref
-            .read(appAuthControllerProvider)
-            .state
-            .session
-            ?.userId;
-        return resolveMembershipWithCachedFallback(
-          resolution: resolution,
-          userId: userId,
-          readCachedOrganizationId: ref
-              .read(songCatalogStoreProvider)
-              .readLatestCachedOrganizationId,
-        );
-      };
+      return ref
+          .watch(activeOrganizationResolverProvider)
+          .resolveWithCachedFallback;
     });
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {
@@ -262,20 +231,7 @@ final appAuthListenableProvider = Provider<Listenable>((ref) {
 final activeOrganizationReaderProvider = Provider<ActiveOrganizationReader>((
   ref,
 ) {
-  return () async {
-    final resolution = await ref.read(activeOrganizationResolutionProvider)();
-    return switch (resolution) {
-      ActiveOrganizationSelected(:final organizationId) => organizationId,
-      ActiveOrganizationVerifiedEmpty() => null,
-      ActiveOrganizationUnknownConnectivityFailure() =>
-        throw const SocketException(
-          'active organization lookup temporarily unavailable',
-        ),
-      ActiveOrganizationUnknownNonConnectivityFailure() => throw StateError(
-        'active organization lookup failed',
-      ),
-    };
-  };
+  return ref.watch(activeOrganizationResolverProvider).resolveOrganizationId;
 });
 
 final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((

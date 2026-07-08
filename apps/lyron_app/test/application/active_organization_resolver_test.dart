@@ -30,30 +30,34 @@ void main() {
       );
     });
 
-    test('resolveWithCachedFallback uses cache only on connectivity failure',
-        () async {
-      final resolver = buildResolver(
-        resolution:
-            const ActiveOrganizationResolution.unknownConnectivityFailure(),
-        cachedOrganizationId: 'org-cached',
-      );
-      expect(
-        await resolver.resolveWithCachedFallback(),
-        const ActiveOrganizationResolution.selected('org-cached'),
-      );
-    });
+    test(
+      'resolveWithCachedFallback uses cache only on connectivity failure',
+      () async {
+        final resolver = buildResolver(
+          resolution:
+              const ActiveOrganizationResolution.unknownConnectivityFailure(),
+          cachedOrganizationId: 'org-cached',
+        );
+        expect(
+          await resolver.resolveWithCachedFallback(),
+          const ActiveOrganizationResolution.selected('org-cached'),
+        );
+      },
+    );
 
-    test('resolveWithCachedFallback does not fall back on verifiedEmpty',
-        () async {
-      final resolver = buildResolver(
-        resolution: const ActiveOrganizationResolution.verifiedEmpty(),
-        cachedOrganizationId: 'org-cached',
-      );
-      expect(
-        await resolver.resolveWithCachedFallback(),
-        const ActiveOrganizationResolution.verifiedEmpty(),
-      );
-    });
+    test(
+      'resolveWithCachedFallback does not fall back on verifiedEmpty',
+      () async {
+        final resolver = buildResolver(
+          resolution: const ActiveOrganizationResolution.verifiedEmpty(),
+          cachedOrganizationId: 'org-cached',
+        );
+        expect(
+          await resolver.resolveWithCachedFallback(),
+          const ActiveOrganizationResolution.verifiedEmpty(),
+        );
+      },
+    );
 
     test('resolveOrganizationId returns id on selected', () async {
       final resolver = buildResolver(
@@ -69,25 +73,32 @@ void main() {
       expect(await resolver.resolveOrganizationId(), isNull);
     });
 
-    test('resolveOrganizationId throws SocketException on connectivity failure',
-        () async {
-      final resolver = buildResolver(
-        resolution:
-            const ActiveOrganizationResolution.unknownConnectivityFailure(),
-      );
-      await expectLater(resolver.resolveOrganizationId(), throwsA(isA<Object>()));
-    });
+    test(
+      'resolveOrganizationId throws SocketException on connectivity failure',
+      () async {
+        final resolver = buildResolver(
+          resolution:
+              const ActiveOrganizationResolution.unknownConnectivityFailure(),
+        );
+        await expectLater(
+          resolver.resolveOrganizationId(),
+          throwsA(isA<Object>()),
+        );
+      },
+    );
 
-    test('resolveOrganizationId throws StateError on non-connectivity failure',
-        () async {
-      final resolver = buildResolver(
-        resolution:
-            const ActiveOrganizationResolution.unknownNonConnectivityFailure(),
-      );
-      await expectLater(
-        resolver.resolveOrganizationId(),
-        throwsA(isA<StateError>()),
-      );
-    });
+    test(
+      'resolveOrganizationId throws StateError on non-connectivity failure',
+      () async {
+        final resolver = buildResolver(
+          resolution:
+              const ActiveOrganizationResolution.unknownNonConnectivityFailure(),
+        );
+        await expectLater(
+          resolver.resolveOrganizationId(),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
   });
 }
