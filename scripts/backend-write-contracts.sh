@@ -38,3 +38,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 organization_read_only_test_script="${ORGANIZATION_READ_ONLY_TEST_SCRIPT:-./scripts/tests/organization-read-only-role-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$organization_read_only_test_script"
+
+capability_search_path_test_script="${CAPABILITY_SEARCH_PATH_TEST_SCRIPT:-./scripts/tests/capability-search-path-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$capability_search_path_test_script"
