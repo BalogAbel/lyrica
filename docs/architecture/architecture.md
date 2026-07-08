@@ -24,7 +24,11 @@ Client layers:
   `core_providers.dart` (infra + shared DB lifecycle), `auth_providers.dart`,
   `song_catalog_providers.dart`, `planning_providers.dart` — re-exported through
   a single `providers.dart` barrel so existing import call sites are unaffected
-  ([ADR-021](decisions/ADR-021-provider-domain-split.md))
+  ([ADR-021](decisions/ADR-021-provider-domain-split.md)). Active-organization
+  resolution is owned by a single `ActiveOrganizationResolver` in this layer,
+  with the `activeOrganizationResolutionProvider`,
+  `membershipResolutionProvider`, and `activeOrganizationReaderProvider` seams
+  delegating to it ([ADR-022](decisions/ADR-022-active-organization-resolver.md))
 - `infrastructure`: Supabase adapters, Drift repositories, auth integration
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
