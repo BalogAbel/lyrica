@@ -106,6 +106,11 @@ carry the detail; this is the digest.
   `unique(session_id, song_id) where item_type='song'` added
   (`supabase/migrations/202606290002_session_item_unique_song_index.sql`), DB-pinned by a
   failing-then-passing contract test.
+- **UX-3** (arch-spine-phase0-1 slice) — the copyrighted worship-song
+  `defaultSource` in the song editor is replaced with an original,
+  non-copyrighted ChordPro sample that doubles as a syntax hint
+  (`apps/lyron_app/lib/src/presentation/song_editor/song_editor_controller.dart`).
+  Pinned by a failing-then-passing characterization test.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -440,7 +445,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - SEC-3: `set search_path = public` on the two remaining invoker-rights helpers
   (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.
 - LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.
-- UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.
+- ~~UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.~~ **Done (arch-spine-phase0-1).**
 - A11y: add the missing `semanticLabel`/`Semantics` on the few non-tooltip surfaces.
 
 **Medium (1-2 weeks)**
