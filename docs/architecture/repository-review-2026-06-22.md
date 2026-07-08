@@ -118,6 +118,12 @@ carry the detail; this is the digest.
   (`scripts/tests/capability-search-path-contract-test.sh`, wired into the
   `backend_write_contracts` job) guards all three helpers against silent
   regression.
+- **ARCH-1** (arch-spine-phase0-1 slice) — the `PlanningMutationReconciler` was
+  already extracted (`b2d1053`, tested, injectable clock); the remaining
+  `providers.dart` god-file (776 lines) is now split into four domain-scoped
+  files (`core_providers`, `auth_providers`, `song_catalog_providers`,
+  `planning_providers`) behind a re-export barrel. ADR-021. Zero call-site churn;
+  the full provider surface is pinned by a characterization test.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -153,6 +159,10 @@ whole system and embeds business logic in provider closures — notably the ~110
 accepted-mutation reconcile switch at `providers.dart:387-504`. Hard to test, easy to
 grow. **Recommendation**: split into domain-scoped `*_providers.dart` and extract a
 testable `PlanningMutationReconciler` class.
+
+**Fixed (arch-spine-phase0-1)**: `PlanningMutationReconciler` extracted earlier
+in `b2d1053`; the file split into domain-scoped `*_providers.dart` behind a
+barrel landed in this slice (ADR-021).
 
 **ARCH-2 — coarse invalidation.** Every planning write bumps a single
 `planningDataRevisionProvider` counter (`providers.dart:355`), forcing broad rebuilds
@@ -463,7 +473,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.
 - LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
-- ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.
+- ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.
 - SEC-1: invite email-binding + rate limit + audit + ADR.
 - DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
