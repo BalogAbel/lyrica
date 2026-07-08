@@ -156,7 +156,7 @@ final planningWriteServiceProvider = Provider<PlanningWriteService>((ref) {
             .read(planningMutationSyncControllerProvider)
             .syncPendingMutations(activeContext);
       } finally {
-        ref.read(planningDataRevisionProvider.notifier).state += 1;
+        ref.read(planningMutationRevisionProvider.notifier).state += 1;
       }
     },
   );

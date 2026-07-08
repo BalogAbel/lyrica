@@ -789,6 +789,14 @@ void main() {
           );
 
       expect(syncController.syncCalls, 1);
+      // The write service's own sync-scheduler choke point only bumps the
+      // mutation-scoped revision (ARCH-2): it drives the badge/mutation-list
+      // readers below without knowing whether a given write is
+      // aggregate-affecting. In production, plan_detail_screen's `_editPlan`
+      // handler bumps the aggregate revision itself because editing a plan's
+      // summary is aggregate-scoped; simulate that same caller-side bump here
+      // since this test calls the write service directly.
+      container.read(planningDataRevisionProvider.notifier).state += 1;
       expect(
         (await container.read(planningPlanListProvider.future)).single.slug,
         'weekend-service-2',
