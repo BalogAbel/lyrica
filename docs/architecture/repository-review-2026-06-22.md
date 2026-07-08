@@ -131,9 +131,9 @@ carry the detail; this is the digest.
 **Partial / corrected**
 - **LF-T2** — the "decouple local access from live session validity" half is delivered
   by LF-T1; the refresh-token TTL ceiling itself is unchanged.
-- **SEC-3** — `current_organization_ids` already carries `set search_path = public`
-  (`20260323220000`), so the review over-counted it; `has_capability` (regressed in
-  `202605250002`) and `get_my_capabilities` (`202605280001`) still lack it. 2 of 3 open.
+
+(SEC-3 was here as "2 of 3 open" after the 2026-06-29 over-count correction; it is
+now fully closed — see **Fixed** above.)
 
 **Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
 ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
