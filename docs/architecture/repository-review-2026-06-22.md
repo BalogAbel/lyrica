@@ -124,6 +124,12 @@ carry the detail; this is the digest.
   files (`core_providers`, `auth_providers`, `song_catalog_providers`,
   `planning_providers`) behind a re-export barrel. ADR-021. Zero call-site churn;
   the full provider surface is pinned by a characterization test.
+- **ARCH-5** (arch-spine-phase0-1 slice) — active-organization resolution is
+  consolidated into a single `ActiveOrganizationResolver` (application layer)
+  that owns the raw / cached-fallback / organization-id flavors; the three
+  resolution providers delegate to it with identical seams. ADR-022 (extends
+  ADR-016; completes the identity seam ADR-020 began). The deferred different-user
+  re-auth wiring intersection is noted, not closed.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -177,6 +183,10 @@ sub-widgets per responsibility.
 **ARCH-5 — active-organization resolution** is threaded through
 `activeOrganizationResolutionProvider`, `membershipResolutionProvider`, cached-fallback,
 and several controllers with auth-generation coupling — a large implicit state surface.
+
+**Fixed (arch-spine-phase0-1)**: consolidated into `ActiveOrganizationResolver`
+with the providers delegating (ADR-022); controller per-outcome fallback policy
+retained per ADR-016.
 
 **ARCH-4** — `melos.yaml` manages a single package today; either grow into multiple
 packages or drop the overhead.
