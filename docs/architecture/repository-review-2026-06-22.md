@@ -111,6 +111,13 @@ carry the detail; this is the digest.
   non-copyrighted ChordPro sample that doubles as a syntax hint
   (`apps/lyron_app/lib/src/presentation/song_editor/song_editor_controller.dart`).
   Pinned by a failing-then-passing characterization test.
+- **SEC-3** (arch-spine-phase0-1 slice) — `has_capability` and
+  `get_my_capabilities` now pin `set search_path = public`
+  (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
+  matching `current_organization_ids`. A backend contract test
+  (`scripts/tests/capability-search-path-contract-test.sh`, wired into the
+  `backend_write_contracts` job) guards all three helpers against silent
+  regression.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -217,7 +224,10 @@ with the hardening migration and flagged by Supabase advisors). The review's thi
 `current_organization_ids`, **already** carries `security definer set search_path = public`
 (`supabase/migrations/20260323220000_fix_membership_helper_rls_recursion.sql`) and was
 over-counted; note `has_capability` had it there too but **regressed** when redefined
-without it in `202605250002_organization_read_only_role_constraints.sql`. 2 of 3 open.
+without it in `202605250002_organization_read_only_role_constraints.sql`.
+**Fixed (arch-spine-phase0-1)**: `has_capability` and `get_my_capabilities`
+now pin `set search_path = public` (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
+guarded by `scripts/tests/capability-search-path-contract-test.sh`. All 3 helpers closed.
 
 ## 6. Local-First Review (the highest-risk subsystem)
 
@@ -442,8 +452,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 
 **Quick wins (1-2 days)**
 - ~~SEC-5: add `unique(session_id, song_id) where item_type='song'`.~~ **Done (PR #57).**
-- SEC-3: `set search_path = public` on the two remaining invoker-rights helpers
-  (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.
+- ~~SEC-3: `set search_path = public` on the two remaining invoker-rights helpers (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.~~ **Done (arch-spine-phase0-1).**
 - LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.
 - ~~UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.~~ **Done (arch-spine-phase0-1).**
 - A11y: add the missing `semanticLabel`/`Semantics` on the few non-tooltip surfaces.
