@@ -141,4 +141,17 @@ void main() {
     expect(controller.state.source, isNot(contains('{Transpose : 2}')));
     expect(controller.state.source, isNot(contains('{CAPO : 3}')));
   });
+
+  test('default source is non-copyrighted and parses as valid ChordPro', () {
+    final controller = SongEditorController();
+    final source = controller.state.source;
+
+    // No copyrighted markers from the previous hardcoded worship song.
+    expect(source, isNot(contains('Heart of Worship')));
+    expect(source, isNot(contains('Matt Redman')));
+    expect(source, isNot(contains('When the music fades')));
+
+    // Still a valid, parseable ChordPro sample with the placeholder title.
+    expect(controller.state.parsedSong.title, 'My New Song');
+  });
 }

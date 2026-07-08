@@ -13,19 +13,17 @@ class SongEditorController {
        );
 
   static const defaultSource = '''
-{title: Heart of Worship}
-{artist: Matt Redman}
-{key: D}
-{tempo: 72}
-{tags: worship, acoustic}
+{title: My New Song}
+{artist: }
+{key: C}
+{tempo: 120}
+{tags: }
 {transpose: 0}
 {capo: 0}
 
-{comment: Verse 1}
-[D]When the music fades
-[A]And all is stripped away
-[Bm]And I simply come
-[G]Longing just to bring
+{comment: Replace this sample with your own lyrics}
+[C]Type a line of lyrics and put [G]chords in brackets
+[Am]Delete these lines when you [F]start your song
 ''';
 
   SongEditorState _state;
