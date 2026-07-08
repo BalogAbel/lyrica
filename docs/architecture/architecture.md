@@ -19,7 +19,12 @@ Primary libraries:
 Client layers:
 
 - `domain`: entities, value objects, repository contracts, capability vocabulary
-- `application`: use cases, orchestration, sync coordination
+- `application`: use cases, orchestration, sync coordination. Riverpod provider
+  wiring is organized into domain-scoped files —
+  `core_providers.dart` (infra + shared DB lifecycle), `auth_providers.dart`,
+  `song_catalog_providers.dart`, `planning_providers.dart` — re-exported through
+  a single `providers.dart` barrel so existing import call sites are unaffected
+  ([ADR-021](decisions/ADR-021-provider-domain-split.md))
 - `infrastructure`: Supabase adapters, Drift repositories, auth integration
 - `offline`: local database, sync queue, conflict handling
 - `presentation`: routes, screens, controllers, UX state
