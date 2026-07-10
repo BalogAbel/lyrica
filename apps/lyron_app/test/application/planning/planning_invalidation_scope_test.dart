@@ -194,6 +194,11 @@ void main() {
           (_, _) {},
           fireImmediately: true,
         ),
+        container.listen(
+          planningMutationEntriesProvider,
+          (_, _) {},
+          fireImmediately: true,
+        ),
       ];
       addTearDown(() {
         for (final subscription in subscriptions) {
@@ -203,16 +208,21 @@ void main() {
 
       await container.read(planningPlanDetailProvider('plan-1').future);
       await container.read(planningPlanListProvider.future);
+      await container.read(planningMutationEntriesProvider.future);
 
       final detailCallsBefore = repository.getPlanDetailCalls;
       final listCallsBefore = repository.listPlansCalls;
+      final mutationCallsBefore = mutationStore.readAllCalls;
 
       container.read(planningDataRevisionProvider.notifier).state += 1;
       await container.read(planningPlanDetailProvider('plan-1').future);
       await container.read(planningPlanListProvider.future);
+      await container.read(planningMutationEntriesProvider.future);
 
       expect(repository.getPlanDetailCalls, greaterThan(detailCallsBefore));
       expect(repository.listPlansCalls, greaterThan(listCallsBefore));
+      // #5 watches both signals, so the aggregate bump also recomputes it.
+      expect(mutationStore.readAllCalls, greaterThan(mutationCallsBefore));
     },
   );
 }

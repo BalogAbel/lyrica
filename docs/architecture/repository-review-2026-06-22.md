@@ -150,8 +150,8 @@ carry the detail; this is the digest.
 - **LF-T2** — the "decouple local access from live session validity" half is delivered
   by LF-T1; the refresh-token TTL ceiling itself is unchanged.
 
-(SEC-3 was here as "2 of 3 open" after the 2026-06-29 over-count correction; it is
-now fully closed — see **Fixed** above.)
+- **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
+  over-count correction; now fully closed (see **Fixed** above).
 
 **Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
 ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
