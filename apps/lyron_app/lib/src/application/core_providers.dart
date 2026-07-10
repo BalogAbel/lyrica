@@ -54,7 +54,7 @@ final planningLocalDatabaseProvider = Provider<PlanningLocalDatabase>((ref) {
 /// `providers.dart` barrel.
 @internal
 final class LastKnownIdentityPersistenceEpoch {
-  var _value = 0;
+  int _value = 0;
 
   int invalidate() {
     _value += 1;

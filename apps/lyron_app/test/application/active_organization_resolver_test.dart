@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/active_organization_resolver.dart';
@@ -82,7 +84,7 @@ void main() {
         );
         await expectLater(
           resolver.resolveOrganizationId(),
-          throwsA(isA<Object>()),
+          throwsA(isA<SocketException>()),
         );
       },
     );
