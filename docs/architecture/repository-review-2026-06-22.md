@@ -130,6 +130,12 @@ carry the detail; this is the digest.
   resolution providers delegate to it with identical seams. ADR-022 (extends
   ADR-016; completes the identity seam ADR-020 began). The deferred different-user
   re-auth wiring intersection is noted, not closed.
+- **ARCH-2** (arch-spine-phase0-1 slice) — planning invalidation is split into an
+  aggregate signal (`planningDataRevisionProvider`) and a mutation signal
+  (`planningMutationRevisionProvider`) watched only by the mutation-facing
+  readers, so within-plan session/item edits no longer rebuild other plans'
+  details or by-slug summaries. The accepted cross-plan post-sync staleness
+  trade-off is documented in `architecture.md`.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -174,6 +180,10 @@ barrel landed in this slice (ADR-021).
 `planningDataRevisionProvider` counter (`providers.dart:355`), forcing broad rebuilds
 (e.g. full plan-detail) for small edits. **Recommendation**: aggregate-scoped
 invalidation (at least per plan id).
+**Fixed (arch-spine-phase0-1)**: within-plan edits now bump a mutation-scoped
+revision (`planningMutationRevisionProvider`) watched only by the mutation-facing
+readers; only aggregate events (plan-summary edit, sync completion, discard/retry)
+bump the global signal, so a small edit no longer rebuilds unrelated plan details.
 
 **ARCH-3 — UI god-components.** `presentation/planning/plan_detail_screen.dart` (1240),
 `presentation/song_editor/song_editor_screen.dart` (1088),
@@ -490,7 +500,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 
 **Strategic (1+ month)**
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
-- ARCH-2: aggregate-scoped invalidation.
+- ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ARCH-3: decompose plan_detail / song_editor.
 - SEC-4: backend-derived shadow metadata.
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;
