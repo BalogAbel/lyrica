@@ -80,33 +80,27 @@ void main() {
       addTearDown(container.dispose);
 
       // Keep each reader alive so it only recomputes on invalidation.
-      final subscriptions = [
-        container.listen(
-          planningPlanDetailProvider('plan-1'),
-          (_, _) {},
-          fireImmediately: true,
-        ),
-        container.listen(
-          hasUnsyncedPlanningMutationsProvider,
-          (_, _) {},
-          fireImmediately: true,
-        ),
-        container.listen(
-          planningMutationEntriesProvider,
-          (_, _) {},
-          fireImmediately: true,
-        ),
-        container.listen(
-          planningPlanListProvider,
-          (_, _) {},
-          fireImmediately: true,
-        ),
-      ];
-      addTearDown(() {
-        for (final subscription in subscriptions) {
-          subscription.close();
-        }
-      });
+      // container.dispose (registered above) closes these subscriptions.
+      container.listen(
+        planningPlanDetailProvider('plan-1'),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      container.listen(
+        hasUnsyncedPlanningMutationsProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      container.listen(
+        planningMutationEntriesProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      container.listen(
+        planningPlanListProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
 
       // Settle initial async reads.
       await container.read(planningPlanDetailProvider('plan-1').future);
@@ -183,28 +177,22 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      final subscriptions = [
-        container.listen(
-          planningPlanDetailProvider('plan-1'),
-          (_, _) {},
-          fireImmediately: true,
-        ),
-        container.listen(
-          planningPlanListProvider,
-          (_, _) {},
-          fireImmediately: true,
-        ),
-        container.listen(
-          planningMutationEntriesProvider,
-          (_, _) {},
-          fireImmediately: true,
-        ),
-      ];
-      addTearDown(() {
-        for (final subscription in subscriptions) {
-          subscription.close();
-        }
-      });
+      // container.dispose (registered above) closes these subscriptions.
+      container.listen(
+        planningPlanDetailProvider('plan-1'),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      container.listen(
+        planningPlanListProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      container.listen(
+        planningMutationEntriesProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
 
       await container.read(planningPlanDetailProvider('plan-1').future);
       await container.read(planningPlanListProvider.future);

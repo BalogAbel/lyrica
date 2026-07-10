@@ -54,7 +54,9 @@ final appAuthControllerProvider = ChangeNotifierProvider<AppAuthController>((
 final lastKnownIdentityDatabaseProvider = Provider<LastKnownIdentityDatabase>((
   ref,
 ) {
-  final database = Platform.environment.containsKey('FLUTTER_TEST')
+  // Guard the dart:io Platform lookup with kIsWeb: Platform.environment throws
+  // UnsupportedError on Web. Native and tests keep the exact prior behavior.
+  final database = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')
       ? LastKnownIdentityDatabase.inMemory()
       : LastKnownIdentityDatabase.local();
   ref.onDispose(database.close);
