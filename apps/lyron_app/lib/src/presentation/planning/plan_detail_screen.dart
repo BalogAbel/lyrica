@@ -335,6 +335,11 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
           _optimisticSessionOrder = null;
           _lastCompletedSessionReorderGeneration = generation;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.planningReorderFailedMessage),
+          ),
+        );
       }
       if (generation != _sessionReorderGeneration) {
         return;

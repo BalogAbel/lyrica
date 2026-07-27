@@ -554,6 +554,11 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
           _optimisticItemOrder = null;
           _lastCompletedItemReorderGeneration = generation;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.planningReorderFailedMessage),
+          ),
+        );
       }
       if (generation != _itemReorderGeneration) {
         return;

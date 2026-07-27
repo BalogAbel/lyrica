@@ -749,6 +749,32 @@ void main() {
     expect(tester.takeException(), isA<StateError>());
   });
 
+  testWidgets('shows a message when the session reorder write fails', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async =>
+          throw StateError('session reorder failed'),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first
+        .onReorder(0, 2);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<StateError>());
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsOneWidget);
+  });
+
   testWidgets('stale session reorder result does not clear newer order', (
     tester,
   ) async {
@@ -813,6 +839,52 @@ void main() {
       tester.getTopLeft(find.text('Warm-Up')).dy,
       greaterThan(tester.getTopLeft(find.text('Closing')).dy),
     );
+  });
+
+  testWidgets('a superseded reorder failure stays silent', (tester) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final firstReorderCompleter = Completer<void>();
+    var reorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        reorderCalls += 1;
+        if (reorderCalls == 1) {
+          await firstReorderCompleter.future;
+          throw StateError('late session reorder failure');
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // First drag (stale, blocked on firstReorderCompleter).
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    // Second drag (newer, queued behind the first) supersedes the first
+    // drag's generation before it settles.
+    sessionList.onReorder(1, 3);
+    await tester.pump();
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    // The first drag's write failed, but it was superseded by the second
+    // drag before that failure landed, so it must not roll anything back
+    // and must not tell the user anything went wrong.
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsNothing);
   });
 
   testWidgets('drops the session overlay once the projection catches up', (
@@ -1999,6 +2071,43 @@ void main() {
       lessThan(tester.getTopLeft(find.textContaining('Beta')).dy),
     );
     expect(tester.takeException(), isA<StateError>());
+  });
+
+  testWidgets('shows a message when the session item reorder write fails', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService(
+      onReorderSessionItems: (_) async =>
+          throw StateError('item reorder failed'),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1)
+        .onReorder(1, 0);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<StateError>());
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsOneWidget);
   });
 
   testWidgets('shows a validation error for invalid scheduled-for input', (

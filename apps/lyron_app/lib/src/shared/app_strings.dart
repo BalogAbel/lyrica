@@ -160,6 +160,8 @@ class AppStrings {
   static const sessionEditAction = 'Edit session';
   static const sessionCreateAction = 'Add session';
   static const sessionReorderAction = 'Reorder session';
+  static const planningReorderFailedMessage =
+      'Could not save the new order. The previous order was restored.';
   static const sessionMoveUpAction = 'Move session up';
   static const sessionMoveDownAction = 'Move session down';
   static const sessionRenameAction = 'Rename session';
