@@ -624,6 +624,117 @@ void main() {
     expect(writeService.reorderedSessionDrafts, hasLength(2));
   });
 
+  testWidgets('shows reordered sessions before the local write completes', (
+    tester,
+  ) async {
+    final reorderCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) => reorderCompleter.future,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // _editablePlanDetailFixture has two sessions (Warm-Up, Closing), so
+    // newIndex 2 is the pre-removal "insert at end" position.
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    reorderCompleter.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('rolls the session order back when the reorder write fails', (
+    tester,
+  ) async {
+    final failCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        await failCompleter.future;
+        throw StateError('session reorder failed');
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    failCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+    expect(tester.takeException(), isA<StateError>());
+  });
+
+  testWidgets('stale session reorder result does not clear newer order', (
+    tester,
+  ) async {
+    final firstReorderCompleter = Completer<void>();
+    var reorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        reorderCalls += 1;
+        if (reorderCalls == 1) {
+          await firstReorderCompleter.future;
+          throw StateError('late session reorder failure');
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+
+    final orderAfterSecondDrag = tester.getTopLeft(find.text('Warm-Up')).dy;
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(find.text('Warm-Up')).dy, orderAfterSecondDrag);
+  });
+
   testWidgets(
     'long-press drag on the session handle reorders sessions',
     (tester) async {
