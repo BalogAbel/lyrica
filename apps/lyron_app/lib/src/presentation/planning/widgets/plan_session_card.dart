@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/planning/planning_reorder_overlay.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
@@ -52,6 +53,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
   late final FocusNode _addSongFocusNode;
   List<String>? _optimisticItemOrder;
   var _itemReorderGeneration = 0;
+  var _lastCompletedItemReorderGeneration = 0;
   Future<void> _itemReorderTail = Future<void>.value();
   var _pickerOpen = false;
   var _addSongInFlight = false;
@@ -72,6 +74,16 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
   Widget build(BuildContext context) {
     final planDetail = widget.planDetail;
     final session = widget.session;
+    // Resolve (and, if settled, drop) the overlay against this fresh
+    // projection before it is used to order the list below. This runs during
+    // build, so the field is assigned directly rather than via setState —
+    // the current build already sees the resolved value.
+    _optimisticItemOrder = resolveReorderOverlay(
+      optimisticOrder: _optimisticItemOrder,
+      projectionOrder: [for (final item in session.items) item.id],
+      hasWriteInFlight:
+          _itemReorderGeneration != _lastCompletedItemReorderGeneration,
+    );
     final items = _orderedItems(session);
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
@@ -540,6 +552,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
       if (mounted && generation == _itemReorderGeneration) {
         setState(() {
           _optimisticItemOrder = null;
+          _lastCompletedItemReorderGeneration = generation;
         });
       }
       if (generation != _itemReorderGeneration) {
@@ -551,6 +564,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     if (generation != _itemReorderGeneration) {
       return;
     }
+    _lastCompletedItemReorderGeneration = generation;
     if (!mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);

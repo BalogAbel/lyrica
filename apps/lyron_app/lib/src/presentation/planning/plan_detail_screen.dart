@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
+import 'package:lyron_app/src/application/planning/planning_reorder_overlay.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
@@ -34,6 +35,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   PlanDetail? _latestPlanDetail;
   List<String>? _optimisticSessionOrder;
   var _sessionReorderGeneration = 0;
+  var _lastCompletedSessionReorderGeneration = 0;
   Future<void> _sessionReorderTail = Future<void>.value();
 
   String get planId => widget.planId;
@@ -88,6 +90,19 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         ),
         data: (PlanDetail detail) {
           _latestPlanDetail = detail;
+          // Resolve (and, if settled, drop) the overlay against this fresh
+          // projection before it is used to order the list below. This runs
+          // during build, so the field is assigned directly rather than via
+          // setState — the current build already sees the resolved value.
+          _optimisticSessionOrder = resolveReorderOverlay(
+            optimisticOrder: _optimisticSessionOrder,
+            projectionOrder: [
+              for (final session in detail.sessions) session.id,
+            ],
+            hasWriteInFlight:
+                _sessionReorderGeneration !=
+                _lastCompletedSessionReorderGeneration,
+          );
           final sessions = _orderedSessions(detail);
           final orderedDetail = PlanDetail(
             plan: detail.plan,
@@ -318,6 +333,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       if (mounted && generation == _sessionReorderGeneration) {
         setState(() {
           _optimisticSessionOrder = null;
+          _lastCompletedSessionReorderGeneration = generation;
         });
       }
       if (generation != _sessionReorderGeneration) {
@@ -334,6 +350,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     if (generation != _sessionReorderGeneration) {
       return;
     }
+    _lastCompletedSessionReorderGeneration = generation;
     if (!mounted) return;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);

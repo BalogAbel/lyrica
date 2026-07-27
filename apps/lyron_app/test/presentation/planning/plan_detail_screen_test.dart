@@ -78,6 +78,14 @@ void main() {
       overrides: [
         planningPlanDetailProvider('plan-1').overrideWith((ref) {
           ref.watch(planningDataRevisionProvider);
+          // A zero-arg factory is invoked afresh on every rebuild (initial
+          // load, revision bump, or explicit invalidate), unlike a plain
+          // Future which is captured once and replayed on later rebuilds.
+          // Use this when a test needs distinct successive projections.
+          if (planDetailValue is Future<PlanDetail> Function()) {
+            return planDetailValue();
+          }
+
           if (planDetailValue is Future<PlanDetail>) {
             return planDetailValue;
           }
@@ -804,6 +812,98 @@ void main() {
     expect(
       tester.getTopLeft(find.text('Warm-Up')).dy,
       greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+  });
+
+  testWidgets('drops the session overlay once the projection catches up', (
+    tester,
+  ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var reads = 0;
+    final matchingProjectionCompleter = Completer<PlanDetail>();
+    final originalProjectionCompleter = Completer<PlanDetail>();
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
+          }
+          if (reads == 2) {
+            return matchingProjectionCompleter.future;
+          }
+          return originalProjectionCompleter.future;
+        },
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // Drag first session to the end: Warm-Up, Main Set, Closing ->
+    // Main Set, Closing, Warm-Up.
+    sessionList.onReorder(0, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // The write completes immediately, which invalidates the projection
+    // and triggers the second read. The refreshed projection already
+    // matches the optimistic order.
+    matchingProjectionCompleter.complete(
+      _threeSessionFixtureInOrder(const [
+        'session-2',
+        'session-3',
+        'session-1',
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // A later, independent refresh arrives in the ORIGINAL order.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanDetailScreen)),
+    );
+    container.invalidate(planningPlanDetailProvider('plan-1'));
+    await tester.pump();
+    originalProjectionCompleter.complete(
+      _editablePlanDetailWithThreeSessionsFixture(),
+    );
+    await tester.pumpAndSettle();
+
+    // This is what fails today: a stale-but-compatible overlay masks the
+    // refreshed projection forever, so the screen keeps showing
+    // Main Set, Closing, Warm-Up instead of the original order.
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Main Set')).dy,
+      lessThan(tester.getTopLeft(find.text('Closing')).dy),
     );
   });
 
@@ -2298,6 +2398,18 @@ PlanDetail _editablePlanDetailWithThreeSessionsFixture() {
         items: [],
       ),
     ],
+  );
+}
+
+/// The three-session fixture above, with its sessions reordered by id.
+PlanDetail _threeSessionFixtureInOrder(List<String> sessionIdOrder) {
+  final base = _editablePlanDetailWithThreeSessionsFixture();
+  final sessionsById = {
+    for (final session in base.sessions) session.id: session,
+  };
+  return PlanDetail(
+    plan: base.plan,
+    sessions: [for (final id in sessionIdOrder) sessionsById[id]!],
   );
 }
 
