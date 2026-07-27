@@ -333,17 +333,17 @@ void main() {
             '(rendered=$rendered, estimated=$estimated)',
       );
 
-      // Absolute ceiling: one lyricRowHeight per rendered line (11 lines
-      // in this fixture), so a much bigger song cannot hide a systematic
-      // per-line drift inside a percentage.
-      const renderedLineCount = 11;
+      // Absolute ceiling: two lyric rows total, not per line. A per-line
+      // allowance would be 264px here, far above the 54px the relative bound
+      // already implies, so it would never bind and would prove nothing. The
+      // measured absolute drift is 22px, so two rows (48px) is the tightest
+      // round figure that still leaves room for font-metric jitter.
       expect(
         absoluteError,
-        lessThan(lyricRowHeight * renderedLineCount),
+        lessThan(lyricRowHeight * 2),
         reason:
-            'absolute drift between estimate and render must stay under '
-            'one lyricRowHeight per rendered line; measured $absoluteError '
-            'px over $renderedLineCount lines',
+            'absolute drift between estimate and render must stay under two '
+            'lyric rows; measured $absoluteError px',
       );
     });
   });

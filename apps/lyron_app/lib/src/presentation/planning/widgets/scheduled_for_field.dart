@@ -94,6 +94,14 @@ class ScheduledForField extends StatelessWidget {
       return;
     }
 
+    // Built with the local `DateTime` constructor so the picked wall-clock
+    // time is interpreted in the user's zone before conversion to UTC.
+    // Known limitation: on a DST spring-forward day the picked time can name
+    // an instant that does not exist locally (e.g. 02:30 where the clock
+    // jumps 02:00 -> 03:00). Dart normalizes it forward rather than failing,
+    // so the stored instant is one hour later than the label the user picked.
+    // Rehearsals are not scheduled inside that gap in practice, and rejecting
+    // the pick would be worse than shifting it.
     final combinedLocal = DateTime(
       pickedDate.year,
       pickedDate.month,
