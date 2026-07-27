@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
 
 const _lineRunSpacing = 10.0;
 const _chordOnlySpacing = 22.0;
@@ -49,22 +50,52 @@ class SongLineView extends StatelessWidget {
             ? constraints.maxWidth
             : (MediaQuery.maybeSizeOf(context)?.width ?? 800.0);
 
+        // Word grouping only matters when there is lyric text to protect from
+        // a mid-word break. A chord-only line (e.g. an instrumental bar) has
+        // no words at all, and its segments are independent chord slots that
+        // must keep their own spacing -- grouping them would collapse that
+        // spacing whenever two adjacent slots both carry empty text (no
+        // whitespace character survives to signal a group boundary).
+        final children = hasLyricSegments
+            ? [
+                for (final group in groupSegmentsIntoWords(line.segments))
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: Wrap(
+                      spacing: 0,
+                      runSpacing: _lineRunSpacing,
+                      crossAxisAlignment: WrapCrossAlignment.end,
+                      children: [
+                        for (final segment in group.segments)
+                          _SongLineSegmentView(
+                            segment: segment,
+                            viewMode: viewMode,
+                            chordStyle: chordStyle,
+                            lyricStyle: lyricStyle,
+                            maxWidth: maxWidth,
+                          ),
+                      ],
+                    ),
+                  ),
+              ]
+            : [
+                for (final segment in line.segments)
+                  _SongLineSegmentView(
+                    segment: segment,
+                    viewMode: viewMode,
+                    chordStyle: chordStyle,
+                    lyricStyle: lyricStyle,
+                    maxWidth: maxWidth,
+                  ),
+              ];
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 2),
           child: Wrap(
             spacing: spacing,
             runSpacing: _lineRunSpacing,
             crossAxisAlignment: WrapCrossAlignment.end,
-            children: [
-              for (final segment in line.segments)
-                _SongLineSegmentView(
-                  segment: segment,
-                  viewMode: viewMode,
-                  chordStyle: chordStyle,
-                  lyricStyle: lyricStyle,
-                  maxWidth: maxWidth,
-                ),
-            ],
+            children: children,
           ),
         );
       },
