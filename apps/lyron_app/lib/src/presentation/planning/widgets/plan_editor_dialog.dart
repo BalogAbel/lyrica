@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class PlanEditorDialog extends ConsumerStatefulWidget {
@@ -28,17 +29,12 @@ class _PlanEditorDialogState extends ConsumerState<PlanEditorDialog> {
   );
   late final TextEditingController _descriptionController =
       TextEditingController(text: widget.initialDescription ?? '');
-  late final TextEditingController _scheduledForController =
-      TextEditingController(
-        text: widget.initialScheduledFor?.toUtc().toIso8601String() ?? '',
-      );
-  String? _scheduledForError;
+  late DateTime? _scheduledFor = widget.initialScheduledFor;
 
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
-    _scheduledForController.dispose();
     super.dispose();
   }
 
@@ -79,13 +75,9 @@ class _PlanEditorDialogState extends ConsumerState<PlanEditorDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('plan-editor-scheduled-for'),
-              controller: _scheduledForController,
-              decoration: InputDecoration(
-                labelText: AppStrings.planScheduledForLabel,
-                errorText: _scheduledForError,
-              ),
+            ScheduledForField(
+              value: _scheduledFor,
+              onChanged: (value) => setState(() => _scheduledFor = value),
             ),
           ],
         ),
@@ -97,20 +89,12 @@ class _PlanEditorDialogState extends ConsumerState<PlanEditorDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final scheduledFor = _tryParseScheduledFor();
-            if (_scheduledForController.text.trim().isNotEmpty &&
-                scheduledFor == null) {
-              setState(() {
-                _scheduledForError = AppStrings.planScheduledForInvalidMessage;
-              });
-              return;
-            }
             Navigator.of(context).pop(
               PlanEditDraft(
                 planId: widget.planId,
                 name: _nameController.text.trim(),
                 description: _normalizeText(_descriptionController.text),
-                scheduledFor: scheduledFor,
+                scheduledFor: _scheduledFor,
               ),
             );
           },
@@ -119,26 +103,9 @@ class _PlanEditorDialogState extends ConsumerState<PlanEditorDialog> {
       ],
     );
   }
-
-  DateTime? _tryParseScheduledFor() {
-    try {
-      return _parseOptionalDateTime(_scheduledForController.text);
-    } on FormatException {
-      return null;
-    }
-  }
 }
 
 String? _normalizeText(String value) {
   final normalized = value.trim();
   return normalized.isEmpty ? null : normalized;
-}
-
-DateTime? _parseOptionalDateTime(String value) {
-  final normalized = value.trim();
-  if (normalized.isEmpty) {
-    return null;
-  }
-
-  return DateTime.parse(normalized).toUtc();
 }

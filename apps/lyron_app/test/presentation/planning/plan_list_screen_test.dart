@@ -353,40 +353,56 @@ void main() {
     expect(find.byTooltip(AppStrings.planCreateAction), findsOneWidget);
   });
 
-  testWidgets('shows a validation error for invalid scheduled-for input', (
-    tester,
-  ) async {
-    final writeService = _FakePlanningWriteService(
-      createdPlan: PlanningMutationRecord(
-        aggregateId: 'plan-local-1',
-        organizationId: 'org-1',
-        slug: 'weekend-service',
-        name: 'Weekend Service',
-        kind: PlanningMutationKind.planCreate,
-        syncStatus: PlanningMutationSyncStatus.pending,
-        orderKey: 1,
-        updatedAt: DateTime.utc(2026),
-      ),
-    );
+  testWidgets(
+    'picking a date and time produces a UTC value in the created draft',
+    (tester) async {
+      final writeService = _FakePlanningWriteService(
+        createdPlan: PlanningMutationRecord(
+          aggregateId: 'plan-local-1',
+          organizationId: 'org-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          kind: PlanningMutationKind.planCreate,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+        ),
+      );
 
-    await tester.pumpWidget(buildApp(writeService: writeService));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(buildApp(writeService: writeService));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip(AppStrings.planCreateAction));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('plan-editor-scheduled-for')),
-      'not-a-date',
-    );
-    await tester.tap(find.text(AppStrings.planSaveAction));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(AppStrings.planCreateAction));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('plan-editor-name')),
+        'Weekend Service',
+      );
 
-    expect(
-      find.text(AppStrings.planScheduledForInvalidMessage),
-      findsOneWidget,
-    );
-    expect(writeService.createdDraft, isNull);
-  });
+      await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+      await tester.pumpAndSettle();
+      final localizations = MaterialLocalizations.of(
+        tester.element(find.byKey(const ValueKey('scheduled-for-pick'))),
+      );
+      // Date picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+      // Time picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.planSaveAction));
+      await tester.pumpAndSettle();
+
+      expect(writeService.createdDraft, isNotNull);
+      expect(writeService.createdDraft!.scheduledFor, isNotNull);
+      expect(writeService.createdDraft!.scheduledFor!.isUtc, isTrue);
+    },
+  );
 }
 
 class _FakePlanningWriteService extends PlanningWriteService {

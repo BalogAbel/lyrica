@@ -28,6 +28,7 @@ import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -254,16 +255,20 @@ void main() {
     );
   });
 
-  testWidgets('shows the plan scheduled date in the header', (tester) async {
+  testWidgets('shows the plan scheduled date and time in the header', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildApp(planDetailValue: _editablePlanDetailFixture()),
     );
     await tester.pumpAndSettle();
 
     final titleContext = tester.element(find.text('Team Rehearsal'));
-    final scheduledForLabel = MaterialLocalizations.of(
+    final scheduledFor = DateTime(2026, 4, 10, 18);
+    final scheduledForLabel = formatScheduledForInstant(
       titleContext,
-    ).formatMediumDate(DateTime(2026, 4, 10, 18));
+      scheduledFor,
+    );
 
     expect(find.text('Fixture'), findsOneWidget);
     expect(find.text(scheduledForLabel), findsOneWidget);
@@ -2110,34 +2115,45 @@ void main() {
     expect(find.text(AppStrings.planningReorderFailedMessage), findsOneWidget);
   });
 
-  testWidgets('shows a validation error for invalid scheduled-for input', (
-    tester,
-  ) async {
-    final writeService = _FakePlanningWriteService();
+  testWidgets(
+    'picking a date and time produces a UTC value in the edited draft',
+    (tester) async {
+      final writeService = _FakePlanningWriteService();
 
-    await tester.pumpWidget(
-      buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
-        writeService: writeService,
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip(AppStrings.planEditAction));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('plan-editor-scheduled-for')),
-      'not-a-date',
-    );
-    await tester.tap(find.text(AppStrings.planSaveAction));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip(AppStrings.planEditAction));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text(AppStrings.planScheduledForInvalidMessage),
-      findsOneWidget,
-    );
-    expect(writeService.editedDraft, isNull);
-  });
+      await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+      await tester.pumpAndSettle();
+      final localizations = MaterialLocalizations.of(
+        tester.element(find.byKey(const ValueKey('scheduled-for-pick'))),
+      );
+      // Date picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+      // Time picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.planSaveAction));
+      await tester.pumpAndSettle();
+
+      expect(writeService.editedDraft?.scheduledFor, isNotNull);
+      expect(writeService.editedDraft!.scheduledFor!.isUtc, isTrue);
+    },
+  );
 
   testWidgets(
     'tapping a session item opens the scoped reader without replacing plan detail',

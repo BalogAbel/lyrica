@@ -126,59 +126,82 @@ void main() {
   });
 
   testWidgets(
-    'rejects an unparsable scheduled-for date and keeps the dialog open',
+    'picking a date and time produces a UTC value in the resulting draft',
     (tester) async {
-      var called = false;
+      PlanEditDraft? reported;
 
       await tester.pumpWidget(
         _harness(
           planId: 'plan-1',
           initialName: 'Team Rehearsal',
-          onResult: (_) => called = true,
+          onResult: (draft) => reported = draft,
         ),
       );
 
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.byKey(const ValueKey('plan-editor-scheduled-for')),
-        'not-a-date',
+      await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+      await tester.pumpAndSettle();
+      final localizations = MaterialLocalizations.of(
+        tester.element(find.byKey(const ValueKey('scheduled-for-pick'))),
       );
+      // Date picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+      // Time picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+
       await tester.tap(find.text(AppStrings.planSaveAction));
       await tester.pumpAndSettle();
 
-      expect(called, isFalse);
-      expect(
-        find.text(AppStrings.planScheduledForInvalidMessage),
-        findsOneWidget,
-      );
+      expect(reported?.scheduledFor, isNotNull);
+      expect(reported!.scheduledFor!.isUtc, isTrue);
     },
   );
 
-  testWidgets('parses a valid scheduled-for date into the draft', (
-    tester,
-  ) async {
-    PlanEditDraft? reported;
+  testWidgets(
+    'round-trips a stored scheduled-for instant through the pickers unchanged',
+    (tester) async {
+      PlanEditDraft? reported;
+      final storedInstant = DateTime.utc(2026, 4, 10, 18);
 
-    await tester.pumpWidget(
-      _harness(
-        planId: 'plan-1',
-        initialName: 'Team Rehearsal',
-        onResult: (draft) => reported = draft,
-      ),
-    );
+      await tester.pumpWidget(
+        _harness(
+          planId: 'plan-1',
+          initialName: 'Team Rehearsal',
+          initialScheduledFor: storedInstant,
+          onResult: (draft) => reported = draft,
+        ),
+      );
 
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const ValueKey('plan-editor-scheduled-for')),
-      '2026-04-10T18:00:00.000Z',
-    );
-    await tester.tap(find.text(AppStrings.planSaveAction));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+      await tester.pumpAndSettle();
+      final localizations = MaterialLocalizations.of(
+        tester.element(find.byKey(const ValueKey('scheduled-for-pick'))),
+      );
+      // Accept the seeded date, then the seeded time, unchanged.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
 
-    expect(reported?.scheduledFor, DateTime.utc(2026, 4, 10, 18));
-  });
+      await tester.tap(find.text(AppStrings.planSaveAction));
+      await tester.pumpAndSettle();
+
+      expect(reported?.scheduledFor, storedInstant);
+    },
+  );
 }
