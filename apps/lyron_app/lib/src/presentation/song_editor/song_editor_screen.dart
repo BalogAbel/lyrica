@@ -11,10 +11,9 @@ import 'package:lyron_app/src/presentation/song_editor/song_editor_controller.da
 import 'package:lyron_app/src/presentation/song_editor/song_editor_projection.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_selection.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
+import 'package:lyron_app/src/presentation/song_editor/widgets/song_editor_body.dart';
 import 'package:lyron_app/src/presentation/song_editor/widgets/song_editor_dialogs.dart';
-import 'package:lyron_app/src/presentation/song_editor/widgets/song_editor_panels.dart';
 import 'package:lyron_app/src/presentation/song_editor/widgets/song_editor_tab_bar.dart';
-import 'package:lyron_app/src/presentation/song_editor/widgets/song_editor_top_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -45,8 +44,6 @@ class SongEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
-  static const _wideBreakpoint = 980.0;
-  static const _contentMaxWidth = 1200.0;
   static const _sourceSample = SongEditorController.defaultSource;
 
   final SongEditorController _controller = SongEditorController();
@@ -352,129 +349,32 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       }
     }
 
-    return PopScope<void>(
-      canPop: !_isDirty,
+    return SongEditorBody(
+      title: widget._isCreating
+          ? AppStrings.songCreateTitle
+          : AppStrings.songEditAction,
+      isDirty: _isDirty,
+      organizationId: orgId,
+      projection: projection,
+      sourceController: _sourceController,
+      canonicalViewMode: _controller.state.canonicalViewMode,
+      selectedTab: _tabletTab,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) {
           return;
         }
         unawaited(_handleBack(context));
       },
-      child: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth >= _wideBreakpoint;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SongEditorTopBar(
-                          title: widget._isCreating
-                              ? AppStrings.songCreateTitle
-                              : AppStrings.songEditAction,
-                          onBack: () => unawaited(_handleBack(context)),
-                          canCancel: true,
-                          canSave: _isDirty,
-                          onSave: () => _saveAndReturn(context),
-                          onCancel: () => unawaited(_cancelAndReturn(context)),
-                          organizationId: orgId,
-                        ),
-                        const SizedBox(height: 16),
-                        SongEditorStatusBanner(
-                          diagnosticCount:
-                              projection.state.parsedSong.diagnostics.length,
-                        ),
-                        const SizedBox(height: 16),
-                        if (isWide)
-                          Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 240,
-                                  child: SongEditorOverviewPanel(
-                                    projection: projection,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  flex: 2,
-                                  child: SongEditorCanonicalPanel(
-                                    projection: projection,
-                                    sourceController: _sourceController,
-                                    isEditable: true,
-                                    onSourceChanged: _setSource,
-                                    onTransposeDown: _transposeDown,
-                                    onTransposeUp: _transposeUp,
-                                    onCapoDown: _capoDown,
-                                    onCapoUp: _capoUp,
-                                    canonicalViewMode:
-                                        _controller.state.canonicalViewMode,
-                                    onCanonicalViewChanged: _setCanonicalView,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else ...[
-                          SongEditorTabBar(
-                            selectedTab: _tabletTab,
-                            onSelectedTab: _setTabletTab,
-                          ),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: switch (_tabletTab) {
-                              SongEditorTab.overview => SongEditorOverviewPanel(
-                                key: const ValueKey(
-                                  'song-editor-overview-panel',
-                                ),
-                                projection: projection,
-                              ),
-                              SongEditorTab.source => SongEditorCanonicalPanel(
-                                projection: projection,
-                                sourceController: _sourceController,
-                                isEditable: true,
-                                onSourceChanged: _setSource,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: _capoDown,
-                                onCapoUp: _capoUp,
-                                canonicalViewMode:
-                                    SongEditorCanonicalViewMode.source,
-                                onCanonicalViewChanged: _setCanonicalView,
-                                showToggle: false,
-                              ),
-                              SongEditorTab.preview => SongEditorCanonicalPanel(
-                                projection: projection,
-                                sourceController: _sourceController,
-                                isEditable: true,
-                                onSourceChanged: _setSource,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: _capoDown,
-                                onCapoUp: _capoUp,
-                                canonicalViewMode:
-                                    SongEditorCanonicalViewMode.preview,
-                                onCanonicalViewChanged: _setCanonicalView,
-                                showToggle: false,
-                              ),
-                            },
-                          ),
-                        ],
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      onBack: () => unawaited(_handleBack(context)),
+      onSave: () => _saveAndReturn(context),
+      onCancel: () => unawaited(_cancelAndReturn(context)),
+      onSourceChanged: _setSource,
+      onTransposeDown: _transposeDown,
+      onTransposeUp: _transposeUp,
+      onCapoDown: _capoDown,
+      onCapoUp: _capoUp,
+      onCanonicalViewChanged: _setCanonicalView,
+      onSelectedTab: _setTabletTab,
     );
   }
 }
