@@ -60,8 +60,8 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | LF-3 | Local-first | No internal single-flight guard on mutation sync | High |
 | LF-4 | Local-first | Failed/conflicted local edits silently revert in the main UI | High |
 | SEC-1 | Security | `redeem_invitation` token is bearer-only, no email binding, no rate limit | High |
-| UX-1 | UI/UX | Mobile reader wraps lyric lines mid-word, breaking chord alignment | High |
-| UX-2 | UI/UX | Plan date edited as raw ISO-8601 text field (no picker) | High |
+| ~~UX-1~~ | UI/UX | ~~Mobile reader wraps lyric lines mid-word, breaking chord alignment~~ **Done (ui-decomposition-phase2).** | High |
+| ~~UX-2~~ | UI/UX | ~~Plan date edited as raw ISO-8601 text field (no picker)~~ **Done (ui-decomposition-phase2).** | High |
 | UX-8 | UI/UX | Failed local edits silently revert in the main UI (same mechanism as LF-4) | High |
 | ARCH-1 | Architecture | `providers.dart` god-file (762 lines) incl. 110-line inline reconcile switch | High |
 | SEC-4 | Security | Song shadow fields client-authoritative, not backend-derived from ChordPro | Medium |
@@ -378,8 +378,8 @@ delete, navigation chevron, add-song); consistent Material 3 theme (green seed
 
 | ID | Finding | Evidence |
 |----|---------|----------|
-| UX-1 | Mobile reader wraps long lyric lines mid-word ("...porciká" / "m,") and the chord drifts onto the wrong syllable | reader @375px |
-| UX-2 | Plan `scheduled_for` edited as a raw ISO-8601 string field (`2026-04-05T08:30:00.000Z`), no date/time picker | edit-plan dialog |
+| ~~UX-1~~ | ~~Mobile reader wraps long lyric lines mid-word ("...porciká" / "m,") and the chord drifts onto the wrong syllable~~ **Done (ui-decomposition-phase2).** The cause was not text wrapping: ChordPro splits a lyric line at chord positions, so a chord inside a word yields two segments with no whitespace between them, and the line's `Wrap` was free to break there. Adjacent segments of the same word are now grouped, and the fit estimator packs the same groups. | reader @375px |
+| ~~UX-2~~ | ~~Plan `scheduled_for` edited as a raw ISO-8601 string field (`2026-04-05T08:30:00.000Z`), no date/time picker~~ **Done (ui-decomposition-phase2).** Both the edit **and** the create dialog used the raw field; both now use a shared date/time picker that stores UTC and displays local. | edit-plan dialog |
 | UX-3 | Every new song is pre-filled with a real copyrighted worship song's **full lyrics** as `defaultSource` (user must clear it; copyright exposure) | `presentation/song_editor/song_editor_controller.dart:15` |
 | UX-4 | Song-list rows show **title only** (no artist/key) while plan rows show title+description+date — inconsistent density | `presentation/song_library/song_list_screen.dart:263`; plan list |
 | UX-5 | Internal gap-based positions ("10.", "20.") shown to the user | plan detail |
@@ -430,6 +430,19 @@ receive the **same padding-adjusted dimensions** (resolved content padding subtr
 and the height-estimation logic must **mirror the actual render logic exactly** (including
 conditional checks such as string trimming and collapsing empty elements), or the estimated
 fit and the rendered output drift apart.
+
+**Update (2026-07-27, ui-decomposition-phase2)**: the **estimate/render consistency** half is
+now covered by `test/presentation/song_reader/song_reader_estimate_render_consistency_test.dart`.
+It pumps the real compact surface at 375 px, asserts the fit calculator and the render grid
+receive the same padding-adjusted dimensions, and bounds the gap between the estimated and
+the actually rendered content height (measured at 2.0% on an eleven-line, four-section
+fixture; bounded at 5% relative plus one `lyricRowHeight` per line absolute). The bound was
+verified to bite by inflating `chordRowHeight` 50% and watching the test fail. The estimator
+itself was corrected in the same slice: it now packs the same word groups the renderer lays
+out, charges a chord row for every wrapped run rather than once per line, adds the
+renderer's run spacing, and no longer reserves 24 px the renderer never reserves.
+The fit-layout **performance** regression test, and the accessibility/contrast and
+screen-reader gaps, remain open.
 
 **Update (2026-06-29, local-first-validation slice)**: the two gaps formerly listed here —
 "no live offline/conflict e2e" and "no mutation-preservation-across-migration test
@@ -503,7 +516,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
-- UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.
+- ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
 - SEC-1: invite email-binding + rate limit + audit + ADR.
 - DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
 
