@@ -66,13 +66,22 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.planId,
       );
       if (existing?.kind == PlanningMutationKind.planCreate) {
+        // A planEdit draft always carries the complete form state (see
+        // PlanEditDraft's single construction site in
+        // plan_editor_dialog.dart), so a null description/scheduledFor here
+        // means the user explicitly cleared the field, not "leave it
+        // unchanged". Folding the edit into a still-pending create must
+        // therefore pass the clear flags, or copyWith's `?? this.x` shape
+        // would silently keep the pre-edit value.
         await _upsertRecord(
           context: context,
           aggregateType: 'plan',
           record: existing!.copyWith(
             name: draft.name,
             description: draft.description,
+            clearDescription: draft.description == null,
             scheduledFor: draft.scheduledFor?.toUtc(),
+            clearScheduledFor: draft.scheduledFor == null,
             updatedAt: DateTime.now().toUtc(),
           ),
         );

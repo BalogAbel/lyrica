@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -26,6 +27,8 @@ import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
@@ -2255,6 +2258,85 @@ void main() {
       expect(writeService.editedDraft!.scheduledFor!.isUtc, isTrue);
     },
   );
+
+  testWidgets('clearing the schedule survives a projection re-read', (
+    tester,
+  ) async {
+    // Wires the REAL offline stack (Drift-backed mutation store + local
+    // read repository + write service), not the test fakes, so this
+    // exercises the actual merge logic instead of a hand-rolled stand-in.
+    final database = PlanningLocalDatabase.inMemory();
+    addTearDown(database.close);
+    final localStore = DriftPlanningLocalStore(database);
+    final mutationStore = DriftPlanningMutationStore(
+      database: database,
+      localStore: localStore,
+    );
+    final repository = PlanningLocalReadRepository(
+      store: localStore,
+      mutationStore: mutationStore,
+      contextReader: () async => const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+    );
+    final writeService = PlanningWriteService(
+      repository,
+      mutationStore: mutationStore,
+      activeContextReader: () async => const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+    );
+
+    await localStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          slug: 'team-rehearsal',
+          name: 'Team Rehearsal',
+          description: 'Fixture',
+          scheduledFor: DateTime.utc(2026, 4, 10, 18),
+          updatedAt: DateTime.utc(2026, 3, 31, 9),
+        ),
+      ],
+      sessions: const [],
+      items: const [],
+      refreshedAt: DateTime.utc(2026, 3, 31, 9),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () => repository.getPlanDetail('plan-1'),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final titleContext = tester.element(find.text('Team Rehearsal'));
+    final scheduledForLabel = formatScheduledForInstant(
+      titleContext,
+      DateTime.utc(2026, 4, 10, 18),
+    );
+    expect(find.text(scheduledForLabel), findsOneWidget);
+
+    await tester.tap(find.byTooltip(AppStrings.planEditAction));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('scheduled-for-clear')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.planSaveAction));
+    await tester.pumpAndSettle();
+
+    // The write flow bumps planningDataRevisionProvider and invalidates
+    // planningPlanDetailProvider, which re-invokes the factory above and
+    // forces a fresh repository.getPlanDetail call -- a real re-read of
+    // the merged projection, not a cached widget value.
+    expect(find.text(scheduledForLabel), findsNothing);
+  });
 
   testWidgets(
     'tapping a session item opens the scoped reader without replacing plan detail',

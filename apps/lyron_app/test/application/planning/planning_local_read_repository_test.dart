@@ -192,10 +192,14 @@ void main() {
     });
 
     test(
-      'a visible failed planEdit does not blank description/scheduledFor',
+      'a visible failed planEdit does not blank an unmodified description/scheduledFor',
       () async {
         // arrange: plan P has description D and scheduledFor S in projection;
-        //          a planEdit mutation changed ONLY the name, syncStatus=conflict
+        //          a planEdit mutation changed only the name, syncStatus=conflict.
+        // A real edit draft always carries the complete form state, so a
+        // name-only change still carries the plan's current (unchanged)
+        // description and scheduledFor rather than null -- null now means
+        // "explicitly cleared", not "unchanged".
         final planWithDetails = CachedPlanRecord(
           id: 'plan-2',
           slug: 'detailed-plan',
@@ -214,14 +218,15 @@ void main() {
           refreshedAt: DateTime.utc(2026, 4, 11, 10),
         );
 
-        // record edit that changes only name (description and scheduledFor are null in mutation)
+        // record edit that changes only name; description/scheduledFor carry
+        // their current (unchanged) values, as the real editor dialog would.
         await mutationStore.recordPlanEdit(
           context: context,
-          draft: const PlanningPlanEditMutationDraft(
+          draft: PlanningPlanEditMutationDraft(
             planId: 'plan-2',
             name: 'Updated Name',
-            description: null,
-            scheduledFor: null,
+            description: 'Important description',
+            scheduledFor: DateTime.utc(2026, 5, 1),
             baseVersion: 1,
           ),
         );
@@ -245,5 +250,81 @@ void main() {
         expect(plan.scheduledFor, equals(DateTime.utc(2026, 5, 1)));
       },
     );
+
+    test('a cleared scheduled-for is not masked by the base plan', () async {
+      final planWithSchedule = CachedPlanRecord(
+        id: 'plan-3',
+        slug: 'scheduled-plan',
+        name: 'Scheduled Plan',
+        description: 'Some description',
+        scheduledFor: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 4, 11, 10),
+      );
+
+      await localStore.replaceActiveProjection(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        plans: [planWithSchedule],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 4, 11, 10),
+      );
+
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-3',
+          name: 'Scheduled Plan',
+          description: 'Some description',
+          scheduledFor: null,
+          baseVersion: 1,
+        ),
+      );
+
+      final plans = await repository.listPlans();
+      final summary = plans.firstWhere((p) => p.id == 'plan-3');
+      expect(summary.scheduledFor, isNull);
+
+      final detail = await repository.getPlanDetail('plan-3');
+      expect(detail.plan.scheduledFor, isNull);
+    });
+
+    test('a cleared description is not masked by the base plan', () async {
+      final planWithDescription = CachedPlanRecord(
+        id: 'plan-4',
+        slug: 'described-plan',
+        name: 'Described Plan',
+        description: 'Some description',
+        scheduledFor: DateTime.utc(2026, 5, 1),
+        updatedAt: DateTime.utc(2026, 4, 11, 10),
+      );
+
+      await localStore.replaceActiveProjection(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        plans: [planWithDescription],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 4, 11, 10),
+      );
+
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: PlanningPlanEditMutationDraft(
+          planId: 'plan-4',
+          name: 'Described Plan',
+          description: null,
+          scheduledFor: DateTime.utc(2026, 5, 1),
+          baseVersion: 1,
+        ),
+      );
+
+      final plans = await repository.listPlans();
+      final summary = plans.firstWhere((p) => p.id == 'plan-4');
+      expect(summary.description, isNull);
+
+      final detail = await repository.getPlanDetail('plan-4');
+      expect(detail.plan.description, isNull);
+    });
   });
 }
