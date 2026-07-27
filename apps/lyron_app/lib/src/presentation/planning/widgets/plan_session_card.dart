@@ -39,11 +39,19 @@ class PlanSessionCard extends ConsumerStatefulWidget {
     required this.planDetail,
     required this.session,
     required this.sessionIndex,
+    this.isProjectionSettled = true,
   });
 
   final PlanDetail planDetail;
   final SessionSummary session;
   final int sessionIndex;
+
+  /// Whether [session] reflects a fully-settled projection rather than a
+  /// value carried over from before the parent's provider started
+  /// refreshing (see the equivalent check in PlanDetailScreen). Defaults to
+  /// true so callers that never have a transient reload to worry about
+  /// keep consulting the rule on every build.
+  final bool isProjectionSettled;
 
   @override
   ConsumerState<PlanSessionCard> createState() => _PlanSessionCardState();
@@ -54,6 +62,9 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
   List<String>? _optimisticItemOrder;
   var _itemReorderGeneration = 0;
   var _lastCompletedItemReorderGeneration = 0;
+  // Whether the one-reload post-write grace (see resolveReorderOverlay) has
+  // already been spent for the current optimistic item order.
+  var _itemReorderPostWriteReloadConsumed = false;
   Future<void> _itemReorderTail = Future<void>.value();
   var _pickerOpen = false;
   var _addSongInFlight = false;
@@ -77,13 +88,30 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     // Resolve (and, if settled, drop) the overlay against this fresh
     // projection before it is used to order the list below. This runs during
     // build, so the field is assigned directly rather than via setState —
-    // the current build already sees the resolved value.
-    _optimisticItemOrder = resolveReorderOverlay(
-      optimisticOrder: _optimisticItemOrder,
-      projectionOrder: [for (final item in session.items) item.id],
-      hasWriteInFlight:
-          _itemReorderGeneration != _lastCompletedItemReorderGeneration,
-    );
+    // the current build already sees the resolved value. Skip entirely when
+    // the parent's projection is not settled (see isProjectionSettled doc):
+    // that build carries a stale, pre-invalidate value, not a real arrival.
+    if (widget.isProjectionSettled) {
+      final priorOptimisticItemOrder = _optimisticItemOrder;
+      final hasItemWriteInFlight =
+          _itemReorderGeneration != _lastCompletedItemReorderGeneration;
+      _optimisticItemOrder = resolveReorderOverlay(
+        optimisticOrder: priorOptimisticItemOrder,
+        projectionOrder: [for (final item in session.items) item.id],
+        hasWriteInFlight: hasItemWriteInFlight,
+        hasConsumedPostWriteReload: _itemReorderPostWriteReloadConsumed,
+      );
+      // The overlay survives a disagreeing projection with the write no
+      // longer in flight only via the post-write grace (see
+      // resolveReorderOverlay), so seeing it kept in that state is exactly
+      // the "grace was just used" signal — record it so the next
+      // disagreeing projection lets the projection win.
+      if (!hasItemWriteInFlight &&
+          priorOptimisticItemOrder != null &&
+          _optimisticItemOrder == priorOptimisticItemOrder) {
+        _itemReorderPostWriteReloadConsumed = true;
+      }
+    }
     final items = _orderedItems(session);
     final ref = this.ref;
     final catalogState = ref.watch(catalogSnapshotStateProvider);
@@ -503,6 +531,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
     final generation = ++_itemReorderGeneration;
+    _itemReorderPostWriteReloadConsumed = false;
 
     setState(() {
       _optimisticItemOrder = currentOrder;

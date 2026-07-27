@@ -28,12 +28,17 @@ out of the originating slice because the write path was already correct.
 
 ## Decision
 
-An optimistic reorder overlay survives exactly as long as its write is in flight
-or the refreshed projection disagrees with it. The rule is pure and lives in
-`application/planning/planning_reorder_overlay.dart`:
+An optimistic reorder overlay survives exactly as long as its write is in
+flight, plus at most one further disagreeing reload. The rule is pure and
+lives in `application/planning/planning_reorder_overlay.dart`:
 
 ```
-resolveReorderOverlay(optimisticOrder, projectionOrder, hasWriteInFlight)
+resolveReorderOverlay(
+  optimisticOrder,
+  projectionOrder,
+  hasWriteInFlight,
+  hasConsumedPostWriteReload,
+)
 ```
 
 - no overlay → null
@@ -41,13 +46,34 @@ resolveReorderOverlay(optimisticOrder, projectionOrder, hasWriteInFlight)
 - structurally incompatible with the projection → drop it
 - projection order equals the optimistic order → drop it (the projection has
   caught up and is the single source of truth again)
-- otherwise → keep it (the projection has not caught up yet)
+- projection disagrees and the post-write grace has not been consumed yet →
+  keep the overlay
+- projection disagrees and the grace has already been consumed → drop it (the
+  projection is authoritative now)
+
+The grace exists because the invalidation issued when the write completes can
+be overtaken by a read that was already in flight: the very first projection
+to arrive after completion may still reflect the pre-invalidation state, and
+dropping the overlay on it would flash the stale order. That is a one-time
+allowance, not a standing exemption — at most one post-write reload may
+disagree with the overlay before the projection wins. A second (or later)
+disagreement is treated as authoritative: a concurrent reorder from another
+device, a server-side reconciliation, or a rejected-but-not-failed write, and
+the overlay is dropped so the refreshed projection is shown.
 
 "In flight" is derived from the existing generation counters: a
 `_lastCompleted…ReorderGeneration` field is set on both the success and the
-failure path, and in-flight means the two generations differ. The rule is
-applied when a fresh projection arrives, before the list is built — the field is
-assigned directly, never through `setState` during `build`.
+failure path, and in-flight means the two generations differ. Each screen also
+tracks whether the post-write grace has been consumed for the current
+optimistic order: the flag resets to `false` wherever the generation counter
+is bumped (a new reorder write starting) and is set to `true` the first time
+the rule is consulted with the write no longer in flight and a disagreeing
+projection. The rule is applied when a fresh, settled projection arrives,
+before the list is built — the field is assigned directly, never through
+`setState` during `build`. A projection carried over from before the
+provider's own reload settles (the transient value `skipLoadingOnReload` /
+`skipLoadingOnRefresh` surface while refetching) is not treated as a fresh
+arrival and does not consult the rule or spend the grace.
 
 A rollback caused by a write failure also surfaces
 `AppStrings.planningReorderFailedMessage` to the user, in addition to the
@@ -61,8 +87,10 @@ The same rule and the same message apply to the session-level overlay in
 
 ## Consequences
 
-- The overlay can no longer outlive the write it belongs to, so a refreshed
-  projection is never masked indefinitely.
+- The overlay can no longer outlive the write it belongs to plus one
+  disagreeing reload, so a refreshed projection is never masked indefinitely —
+  a stale-but-compatible order beyond that single grace reload is always
+  superseded.
 - The lifecycle rule is unit tested without a widget tree; the screen wiring is
   covered by widget tests that force the refetch-during-write interleaving.
 - Reorder failures are visible to the user without changing the write path or

@@ -985,6 +985,107 @@ void main() {
   });
 
   testWidgets(
+    'stops masking the projection when sync settles on a different order',
+    (tester) async {
+      // Three sessions need a taller viewport than the default test surface
+      // to stay on-screen (and buildable) at once.
+      await tester.binding.setSurfaceSize(const Size(1024, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      var reads = 0;
+      final firstSettledProjectionCompleter = Completer<PlanDetail>();
+      final secondSettledProjectionCompleter = Completer<PlanDetail>();
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: () {
+            reads += 1;
+            if (reads == 1) {
+              return Future.value(
+                _editablePlanDetailWithThreeSessionsFixture(),
+              );
+            }
+            if (reads == 2) {
+              return firstSettledProjectionCompleter.future;
+            }
+            return secondSettledProjectionCompleter.future;
+          },
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sessionList = tester
+          .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+          .first;
+      // Drag first session to the end: Warm-Up, Main Set, Closing ->
+      // Main Set, Closing, Warm-Up.
+      sessionList.onReorder(0, 3);
+      await tester.pump();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+      );
+
+      // The write completes immediately, which invalidates the projection
+      // and triggers the second read. Sync settles on a THIRD order --
+      // neither the original nor the optimistic one, as a concurrent
+      // remote reorder would produce. This is the first projection to
+      // arrive after the write completed, so the overlay's one-reload
+      // grace keeps the optimistic order on screen for it.
+      firstSettledProjectionCompleter.complete(
+        _threeSessionFixtureInOrder(const [
+          'session-3',
+          'session-1',
+          'session-2',
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+      );
+
+      // The same third order arrives again. The grace is spent now, so the
+      // projection must win: this is what fails today, because the
+      // unbounded overlay keeps masking the projection forever.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+      container.invalidate(planningPlanDetailProvider('plan-1'));
+      await tester.pump();
+      secondSettledProjectionCompleter.complete(
+        _threeSessionFixtureInOrder(const [
+          'session-3',
+          'session-1',
+          'session-2',
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+    },
+  );
+
+  testWidgets(
     'long-press drag on the session handle reorders sessions',
     (tester) async {
       await tester.pumpWidget(

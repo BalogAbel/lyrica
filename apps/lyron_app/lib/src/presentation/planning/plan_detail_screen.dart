@@ -37,6 +37,9 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   List<String>? _optimisticSessionOrder;
   var _sessionReorderGeneration = 0;
   var _lastCompletedSessionReorderGeneration = 0;
+  // Whether the one-reload post-write grace (see resolveReorderOverlay) has
+  // already been spent for the current optimistic session order.
+  var _sessionReorderPostWriteReloadConsumed = false;
   Future<void> _sessionReorderTail = Future<void>.value();
 
   String get planId => widget.planId;
@@ -91,19 +94,42 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         ),
         data: (PlanDetail detail) {
           _latestPlanDetail = detail;
-          // Resolve (and, if settled, drop) the overlay against this fresh
-          // projection before it is used to order the list below. This runs
-          // during build, so the field is assigned directly rather than via
-          // setState — the current build already sees the resolved value.
-          _optimisticSessionOrder = resolveReorderOverlay(
-            optimisticOrder: _optimisticSessionOrder,
-            projectionOrder: [
-              for (final session in detail.sessions) session.id,
-            ],
-            hasWriteInFlight:
+          // With skipLoadingOnReload/skipLoadingOnRefresh, this callback also
+          // fires while the provider is mid-refresh, carrying the *previous*
+          // (pre-invalidate) value rather than a new one — that transient
+          // build is not a real projection arrival, so it must not consult
+          // the rule or spend the post-write grace on stale data.
+          final isSettledProjection = !detailAsync.isLoading;
+          if (isSettledProjection) {
+            final priorOptimisticSessionOrder = _optimisticSessionOrder;
+            final hasSessionWriteInFlight =
                 _sessionReorderGeneration !=
-                _lastCompletedSessionReorderGeneration,
-          );
+                _lastCompletedSessionReorderGeneration;
+            // Resolve (and, if settled, drop) the overlay against this fresh
+            // projection before it is used to order the list below. This
+            // runs during build, so the field is assigned directly rather
+            // than via setState — the current build already sees the
+            // resolved value.
+            _optimisticSessionOrder = resolveReorderOverlay(
+              optimisticOrder: priorOptimisticSessionOrder,
+              projectionOrder: [
+                for (final session in detail.sessions) session.id,
+              ],
+              hasWriteInFlight: hasSessionWriteInFlight,
+              hasConsumedPostWriteReload:
+                  _sessionReorderPostWriteReloadConsumed,
+            );
+            // The overlay survives a disagreeing projection with the write
+            // no longer in flight only via the post-write grace (see
+            // resolveReorderOverlay), so seeing it kept in that state is
+            // exactly the "grace was just used" signal — record it so the
+            // next disagreeing projection lets the projection win.
+            if (!hasSessionWriteInFlight &&
+                priorOptimisticSessionOrder != null &&
+                _optimisticSessionOrder == priorOptimisticSessionOrder) {
+              _sessionReorderPostWriteReloadConsumed = true;
+            }
+          }
           final sessions = _orderedSessions(detail);
           final orderedDetail = PlanDetail(
             plan: detail.plan,
@@ -147,6 +173,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                 planDetail: orderedDetail,
                 session: session,
                 sessionIndex: index,
+                isProjectionSettled: isSettledProjection,
               );
             },
           );
@@ -284,6 +311,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final movedId = currentOrder.removeAt(oldIndex);
     currentOrder.insert(newIndex, movedId);
     final generation = ++_sessionReorderGeneration;
+    _sessionReorderPostWriteReloadConsumed = false;
 
     setState(() {
       _optimisticSessionOrder = currentOrder;
