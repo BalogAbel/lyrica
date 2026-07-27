@@ -73,7 +73,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | LF-T3 | Local-first | Mutation store grows unbounded over long offline | High |
 | LF-T4 | Local-first | No storage quota / eviction policy (web IndexedDB silent eviction risk) | High |
 | ARCH-2 | Architecture | `planningDataRevisionProvider` coarse global invalidation → over-rebuild | Medium |
-| ARCH-3 | Architecture | UI god-components: plan_detail 1240, song_editor 1088, song_reader 998 | Medium |
+| ~~ARCH-3~~ | Architecture | ~~UI god-components: plan_detail 1240, song_editor 1088, song_reader 998~~ **Done (ui-decomposition-phase2).** | Medium |
 | UX-3 | UI/UX | New-song default body is a copyrighted song's full lyrics, hardcoded | Medium |
 | UX-4 | UI/UX | List density inconsistent: plan rows rich, song rows title-only | Medium |
 | UX-6 | UI/UX | CanvasKit render → no text select / find / copy; weak screen-reader support | Medium |
@@ -189,6 +189,15 @@ bump the global signal, so a small edit no longer rebuilds unrelated plan detail
 `presentation/song_editor/song_editor_screen.dart` (1088),
 `presentation/song_reader/song_reader_screen.dart` (998). **Recommendation**: extract
 sub-widgets per responsibility.
+
+**Done (ui-decomposition-phase2).** plan_detail 1232 → 362, song_editor 1088 → 380,
+song_reader 998 → 462. Sub-widgets live under each area's `widgets/` directory and the
+reader's behaviour (immersive mode, zoom persistence, song actions, command dispatch,
+scoped navigation) moved into plain classes beside the screen. What remains in each
+screen is state lifecycle and the provider watches that must stay there. Behaviour
+preservation was proven by characterization tests written before the extraction and
+passing unchanged after it, plus a provider-call drift check per screen; every extracted
+widget now has a test that builds it directly.
 
 **ARCH-5 — active-organization resolution** is threaded through
 `activeOrganizationResolutionProvider`, `membershipResolutionProvider`, cached-fallback,
@@ -501,7 +510,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 **Strategic (1+ month)**
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
 - ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
-- ARCH-3: decompose plan_detail / song_editor.
+- ~~ARCH-3: decompose plan_detail / song_editor.~~ **Done (ui-decomposition-phase2).**
 - SEC-4: backend-derived shadow metadata.
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;
   dark mode (UX-7).

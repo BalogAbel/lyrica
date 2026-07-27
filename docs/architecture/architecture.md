@@ -31,7 +31,20 @@ Client layers:
   delegating to it ([ADR-022](decisions/ADR-022-active-organization-resolver.md))
 - `infrastructure`: Supabase adapters, Drift repositories, auth integration
 - `offline`: local database, sync queue, conflict handling
-- `presentation`: routes, screens, controllers, UX state
+- `presentation`: routes, screens, controllers, UX state. Each area keeps its
+  screen thin and its components in a `widgets/` subdirectory: the screen owns
+  state lifecycle, provider resolution and orchestration, while `widgets/` holds
+  components that take data and callbacks and can be built directly in a test.
+  Behaviour that is neither widget tree nor lifecycle — the reader's immersive
+  mode, zoom persistence, song actions, command dispatch and scoped navigation —
+  lives in plain classes beside the screen. Extracted components keep the
+  provider scope they had (ADR-021 domain-split providers, aggregate-scoped
+  planning invalidation) and resolve organization identity only through the
+  active-context providers, never by re-deriving an organization id
+  ([ADR-022](decisions/ADR-022-active-organization-resolver.md)). Optimistic UI
+  state is owned by the widget that owns the interaction producing it, and has an
+  explicit end condition
+  ([ADR-023](decisions/ADR-023-optimistic-reorder-overlay-lifecycle.md))
 
 The current Flutter shell intentionally implements only the smallest executable subset of these boundaries. Domain vocabulary, application wiring, offline policy contracts, routing, and presentation are present today; the song-library slice adds a repository contract, a Drift-backed authenticated song-catalog cache, Supabase-backed refresh reads, a ChordPro parser, and reader projection without moving parsing into the backend. The current planning slice adds a Drift-backed normalized planning projection for reads, a separate persisted planning mutation store for local writes, a Supabase-backed full-refresh path, a planning write sync controller, and signed-in plan list/detail route surfaces with inline session-name editing and add-song entry points. That local-first planning write boundary now covers plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder while keeping the projection and mutation store separate. Planning mutation rows also retain an origin snapshot of the pre-edit state so rebase, discard, and canonical reconciliation can reason about the current local baseline without exposing raw write churn to presentation code. The slug-routing slice adds route-bound slug resolution at the navigation edge, but repositories, local projections, and reader context remain id-based after resolution.
 
