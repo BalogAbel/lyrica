@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
@@ -1186,6 +1187,57 @@ void main() {
         );
       },
     );
+  });
+
+  group('estimateSectionHeight — wrapped runs charge their own chord row', () {
+    // Two segments, each its own word group: the first segment's trailing
+    // space forces a group boundary before the second segment (mirrors
+    // groupSegmentsIntoWords). Each group carries its own chord.
+    //   group 1: 'Hello ' (6 chars)  -> width 60  (chord 'C')
+    //   group 2: 'World!!' (7 chars) -> width 70  (chord 'G')
+    // At maxWidth=120 (the estimator's width floor) the two groups (60+70=130)
+    // do not both fit in one 120-wide run, so they wrap into two runs, each
+    // carrying its own chord. At maxWidth=1000 both groups fit in a single run.
+    SongReaderSectionProjection twoWordSection() => SongReaderSectionProjection(
+      kind: SongSectionKind.verse,
+      label: 'Verse',
+      number: 1,
+      isUnknown: false,
+      lines: [
+        SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'C', text: 'Hello '),
+            SongReaderSegmentProjection(displayChord: 'G', text: 'World!!'),
+          ],
+        ),
+      ],
+    );
+
+    test('charges a chord row for every wrapped run that carries a chord', () {
+      final section = twoWordSection();
+
+      final oneRunHeight = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: 1000.0,
+        fontScale: fontScale,
+      );
+      final twoRunHeight = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: 120.0,
+        fontScale: fontScale,
+      );
+
+      final diff = twoRunHeight - oneRunHeight;
+      expect(
+        diff,
+        greaterThanOrEqualTo(chordRowHeight + lyricRowHeight + lineRunSpacing),
+        reason:
+            'The second wrapped run brings its own chord row, lyric row, '
+            'and run gap, exactly like the renderer draws it.',
+      );
+    });
   });
 
   group('estimateSectionHeight', () {

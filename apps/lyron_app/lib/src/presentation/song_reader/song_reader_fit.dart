@@ -1,11 +1,12 @@
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
 
 // Height constants shared by the section grid and the fit-scale calculator.
 const double sectionGap = 20.0;
 const double headerHeight = 40.0;
 const double lineGap = 10.0;
-const double linePadding = 24.0;
 const double characterWidthEstimate = 10.0;
 const double chordRowHeight = 20.0;
 const double lyricRowHeight = 24.0;
@@ -163,7 +164,7 @@ double _lineItemHeight({
   required double columnWidth,
   required double fontScale,
 }) {
-  final effectiveLineWidth = (columnWidth - linePadding).clamp(120.0, 1200.0);
+  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
   final charsPerLine =
       (effectiveLineWidth / (characterWidthEstimate * fontScale)).floor().clamp(
         12,
@@ -176,17 +177,82 @@ double _lineItemHeight({
       if (!hasLyrics && viewMode == SongReaderViewMode.lyricsOnly) {
         return 0.0; // collapsed in lyricsOnly
       }
-      final text = item.segments.map((s) => s.text).join();
-      final lyricLength = text.trimRight().length;
-      final hasChord =
-          viewMode == SongReaderViewMode.chordsAndLyrics &&
-          item.segments.any((s) => s.displayChord != null);
-      final wrapCount = lyricLength == 0
-          ? 1
-          : (lyricLength / charsPerLine).ceil().clamp(1, 14);
-      final chordH = hasChord ? (chordRowHeight * fontScale) : 0.0;
-      final lyricH = wrapCount * (lyricRowHeight * fontScale);
-      return chordH + lyricH + lineGap;
+      final showChords = viewMode == SongReaderViewMode.chordsAndLyrics;
+
+      // Mirror the renderer's grouping condition (song_line_view.dart):
+      // word groups only apply when the line has lyric segments. A
+      // chord-only line is measured one segment at a time, exactly as it
+      // is rendered.
+      final groups = hasLyrics
+          ? groupSegmentsIntoWords(
+              item.segments,
+            ).map((group) => group.segments).toList(growable: false)
+          : [
+              for (final segment in item.segments) [segment],
+            ];
+
+      // Greedily pack groups into runs of effectiveLineWidth, mirroring the
+      // renderer's outer Wrap. A group wider than a whole run occupies
+      // ceil(groupWidth / effectiveLineWidth) runs on its own -- this
+      // mirrors the renderer's inner ConstrainedBox+Wrap fallback, which
+      // forces the same runSpacing between its own wrapped rows. Only the
+      // first of those runs is credited with the group's chord, since the
+      // renderer draws the chord once above the (possibly internally
+      // wrapped) lyric text.
+      final runHasChord = <bool>[];
+      var currentRunWidth = 0.0;
+      var currentRunHasChord = false;
+      var currentRunStarted = false;
+
+      void flushRun() {
+        if (currentRunStarted) {
+          runHasChord.add(currentRunHasChord);
+        }
+        currentRunWidth = 0.0;
+        currentRunHasChord = false;
+        currentRunStarted = false;
+      }
+
+      for (final group in groups) {
+        final groupWidth =
+            group.fold<double>(0.0, (sum, s) => sum + s.text.length) *
+            characterWidthEstimate *
+            fontScale;
+        final groupHasChord = group.any((s) => s.displayChord != null);
+
+        if (groupWidth > effectiveLineWidth) {
+          flushRun();
+          final runsNeeded = (groupWidth / effectiveLineWidth).ceil();
+          runHasChord.add(groupHasChord);
+          for (var i = 1; i < runsNeeded; i++) {
+            runHasChord.add(false);
+          }
+          continue;
+        }
+
+        if (currentRunStarted &&
+            currentRunWidth + groupWidth > effectiveLineWidth) {
+          flushRun();
+        }
+        currentRunStarted = true;
+        currentRunWidth += groupWidth;
+        currentRunHasChord = currentRunHasChord || groupHasChord;
+      }
+      flushRun();
+
+      if (runHasChord.isEmpty) {
+        runHasChord.add(false);
+      }
+
+      final runsHeight = runHasChord.fold<double>(0.0, (sum, hasChord) {
+        final lyricH = lyricRowHeight * fontScale;
+        final chordH = (hasChord && showChords)
+            ? (chordRowHeight * fontScale + chordToLyricGap)
+            : 0.0;
+        return sum + lyricH + chordH;
+      });
+
+      return runsHeight + (runHasChord.length - 1) * lineRunSpacing + lineGap;
     case SongReaderCommentProjection():
       final commentLength = item.text.length;
       final commentWrapCount = commentLength == 0
