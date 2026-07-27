@@ -73,11 +73,26 @@ class ScheduledForField extends StatelessWidget {
     final now = DateTime.now();
     final seedLocal = value?.toLocal() ?? now;
 
+    // The five-year window is the useful planning range, but it must never
+    // exclude the value the plan already holds: `showDatePicker` asserts that
+    // `initialDate` lies within `firstDate`..`lastDate`, so a plan scheduled
+    // outside the window would crash the picker instead of opening on its own
+    // date. Stretch whichever bound the stored value falls outside of.
+    final seedDate = DateUtils.dateOnly(seedLocal);
+    var firstDate = DateTime(now.year - 5, now.month, now.day);
+    var lastDate = DateTime(now.year + 5, now.month, now.day);
+    if (seedDate.isBefore(firstDate)) {
+      firstDate = seedDate;
+    }
+    if (seedDate.isAfter(lastDate)) {
+      lastDate = seedDate;
+    }
+
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: seedLocal,
-      firstDate: DateTime(now.year - 5, now.month, now.day),
-      lastDate: DateTime(now.year + 5, now.month, now.day),
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (pickedDate == null) {
       return;

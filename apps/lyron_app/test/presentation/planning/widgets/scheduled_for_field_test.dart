@@ -61,6 +61,37 @@ void main() {
     expect(reported!.isUtc, isTrue);
   });
 
+  testWidgets('opens the picker for a plan scheduled far in the past', (
+    tester,
+  ) async {
+    // A plan whose stored date predates the default five-year window. The
+    // picker asserts that initialDate lies inside firstDate..lastDate, so a
+    // fixed window would throw here instead of opening.
+    final longAgo = DateTime(DateTime.now().year - 12, 4, 5, 8, 30).toUtc();
+
+    await tester.pumpWidget(_harness(value: longAgo, onChanged: (_) {}));
+
+    await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+  });
+
+  testWidgets('opens the picker for a plan scheduled far in the future', (
+    tester,
+  ) async {
+    final farAhead = DateTime(DateTime.now().year + 12, 4, 5, 8, 30).toUtc();
+
+    await tester.pumpWidget(_harness(value: farAhead, onChanged: (_) {}));
+
+    await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+  });
+
   testWidgets('renders the stored instant as local time', (tester) async {
     final stored = DateTime.utc(2026, 4, 5, 8, 30);
 
