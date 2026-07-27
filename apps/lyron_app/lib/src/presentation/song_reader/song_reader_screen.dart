@@ -20,12 +20,17 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_con
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_zoom_persistence.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -41,14 +46,6 @@ final readerUserIdProvider = Provider<String?>((ref) {
     return null;
   }
 });
-
-enum _SongReaderOverflowAction {
-  toggleViewMode,
-  guitarView,
-  pianoView,
-  edit,
-  delete,
-}
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -75,8 +72,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   static const _contentPadding = EdgeInsets.all(24);
 
   late final SongReaderController _controller = SongReaderController();
-  Timer? _persistZoomTimer;
-  bool _seededZoom = false;
+  final _immersiveMode = SongReaderImmersiveMode();
+  final _zoomPersistence = SongReaderZoomPersistence();
+
+  // Rebuilt on every access (it is a cheap, stateless const-constructed value
+  // holder) so it always reflects the current widget.songId — this state can
+  // be reused across scoped song-to-song navigation, where widget.songId
+  // changes without a new State being created (see didUpdateWidget).
+  SongReaderSongActions get _songActions =>
+      SongReaderSongActions(songId: widget.songId);
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -111,80 +115,51 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   @override
   void dispose() {
-    _persistZoomTimer?.cancel();
+    _zoomPersistence.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   /// Reads the stored zoom for this user+song once on open and applies it via
-  /// the same path as [_setSharedFontScale]. Guards with [_seededZoom] so it
-  /// fires only once per reader open and never clobbers a subsequent user change.
+  /// the same path as [_setSharedFontScale]. The one-shot guard lives in
+  /// [_zoomPersistence]; this method keeps the `mounted` checks, since those
+  /// belong to the screen's lifecycle, not to the persistence class.
   void _seedZoomFromStorage() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _seededZoom) {
+      if (!mounted) {
         return;
       }
-      _seededZoom = true;
 
       // Resolve userId inside the callback so tests can override the provider
       // and the read does not crash during Supabase-less test environments.
-      final userId = ref.read(readerUserIdProvider);
-      if (userId == null) {
+      final zoom = await _zoomPersistence.seedFromStorage(
+        userId: ref.read(readerUserIdProvider),
+        songId: widget.songId,
+        resolveStore: () => ref.read(songReaderPreferencesStoreProvider.future),
+      );
+      if (!mounted || zoom == null) {
         return;
       }
-
-      try {
-        final store = await ref.read(songReaderPreferencesStoreProvider.future);
-        if (!mounted) {
-          return;
-        }
-        final zoom = await store.readZoom(
-          userId: userId,
-          songId: widget.songId,
-        );
-        if (!mounted || zoom == null) {
-          return;
-        }
-        _setSharedFontScale(zoom);
-      } catch (_) {
-        // Best-effort — ignore read failures so the reader still opens.
-      }
+      _setSharedFontScale(zoom);
     });
   }
 
   /// Debounced persist: (re)starts a 400 ms timer that writes the current
   /// sharedFontScale for this user+song. Called on pinch-end and double-tap fit.
   void _persistFontScale() {
-    final userId = ref.read(readerUserIdProvider);
-    if (userId == null) {
-      return;
-    }
-
-    _persistZoomTimer?.cancel();
-    _persistZoomTimer = Timer(const Duration(milliseconds: 400), () async {
-      if (!mounted) {
-        return;
-      }
-
-      final scale = _isScopedMode
+    _zoomPersistence.schedulePersist(
+      userId: ref.read(readerUserIdProvider),
+      songId: widget.songId,
+      isMounted: () => mounted,
+      readScale: () => _isScopedMode
           ? ref
                 .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
                 .state
                 .readerState
                 .sharedFontScale
-          : _controller.state.sharedFontScale;
-
-      try {
-        final store = await ref.read(songReaderPreferencesStoreProvider.future);
-        await store.writeZoom(
-          userId: userId,
-          songId: widget.songId,
-          zoom: scale,
-        );
-      } catch (_) {
-        // Best-effort — ignore write failures silently.
-      }
-    });
+          : _controller.state.sharedFontScale,
+      resolveStore: () => ref.read(songReaderPreferencesStoreProvider.future),
+    );
   }
 
   void _updateState(void Function(SongReaderController controller) update) {
@@ -304,22 +279,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return _controller.state.areCompactControlsVisible;
   }
 
-  /// Last immersive value pushed to [SystemChrome]. Guards against redundant
-  /// platform channel calls and lets us detect when the global state has drifted
-  /// out of sync with this screen (e.g. after a `dispose` from a sibling screen
-  /// or returning from a pushed route).
-  bool? _lastAppliedImmersive;
-
-  void _applyImmersiveMode(bool active) {
-    if (_lastAppliedImmersive == active) {
-      return;
-    }
-    _lastAppliedImmersive = active;
-    SystemChrome.setEnabledSystemUIMode(
-      active ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
-    );
-  }
-
   /// Re-applies immersive mode to match the current control visibility. Used on
   /// open and when this screen regains focus after a sibling screen's `dispose`
   /// or a pushed route's pop reset the global system UI state.
@@ -327,7 +286,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     if (!mounted) {
       return;
     }
-    _applyImmersiveMode(_areControlsVisible);
+    _immersiveMode.apply(_areControlsVisible);
   }
 
   void _toggleCompactControls() {
@@ -336,18 +295,18 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         sessionScopedReaderRuntimeControllerProvider(_sessionKey),
       );
       runtimeController.toggleCompactControls();
-      _applyImmersiveMode(
+      _immersiveMode.apply(
         runtimeController.state.readerState.areCompactControlsVisible,
       );
       return;
     }
 
     _updateState((controller) => controller.toggleCompactControls());
-    _applyImmersiveMode(_controller.state.areCompactControlsVisible);
+    _immersiveMode.apply(_controller.state.areCompactControlsVisible);
   }
 
   void _handleBack(BuildContext context) {
-    _applyImmersiveMode(false);
+    _immersiveMode.apply(false);
     if (context.canPop()) {
       context.pop();
       return;
@@ -497,91 +456,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return trimmed;
   }
 
-  Future<void> _editSong(BuildContext context) async {
-    final activeContext = ref.read(activeCatalogContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-    final songSummary = await ref
-        .read(songLibraryServiceProvider)
-        .getSongSummaryById(context: activeContext, songId: widget.songId);
-    if (!context.mounted) {
-      return;
-    }
-
-    final songSlug = songSummary?.slug;
-    if (songSlug == null || songSlug.isEmpty) {
-      return;
-    }
-
-    // Capture control visibility before the async gap so we can restore the
-    // immersive state on return. The editor is pushed (not replaced), so this
-    // screen is not disposed and must restore the system UI itself.
-    final wasImmersive = _areControlsVisible;
-    _applyImmersiveMode(false);
-    await context.push(
-      AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug),
-    );
-    if (context.mounted) {
-      _applyImmersiveMode(wasImmersive);
-    }
-  }
-
-  Future<void> _deleteSong(BuildContext context) async {
-    final activeContext = ref.read(activeCatalogContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-
-    try {
-      await ref
-          .read(songLibraryServiceProvider)
-          .deleteSong(context: activeContext, songId: widget.songId);
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
-      if (context.mounted) {
-        _handleBack(context);
-      }
-    } on SongDeleteBlockedException {
-      if (!context.mounted) {
-        return;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          content: const Text(AppStrings.songDeleteBlockedMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(AppStrings.songCancelAction),
-            ),
-          ],
-        ),
-      );
-    } on SongConflictResolutionRequiredException {
-      if (!context.mounted) {
-        return;
-      }
-      await _showConflictResolutionRequiredDialog(context);
-    }
-  }
-
-  Future<void> _showConflictResolutionRequiredDialog(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(AppStrings.songConflictTitle),
-        content: const Text(AppStrings.songConflictMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(AppStrings.songCancelAction),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showWarningsDialog(BuildContext context, int count) {
     final message = count == 1
         ? AppStrings.songReaderWarningSingular
@@ -698,98 +572,55 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          tooltip: AppStrings.songReaderBackAction,
-          onPressed: () => _handleBack(context),
-          icon: const BackButtonIcon(),
-        ),
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(currentTitle),
-            if (projection?.effectiveKey != null)
-              Builder(
-                builder: (context) {
-                  final theme = Theme.of(context);
-                  return Text(
-                    '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  );
+      appBar: SongReaderAppBar(
+        title: currentTitle,
+        effectiveKey: projection?.effectiveKey,
+        onBack: () => _handleBack(context),
+        hasRecoverableWarnings: hasRecoverableWarnings,
+        onShowWarnings: () =>
+            _showWarningsDialog(context, recoverableWarningCount),
+        overflowMenu: readerResult == null
+            ? null
+            : SongReaderOverflowMenu(
+                viewMode: readerState.viewMode,
+                canEditSongs: canEditSongs,
+                onSelected: (action) {
+                  switch (action) {
+                    case SongReaderOverflowAction.toggleViewMode:
+                      _toggleViewMode();
+                      break;
+                    case SongReaderOverflowAction.guitarView:
+                      _setInstrumentDisplayMode(
+                        SongReaderInstrumentDisplayMode.guitar,
+                      );
+                      break;
+                    case SongReaderOverflowAction.pianoView:
+                      _setInstrumentDisplayMode(
+                        SongReaderInstrumentDisplayMode.piano,
+                      );
+                      break;
+                    case SongReaderOverflowAction.edit:
+                      unawaited(
+                        _songActions.edit(
+                          context,
+                          ref,
+                          immersiveMode: _immersiveMode,
+                          wasImmersive: _areControlsVisible,
+                        ),
+                      );
+                      break;
+                    case SongReaderOverflowAction.delete:
+                      unawaited(
+                        _songActions.delete(
+                          context,
+                          ref,
+                          onDeleted: _handleBack,
+                        ),
+                      );
+                      break;
+                  }
                 },
               ),
-          ],
-        ),
-        actions: [
-          if (hasRecoverableWarnings)
-            IconButton(
-              tooltip: AppStrings.songReaderWarningsSemantics,
-              icon: const Icon(Icons.warning_amber_outlined),
-              onPressed: () =>
-                  _showWarningsDialog(context, recoverableWarningCount),
-            ),
-          if (readerResult != null)
-            PopupMenuButton<_SongReaderOverflowAction>(
-              icon: const Icon(Icons.more_horiz),
-              onSelected: (action) {
-                switch (action) {
-                  case _SongReaderOverflowAction.toggleViewMode:
-                    _toggleViewMode();
-                    break;
-                  case _SongReaderOverflowAction.guitarView:
-                    _setInstrumentDisplayMode(
-                      SongReaderInstrumentDisplayMode.guitar,
-                    );
-                    break;
-                  case _SongReaderOverflowAction.pianoView:
-                    _setInstrumentDisplayMode(
-                      SongReaderInstrumentDisplayMode.piano,
-                    );
-                    break;
-                  case _SongReaderOverflowAction.edit:
-                    unawaited(_editSong(context));
-                    break;
-                  case _SongReaderOverflowAction.delete:
-                    unawaited(_deleteSong(context));
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.toggleViewMode,
-                  child: Text(
-                    readerState.viewMode == SongReaderViewMode.chordsAndLyrics
-                        ? AppStrings.songReaderLyricsOnlyAction
-                        : AppStrings.songReaderChordsAndLyricsAction,
-                  ),
-                ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.guitarView,
-                  child: Text(AppStrings.songReaderGuitarViewAction),
-                ),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.pianoView,
-                  child: Text(AppStrings.songReaderPianoViewAction),
-                ),
-                if (canEditSongs) ...[
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: _SongReaderOverflowAction.edit,
-                    child: Text(AppStrings.songEditAction),
-                  ),
-                  PopupMenuItem(
-                    value: _SongReaderOverflowAction.delete,
-                    child: Text(AppStrings.songDeleteAction),
-                  ),
-                ],
-              ],
-            ),
-        ],
       ),
       body: PopScope<void>(
         canPop: false,
