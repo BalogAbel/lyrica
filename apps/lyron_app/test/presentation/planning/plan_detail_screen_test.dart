@@ -517,6 +517,28 @@ void main() {
     expect(writeService.renamedSessionDraft?.name, 'Warm-Up Updated');
   });
 
+  testWidgets('session rename rejects an empty name', (tester) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await openSessionNamePopup(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('session-editor-name')),
+      '   ',
+    );
+    await tester.tap(find.text(AppStrings.planSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.renamedSessionDraft, isNull);
+  });
+
   testWidgets('deletes an empty session locally after confirmation', (
     tester,
   ) async {
@@ -538,6 +560,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(writeService.deletedSessionDraft?.sessionId, 'session-2');
+  });
+
+  testWidgets('cancelling the session delete dialog does not delete', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.deletedSessionDraft, isNull);
   });
 
   testWidgets('tap on the session drag handle does not reorder sessions', (
@@ -1776,6 +1821,57 @@ void main() {
       tester.getTopLeft(find.textContaining('Alpha')).dy,
       greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
     );
+  });
+
+  testWidgets('rolls the session item order back when the write fails', (
+    tester,
+  ) async {
+    final failCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessionItems: (_) async {
+        await failCompleter.future;
+        throw StateError('item reorder failed');
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(1, 0);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Beta')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+    );
+
+    failCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+    );
+    expect(tester.takeException(), isA<StateError>());
   });
 
   testWidgets('shows a validation error for invalid scheduled-for input', (
