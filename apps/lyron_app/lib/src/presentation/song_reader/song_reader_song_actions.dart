@@ -24,7 +24,7 @@ class SongReaderSongActions {
     BuildContext context,
     WidgetRef ref, {
     required SongReaderImmersiveMode immersiveMode,
-    required bool wasImmersive,
+    required bool Function() readControlsVisible,
   }) async {
     final activeContext = ref.read(activeCatalogContextProvider);
     if (activeContext == null) {
@@ -43,8 +43,11 @@ class SongReaderSongActions {
     }
 
     // Capture control visibility before the async gap so we can restore the
-    // immersive state on return. The editor is pushed (not replaced), so this
-    // screen is not disposed and must restore the system UI itself.
+    // immersive state on return. It has to be read here, after the summary
+    // lookup, because visibility can change while that read is in flight.
+    // The editor is pushed (not replaced), so this screen is not disposed and
+    // must restore the system UI itself.
+    final wasImmersive = readControlsVisible();
     immersiveMode.apply(false);
     await context.push(
       AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug),

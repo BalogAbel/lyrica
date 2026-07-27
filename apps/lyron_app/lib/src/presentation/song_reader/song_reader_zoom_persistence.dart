@@ -17,13 +17,13 @@ class SongReaderZoomPersistence {
   /// Reads the stored zoom for [songId] under [userId] once per instance.
   ///
   /// Guards with an internal one-shot flag so the read fires only once per
-  /// reader open and never clobbers a subsequent user change — mirrors the
-  /// previous `_seedZoomFromStorage` body exactly, minus the `mounted` checks,
-  /// which stay the screen's responsibility: the screen checks `mounted`
-  /// before calling this and again before applying the returned value.
+  /// reader open and never clobbers a subsequent user change. [isMounted] is
+  /// checked between the two awaits so a disposed reader does not issue the
+  /// zoom read; the caller checks it again before applying the returned value.
   Future<double?> seedFromStorage({
     required String? userId,
     required String songId,
+    required bool Function() isMounted,
     required Future<SongReaderPreferencesStore> Function() resolveStore,
   }) async {
     if (_seededZoom) {
@@ -37,6 +37,9 @@ class SongReaderZoomPersistence {
 
     try {
       final store = await resolveStore();
+      if (!isMounted()) {
+        return null;
+      }
       final zoom = await store.readZoom(userId: userId, songId: songId);
       return zoom;
     } catch (_) {

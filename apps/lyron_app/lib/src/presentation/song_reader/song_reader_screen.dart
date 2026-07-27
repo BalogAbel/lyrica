@@ -136,6 +136,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       final zoom = await _zoomPersistence.seedFromStorage(
         userId: ref.read(readerUserIdProvider),
         songId: widget.songId,
+        isMounted: () => mounted,
         resolveStore: () => ref.read(songReaderPreferencesStoreProvider.future),
       );
       if (!mounted || zoom == null) {
@@ -412,7 +413,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                   context,
                   ref,
                   immersiveMode: _immersiveMode,
-                  wasImmersive: _areControlsVisible,
+                  readControlsVisible: () => _areControlsVisible,
                 ),
               );
               break;
