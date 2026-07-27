@@ -10,6 +10,7 @@ import 'package:lyron_app/src/presentation/planning/planning_context_checks.dart
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/retryable_error_state.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
@@ -51,7 +52,7 @@ class PlanListScreen extends ConsumerWidget {
         skipLoadingOnReload: true,
         loading: () =>
             const Center(child: Text(AppStrings.planListLoadingMessage)),
-        error: (error, stackTrace) => _RetryableErrorState(
+        error: (error, stackTrace) => RetryableErrorState(
           message: AppStrings.planListLoadFailureMessage,
           onRetry: () => ref.invalidate(planningPlanListProvider),
         ),
@@ -237,30 +238,6 @@ class _PlanSummarySubtitle extends StatelessWidget {
         else
           Text(formatScheduledForInstant(context, scheduledFor)),
       ],
-    );
-  }
-}
-
-class _RetryableErrorState extends StatelessWidget {
-  const _RetryableErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(message, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: onRetry,
-            child: const Text(AppStrings.retryAction),
-          ),
-        ],
-      ),
     );
   }
 }
