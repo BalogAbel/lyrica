@@ -7,30 +7,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
-import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
-import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
-import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
-import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
-import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_titles.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_zoom_persistence.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_shell.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_status_views.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -68,9 +63,6 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
-  static const _contentWidth = 960.0;
-  static const _contentPadding = EdgeInsets.all(24);
-
   late final SongReaderController _controller = SongReaderController();
   final _immersiveMode = SongReaderImmersiveMode();
   final _zoomPersistence = SongReaderZoomPersistence();
@@ -372,90 +364,6 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  String _resolveCurrentTitle({
-    required SessionScopedReaderContext? scopedContext,
-    required SongReaderProjection projection,
-  }) {
-    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
-    if (scopedTitle.isNotEmpty) {
-      return scopedTitle;
-    }
-    return projection.title;
-  }
-
-  String _resolvePreservedScopedTitle(
-    SessionScopedReaderContext? scopedContext,
-  ) {
-    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
-    if (scopedTitle.isNotEmpty) {
-      return scopedTitle;
-    }
-    final warmPlanDetail = widget.warmPlanDetail;
-    final sessionItemId = widget.sessionItemId;
-    if (warmPlanDetail != null && sessionItemId != null) {
-      for (final session in warmPlanDetail.sessions) {
-        for (final item in session.items) {
-          if (item.id == sessionItemId && item.song.id == widget.songId) {
-            final preservedTitle = item.song.title.trim();
-            if (preservedTitle.isNotEmpty) {
-              return preservedTitle;
-            }
-          }
-        }
-      }
-    }
-    return AppStrings.songReaderTitle;
-  }
-
-  Widget _buildScopedDeletedTombstone({
-    required SessionScopedReaderContext? scopedContext,
-    required SongMutationRecord? mutationRecord,
-  }) {
-    final message =
-        mutationRecord?.isRemoteDeletedConflict == true &&
-            mutationRecord?.effectiveSyncStatus == SongSyncStatus.pendingUpdate
-        ? AppStrings.songReaderDeletedConflictMessage
-        : AppStrings.songReaderDeletedMessage;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _resolvePreservedScopedTitle(scopedContext),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              AppStrings.songReaderDeletedTitle,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-
-  bool _canShowScopedDeletedTombstone({
-    required CatalogSnapshotState catalogState,
-    required SongMutationRecord? mutationRecord,
-  }) {
-    return mutationRecord?.isRemoteDeletedConflict == true ||
-        catalogState.context != null;
-  }
-
-  String? _resolveNeighborTitle(String? title) {
-    final trimmed = title?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
   Future<void> _showWarningsDialog(BuildContext context, int count) {
     final message = count == 1
         ? AppStrings.songReaderWarningSingular
@@ -532,9 +440,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final projection = readerResult == null
         ? null
         : SongReaderProjection(song: readerResult.song, state: readerState);
+    final preservedScopedTitle = resolvePreservedScopedTitle(
+      scopedContext: resolvedScopedContext,
+      warmPlanDetail: widget.warmPlanDetail,
+      sessionItemId: widget.sessionItemId,
+      songId: widget.songId,
+    );
     final currentTitle = projection == null
-        ? _resolvePreservedScopedTitle(resolvedScopedContext)
-        : _resolveCurrentTitle(
+        ? preservedScopedTitle
+        : resolveCurrentTitle(
             scopedContext: resolvedScopedContext,
             projection: projection,
           );
@@ -549,24 +463,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     if (_isScopedMode && scopedContextAsync != null) {
       final scopedValue = scopedContextAsync.valueOrNull;
       if (scopedValue is SessionScopedReaderContextFailureResult) {
-        return Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            leading: IconButton(
-              tooltip: AppStrings.songReaderBackAction,
-              onPressed: () => _handleBack(context),
-              icon: const BackButtonIcon(),
-            ),
-            title: const Text(AppStrings.songReaderTitle),
-          ),
-          body: SafeArea(
-            child: Center(
-              child: Text(
-                AppStrings.scopedReaderContextUnavailableMessage,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+        return SongReaderScopedContextFailureScaffold(
+          onBack: () => _handleBack(context),
         );
       }
     }
@@ -622,200 +520,31 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
                 },
               ),
       ),
-      body: PopScope<void>(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
-          if (didPop) {
-            return;
-          }
-
-          _handleBack(context);
-        },
-        child: SafeArea(
-          child: isResolvingCatalogContext
-              ? const Center(child: Text(AppStrings.songReaderLoadingMessage))
-              : readerAsync.when(
-                  loading: () => const Center(
-                    child: Text(AppStrings.songReaderLoadingMessage),
-                  ),
-                  error: (error, stackTrace) {
-                    if (_isScopedMode) {
-                      if (error is SongNotFoundException) {
-                        if (_canShowScopedDeletedTombstone(
-                          catalogState: catalogState,
-                          mutationRecord: mutationRecord,
-                        )) {
-                          return _buildScopedDeletedTombstone(
-                            scopedContext: resolvedScopedContext,
-                            mutationRecord: mutationRecord,
-                          );
-                        }
-                      }
-                      return const Center(
-                        child: Text(
-                          AppStrings.scopedReaderContextUnavailableMessage,
-                          textAlign: TextAlign.center,
-                        ),
-                      );
-                    }
-
-                    if (error is SongAccessDeniedException) {
-                      return const Center(
-                        child: Text(AppStrings.songReaderAccessDeniedMessage),
-                      );
-                    }
-
-                    if (error is SongNotFoundException) {
-                      return const Center(
-                        child: Text(AppStrings.songReaderUnavailableMessage),
-                      );
-                    }
-
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            AppStrings.songReaderLoadFailureMessage,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton(
-                            onPressed: () {
-                              ref.invalidate(
-                                songLibraryReaderProvider(widget.songId),
-                              );
-                            },
-                            child: const Text(AppStrings.retryAction),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  data: (SongReaderResult result) {
-                    final projection = SongReaderProjection(
-                      song: result.song,
-                      state: readerState,
-                    );
-                    final recoverableWarningCount = result.song.diagnostics
-                        .where(
-                          (diagnostic) =>
-                              diagnostic.severity ==
-                              ParseDiagnosticSeverity.warning,
-                        )
-                        .length;
-
-                    final currentTitle = _resolveCurrentTitle(
-                      scopedContext: resolvedScopedContext,
-                      projection: projection,
-                    );
-                    final previousTitle = _resolveNeighborTitle(
-                      resolvedScopedContext?.previousItem?.title,
-                    );
-                    final nextTitle = _resolveNeighborTitle(
-                      resolvedScopedContext?.nextItem?.title,
-                    );
-                    final showExpandedContextPanel =
-                        resolvedScopedContext != null;
-
-                    return LayoutBuilder(
-                      builder: (context, constraints) {
-                        final layout = resolveSongReaderLayout(
-                          viewportWidth: constraints.maxWidth,
-                          isAutoFitEnabled: readerState.isAutoFitEnabled,
-                        );
-                        final showCompactBottomContextBar =
-                            resolvedScopedContext != null;
-
-                        final readerSurface =
-                            layout.shell == SongReaderShell.expanded
-                            ? SongReaderExpandedSurface(
-                                projection: projection,
-                                showContextPanel: showExpandedContextPanel,
-                                previousTitle: previousTitle,
-                                nextTitle: nextTitle,
-                                contentColumnCount: layout.contentColumnCount,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: projection.effectiveCapo > 0
-                                    ? _capoDown
-                                    : null,
-                                onCapoUp: _capoUp,
-                                onDecreaseFontScale: () =>
-                                    _adjustSharedFontScale(-0.1),
-                                onIncreaseFontScale: () =>
-                                    _adjustSharedFontScale(0.1),
-                                onSetFontScale: _setSharedFontScale,
-                                onPersistFontScale: _persistFontScale,
-                                onPreviousTap:
-                                    _buildScopedNeighborNavigationTap(
-                                      context,
-                                      scopedContext: resolvedScopedContext,
-                                      neighbor:
-                                          resolvedScopedContext?.previousItem,
-                                    ),
-                                onNextTap: _buildScopedNeighborNavigationTap(
-                                  context,
-                                  scopedContext: resolvedScopedContext,
-                                  neighbor: resolvedScopedContext?.nextItem,
-                                ),
-                                contentPadding: _contentPadding,
-                              )
-                            : SongReaderCompactSurface(
-                                projection: projection,
-                                areControlsVisible:
-                                    readerState.areCompactControlsVisible,
-                                currentTitle: currentTitle,
-                                previousTitle: previousTitle,
-                                nextTitle: nextTitle,
-                                onSurfaceTap: _toggleCompactControls,
-                                hasRecoverableWarnings:
-                                    result.hasRecoverableWarnings,
-                                warningCount: recoverableWarningCount,
-                                contentColumnCount: layout.contentColumnCount,
-                                showBottomContextBar:
-                                    showCompactBottomContextBar,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: projection.effectiveCapo > 0
-                                    ? _capoDown
-                                    : null,
-                                onCapoUp: _capoUp,
-                                onDecreaseFontScale: () =>
-                                    _adjustSharedFontScale(-0.1),
-                                onIncreaseFontScale: () =>
-                                    _adjustSharedFontScale(0.1),
-                                onSetFontScale: _setSharedFontScale,
-                                onPersistFontScale: _persistFontScale,
-                                onPreviousTap:
-                                    _buildScopedNeighborNavigationTap(
-                                      context,
-                                      scopedContext: resolvedScopedContext,
-                                      neighbor:
-                                          resolvedScopedContext?.previousItem,
-                                    ),
-                                onNextTap: _buildScopedNeighborNavigationTap(
-                                  context,
-                                  scopedContext: resolvedScopedContext,
-                                  neighbor: resolvedScopedContext?.nextItem,
-                                ),
-                                maxContentWidth: _contentWidth,
-                                contentPadding: _contentPadding,
-                              );
-
-                        // The surface itself is full-width; ConstrainedBox and
-                        // padding are applied inside the scroll view by each
-                        // surface widget so the scrollbar thumb sits at the
-                        // physical screen edge.
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [Expanded(child: readerSurface)],
-                        );
-                      },
-                    );
-                  },
-                ),
-        ),
+      body: SongReaderBodyShell(
+        isResolvingCatalogContext: isResolvingCatalogContext,
+        readerAsync: readerAsync,
+        isScopedMode: _isScopedMode,
+        catalogState: catalogState,
+        mutationRecord: mutationRecord,
+        resolvedScopedContext: resolvedScopedContext,
+        readerState: readerState,
+        preservedScopedTitle: preservedScopedTitle,
+        onBack: _handleBack,
+        onRetry: () => ref.invalidate(songLibraryReaderProvider(widget.songId)),
+        onTransposeDown: _transposeDown,
+        onTransposeUp: _transposeUp,
+        onCapoDown: _capoDown,
+        onCapoUp: _capoUp,
+        onAdjustSharedFontScale: _adjustSharedFontScale,
+        onSetFontScale: _setSharedFontScale,
+        onPersistFontScale: _persistFontScale,
+        onToggleCompactControls: _toggleCompactControls,
+        resolveNeighborTap: (context, neighbor) =>
+            _buildScopedNeighborNavigationTap(
+              context,
+              scopedContext: resolvedScopedContext,
+              neighbor: neighbor,
+            ),
       ),
     );
   }
