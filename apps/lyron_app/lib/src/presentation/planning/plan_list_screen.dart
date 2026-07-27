@@ -235,16 +235,10 @@ class _PlanSummarySubtitle extends StatelessWidget {
         if (scheduledFor == null)
           const Text(AppStrings.planListUnscheduledLabel)
         else
-          Text(_formatScheduledFor(context, scheduledFor)),
+          Text(formatScheduledForInstant(context, scheduledFor)),
       ],
     );
   }
-}
-
-String _formatScheduledFor(BuildContext context, DateTime scheduledFor) {
-  return MaterialLocalizations.of(
-    context,
-  ).formatMediumDate(scheduledFor.toLocal());
 }
 
 class _RetryableErrorState extends StatelessWidget {

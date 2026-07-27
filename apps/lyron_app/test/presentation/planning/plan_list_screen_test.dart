@@ -17,6 +17,7 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/presentation/planning/plan_list_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -173,9 +174,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final titleContext = tester.element(find.text('Sunday Morning'));
-    final scheduledForLabel = MaterialLocalizations.of(
+    final scheduledForLabel = formatScheduledForInstant(
       titleContext,
-    ).formatMediumDate(DateTime(2026, 4, 5, 8, 30));
+      DateTime(2026, 4, 5, 8, 30),
+    );
 
     expect(find.text('Single-session Sunday fixture'), findsOneWidget);
     expect(find.text(scheduledForLabel), findsOneWidget);
