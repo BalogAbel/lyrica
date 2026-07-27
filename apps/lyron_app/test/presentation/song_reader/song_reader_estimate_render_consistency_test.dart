@@ -139,6 +139,160 @@ SongReaderProjection _buildFixtureProjection({double fontScale = 1.0}) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Chord-heavy fixture
+// ---------------------------------------------------------------------------
+//
+// Same real-parser shapes as _buildFixtureProjection, but every chord is a
+// wide extended/slash label (Cmaj7#11, F#m7b5, Bbsus4/D, G#dim7, Eb6/9 --
+// 5-9 chars) instead of the 1-2 char chords above. This is the shape the
+// estimator got wrong before the chord-width fix: a chord-only segment's
+// width came from its (empty) lyric text alone, and a chord wider than its
+// lyric syllable was undercounted.
+//   - TWO chord-only instrumental bars of EIGHTY wide chords each (no lyric
+//     text under any of them). The count is deliberately large: lyric-only
+//     width counting (the bug) sizes a chord-only line as exactly one row
+//     no matter how many chords it holds, so the gap between that flat,
+//     count-independent estimate and the real multi-row render grows
+//     without bound as segment count grows -- a smaller count (tried: 4, 8,
+//     20) left the fixed estimator's own font-metric imprecision (see
+//     below) large enough to mask the difference between fixed and
+//     reverted code, so the count was raised until reverting the fix
+//     clearly produced a larger error than leaving it fixed.
+//   - a line where each wide chord sits over a single short syllable, so the
+//     chord is clearly wider than the lyric under it
+//   - the same blank-separator-line shape the real parser emits
+SongReaderProjection _buildChordHeavyFixtureProjection({
+  double fontScale = 1.0,
+}) {
+  final sections = <SongSection>[
+    SongSection(
+      kind: SongSectionKind.verse,
+      label: 'Verse',
+      number: 1,
+      lines: [
+        // Each wide chord sits over a single short syllable -- the segment
+        // column is as wide as the chord, not the one-character lyric.
+        LyricLine(
+          segments: const [
+            LyricSegment(leadingChord: 'Cmaj7#11', text: 'a'),
+            LyricSegment(leadingChord: 'F#m7b5', text: 'b'),
+            LyricSegment(leadingChord: 'Bbsus4/D', text: 'c'),
+          ],
+        ),
+        LyricLine(
+          segments: const [
+            LyricSegment(leadingChord: 'G#dim7', text: 'Some words here'),
+          ],
+        ),
+        // Blank separator line -- exact shape ChordproParser emits for an
+        // empty source line (chordpro_parser.dart:31).
+        LyricLine(segments: const [LyricSegment(text: '')]),
+        LyricLine(
+          segments: const [
+            LyricSegment(leadingChord: 'Eb6/9', text: 'Shorter line here'),
+          ],
+        ),
+      ],
+    ),
+    SongSection(
+      kind: SongSectionKind.chorus,
+      label: 'Chorus',
+      number: 1,
+      lines: [
+        LyricLine(
+          segments: const [
+            LyricSegment(
+              leadingChord: 'Cmaj7#11',
+              text: 'Chorus line with a wide chord up front',
+            ),
+          ],
+        ),
+        // Chord-only instrumental bar: EIGHTY wide chords, no lyric text
+        // under any of them. The renderer draws just the chord row, no
+        // lyric row, and eighty wide labels must wrap into many rows at
+        // 375px width.
+        LyricLine(
+          segments: List.generate(
+            80,
+            (i) => LyricSegment(
+              leadingChord: const [
+                'Cmaj7#11',
+                'F#m7b5',
+                'Bbsus4/D',
+                'G#dim7',
+                'Eb6/9',
+              ][i % 5],
+              text: '',
+            ),
+          ),
+        ),
+      ],
+    ),
+    SongSection(
+      kind: SongSectionKind.verse,
+      label: 'Verse',
+      number: 2,
+      lines: [
+        LyricLine(
+          segments: const [
+            LyricSegment(leadingChord: 'Bbsus4/D', text: 'x'),
+            LyricSegment(leadingChord: 'Eb6/9', text: 'y'),
+            LyricSegment(leadingChord: 'F#m7b5', text: 'z'),
+          ],
+        ),
+        LyricLine(
+          segments: const [
+            LyricSegment(
+              leadingChord: 'G#dim7',
+              text: 'A shorter closing line',
+            ),
+          ],
+        ),
+      ],
+    ),
+    SongSection(
+      kind: SongSectionKind.bridge,
+      label: 'Bridge',
+      number: null,
+      lines: [
+        // Second chord-only bar (EIGHTY wide chords again) to make the
+        // wide-chord-only path dominate more of the fixture's total height.
+        LyricLine(
+          segments: List.generate(
+            80,
+            (i) => LyricSegment(
+              leadingChord: const [
+                'Bbsus4/D',
+                'G#dim7',
+                'Eb6/9',
+                'Cmaj7#11',
+                'F#m7b5',
+              ][i % 5],
+              text: '',
+            ),
+          ),
+        ),
+        LyricLine(
+          segments: const [
+            LyricSegment(leadingChord: 'Cmaj7#11', text: 'Final bridge line'),
+          ],
+        ),
+      ],
+    ),
+  ];
+
+  return SongReaderProjection(
+    song: ParsedSong(
+      title: 'Chord-Heavy Consistency Fixture',
+      sourceKey: 'G',
+      sections: sections,
+      diagnostics: const [],
+    ),
+    state: SongReaderState(sharedFontScale: fontScale),
+  );
+}
+
 const _contentPadding = EdgeInsets.all(24);
 const _maxContentWidth = 960.0;
 
@@ -358,6 +512,103 @@ void main() {
         reason:
             'absolute drift between estimate and render must stay under two '
             'lyric rows; measured $absoluteError px',
+      );
+    });
+
+    testWidgets('estimated content height tracks the rendered content height '
+        '(chord-heavy fixture)', (tester) async {
+      tester.view.physicalSize = const Size(viewportWidth, viewportHeight);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final projection = _buildChordHeavyFixtureProjection();
+
+      await tester.pumpWidget(_buildSurface(projection: projection));
+      await tester.pump();
+
+      final rendered = tester
+          .getSize(find.byType(SongReaderSectionGrid))
+          .height;
+      final gridWidth = tester
+          .getSize(find.byType(SongReaderSectionGrid))
+          .width;
+
+      final estimated = estimateSongContentHeight(
+        sections: projection.sections,
+        viewMode: projection.viewMode,
+        availableWidth: gridWidth,
+        fontScale: projection.sharedFontScale,
+      );
+
+      final absoluteError = (estimated - rendered).abs();
+      final relativeError = absoluteError / rendered;
+
+      // ---------------------------------------------------------------
+      // Measured 2026-07-27 against the chord-heavy fixture (4 sections /
+      // 10 lines: wide extended/slash chords -- Cmaj7#11, F#m7b5,
+      // Bbsus4/D, G#dim7, Eb6/9 (5-9 chars each) -- a line of three
+      // single-character syllables each under a wide chord, TWO
+      // chord-only instrumental bars of EIGHTY wide chords each (no
+      // lyric text under any of them), and the same blank
+      // ChordproParser-shaped separator line as the plain fixture) at
+      // 375x812, contentPadding=24 all sides, fontScale=1.0:
+      //   rendered=2574.0  estimated=3388.0  relativeError=0.3162 (31.6%)
+      //   absoluteError=814.0
+      //
+      // This error is much larger than the plain fixture's 2.0%/22px
+      // because characterWidthEstimate (10px/char) is a single constant
+      // shared by lyric and chord text; it is not calibrated against the
+      // bold labelLarge chord glyphs specifically, so a fixture this
+      // dominated by wide chords drifts further from the real rendered
+      // width than an ordinary lyric-heavy line does. That drift is a
+      // known limitation of the single-constant width model, not a wrong
+      // run/wrap count -- this fixture exists to bound that drift, not to
+      // hide it.
+      //
+      // The eighty-chord count was chosen empirically, not for realism:
+      // at smaller counts (4, 8, 20 wide chords tried) the fixed
+      // estimator's own font-metric imprecision above was large enough
+      // to mask the difference between fixed and reverted code -- a
+      // reverted _segmentCharWidth (lyric-length only, chord ignored)
+      // could come out MORE accurate than the fix by coincidence, since
+      // ignoring chord width also cancels some of the 10px/char
+      // over-estimate. Reverting _segmentCharWidth to lyric-length-only
+      // at this count instead measures rendered=2574.0 estimated=1372.0
+      // relativeError=0.4670 (46.7%) absoluteError=1202.0 -- clearly
+      // worse than the fixed code's 31.6%/814px, because a chord-only
+      // line's estimate is flat (always one row) regardless of how many
+      // chords it holds, while the real render grows with segment count;
+      // the gap between flat-estimate and real-render widens without
+      // bound as segment count grows, eventually dominating the
+      // per-character calibration error in the other direction. See
+      // song_reader_fit_test.dart's "_lineItemHeight accounts for chord
+      // width" group for a tighter, non-widget unit-level version of this
+      // same check.
+      //
+      // Bounds below sit between the fixed measurement (31.6%/814px) and
+      // the reverted measurement (46.7%/1202px), with headroom above the
+      // fixed number for font-metric jitter across machines/CI, so the
+      // test passes on correct code and fails if the chord-width
+      // accounting regresses. The absolute bound (950px) is tighter than
+      // what the relative bound alone would allow at this rendered
+      // height (0.38 * 2574 = 978.1px), so it is the constraint that
+      // actually binds.
+      // ---------------------------------------------------------------
+      expect(
+        relativeError,
+        lessThan(0.38),
+        reason:
+            'estimateSongContentHeight must track the rendered content '
+            'height within a bounded relative error on a chord-heavy '
+            'fixture too; measured $relativeError '
+            '(rendered=$rendered, estimated=$estimated)',
+      );
+      expect(
+        absoluteError,
+        lessThan(950.0),
+        reason:
+            'absolute drift between estimate and render must stay bounded '
+            'on a chord-heavy fixture too; measured $absoluteError px',
       );
     });
   });
