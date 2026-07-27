@@ -744,6 +744,11 @@ void main() {
   testWidgets('stale session reorder result does not clear newer order', (
     tester,
   ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final firstReorderCompleter = Completer<void>();
     var reorderCalls = 0;
     final writeService = _FakePlanningWriteService(
@@ -758,7 +763,7 @@ void main() {
 
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
+        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
         writeService: writeService,
       ),
     );
@@ -767,17 +772,39 @@ void main() {
     final sessionList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first;
+    // First drag (stale, blocked on firstReorderCompleter): Warm-Up, Main
+    // Set, Closing -> Main Set, Warm-Up, Closing.
     sessionList.onReorder(0, 2);
     await tester.pump();
-    sessionList.onReorder(0, 2);
+    // Second drag (newer, queued behind the first): Main Set, Warm-Up,
+    // Closing -> Main Set, Closing, Warm-Up.
+    sessionList.onReorder(1, 3);
     await tester.pump();
 
-    final orderAfterSecondDrag = tester.getTopLeft(find.text('Warm-Up')).dy;
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
 
     firstReorderCompleter.complete();
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(find.text('Warm-Up')).dy, orderAfterSecondDrag);
+    // If the stale (failing) first result incorrectly cleared the
+    // optimistic order, this would fall back to the original order
+    // (Warm-Up, Main Set, Closing) instead of holding the second drag's
+    // order (Main Set, Closing, Warm-Up).
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
   });
 
   testWidgets(
@@ -2232,6 +2259,42 @@ PlanDetail _editablePlanDetailFixture() {
         slug: 'closing',
         name: 'Closing',
         position: 20,
+        items: [],
+      ),
+    ],
+  );
+}
+
+PlanDetail _editablePlanDetailWithThreeSessionsFixture() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      slug: 'team-rehearsal',
+      name: 'Team Rehearsal',
+      description: 'Fixture',
+      scheduledFor: DateTime(2026, 4, 10, 18),
+      updatedAt: DateTime(2026, 3, 31, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        slug: 'warm-up',
+        name: 'Warm-Up',
+        position: 10,
+        items: [],
+      ),
+      SessionSummary(
+        id: 'session-2',
+        slug: 'main-set',
+        name: 'Main Set',
+        position: 20,
+        items: [],
+      ),
+      SessionSummary(
+        id: 'session-3',
+        slug: 'closing',
+        name: 'Closing',
+        position: 30,
         items: [],
       ),
     ],
