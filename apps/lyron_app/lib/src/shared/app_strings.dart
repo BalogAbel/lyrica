@@ -137,9 +137,10 @@ class AppStrings {
   static const planSaveAction = 'Save';
   static const planNameLabel = 'Plan name';
   static const planDescriptionLabel = 'Description';
-  static const planScheduledForLabel = 'Scheduled for (UTC ISO-8601)';
-  static const planScheduledForInvalidMessage =
-      'Enter a valid UTC ISO-8601 timestamp or leave the field empty.';
+  static const planScheduledForLabel = 'Scheduled for';
+  static const planScheduledForPickAction = 'Pick date & time';
+  static const planScheduledForClearAction = 'Clear scheduled date';
+  static const planScheduledForEmptyLabel = 'Not scheduled';
   static const planEditorTitleCreate = 'Create plan';
   static const planEditorTitleEdit = 'Edit plan';
   static const planListLoadingMessage = 'Loading plans...';
