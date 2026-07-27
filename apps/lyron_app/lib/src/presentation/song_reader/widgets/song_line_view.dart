@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
-
-const _lineRunSpacing = 10.0;
-const _chordOnlySpacing = 22.0;
 
 class SongLineView extends StatelessWidget {
   const SongLineView({
@@ -37,7 +35,7 @@ class SongLineView extends StatelessWidget {
     if (!hasLyricSegments && viewMode == SongReaderViewMode.lyricsOnly) {
       return const SizedBox.shrink();
     }
-    final spacing = hasLyricSegments ? 0.0 : _chordOnlySpacing;
+    final spacing = hasLyricSegments ? 0.0 : chordOnlySpacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -63,7 +61,7 @@ class SongLineView extends StatelessWidget {
                     constraints: BoxConstraints(maxWidth: maxWidth),
                     child: Wrap(
                       spacing: 0,
-                      runSpacing: _lineRunSpacing,
+                      runSpacing: lineRunSpacing,
                       crossAxisAlignment: WrapCrossAlignment.end,
                       children: [
                         for (final segment in group.segments)
@@ -93,7 +91,7 @@ class SongLineView extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 2),
           child: Wrap(
             spacing: spacing,
-            runSpacing: _lineRunSpacing,
+            runSpacing: lineRunSpacing,
             crossAxisAlignment: WrapCrossAlignment.end,
             children: children,
           ),
@@ -139,7 +137,7 @@ class _SongLineSegmentView extends StatelessWidget {
       children: [
         if (showChord) ...[
           Text(segment.displayChord!, style: chordStyle),
-          if (showLyric) const SizedBox(height: 2),
+          if (showLyric) const SizedBox(height: chordToLyricGap),
         ],
         if (showLyric)
           ConstrainedBox(
