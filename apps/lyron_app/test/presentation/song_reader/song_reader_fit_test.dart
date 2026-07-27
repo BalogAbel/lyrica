@@ -1321,4 +1321,104 @@ void main() {
       expect(hTab, greaterThan(hOneLine));
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: group width must account for chord width, not just lyric chars.
+  // ---------------------------------------------------------------------------
+
+  group('_lineItemHeight accounts for chord width', () {
+    // Narrow enough that a single wide (8-char = 80px) chord segment already
+    // occupies most of the run, so two of them can never share a run.
+    const columnWidth = 130.0;
+
+    SongReaderSectionProjection unlabeledSection(
+      SongReaderLyricLineProjection line,
+    ) => SongReaderSectionProjection(
+      kind: SongSectionKind.verse,
+      label: 'Unlabeled',
+      number: null,
+      isUnknown: false,
+      lines: [line],
+    );
+
+    SongReaderLyricLineProjection chordOnlyLine(String chord, int count) =>
+        SongReaderLyricLineProjection(
+          segments: List.generate(
+            count,
+            (_) => SongReaderSegmentProjection(displayChord: chord, text: ''),
+          ),
+        );
+
+    test('accounts for chord width on a chord-only line', () {
+      // Six wide chord-only segments ("Cmaj7#11", 8 chars -> 80px each) vs a
+      // single one of the same chord. Lyric-only counting (the bug) sees
+      // every segment as 0px wide and packs all six into one run regardless
+      // of count, so the two heights would come out equal. A correct
+      // estimate must grow: 80px segments cannot pack two-per-run at a
+      // 130px column, so six of them span several runs.
+      final wideSection = unlabeledSection(chordOnlyLine('Cmaj7#11', 6));
+      final oneSection = unlabeledSection(chordOnlyLine('Cmaj7#11', 1));
+
+      final wideHeight = estimateSectionHeight(
+        section: wideSection,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+      final oneRowHeight = estimateSectionHeight(
+        section: oneSection,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+
+      expect(
+        wideHeight,
+        greaterThan(oneRowHeight + 100),
+        reason:
+            'a chord-only line of several wide chords must estimate as '
+            'several rows tall, not collapse to a single zero-width run '
+            '(wide=$wideHeight, oneRow=$oneRowHeight)',
+      );
+    });
+
+    test('accounts for a chord wider than the lyric under it', () {
+      // Identical lyric text ('a ' x5, one word-group per segment because of
+      // the trailing space) under two different chords. Lyric-only counting
+      // (the bug) sizes both lines identically since the chord never enters
+      // the width; the segment column is actually as wide as the wider of
+      // chord/lyric, so the long chord ("Cmaj7#11", 80px) must force more
+      // wraps than the short one ("C", 10px) at this narrow column width.
+      SongReaderLyricLineProjection line(String chord) =>
+          SongReaderLyricLineProjection(
+            segments: List.generate(
+              5,
+              (_) =>
+                  SongReaderSegmentProjection(displayChord: chord, text: 'a '),
+            ),
+          );
+
+      final shortChordHeight = estimateSectionHeight(
+        section: unlabeledSection(line('C')),
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+      final longChordHeight = estimateSectionHeight(
+        section: unlabeledSection(line('Cmaj7#11')),
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+
+      expect(
+        longChordHeight,
+        greaterThan(shortChordHeight),
+        reason:
+            'a chord wider than its lyric must be reflected in the group '
+            'width, forcing more wraps than the lyric-only estimate would '
+            '(long=$longChordHeight, short=$shortChordHeight)',
+      );
+    });
+  });
 }

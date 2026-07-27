@@ -314,12 +314,26 @@ void main() {
       final relativeError = absoluteError / rendered;
 
       // ---------------------------------------------------------------
-      // Measured 2026-07-27 against this fixture (4 sections / 11 lines:
-      // long wrapping chorded lines, a 4-chord instrumental bar with no
-      // lyric text under any chord, and a blank ChordproParser-shaped
-      // separator line -- LyricLine(segments: [LyricSegment(text: '')]))
-      // at 375x812, contentPadding=24 all sides, fontScale=1.0:
+      // Re-measured 2026-07-27 after fixing the chord-width bug in
+      // _lineItemHeight (a group's width now counts the wider of each
+      // segment's lyric text and chord label, and chord-only lines carry
+      // chordOnlySpacing between packed groups; see song_reader_fit.dart).
+      // Against this fixture (4 sections / 11 lines: long wrapping chorded
+      // lines, a 4-chord instrumental bar with no lyric text under any
+      // chord, and a blank ChordproParser-shaped separator line --
+      // LyricLine(segments: [LyricSegment(text: '')])) at 375x812,
+      // contentPadding=24 all sides, fontScale=1.0:
       //   rendered=1082.0  estimated=1060.0  relativeError=0.0203
+      // Unchanged from the pre-fix measurement: this fixture's instrumental
+      // bar uses short chords (Em, C, G, D -- 1-2 chars each) whose combined
+      // width, even with chordOnlySpacing between them, stays far under the
+      // 327px rendered column (gridWidth), so it still packs into a single
+      // run either way. The fix changes behaviour only when a chord-only
+      // run or a chord-over-short-lyric segment is wide enough to force a
+      // wrap (see the "_lineItemHeight accounts for chord width" tests in
+      // song_reader_fit_test.dart, which use narrower columns and wider
+      // chords to exercise that path); it does not regress this fixture's
+      // accuracy.
       // Pinned to 0.05 (relative) -- roughly 2.5x the measured error,
       // enough headroom for font-metric jitter across machines/CI while
       // still catching a real regression in the estimator.

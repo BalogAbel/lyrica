@@ -158,6 +158,22 @@ List<FlowBlock> buildFlowBlocks({
 /// [estimateSectionHeight] (which iterates sections) and [flowBlockHeight]
 /// (which operates on individual blocks).  Keeping them in sync here prevents
 /// height-estimate drift between the fit calculator and the renderer.
+/// Estimated character-width of a single segment: the wider of its lyric
+/// text and its chord label (when chords are shown), in the same
+/// character-count units [_lineItemHeight] scales by
+/// `characterWidthEstimate * fontScale`.
+///
+/// Mirrors the renderer (song_line_view.dart): `_SongLineSegmentView` stacks
+/// the chord and lyric `Text` widgets in a `Column`, so the rendered segment
+/// is as wide as the wider of the two, not the sum of lyric characters alone.
+int _segmentCharWidth(SongReaderSegmentProjection segment, bool showChords) {
+  final lyricChars = segment.text.length;
+  final chordChars = (showChords && segment.displayChord != null)
+      ? segment.displayChord!.length
+      : 0;
+  return lyricChars > chordChars ? lyricChars : chordChars;
+}
+
 double _lineItemHeight({
   required SongReaderSectionItemProjection item,
   required SongReaderViewMode viewMode,
@@ -191,6 +207,12 @@ double _lineItemHeight({
               for (final segment in item.segments) [segment],
             ];
 
+      // A group's width is the sum of its segments' widths (the wider of
+      // each segment's lyric text and its chord label -- see
+      // _segmentCharWidth), not lyric characters alone. This mirrors the
+      // renderer, where a chord-only segment still occupies its chord's
+      // width and a chord wider than its lyric sets the segment's width.
+      //
       // Greedily pack groups into runs of effectiveLineWidth, mirroring the
       // renderer's outer Wrap. A group wider than a whole run occupies
       // ceil(groupWidth / effectiveLineWidth) runs on its own -- this
@@ -199,6 +221,14 @@ double _lineItemHeight({
       // first of those runs is credited with the group's chord, since the
       // renderer draws the chord once above the (possibly internally
       // wrapped) lyric text.
+      //
+      // A chord-only line skips word grouping (each segment is its own
+      // "group", see `groups` above) and the renderer's outer Wrap uses
+      // chordOnlySpacing between its children instead of the 0-spacing used
+      // for word groups; interGroupSpacing mirrors that gap between groups
+      // packed into the same run.
+      final interGroupSpacing = hasLyrics ? 0.0 : chordOnlySpacing;
+
       final runHasChord = <bool>[];
       var currentRunWidth = 0.0;
       var currentRunHasChord = false;
@@ -215,7 +245,10 @@ double _lineItemHeight({
 
       for (final group in groups) {
         final groupWidth =
-            group.fold<double>(0.0, (sum, s) => sum + s.text.length) *
+            group.fold<double>(
+              0.0,
+              (sum, s) => sum + _segmentCharWidth(s, showChords),
+            ) *
             characterWidthEstimate *
             fontScale;
         final groupHasChord = group.any((s) => s.displayChord != null);
@@ -231,11 +264,16 @@ double _lineItemHeight({
         }
 
         if (currentRunStarted &&
-            currentRunWidth + groupWidth > effectiveLineWidth) {
+            currentRunWidth + interGroupSpacing + groupWidth >
+                effectiveLineWidth) {
           flushRun();
         }
-        currentRunStarted = true;
-        currentRunWidth += groupWidth;
+        if (currentRunStarted) {
+          currentRunWidth += interGroupSpacing + groupWidth;
+        } else {
+          currentRunStarted = true;
+          currentRunWidth = groupWidth;
+        }
         currentRunHasChord = currentRunHasChord || groupHasChord;
       }
       flushRun();
