@@ -106,6 +106,36 @@ carry the detail; this is the digest.
   `unique(session_id, song_id) where item_type='song'` added
   (`supabase/migrations/202606290002_session_item_unique_song_index.sql`), DB-pinned by a
   failing-then-passing contract test.
+- **UX-3** (arch-spine-phase0-1 slice) — the copyrighted worship-song
+  `defaultSource` in the song editor is replaced with an original,
+  non-copyrighted ChordPro sample that doubles as a syntax hint
+  (`apps/lyron_app/lib/src/presentation/song_editor/song_editor_controller.dart`).
+  Pinned by a failing-then-passing characterization test.
+- **SEC-3** (arch-spine-phase0-1 slice) — `has_capability` and
+  `get_my_capabilities` now pin `set search_path = public`
+  (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
+  matching `current_organization_ids`. A backend contract test
+  (`scripts/tests/capability-search-path-contract-test.sh`, wired into the
+  `backend_write_contracts` job) guards all three helpers against silent
+  regression.
+- **ARCH-1** (arch-spine-phase0-1 slice) — the `PlanningMutationReconciler` was
+  already extracted (`b2d1053`, tested, injectable clock); the remaining
+  `providers.dart` god-file (776 lines) is now split into four domain-scoped
+  files (`core_providers`, `auth_providers`, `song_catalog_providers`,
+  `planning_providers`) behind a re-export barrel. ADR-021. Zero call-site churn;
+  the full provider surface is pinned by a characterization test.
+- **ARCH-5** (arch-spine-phase0-1 slice) — active-organization resolution is
+  consolidated into a single `ActiveOrganizationResolver` (application layer)
+  that owns the raw / cached-fallback / organization-id flavors; the three
+  resolution providers delegate to it with identical seams. ADR-022 (extends
+  ADR-016; completes the identity seam ADR-020 began). The deferred different-user
+  re-auth wiring intersection is noted, not closed.
+- **ARCH-2** (arch-spine-phase0-1 slice) — planning invalidation is split into an
+  aggregate signal (`planningDataRevisionProvider`) and a mutation signal
+  (`planningMutationRevisionProvider`) watched only by the mutation-facing
+  readers, so within-plan session/item edits no longer rebuild other plans'
+  details or by-slug summaries. The accepted cross-plan post-sync staleness
+  trade-off is documented in `architecture.md`.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
 
@@ -119,9 +149,9 @@ carry the detail; this is the digest.
 **Partial / corrected**
 - **LF-T2** — the "decouple local access from live session validity" half is delivered
   by LF-T1; the refresh-token TTL ceiling itself is unchanged.
-- **SEC-3** — `current_organization_ids` already carries `set search_path = public`
-  (`20260323220000`), so the review over-counted it; `has_capability` (regressed in
-  `202605250002`) and `get_my_capabilities` (`202605280001`) still lack it. 2 of 3 open.
+
+- **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
+  over-count correction; now fully closed (see **Fixed** above).
 
 **Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
 ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
@@ -142,10 +172,18 @@ accepted-mutation reconcile switch at `providers.dart:387-504`. Hard to test, ea
 grow. **Recommendation**: split into domain-scoped `*_providers.dart` and extract a
 testable `PlanningMutationReconciler` class.
 
+**Fixed (arch-spine-phase0-1)**: `PlanningMutationReconciler` extracted earlier
+in `b2d1053`; the file split into domain-scoped `*_providers.dart` behind a
+barrel landed in this slice (ADR-021).
+
 **ARCH-2 — coarse invalidation.** Every planning write bumps a single
 `planningDataRevisionProvider` counter (`providers.dart:355`), forcing broad rebuilds
 (e.g. full plan-detail) for small edits. **Recommendation**: aggregate-scoped
 invalidation (at least per plan id).
+**Fixed (arch-spine-phase0-1)**: within-plan edits now bump a mutation-scoped
+revision (`planningMutationRevisionProvider`) watched only by the mutation-facing
+readers; only aggregate events (plan-summary edit, sync completion, discard/retry)
+bump the global signal, so a small edit no longer rebuilds unrelated plan details.
 
 **ARCH-3 — UI god-components.** `presentation/planning/plan_detail_screen.dart` (1240),
 `presentation/song_editor/song_editor_screen.dart` (1088),
@@ -155,6 +193,10 @@ sub-widgets per responsibility.
 **ARCH-5 — active-organization resolution** is threaded through
 `activeOrganizationResolutionProvider`, `membershipResolutionProvider`, cached-fallback,
 and several controllers with auth-generation coupling — a large implicit state surface.
+
+**Fixed (arch-spine-phase0-1)**: consolidated into `ActiveOrganizationResolver`
+with the providers delegating (ADR-022); controller per-outcome fallback policy
+retained per ADR-016.
 
 **ARCH-4** — `melos.yaml` manages a single package today; either grow into multiple
 packages or drop the overhead.
@@ -212,7 +254,10 @@ with the hardening migration and flagged by Supabase advisors). The review's thi
 `current_organization_ids`, **already** carries `security definer set search_path = public`
 (`supabase/migrations/20260323220000_fix_membership_helper_rls_recursion.sql`) and was
 over-counted; note `has_capability` had it there too but **regressed** when redefined
-without it in `202605250002_organization_read_only_role_constraints.sql`. 2 of 3 open.
+without it in `202605250002_organization_read_only_role_constraints.sql`.
+**Fixed (arch-spine-phase0-1)**: `has_capability` and `get_my_capabilities`
+now pin `set search_path = public` (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
+guarded by `scripts/tests/capability-search-path-contract-test.sh`. All 3 helpers closed.
 
 ## 6. Local-First Review (the highest-risk subsystem)
 
@@ -437,10 +482,9 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 
 **Quick wins (1-2 days)**
 - ~~SEC-5: add `unique(session_id, song_id) where item_type='song'`.~~ **Done (PR #57).**
-- SEC-3: `set search_path = public` on the two remaining invoker-rights helpers
-  (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.
+- ~~SEC-3: `set search_path = public` on the two remaining invoker-rights helpers (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.~~ **Done (arch-spine-phase0-1).**
 - LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.
-- UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.
+- ~~UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.~~ **Done (arch-spine-phase0-1).**
 - A11y: add the missing `semanticLabel`/`Semantics` on the few non-tooltip surfaces.
 
 **Medium (1-2 weeks)**
@@ -449,14 +493,14 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.
 - LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
-- ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.
+- ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.
 - SEC-1: invite email-binding + rate limit + audit + ADR.
 - DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
 
 **Strategic (1+ month)**
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
-- ARCH-2: aggregate-scoped invalidation.
+- ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ARCH-3: decompose plan_detail / song_editor.
 - SEC-4: backend-derived shadow metadata.
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;

@@ -4,7 +4,9 @@
 **Files:**
 - `apps/lyron_app/lib/src/application/auth/reauth_resolution.dart` (ready, tested seam)
 - `apps/lyron_app/lib/src/presentation/auth/reauth_different_user_dialog.dart` (ready, tested)
-- `apps/lyron_app/lib/src/application/providers.dart` (integration point — not yet wired)
+- `apps/lyron_app/lib/src/application/auth_providers.dart` /
+  `planning_providers.dart` (integration point — not yet wired; `signedIn`
+  resolution is composed through `ActiveOrganizationResolver`, see ADR-022)
 
 ## Problem
 
@@ -42,5 +44,6 @@ real catalog/planning cleanup + sync + new-session sign-out paths.
 ## Trigger Condition
 
 Address before shipping the multi-account / account-switching slice. Any PR that introduces a
-navigator key, a dialog-service, or touches the `signedIn` resolution in `providers.dart` must
-wire `resolveReauth` through and add an integration/widget test covering confirm + cancel.
+navigator key, a dialog-service, or touches the `signedIn` resolution in `auth_providers.dart` /
+`planning_providers.dart` must wire `resolveReauth` through and add an integration/widget test
+covering confirm + cancel.

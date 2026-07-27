@@ -789,6 +789,14 @@ void main() {
           );
 
       expect(syncController.syncCalls, 1);
+      // The write service's own sync-scheduler choke point only bumps the
+      // mutation-scoped revision (ARCH-2): it drives the badge/mutation-list
+      // readers below without knowing whether a given write is
+      // aggregate-affecting. In production, plan_detail_screen's `_editPlan`
+      // handler bumps the aggregate revision itself because editing a plan's
+      // summary is aggregate-scoped; simulate that same caller-side bump here
+      // since this test calls the write service directly.
+      container.read(planningDataRevisionProvider.notifier).state += 1;
       expect(
         (await container.read(planningPlanListProvider.future)).single.slug,
         'weekend-service-2',
@@ -1327,6 +1335,64 @@ void main() {
       await _expectNoPendingPlanningMutations(container);
     },
   );
+
+  test('barrel exports the full application provider surface', () {
+    // Compile-time guard: naming each provider proves the barrel still exports
+    // it after the domain split. Deliberately does NOT read them (reading
+    // autoDispose catalog/planning controllers triggers async refreshes and
+    // platform calls). Runtime wiring is covered by the other tests here and
+    // the full app suite, which resolve these through the same barrel.
+    final surface = <Object>[
+      // core
+      syncOverviewProvider,
+      supabaseClientProvider,
+      songCatalogDatabaseProvider,
+      planningLocalDatabaseProvider,
+      // auth
+      authRepositoryProvider,
+      activeOrganizationResolutionProvider,
+      appAuthControllerProvider,
+      lastKnownIdentityDatabaseProvider,
+      lastKnownIdentityStoreProvider,
+      lastKnownIdentityPersistenceProvider,
+      invitationRepositoryProvider,
+      pendingInviteTokenControllerProvider,
+      redeemControllerProvider,
+      deepLinkListenerProvider,
+      activeMembershipControllerProvider,
+      membershipResolutionProvider,
+      membershipRefreshEffectProvider,
+      appAuthListenableProvider,
+      activeOrganizationReaderProvider,
+      capabilityResolverProvider,
+      // song catalog
+      songCatalogStoreProvider,
+      supabaseSongRepositoryProvider,
+      catalogSessionVerifierProvider,
+      appForegroundStateProvider,
+      songCatalogControllerProvider,
+      activeCatalogContextProvider,
+      catalogSnapshotStateProvider,
+      // planning
+      verifiedEmptyMembershipCleanupCoordinatorProvider,
+      planningLocalStoreProvider,
+      planningMutationStoreProvider,
+      planningLocalReadRepositoryProvider,
+      planningWriteServiceProvider,
+      planningRemoteRefreshRepositoryProvider,
+      planningMutationRemoteRepositoryProvider,
+      planningMutationSyncControllerProvider,
+      planningRepositoryProvider,
+      activePlanningContextControllerProvider,
+      activePlanningContextProvider,
+      planningSyncControllerProvider,
+      planningSyncStateProvider,
+    ];
+
+    expect(surface, hasLength(40));
+    expect(surface.toSet(), hasLength(40)); // all distinct symbols
+    expect(closeSharedDatabases, isA<Function>());
+  });
 }
 
 Future<void> _expectNoPendingPlanningMutations(

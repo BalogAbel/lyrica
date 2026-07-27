@@ -44,6 +44,7 @@ final planningPlanDetailProvider = FutureProvider.autoDispose
 final planningMutationEntriesProvider =
     FutureProvider.autoDispose<List<PlanningMutationRecord>>((ref) async {
       ref.watch(planningDataRevisionProvider);
+      ref.watch(planningMutationRevisionProvider);
       final context = ref.watch(activePlanningContextProvider);
       if (context == null) {
         return const [];
@@ -69,6 +70,7 @@ final hasUnsyncedPlanningMutationsProvider = FutureProvider.autoDispose<bool>((
   ref,
 ) {
   ref.watch(planningDataRevisionProvider);
+  ref.watch(planningMutationRevisionProvider);
   final session = ref.watch(appAuthControllerProvider).state.session;
   final userId = session?.userId;
   if (userId == null) {

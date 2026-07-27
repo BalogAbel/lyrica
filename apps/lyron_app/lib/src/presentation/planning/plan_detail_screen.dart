@@ -236,7 +236,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         );
 
     if (!context.mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -335,7 +334,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       return;
     }
     if (!mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -373,7 +371,6 @@ void _handlePlanningAddSongError(
     debugPrint('$library failed: $error');
     debugPrintStack(stackTrace: stackTrace);
   }
-  ref.read(planningDataRevisionProvider.notifier).state += 1;
   ref.invalidate(planningMutationEntriesProvider);
   ref.invalidate(planningPlanDetailProvider(planId));
 }
@@ -606,7 +603,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         );
 
     if (!context.mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(widget.planDetail.plan.id));
@@ -696,7 +692,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
                     songId: song.id,
                   ),
                 );
-            ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanListProvider);
             ref.invalidate(planningPlanDetailProvider(detail.plan.id));
@@ -810,7 +805,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
         );
 
     if (!context.mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
@@ -901,7 +895,6 @@ class _SessionCardState extends ConsumerState<_SessionCard> {
       return;
     }
     if (!mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
@@ -1208,7 +1201,6 @@ class _SongItemRow extends ConsumerWidget {
           ),
         );
     if (!context.mounted) return;
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
