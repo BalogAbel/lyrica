@@ -14,10 +14,12 @@ import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_titles.dart';
@@ -29,18 +31,7 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_statu
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-/// Overridable provider that resolves the current user's ID.
-///
-/// Defaults to reading from [supabaseClientProvider] so production behaviour is
-/// unchanged. Tests override this with a [Provider.value] to avoid initialising
-/// a real [SupabaseClient].
-final readerUserIdProvider = Provider<String?>((ref) {
-  try {
-    return ref.watch(supabaseClientProvider).auth.currentUser?.id;
-  } catch (_) {
-    return null;
-  }
-});
+export 'song_reader_providers.dart' show readerUserIdProvider;
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -73,6 +64,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   // changes without a new State being created (see didUpdateWidget).
   SongReaderSongActions get _songActions =>
       SongReaderSongActions(songId: widget.songId);
+
+  // Same rationale as `_songActions`: cheap to rebuild, and `onChanged` must
+  // always close over the current `setState` (this State object never
+  // changes, but keeping construction here matches the other delegate
+  // getters and keeps `setState` ownership visibly on the screen).
+  SongReaderCommands get _commands => SongReaderCommands(
+    controller: _controller,
+    onChanged: () => setState(() {}),
+  );
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -154,112 +154,80 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  void _updateState(void Function(SongReaderController controller) update) {
-    setState(() {
-      update(_controller);
-    });
-  }
-
   void _toggleViewMode() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .toggleViewMode();
-      return;
-    }
-
-    _updateState((controller) => controller.toggleViewMode());
+    _commands.toggleViewMode(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _transposeDown() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .transposeDown();
-      return;
-    }
-
-    _updateState((controller) => controller.transposeDown());
+    _commands.transposeDown(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _transposeUp() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .transposeUp();
-      return;
-    }
-
-    _updateState((controller) => controller.transposeUp());
+    _commands.transposeUp(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _capoDown() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .capoDown();
-      return;
-    }
-
-    _updateState((controller) => controller.capoDown());
+    _commands.capoDown(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _capoUp() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .capoUp();
-      return;
-    }
-
-    _updateState((controller) => controller.capoUp());
+    _commands.capoUp(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .setInstrumentDisplayMode(mode);
-      return;
-    }
-
-    _updateState((controller) => controller.setInstrumentDisplayMode(mode));
+    _commands.setInstrumentDisplayMode(
+      mode,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _adjustSharedFontScale(double delta) {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.setSharedFontScale(
-        runtimeController.state.readerState.sharedFontScale + delta,
-      );
-      _persistFontScale();
-      return;
-    }
-
-    _updateState((controller) {
-      controller.setSharedFontScale(controller.state.sharedFontScale + delta);
-    });
-    _persistFontScale();
+    _commands.adjustSharedFontScale(
+      delta,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+      persistFontScale: _persistFontScale,
+    );
   }
 
   void _setSharedFontScale(double scale) {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.setSharedFontScale(scale);
-      return;
-    }
-
-    _updateState((controller) {
-      controller.setSharedFontScale(scale);
-    });
+    _commands.setSharedFontScale(
+      scale,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   /// Reads whether the compact controls are currently visible from the active
-  /// state source (scoped runtime controller or local controller).
+  /// state source (scoped runtime controller or local controller). Kept on
+  /// the screen (not moved into [SongReaderCommands]) because it feeds
+  /// [_syncImmersiveToControls] and the `wasImmersive` capture in the edit
+  /// flow — both screen-lifecycle/immersive-mode concerns, not command
+  /// dispatch.
   bool get _areControlsVisible {
     if (_isScopedMode) {
       return ref
@@ -273,7 +241,8 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   /// Re-applies immersive mode to match the current control visibility. Used on
   /// open and when this screen regains focus after a sibling screen's `dispose`
-  /// or a pushed route's pop reset the global system UI state.
+  /// or a pushed route's pop reset the global system UI state. Kept on the
+  /// screen because it reads `mounted`, which only the `State` object has.
   void _syncImmersiveToControls() {
     if (!mounted) {
       return;
@@ -282,19 +251,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   }
 
   void _toggleCompactControls() {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.toggleCompactControls();
-      _immersiveMode.apply(
-        runtimeController.state.readerState.areCompactControlsVisible,
-      );
-      return;
-    }
-
-    _updateState((controller) => controller.toggleCompactControls());
-    _immersiveMode.apply(_controller.state.areCompactControlsVisible);
+    _commands.toggleCompactControls(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+      immersiveMode: _immersiveMode,
+    );
   }
 
   void _handleBack(BuildContext context) {
