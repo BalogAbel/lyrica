@@ -4,13 +4,11 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
-import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
@@ -20,6 +18,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mod
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_providers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_scoped_navigation.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_titles.dart';
@@ -28,7 +27,6 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_b
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_shell.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_status_views.dart';
-import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 export 'song_reader_providers.dart' show readerUserIdProvider;
@@ -73,6 +71,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     controller: _controller,
     onChanged: () => setState(() {}),
   );
+
+  // Same rationale again: cheap, and always reflects the current widget
+  // fields (needed for the same scoped song-to-song reason as `_songActions`).
+  SongReaderScopedNavigation get _scopedNavigation =>
+      SongReaderScopedNavigation(
+        planId: widget.planId,
+        sessionId: widget.sessionId,
+        sessionItemId: widget.sessionItemId,
+        warmPlanDetail: widget.warmPlanDetail,
+        songId: widget.songId,
+      );
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -260,69 +269,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   }
 
   void _handleBack(BuildContext context) {
-    _immersiveMode.apply(false);
-    if (context.canPop()) {
-      context.pop();
-      return;
-    }
-
-    if (_isScopedMode) {
-      final planSlug = widget.warmPlanDetail?.plan.slug ?? widget.planId!;
-      context.replace(PlanningRoutes.planDetailLocation(planSlug));
-      return;
-    }
-
-    context.replace(AppRoutes.home.path);
+    _scopedNavigation.handleBack(context, immersiveMode: _immersiveMode);
   }
 
   void _syncScopedRuntimeState() {
-    if (!_isScopedMode) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .startSession(
-            planId: widget.planId!,
-            sessionId: widget.sessionId!,
-            songId: widget.songId,
-          );
-    });
-  }
-
-  void _navigateToScopedSong(
-    BuildContext context, {
-    required SessionScopedReaderContext scopedContext,
-    required String songSlug,
-  }) {
-    context.replace(
-      PlanningRoutes.planSessionSongReaderLocation(
-        planSlug: scopedContext.planSlug,
-        sessionSlug: scopedContext.sessionSlug,
-        songSlug: songSlug,
-      ),
-      extra: widget.warmPlanDetail,
-    );
-  }
-
-  VoidCallback? _buildScopedNeighborNavigationTap(
-    BuildContext context, {
-    required SessionScopedReaderContext? scopedContext,
-    required SessionScopedReaderNeighbor? neighbor,
-  }) {
-    if (scopedContext == null || neighbor == null) {
-      return null;
-    }
-
-    return () => _navigateToScopedSong(
-      context,
-      scopedContext: scopedContext,
-      songSlug: neighbor.songSlug,
+    _scopedNavigation.syncScopedRuntimeState(
+      ref: ref,
+      isMounted: () => mounted,
     );
   }
 
@@ -439,48 +392,37 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         hasRecoverableWarnings: hasRecoverableWarnings,
         onShowWarnings: () =>
             _showWarningsDialog(context, recoverableWarningCount),
-        overflowMenu: readerResult == null
-            ? null
-            : SongReaderOverflowMenu(
-                viewMode: readerState.viewMode,
-                canEditSongs: canEditSongs,
-                onSelected: (action) {
-                  switch (action) {
-                    case SongReaderOverflowAction.toggleViewMode:
-                      _toggleViewMode();
-                      break;
-                    case SongReaderOverflowAction.guitarView:
-                      _setInstrumentDisplayMode(
-                        SongReaderInstrumentDisplayMode.guitar,
-                      );
-                      break;
-                    case SongReaderOverflowAction.pianoView:
-                      _setInstrumentDisplayMode(
-                        SongReaderInstrumentDisplayMode.piano,
-                      );
-                      break;
-                    case SongReaderOverflowAction.edit:
-                      unawaited(
-                        _songActions.edit(
-                          context,
-                          ref,
-                          immersiveMode: _immersiveMode,
-                          wasImmersive: _areControlsVisible,
-                        ),
-                      );
-                      break;
-                    case SongReaderOverflowAction.delete:
-                      unawaited(
-                        _songActions.delete(
-                          context,
-                          ref,
-                          onDeleted: _handleBack,
-                        ),
-                      );
-                      break;
-                  }
-                },
-              ),
+        showOverflowMenu: readerResult != null,
+        viewMode: readerState.viewMode,
+        canEditSongs: canEditSongs,
+        onOverflowAction: (action) {
+          switch (action) {
+            case SongReaderOverflowAction.toggleViewMode:
+              _toggleViewMode();
+              break;
+            case SongReaderOverflowAction.guitarView:
+              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.guitar);
+              break;
+            case SongReaderOverflowAction.pianoView:
+              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+              break;
+            case SongReaderOverflowAction.edit:
+              unawaited(
+                _songActions.edit(
+                  context,
+                  ref,
+                  immersiveMode: _immersiveMode,
+                  wasImmersive: _areControlsVisible,
+                ),
+              );
+              break;
+            case SongReaderOverflowAction.delete:
+              unawaited(
+                _songActions.delete(context, ref, onDeleted: _handleBack),
+              );
+              break;
+          }
+        },
       ),
       body: SongReaderBodyShell(
         isResolvingCatalogContext: isResolvingCatalogContext,
@@ -502,7 +444,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         onPersistFontScale: _persistFontScale,
         onToggleCompactControls: _toggleCompactControls,
         resolveNeighborTap: (context, neighbor) =>
-            _buildScopedNeighborNavigationTap(
+            _scopedNavigation.buildScopedNeighborNavigationTap(
               context,
               scopedContext: resolvedScopedContext,
               neighbor: neighbor,

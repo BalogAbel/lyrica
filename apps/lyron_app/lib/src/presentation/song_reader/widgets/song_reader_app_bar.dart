@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// App bar for the song reader screen: back button, title with an optional
 /// effective-key subtitle, a warning indicator for recoverable parse
-/// diagnostics, and a slot for the overflow menu.
+/// diagnostics, and the overflow menu.
+///
+/// Owns the decision of whether to show the overflow menu and its
+/// construction (`showOverflowMenu`/`viewMode`/`canEditSongs` are resolved
+/// values, not providers) — the actual action handling stays with the screen
+/// via [onOverflowAction], since it dispatches to `ref`-touching commands.
 class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
   const SongReaderAppBar({
     super.key,
@@ -12,7 +19,10 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onBack,
     this.hasRecoverableWarnings = false,
     this.onShowWarnings,
-    this.overflowMenu,
+    required this.showOverflowMenu,
+    required this.viewMode,
+    required this.canEditSongs,
+    this.onOverflowAction,
   });
 
   final String title;
@@ -20,7 +30,10 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onBack;
   final bool hasRecoverableWarnings;
   final VoidCallback? onShowWarnings;
-  final Widget? overflowMenu;
+  final bool showOverflowMenu;
+  final SongReaderViewMode viewMode;
+  final bool canEditSongs;
+  final void Function(SongReaderOverflowAction action)? onOverflowAction;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -60,7 +73,12 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
             icon: const Icon(Icons.warning_amber_outlined),
             onPressed: onShowWarnings,
           ),
-        ?overflowMenu,
+        if (showOverflowMenu)
+          SongReaderOverflowMenu(
+            viewMode: viewMode,
+            canEditSongs: canEditSongs,
+            onSelected: onOverflowAction!,
+          ),
       ],
     );
   }
