@@ -487,46 +487,43 @@ void main() {
         chordCharWidth: charWidths.chordCharWidth,
       );
 
-      final absoluteError = (estimated - rendered).abs();
-      final relativeError = absoluteError / rendered;
-
       // ---------------------------------------------------------------
-      // Re-measured 2026-07-28 after (a) deriving lyricCharWidth/
-      // chordCharWidth from real TextPainter measurement of the actual
-      // styles (song_reader_char_metrics.dart) instead of guessing both
-      // with the flat characterWidthEstimate=10.0 constant, and (b) no
-      // longer charging a lyric row for a run whose segments are all
-      // chord-only (matching _SongLineSegmentView, which omits the lyric
-      // Text entirely when segment.text is empty -- song_line_view.dart).
+      // One-sided contract (2026-07-28): resolveFitFontScale picks the
+      // largest scale whose ESTIMATED height fits the viewport, so an
+      // estimate below the real render lets the grid overflow -- the one
+      // thing fit-to-screen exists to prevent. A symmetric relative/
+      // absolute tolerance cannot express that direction matters; the
+      // estimate must never fall below the rendered height, only "not
+      // uselessly loose" above it.
       //
-      // Against this fixture (4 sections / 11 lines: long wrapping chorded
+      // Re-measured 2026-07-28 after modelling greedy word-boundary wrap in
+      // _segmentIntraLines (song_reader_fit.dart) and charging
+      // lineWidgetBottomPadding once per lyric line (see that file):
+      // against this fixture (4 sections / 11 lines: long wrapping chorded
       // lines, a 4-chord instrumental bar with no lyric text under any
       // chord, and a blank ChordproParser-shaped separator line --
       // LyricLine(segments: [LyricSegment(text: '')])) at 375x812,
       // contentPadding=24 all sides, fontScale=1.0:
-      //   rendered=1082.0  estimated=1152.0  relativeError=0.0647 (6.5%)
-      //   absoluteError=70.0
-      // Estimate now slightly OVERSHOOTS instead of undershooting (the
-      // real char widths are larger than the old 10.0 guess), a similar
-      // magnitude of drift to before (was 0.0665/72px) but the direction
-      // flip confirms this is real-width-driven, not a coincidental
-      // cancellation. Tightened from 0.15/160px to 0.10/100px.
+      //   rendered=1082.0  estimated=1198.0  ratio=1.107 (10.7% over)
+      // Ceiling pinned at 1.2x, just above the measured ratio.
       // ---------------------------------------------------------------
       expect(
-        relativeError,
-        lessThan(0.10),
+        estimated,
+        greaterThanOrEqualTo(rendered),
         reason:
-            'estimateSongContentHeight must track the rendered content '
-            'height within a tight relative bound; measured $relativeError '
-            '(rendered=$rendered, estimated=$estimated)',
+            'estimateSongContentHeight must never fall below the rendered '
+            'content height (an under-estimate lets resolveFitFontScale '
+            'pick a scale that overflows); rendered=$rendered '
+            'estimated=$estimated',
       );
 
       expect(
-        absoluteError,
-        lessThan(100.0),
+        estimated,
+        lessThan(rendered * 1.2),
         reason:
-            'absolute drift between estimate and render must stay bounded; '
-            'measured $absoluteError px',
+            'estimateSongContentHeight must not be uselessly loose; '
+            'rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.2}',
       );
     });
 
@@ -563,55 +560,43 @@ void main() {
         chordCharWidth: charWidths.chordCharWidth,
       );
 
-      final absoluteError = (estimated - rendered).abs();
-      final relativeError = absoluteError / rendered;
-
       // ---------------------------------------------------------------
-      // Re-measured 2026-07-28 after (a) deriving lyricCharWidth/
-      // chordCharWidth from real TextPainter measurement of the actual
-      // styles (song_reader_char_metrics.dart) instead of guessing both
-      // with the flat characterWidthEstimate=10.0 constant, and (b) no
-      // longer charging a lyric row for a run whose segments are all
-      // chord-only (matching _SongLineSegmentView, which omits the lyric
-      // Text entirely when segment.text is empty -- song_line_view.dart).
+      // One-sided contract (2026-07-28): see the plain fixture above for
+      // why direction matters here (resolveFitFontScale must never pick a
+      // scale whose estimate undershoots the real render).
       //
-      // Against the chord-heavy fixture (4 sections / 10 lines: wide
-      // extended/slash chords -- Cmaj7#11, F#m7b5, Bbsus4/D, G#dim7,
-      // Eb6/9 (5-9 chars each) -- a line of three single-character
-      // syllables each under a wide chord, TWO chord-only instrumental
-      // bars of EIGHTY wide chords each (no lyric text under any of
-      // them), and the same blank ChordproParser-shaped separator line as
-      // the plain fixture) at 375x812, contentPadding=24 all sides,
-      // fontScale=1.0:
-      //   rendered=2574.0  estimated=2610.0  relativeError=0.0140 (1.4%)
-      //   absoluteError=36.0
-      // This is the fixture that carried the ~31% error from the two
-      // partially-cancelling bugs this whole slice fixes: the flat
-      // characterWidthEstimate undercounted every wide-chord run (too few
-      // runs => height too LOW) while the old lyric-row charge on
-      // chord-only runs added a row that was never rendered (height too
-      // HIGH). Fixing both collapses the error from 0.3124/804px to
-      // 0.0140/36px -- it does NOT just move the error somewhere else, it
-      // removes the two effects that were producing it. Tightened from
-      // 0.37/930px to 0.05/100px (still >3x the measured error since a
-      // chord-only-heavy fixture is the most sensitive to font-metric
-      // rounding across platforms).
+      // Re-measured 2026-07-28 after modelling greedy word-boundary wrap in
+      // _segmentIntraLines and charging lineWidgetBottomPadding once per
+      // lyric line (both in song_reader_fit.dart): against the chord-heavy
+      // fixture (4 sections / 10 lines: wide extended/slash chords --
+      // Cmaj7#11, F#m7b5, Bbsus4/D, G#dim7, Eb6/9 (5-9 chars each) -- a
+      // line of three single-character syllables each under a wide chord,
+      // TWO chord-only instrumental bars of EIGHTY wide chords each (no
+      // lyric text under any of them), and the same blank
+      // ChordproParser-shaped separator line as the plain fixture) at
+      // 375x812, contentPadding=24 all sides, fontScale=1.0:
+      //   rendered=2574.0  estimated=2630.0  ratio=1.022 (2.2% over)
+      // This fixture is chord-only-heavy (no lyric text under most
+      // segments), so it barely exercises the word-wrap model -- the small
+      // increase over the render is mostly lineWidgetBottomPadding across
+      // its many lines. Ceiling pinned at 1.1x, comfortably above the
+      // measured ratio but still tight enough to catch a real regression.
       // ---------------------------------------------------------------
       expect(
-        relativeError,
-        lessThan(0.05),
+        estimated,
+        greaterThanOrEqualTo(rendered),
         reason:
-            'estimateSongContentHeight must track the rendered content '
-            'height within a bounded relative error on a chord-heavy '
-            'fixture too; measured $relativeError '
-            '(rendered=$rendered, estimated=$estimated)',
+            'estimateSongContentHeight must never fall below the rendered '
+            'content height on a chord-heavy fixture too; rendered=$rendered '
+            'estimated=$estimated',
       );
       expect(
-        absoluteError,
-        lessThan(100.0),
+        estimated,
+        lessThan(rendered * 1.1),
         reason:
-            'absolute drift between estimate and render must stay bounded '
-            'on a chord-heavy fixture too; measured $absoluteError px',
+            'estimateSongContentHeight must not be uselessly loose on a '
+            'chord-heavy fixture too; rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.1}',
       );
     });
   });

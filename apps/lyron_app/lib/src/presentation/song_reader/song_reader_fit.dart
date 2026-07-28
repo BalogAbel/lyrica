@@ -13,6 +13,18 @@ const double lyricRowHeight = 24.0;
 const double directiveLineHeight = 36.0;
 const double tabBlockVerticalPadding = 16.0;
 
+/// `SongLineView`'s own `Padding(padding: const EdgeInsets.only(bottom: 2))`
+/// (widgets/song_line_view.dart), which wraps every lyric line's `Wrap` and is
+/// therefore part of the widget's measured render height -- but was never
+/// added on the estimate side. Measured 2026-07-28: the "chord-only
+/// instrumental bar" per-line fixture rendered at 122px against an estimate
+/// of 120px, a 2px shortfall that reproduced exactly this padding (the
+/// fixture has no lyric-text word-wrap in play at all, so it isolates this
+/// gap from the word-wrap-count fix above). This is not a "just in case"
+/// safety margin: it is this literal, already-present padding value, charged
+/// once per lyric line to match what the widget actually adds.
+const double lineWidgetBottomPadding = 2.0;
+
 // Layout decision constants (shared by the section grid, the fit calculator,
 // and the layout resolver so all three agree).
 const double denseLayoutMinWidth = 1180.0;
@@ -203,16 +215,75 @@ double _segmentPixelWidth(
 ///
 /// Conflating these two widths is exactly how the chord-row/lyric-wrap bugs
 /// in this file keep recurring -- keep them separate.
+///
+/// Real text layout breaks at WORD boundaries, not at an arbitrary character
+/// count, so a plain `ceil(lyricWidth / effectiveLineWidth)` division
+/// undercounts: it lets a wrap point fall in the middle of a word, packing
+/// more characters onto a line than real layout would allow, which pushes
+/// the estimate below the rendered height -- exactly backwards for
+/// `resolveFitFontScale`, which must never choose a scale whose estimated
+/// height is less than what actually renders. This models the same greedy
+/// left-to-right packing the run-packing loop above already uses for
+/// groups: split the text on spaces, and greedily pack whole words onto a
+/// line, starting a new line whenever the next word would overflow. A
+/// single word wider than a whole line is placed on its own and spans
+/// `ceil(wordWidth / effectiveLineWidth)` lines by itself (mirroring how a
+/// single unbreakable token still gets clipped into multiple lines by
+/// `Text`'s own line-breaking, since there is no word boundary inside it to
+/// break at).
 int _segmentIntraLines({
   required SongReaderSegmentProjection segment,
   required double effectiveLineWidth,
   required double fontScale,
   required double lyricCharWidth,
 }) {
-  final lyricWidth = segment.text.length * lyricCharWidth * fontScale;
-  if (lyricWidth <= 0) return 1;
-  final lines = (lyricWidth / effectiveLineWidth).ceil();
-  return lines < 1 ? 1 : lines;
+  final text = segment.text;
+  if (text.isEmpty) return 1;
+
+  final charWidth = lyricCharWidth * fontScale;
+  final spaceWidth = charWidth;
+  final words = text.split(' ');
+
+  var lineCount = 0;
+  var currentLineWidth = 0.0;
+  var currentLineStarted = false;
+
+  void flushLine() {
+    if (currentLineStarted) {
+      lineCount += 1;
+    }
+    currentLineWidth = 0.0;
+    currentLineStarted = false;
+  }
+
+  for (final word in words) {
+    final wordWidth = word.length * charWidth;
+
+    if (wordWidth > effectiveLineWidth) {
+      // A single word longer than the line occupies
+      // ceil(wordWidth / effectiveLineWidth) lines on its own -- flush
+      // whatever was accumulating on the current line first (it does not
+      // share a line with this oversized word).
+      flushLine();
+      lineCount += (wordWidth / effectiveLineWidth).ceil();
+      continue;
+    }
+
+    final widthIfAppended = currentLineStarted
+        ? currentLineWidth + spaceWidth + wordWidth
+        : wordWidth;
+    if (currentLineStarted && widthIfAppended > effectiveLineWidth) {
+      flushLine();
+      currentLineWidth = wordWidth;
+      currentLineStarted = true;
+    } else {
+      currentLineWidth = widthIfAppended;
+      currentLineStarted = true;
+    }
+  }
+  flushLine();
+
+  return lineCount < 1 ? 1 : lineCount;
 }
 
 double _lineItemHeight({
@@ -439,7 +510,10 @@ double _lineItemHeight({
         runsHeight += lyricH + chordH;
       }
 
-      return runsHeight + (runHasChord.length - 1) * lineRunSpacing + lineGap;
+      return runsHeight +
+          (runHasChord.length - 1) * lineRunSpacing +
+          lineGap +
+          lineWidgetBottomPadding;
     case SongReaderCommentProjection():
       final commentLength = item.text.length;
       final commentWrapCount = commentLength == 0

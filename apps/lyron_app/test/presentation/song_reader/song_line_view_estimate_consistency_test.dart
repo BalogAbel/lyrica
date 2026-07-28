@@ -88,12 +88,19 @@ void main() {
   const viewMode = SongReaderViewMode.chordsAndLyrics;
   const fontScale = 1.0;
 
-  Future<void> expectClose(
+  // One-sided contract: resolveFitFontScale picks the largest scale whose
+  // ESTIMATED height fits the viewport, so an estimate below the real
+  // render lets the grid overflow -- the one thing fit-to-screen exists to
+  // prevent. An estimate above the real render only ever picks a slightly
+  // smaller font. Direction therefore matters in a way a symmetric
+  // tolerance cannot express: the estimate must never fall below the
+  // rendered height, and [ceilingMultiplier] just keeps it from being
+  // uselessly loose.
+  Future<void> expectUpperBound(
     WidgetTester tester, {
     required SongReaderLyricLineProjection line,
     required double width,
-    required double relativeTolerance,
-    required double absoluteToleranceFloor,
+    required double ceilingMultiplier,
   }) async {
     final rendered = await _renderAndMeasure(
       tester,
@@ -110,18 +117,20 @@ void main() {
       fontScale: fontScale,
     );
 
-    final absoluteError = (estimated - rendered).abs();
-    final relativeError = absoluteError / rendered;
-    final tolerance = rendered * relativeTolerance > absoluteToleranceFloor
-        ? rendered * relativeTolerance
-        : absoluteToleranceFloor;
-
     expect(
-      absoluteError,
-      lessThan(tolerance),
+      estimated,
+      greaterThanOrEqualTo(rendered),
       reason:
-          'rendered=$rendered estimated=$estimated absoluteError=$absoluteError '
-          'relativeError=$relativeError tolerance=$tolerance',
+          'the estimate must never fall below the real render (an '
+          'under-estimate lets resolveFitFontScale pick a scale that '
+          'overflows); rendered=$rendered estimated=$estimated',
+    );
+    expect(
+      estimated,
+      lessThan(rendered * ceilingMultiplier),
+      reason:
+          'the estimate must not be uselessly loose; rendered=$rendered '
+          'estimated=$estimated ceiling=${rendered * ceilingMultiplier}',
     );
   }
 
@@ -140,21 +149,24 @@ void main() {
         ],
       );
 
-      // Measured 2026-07-28: rendered=292.0 estimated=250.0 (width=160)
-      // absoluteError=42.0 relativeError=0.144. The gap here is the
-      // intra-segment wrap count (_segmentIntraLines): ceil(lyricWidth /
-      // effectiveLineWidth) approximates real word-wrapping with a plain
-      // character-count division, so it can be off by roughly one wrapped
-      // line for a single long run -- an accepted, already-documented
-      // approximation (see "a single over-wide segment models its own
-      // lyric text wrap" in song_reader_fit_test.dart), not a regression
-      // this slice introduces.
-      await expectClose(
+      // PRE-FIX (2026-07-28): rendered=292.0 estimated=250.0 (width=160).
+      // estimated < rendered -- RED under the one-sided contract. The old
+      // intra-segment wrap count (_segmentIntraLines) used
+      // ceil(lyricWidth / effectiveLineWidth), a plain character-count
+      // division that ignores word boundaries, so it undercounts wrapped
+      // lines for a run of ordinary words.
+      //
+      // POST-FIX (2026-07-28), after modelling greedy word-boundary wrap in
+      // _segmentIntraLines: rendered=292.0 estimated=372.0. estimated >
+      // rendered (ratio 1.27x) -- the word-wrap model now over-counts this
+      // fixture's wraps slightly (it does not know the actual glyph widths
+      // within a word, only a flat per-character average), but never drops
+      // below the render.
+      await expectUpperBound(
         tester,
         line: line,
         width: 160.0,
-        relativeTolerance: 0.17,
-        absoluteToleranceFloor: 8.0,
+        ceilingMultiplier: 1.35,
       );
     });
 
@@ -169,19 +181,21 @@ void main() {
         ],
       );
 
-      // Measured 2026-07-28: rendered=210.0 estimated=224.0 (width=150)
-      // absoluteError=14.0 relativeError=0.067. This is the reviewer's
-      // original repro shape: wide chords (C#m/G# @ ~84.6px, Cmaj7#11
-      // wider still) over one-character syllables at a narrow column --
-      // the estimator must count 4 separate runs here (one wide chord per
-      // run), not collapse them into fewer runs the way the flat
-      // characterWidthEstimate=10.0 guess used to.
-      await expectClose(
+      // PRE-FIX (2026-07-28): rendered=210.0 estimated=224.0 (width=150).
+      // estimated > rendered -- already satisfies the one-sided contract.
+      // This is the reviewer's original repro shape: wide chords (C#m/G#
+      // @ ~84.6px, Cmaj7#11 wider still) over one-character syllables at a
+      // narrow column -- the estimator must count 4 separate runs here
+      // (one wide chord per run), not collapse them into fewer runs.
+      //
+      // POST-FIX (2026-07-28): rendered=210.0 estimated=226.0 (ratio 1.08x).
+      // Word-wrap modelling and the +2px widget-padding margin barely move
+      // this fixture (no segment's own text wraps here), as expected.
+      await expectUpperBound(
         tester,
         line: line,
         width: 150.0,
-        relativeTolerance: 0.09,
-        absoluteToleranceFloor: 6.0,
+        ceilingMultiplier: 1.15,
       );
     });
 
@@ -197,16 +211,24 @@ void main() {
         ],
       );
 
-      // Measured 2026-07-28: rendered=122.0 estimated=120.0 (width=150)
-      // absoluteError=2.0 relativeError=0.016. Every segment's text is
-      // empty, so this run must cost a chord row only (no lyric row) --
-      // the Step 2 fix this line exists to pin down.
-      await expectClose(
+      // PRE-FIX (2026-07-28): rendered=122.0 estimated=120.0 (width=150).
+      // estimated < rendered by 2px -- RED under the one-sided contract.
+      // Not a wrap-model bug (every segment's text is empty here, so no
+      // word-wrap path is involved) -- it is SongLineView's own
+      // `Padding(bottom: 2)` (widgets/song_line_view.dart), which is part of
+      // the widget's measured render height but was never added on the
+      // estimate side.
+      //
+      // POST-FIX (2026-07-28), after charging `lineWidgetBottomPadding`
+      // (song_reader_fit.dart) once per lyric line: rendered=122.0
+      // estimated=122.0 -- exact match, confirming the 2px gap was fully
+      // explained by that one padding constant, not by an additional
+      // font-metric imprecision needing its own separate margin.
+      await expectUpperBound(
         tester,
         line: line,
         width: 150.0,
-        relativeTolerance: 0.05,
-        absoluteToleranceFloor: 6.0,
+        ceilingMultiplier: 1.05,
       );
     });
 
@@ -223,18 +245,23 @@ void main() {
         ],
       );
 
-      // Measured 2026-07-28: rendered=434.0 estimated=368.0 (width=130)
-      // absoluteError=66.0 relativeError=0.152. Same intra-segment
-      // wrap-count approximation as the plain-lyric-line fixture above --
-      // a single long run's own Text wraps into several real visual lines
-      // that a plain ceil(lyricWidth / effectiveLineWidth) division can
-      // only approximate, not reproduce exactly.
-      await expectClose(
+      // PRE-FIX (2026-07-28): rendered=434.0 estimated=368.0 (width=130).
+      // estimated < rendered -- RED under the one-sided contract. Same
+      // intra-segment wrap-count gap as the plain-lyric-line fixture
+      // above: a single long run's own Text wraps into several real
+      // visual lines that a plain ceil(lyricWidth / effectiveLineWidth)
+      // division undercounts because it ignores word boundaries.
+      //
+      // POST-FIX (2026-07-28): rendered=434.0 estimated=514.0 (ratio 1.18x).
+      // The greedy word-wrap model now over-counts this multi-wrap segment
+      // (same flat per-character-average limitation as the first fixture,
+      // amplified here since this segment wraps more times), but always
+      // stays at or above the render.
+      await expectUpperBound(
         tester,
         line: line,
         width: 130.0,
-        relativeTolerance: 0.18,
-        absoluteToleranceFloor: 10.0,
+        ceilingMultiplier: 1.25,
       );
     });
 
@@ -248,17 +275,23 @@ void main() {
         ],
       );
 
-      // Measured 2026-07-28: rendered=54.0 estimated=56.0 (width=200)
-      // absoluteError=2.0 relativeError=0.037. 'won'+'der'+'ful' merge into
-      // one word group (groupSegmentsIntoWords) since none of the three
-      // segments end/start with whitespace, so the estimator must not
-      // mistake this for three separate runs.
-      await expectClose(
+      // PRE-FIX (2026-07-28): rendered=54.0 estimated=56.0 (width=200).
+      // estimated > rendered -- already satisfies the one-sided contract.
+      // 'won'+'der'+'ful' merge into one word group (groupSegmentsIntoWords)
+      // since none of the three segments end/start with whitespace, so the
+      // estimator must not mistake this for three separate runs.
+      //
+      // POST-FIX (2026-07-28): rendered=54.0 estimated=58.0 (ratio 1.07x).
+      // 'won'+'der'+'ful' has no space in the underlying text at all (the
+      // three segments concatenate into a single word for word-wrap
+      // purposes too), so the new greedy word-wrap model does not change
+      // this fixture's shape -- the small increase is entirely the
+      // lineWidgetBottomPadding margin.
+      await expectUpperBound(
         tester,
         line: line,
         width: 200.0,
-        relativeTolerance: 0.05,
-        absoluteToleranceFloor: 6.0,
+        ceilingMultiplier: 1.15,
       );
     });
   });
