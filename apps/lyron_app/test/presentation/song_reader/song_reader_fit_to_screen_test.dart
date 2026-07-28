@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -240,6 +241,15 @@ void main() {
       // Content render width is min(availableWidth, maxContentWidth=960).
       final contentRenderWidth = availableWidth < 960 ? availableWidth : 960.0;
 
+      // The widget's own double-tap handler measures the real lyric/chord
+      // character advances (measureSongReaderCharWidths) before calling
+      // resolveFitFontScale, so this expectation must feed the same
+      // measured widths in rather than the flat characterWidthEstimate
+      // default, or the two calls compute different scales for reasons
+      // unrelated to a real bug.
+      final charWidths = measureSongReaderCharWidths(
+        tester.element(find.byType(SongReaderCompactSurface)),
+      );
       final expectedFit = resolveFitFontScale(
         sections: projection.sections,
         viewMode: projection.viewMode,
@@ -247,6 +257,8 @@ void main() {
         availableHeight: availableHeight,
         minScale: SongReaderState.minSharedFontScale,
         maxScale: SongReaderState.maxSharedFontScale,
+        lyricCharWidth: charWidths.lyricCharWidth,
+        chordCharWidth: charWidths.chordCharWidth,
       );
 
       final center = tester.getCenter(find.byType(SongReaderCompactSurface));
