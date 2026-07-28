@@ -703,6 +703,278 @@ void main() {
     );
   });
 
+  group('SongLineView per-line estimate/render consistency: breakable '
+      'whitespace beyond a plain ASCII space (seventh review round)', () {
+    // A seventh review round found _wordWrapLineCount (song_reader_fit.dart)
+    // splits on `' '` -- the ASCII space only -- while Flutter's real line
+    // breaker also breaks at TAB and at several Unicode space-separator
+    // characters, and treats some characters as MANDATORY breaks rather
+    // than mere break opportunities. text.split(' ') does not see any of
+    // these, so a "word" containing one of them is measured as a single
+    // unbreakable token; if that token's total width happens to fit within
+    // effectiveLineWidth, the estimator reports ONE line where the real
+    // render, breaking internally, needs several -- the same under-estimate
+    // shape as the sixth round's chord-space bug, just reached through a
+    // different separator each time.
+    //
+    // Verified empirically with a real TextPainter (not assumed from the
+    // Unicode category name) before writing these fixtures. Two separate
+    // properties were checked and must not be conflated:
+    //
+    // (1) Is the character a BREAK OPPORTUNITY at all?
+    // TextPainter.getLineBoundary confirms TAB and every tested Unicode
+    // space separator -- U+2000-U+200A, U+202F, U+205F, U+3000, U+1680,
+    // U+200B, and even U+00A0 NO-BREAK SPACE despite the name -- place the
+    // same trailing-whitespace line boundary a plain ASCII space does: all
+    // of them break. A bare `\r` does NOT break at all (glued, no break
+    // opportunity); `\r\n` and a lone `\n` each force exactly one MANDATORY
+    // break (line ends immediately after the preceding content, the
+    // separator itself consumed as the terminator) -- as do U+2028 LINE
+    // SEPARATOR and U+2029 PARAGRAPH SEPARATOR.
+    //
+    // (2) Does the OLD code's oversized-single-token fallback
+    // (`ceil(wordWidth / effectiveLineWidth)`, used when a separator isn't
+    // recognized and the whole text becomes one "word") already happen to
+    // match what the real render needs, or does it fall short?
+    // This is NOT the same question as (1), and the answer surprisingly
+    // splits the "no-break"-branded characters from the plain ones:
+    // U+00A0 NO-BREAK SPACE and U+202F NARROW NO-BREAK SPACE both let
+    // Flutter's real layout "steal" trailing characters of an oversized
+    // following run across the break to fill the remaining line width
+    // (confirmed via TextPainter.getLineBoundary showing line 1 ending
+    // mid-word, e.g. "CCCCCCC CCCC" / "CCC CCCCCCC" for a
+    // three-word run at 200px) -- real Flutter's line count for these two
+    // characters converges on the SAME theoretical minimum
+    // (`ceil(totalWidth / lineWidth)`) the old fallback already computes,
+    // so testing with either of them, in every width/shape tried, produced
+    // NO under-estimate at all (a "plausible-looking fixture that doesn't
+    // reproduce," same lesson as the sixth round). TAB and every OTHER
+    // tested Unicode space (U+2003 EM SPACE, U+2009 THIN SPACE, U+200B ZERO
+    // WIDTH SPACE, U+3000 IDEOGRAPHIC SPACE) do NOT permit this stealing --
+    // real Flutter treats the oversized run as a hard atomic unit needing
+    // its own fresh line(s), same as this file's greedy model -- so the old
+    // fallback's theoretical-minimum ceiling under-counts for all of them,
+    // reproducing the defect. U+3000 IDEOGRAPHIC SPACE is used below as a
+    // realistic, plausible separator (a real character a CJK-writing user
+    // could type into a lyric or comment), not a synthetic corner case.
+
+    testWidgets(
+      "reviewer's repro: a chord label with an internal TAB wraps at the "
+      'tab, not treated as one unbreakable token',
+      (tester) async {
+        // 'C\tCCCCCCCCCC' (12 chars: 'C', a tab, then 10 C's) -- the exact
+        // shape as the sixth round's space repro ('C CCCCCCCCCC'), just
+        // with a tab instead of a space. text.split(' ') does not see a tab
+        // as a separator at all, so the old code measured this as ONE
+        // 12-character word; at a 130px column that word's width happens
+        // to fit under the oversized-single-word threshold differently than
+        // the space case, reproducing an under-estimate through a shape the
+        // sixth round's fix never touched.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: 'C\tCCCCCCCCCC',
+              text: '',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28, seventh round): rendered=72.0 estimated=52.0
+        // -- RED, the same under-estimate shape as the sixth round's space
+        // repro, reached through a tab instead.
+        // POST-FIX (splitting on the full breakable-whitespace class):
+        // rendered=72.0 estimated=72.0 -- exact match.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'chord label contains a tab that forces a word-boundary wrap; '
+              'rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.05),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.05}',
+        );
+      },
+    );
+
+    testWidgets(
+      'a lyric line containing an IDEOGRAPHIC SPACE (U+3000) wraps at it, '
+      'not treated as one unbreakable token',
+      (tester) async {
+        // Same shape again ('C' + separator + ten C\'s), this time a plain
+        // lyric segment (no chord) with U+3000 IDEOGRAPHIC SPACE standing in
+        // for the ASCII space -- a real Unicode space-separator character
+        // (the full-width space CJK text uses), not a synthetic corner
+        // case. text.split(' ') does not recognize it either, so the old
+        // code measures the whole 12-character string as ONE token.
+        //
+        // NOTE on U+00A0 NO-BREAK SPACE, which might look like the more
+        // obvious pick here: it WAS measured (see the group doc above) and
+        // confirmed to genuinely break, same as this character -- but at
+        // every width/shape tried, real Flutter's layout let the following
+        // oversized run "steal" enough trailing characters across the break
+        // to exactly match the old fallback's theoretical-minimum line
+        // count, so it never actually went RED. U+3000 does not exhibit
+        // that stealing (confirmed empirically, not assumed), so it is the
+        // one that actually demonstrates the defect.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: null,
+              text: 'C　CCCCCCCCCC',
+            ),
+          ],
+        );
+
+        // width=150 -- at 130 (the width used by every other fixture in
+        // this file) this particular shape's old-fallback line count
+        // already happens to match the real render (both compute 2); 150 is
+        // the width at which real Flutter's line breaker needs a genuine
+        // 3rd line (measured directly: real render breaks into "C", then
+        // the ten-C run splits across two more lines) while the old
+        // fallback's ceil(totalWidth / 150) still only reaches 2.
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 150.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 150.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28, seventh round): rendered=72.0 estimated=60.0
+        // -- RED, the same under-estimate shape as the tab repro above,
+        // reached through a Unicode space instead.
+        // POST-FIX: rendered=72.0 estimated=84.0 (ratio 1.17x) -- the greedy
+        // model, once it recognizes U+3000 as breakable, puts "C" on its own
+        // line same as the render, but (like the sixth round's chord-space
+        // fix) does not model Flutter's "steal a few characters back onto
+        // the previous line" optimization, so it is looser here than the
+        // exact TAB match above.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'lyric segment contains an IDEOGRAPHIC SPACE that Flutter '
+              'breaks at; rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.25),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.25}',
+        );
+      },
+    );
+
+    testWidgets(
+      'a lyric line containing an embedded newline is a MANDATORY break, '
+      'not a mere break opportunity',
+      (tester) async {
+        // '\n' forces the line to end immediately after the preceding
+        // content regardless of remaining width, and starts the next
+        // segment on a fresh line -- not "pack until it no longer fits"
+        // like a breakable-whitespace opportunity.
+        //
+        // No ASCII space anywhere in this text ('Verse' + '\n' + 'Chorus',
+        // 12 characters total) -- text.split(' ') therefore sees the whole
+        // thing as ONE "word" (the '\n' is just an ordinary character to
+        // the old code, contributing its own charWidth like any other
+        // glyph), and at a wide column (300px) that one 12-character
+        // "word"'s flat width fits comfortably under effectiveLineWidth, so
+        // the old code reports exactly ONE line. (An earlier version of
+        // this fixture used two ASCII-space-separated halves at this same
+        // width and did NOT reproduce the defect: the old greedy algorithm,
+        // while not modelling '\n' as a break at all, still happened to
+        // compute 2 lines from ordinary width-driven wrapping of its OTHER
+        // words, coincidentally matching the mandatory-break count. Cutting
+        // out every ASCII space removes that coincidence and isolates the
+        // mandatory-break defect on its own.) The real render forces
+        // exactly two lines regardless of the column being wide enough for
+        // both halves together.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: null,
+              text: 'Verse\nChorus',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 300.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 300.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28, seventh round): rendered=52.0 estimated=36.0
+        // -- RED, a genuine under-estimate: the old code sees one
+        // comfortably-fitting 12-character "word" and reports 1 line, while
+        // the real render, honoring the mandatory break, needs 2.
+        // POST-FIX (splitting on _mandatoryLineBreak first, each side
+        // wrapped independently): rendered=52.0 estimated=60.0 (ratio
+        // 1.15x) -- each mandatory-delimited chunk ("Verse", "Chorus") is
+        // charged its own full lyricRowHeight, matching the render's own
+        // per-line charging.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'lyric segment contains an embedded mandatory newline; '
+              'rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.25),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.25}',
+        );
+      },
+    );
+  });
+
   group('SongLineView per-line estimate/render consistency under a '
       'non-default text scaler', () {
     // song_reader_char_metrics.dart used to measure with

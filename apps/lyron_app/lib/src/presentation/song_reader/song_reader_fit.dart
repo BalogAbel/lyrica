@@ -366,28 +366,96 @@ int _segmentIntraLines({
   );
 }
 
+/// Mandatory line-break sequences: Flutter's line breaker honors these as
+/// FORCED line ends (the text before one occupies its own line, the next
+/// segment starts on a fresh line, regardless of remaining width) rather
+/// than mere break OPPORTUNITIES like [_breakableWhitespace] below.
+///
+/// `\r\n` is listed before the lone `\n` so the pair matches as a single
+/// break, not two: measured with a real `TextPainter`
+/// (`song_line_view_estimate_consistency_test.dart`'s empirical probe;
+/// `AAAA\r\nBBBB\r\nCCCC` produces exactly 3 lines, one break per `\r\n`
+/// pair), a bare `\r` with no following `\n` is NOT a break at all --
+/// `TextPainter.getLineBoundary` shows it glued to its neighbours with no
+/// break opportunity whatsoever, unlike every other candidate tested. It is
+/// therefore deliberately left OUT of both this pattern and
+/// [_breakableWhitespace]: a stray `\r` is treated as an ordinary character
+/// (still charged its `charWidth` like any other glyph, which can only ever
+/// push a token wider and a line count higher -- the safe direction).
+///
+/// U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR are included
+/// because the same empirical probe confirmed Flutter forces a break there
+/// identically to `\n` (`getLineBoundary` places the line's end immediately
+/// after the preceding content, the separator itself consumed as the
+/// terminator, never left dangling on the line the way trailing
+/// [_breakableWhitespace] is).
+final RegExp _mandatoryLineBreak = RegExp('\r\n|\n| | ');
+
+/// Breakable whitespace: characters Flutter's line breaker treats as an
+/// ordinary word-boundary break OPPORTUNITY (not a forced line end -- see
+/// [_mandatoryLineBreak] above), verified with a real `TextPainter` rather
+/// than assumed from the Unicode category name
+/// (`song_line_view_estimate_consistency_test.dart`'s empirical probe):
+/// ASCII space and TAB, plus the Unicode Zs "space separator" characters
+/// (U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F, U+3000) and U+200B ZERO
+/// WIDTH SPACE. Every one of these was confirmed via
+/// `TextPainter.getLineBoundary` to place the same trailing-whitespace line
+/// boundary a plain ASCII space does.
+///
+/// This deliberately includes U+00A0 NO-BREAK SPACE and U+202F NARROW
+/// NO-BREAK SPACE: despite the names, Flutter's line breaker does NOT
+/// special-case either as non-breaking -- both break exactly like a plain
+/// space. Assuming otherwise from the Unicode category name, rather than
+/// measuring, would silently reproduce this round's exact defect (an
+/// under-estimate) through a separator that looks safe to ignore but is
+/// not. (A SEPARATE empirical finding, not modelled here because it only
+/// ever makes the estimate LOOSER, never wrong: for these same two
+/// "no-break"-branded characters specifically, real Flutter additionally
+/// lets a following over-wide run "steal" trailing characters across the
+/// break to fill the remaining line width, something the greedy model
+/// below does not attempt -- harmless, since not modelling a real-world
+/// space-saving trick can only over-count lines, never under-count them.)
+final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
+
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
 /// [charWidth]. Shared by every kind of text this file estimates that DOES
 /// break at word boundaries in the real render: the lyric segment
-/// ([_segmentIntraLines]), a comment line, and a directive line (both the
-/// inline and the leading capo/tuning variant) -- see each call site's own
-/// comment for why THAT kind uses this word-boundary model rather than the
-/// even-division model `_segmentRowHeight` uses for a chord label (which
-/// has no reliable word boundaries in the general case).
+/// ([_segmentIntraLines]), a comment line, a chord label
+/// ([_segmentRowHeight]), and a directive line (both the inline and the
+/// leading capo/tuning variant) -- see each call site's own comment for why
+/// THAT kind uses this word-boundary model.
 ///
-/// Splits on spaces and greedily packs whole words onto a line, starting a
-/// new line whenever the next word would overflow. A single word wider
-/// than a whole line is placed on its own and spans
+/// Splits [text] first on [_mandatoryLineBreak] (each resulting chunk --
+/// including an empty one between two consecutive mandatory breaks, which
+/// still occupies a blank visual line, measured: `AAAA\n\nBBBB` renders 3
+/// lines, not 2) is wrapped independently and their line counts summed,
+/// since a mandatory break can never be undone by available width. Within
+/// each chunk, greedily packs whole words (split on [_breakableWhitespace])
+/// onto a line, starting a new line whenever the next word would overflow.
+/// A single word wider than a whole line is placed on its own and spans
 /// `ceil(wordWidth / effectiveLineWidth)` lines by itself (mirroring how a
 /// single unbreakable token still gets clipped into multiple lines by
 /// `Text`'s own line-breaking, since there is no word boundary inside it to
-/// break at). A plain `ceil(textWidth / effectiveLineWidth)` division would
-/// undercount: it lets a wrap point fall in the middle of a word, packing
-/// more characters onto a line than real layout would allow, which pushes
-/// the estimate below the rendered height -- exactly backwards for
-/// `resolveFitFontScale`, which must never choose a scale whose estimated
-/// height is less than what actually renders.
+/// break at).
+///
+/// A seventh review round found the previous version split only on a
+/// literal ASCII space, so a "word" containing a TAB or any other
+/// [_breakableWhitespace] character was measured as one unbreakable token;
+/// whenever that token's flat width happened to still fit within
+/// [effectiveLineWidth] (or its oversized-fallback ceiling happened to
+/// match the real line count -- not guaranteed, see the doc above), the
+/// estimate fell below the real render, reproducing the sixth round's
+/// chord-space defect through a different separator. Splitting on the full
+/// [_breakableWhitespace] class closes every one of those gaps the same
+/// way the sixth round closed the plain-space one.
+///
+/// A plain `ceil(textWidth / effectiveLineWidth)` division over the WHOLE
+/// text would undercount: it lets a wrap point fall in the middle of a
+/// word, packing more characters onto a line than real layout would allow,
+/// which pushes the estimate below the rendered height -- exactly backwards
+/// for `resolveFitFontScale`, which must never choose a scale whose
+/// estimated height is less than what actually renders.
 int _wordWrapLineCount({
   required String text,
   required double effectiveLineWidth,
@@ -395,8 +463,32 @@ int _wordWrapLineCount({
 }) {
   if (text.isEmpty) return 1;
 
+  var lineCount = 0;
+  for (final chunk in text.split(_mandatoryLineBreak)) {
+    lineCount += _greedyWrapLineCount(
+      chunk: chunk,
+      effectiveLineWidth: effectiveLineWidth,
+      charWidth: charWidth,
+    );
+  }
+  return lineCount < 1 ? 1 : lineCount;
+}
+
+/// Greedy word-boundary line count for a single [chunk] that contains no
+/// [_mandatoryLineBreak] of its own (a mandatory break always ends a line
+/// regardless of remaining width, so [_wordWrapLineCount] never asks this
+/// helper to reason about one). An empty [chunk] -- the whole text, or one
+/// side of a mandatory break -- still occupies exactly one (possibly blank)
+/// visual line; see [_wordWrapLineCount]'s doc for the measured proof.
+int _greedyWrapLineCount({
+  required String chunk,
+  required double effectiveLineWidth,
+  required double charWidth,
+}) {
+  if (chunk.isEmpty) return 1;
+
   final spaceWidth = charWidth;
-  final words = text.split(' ');
+  final words = chunk.split(_breakableWhitespace);
 
   var lineCount = 0;
   var currentLineWidth = 0.0;

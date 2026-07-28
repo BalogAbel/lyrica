@@ -314,3 +314,96 @@ Worth doing after the fit-layout **performance** regression test that the
 repository review's section 10 still lists as missing: `resolveFitFontScale` runs a
 24-iteration binary search over every line, and finer layout modelling adds work
 inside that loop.
+
+## Breakable whitespace beyond a plain ASCII space (2026-07-28, seventh review round)
+
+A seventh review round found `_wordWrapLineCount` (song_reader_fit.dart) split on
+`' '` — the ASCII space only — while Flutter's real line breaker also breaks at TAB
+and at several Unicode space-separator characters, and treats some characters as
+MANDATORY breaks (the line ends right there regardless of remaining width) rather
+than mere break opportunities. `text.split(' ')` does not recognize any of these, so
+a "word" containing one was measured as a single unbreakable token — the same
+under-estimate shape the sixth round closed for a literal space, reproduced through
+a different separator. Reproduction (the reviewer's repro): `C\tCCCCCCCCCC` at a
+130px column rendered 72px, estimated 52px.
+
+Every candidate separator was measured empirically with a real `TextPainter`
+(`song_line_view_estimate_consistency_test.dart`'s probe) before being used in a
+fixture, per "check `TextPainter` behaviour empirically, don't assume from the
+Unicode category" — this mattered, because assumption would have been wrong twice
+over:
+
+- **Breaks, confirmed via `TextPainter.getLineBoundary`**: TAB, and the Unicode
+  space separators U+00A0 (NO-BREAK SPACE), U+1680, U+2000-U+200A, U+200B (ZERO
+  WIDTH SPACE), U+202F (NARROW NO-BREAK SPACE), U+205F, U+3000 (IDEOGRAPHIC SPACE).
+  Every one of these places the same trailing-whitespace line boundary a plain
+  ASCII space does — including U+00A0 and U+202F, whose names suggest they should
+  NOT be break points; Flutter's line breaker does not special-case either.
+- **Does NOT break at all**: a bare `\r` with no following `\n` — glued to its
+  neighbours, no break opportunity whatsoever (confirmed the same way).
+- **MANDATORY break** (line ends immediately after the preceding content, the
+  separator consumed as the terminator, next content starts a fresh line
+  regardless of remaining width): `\r\n` (as a single unit — a bare `\r` is not
+  itself a break, so `\r\n` must match before a lone `\n` or it would double-count),
+  a lone `\n`, and — confirmed to behave identically to `\n` — U+2028 LINE
+  SEPARATOR and U+2029 PARAGRAPH SEPARATOR. A double mandatory break (`AAAA\n\nBBBB`)
+  produces 3 real lines, not 2: the empty chunk between two mandatory breaks still
+  occupies its own blank visual line.
+
+A second, separate empirical finding, NOT modelled (because it only ever loosens
+the estimate, never breaks the one-sided contract): among the confirmed-breaking
+characters, U+00A0 and U+202F specifically — the two "no-break"-branded ones —
+additionally let Flutter's real layout "steal" trailing characters of a following
+over-wide run across the break to fill the remaining line width (confirmed via
+`getLineBoundary`: a three-word run split as `"CCCCCCC␠CCCC"` / `"CCC␠CCCCCCC"`,
+not on a word boundary). Real Flutter's line count for these two characters,
+in every width/shape tried, converged on the SAME theoretical minimum
+(`ceil(totalWidth / lineWidth)`) the OLD buggy fallback already computed — so
+fixtures built around U+00A0 or U+202F specifically did not reproduce a red
+under-estimate at all (the same "plausible-looking fixture doesn't reproduce"
+lesson as the sixth round), even though both characters genuinely break. TAB and
+every other tested Unicode space do not exhibit this stealing and reproduce the
+defect reliably. U+3000 IDEOGRAPHIC SPACE (a real character, not synthetic) was
+used in the fixture below instead of U+00A0 for exactly this reason.
+
+Fixed by splitting `_wordWrapLineCount` into two passes: `text.split` on a
+`_mandatoryLineBreak` pattern (`\r\n|\n|U+2028|U+2029`) first, summing each
+resulting chunk's own line count (a new `_greedyWrapLineCount` helper, same
+algorithm as before) — a mandatory break can never be undone by available width, so
+each side is wrapped independently and never packed onto the same line as the
+other. Within each chunk, words are now split on a `_breakableWhitespace` character
+class (space, tab, and the confirmed Unicode space separators, U+2000-U+200B as one
+contiguous range) instead of a literal `' '`. One helper, used by every kind that
+already used `_wordWrapLineCount` (lyric segment, chord label, comment, both
+directive kinds, section header) — no chord-specific fork.
+
+Measured, no custom `TextScaler`, fontScale 1.0:
+
+| Case | Rendered | Pre-fix estimated | Post-fix estimated | Post-fix ratio |
+|------|----------|--------------------|---------------------|-----------------|
+| Chord label with internal TAB (`C\tCCCCCCCCCC`), width 130 | 72 px | 52 px **RED** | 72 px | 1.00 |
+| Lyric segment with internal U+3000 (`C　CCCCCCCCCC`), width 150 | 72 px | 60 px **RED** | 84 px | 1.17 |
+| Lyric segment with embedded `\n` (`Verse\nChorus`, no ASCII space at all), width 300 | 52 px | 36 px **RED** | 60 px | 1.15 |
+
+All three were RED pre-fix and are at or above the render post-fix. The TAB case
+lands exact (its shape happens to line up with the greedy model's row boundaries,
+same caveat as the sixth round's exact matches — not guaranteed in general). The
+U+3000 case is looser (1.17x) because the greedy model does not attempt Flutter's
+character-stealing optimization noted above; that costs a slightly smaller
+auto-fit font size, the same acceptable trade-off as every other fixture in this
+document.
+
+Every pre-existing fixture in all three consistency test files
+(`song_line_view_estimate_consistency_test.dart`,
+`song_reader_block_estimate_consistency_test.dart`,
+`song_reader_estimate_render_consistency_test.dart`) was re-measured against the
+fixed code and none moved: `_breakableWhitespace`'s character class includes the
+literal ASCII space as one alternative, and none of the pre-existing fixtures'
+text contains TAB, a Unicode space, or an embedded mandatory break, so
+`text.split(_breakableWhitespace)` produces byte-for-byte the same split as the old
+`text.split(' ')` for every one of them — confirmed both by re-running the full
+suite (no ceiling needed to change) and by spot-checking representative fixtures
+from each file directly (the two whole-song fixtures: 1082/1198 and 2574/2630,
+unchanged; every block-kind fixture in `song_reader_block_estimate_consistency_test
+.dart`, unchanged; a sample of `song_line_view_estimate_consistency_test.dart`'s
+plain-space fixtures, unchanged).
