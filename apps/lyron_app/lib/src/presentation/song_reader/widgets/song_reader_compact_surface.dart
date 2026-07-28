@@ -168,7 +168,7 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
             : 0,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
-        ambientTextScaleRatio: charWidths.ambientTextScaleRatio,
+        textScale: charWidths.textScale,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);

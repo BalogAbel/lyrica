@@ -1,7 +1,96 @@
+import 'package:flutter/widgets.dart' show TextScaler;
 import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
+
+/// Bundles the ambient [TextScaler] and the base (fontScale == 1.0, no
+/// ambient scaling) point sizes of every text style this file's estimator
+/// models, so every height/width formula below can compute the REAL
+/// effective size multiplier at the actual rendered size instead of
+/// flattening the scaler to a single ratio.
+///
+/// [TextScaler.scale] is not linear in general (Android 14+ "non-linear font
+/// scaling" boosts small text more than large text, so the same scaler
+/// yields a different ratio at 12px than at 22px). The old design measured
+/// one ratio -- `textScaler.scale(1.0)`, evaluated at a 1px probe size --
+/// and multiplied every quantity (row heights at wildly different base
+/// sizes, character widths) by that single number. That is only correct for
+/// a LINEAR scaler, where the ratio is the same at every size; under a
+/// non-linear one it silently reproduces the exact "estimate below render"
+/// failure resolveFitFontScale exists to prevent (see
+/// [SongReaderCharWidths.lyricCharWidth] docs in song_reader_char_metrics.dart
+/// for the char-width side of this).
+///
+/// [factorFor] instead evaluates the scaler at the CANDIDATE size
+/// (`baseFontSize * fontScale`) for whichever style is being estimated, so
+/// each style gets its own correct multiplier no matter how non-linear the
+/// scaler is.
+class SongReaderFitTextScale {
+  const SongReaderFitTextScale({
+    required this.textScaler,
+    required this.lyricBaseFontSize,
+    required this.chordBaseFontSize,
+    required this.headerBaseFontSize,
+    required this.inlineDirectiveBaseFontSize,
+  });
+
+  /// No ambient scaling, default Material 3 base sizes (`bodyLarge`,
+  /// `labelLarge`, `titleLarge`, `labelMedium`). This is the default for
+  /// every function in this file, so pure unit tests that never construct a
+  /// [SongReaderFitTextScale] keep compiling and keep their original
+  /// meaning: `TextScaler.noScaling` makes [factorFor] degenerate to plain
+  /// `fontScale`, exactly the pre-non-linear-scaler behavior.
+  static const identity = SongReaderFitTextScale(
+    textScaler: TextScaler.noScaling,
+    lyricBaseFontSize: 16.0,
+    chordBaseFontSize: 14.0,
+    headerBaseFontSize: 22.0,
+    inlineDirectiveBaseFontSize: 12.0,
+  );
+
+  /// The ambient `MediaQuery.textScalerOf(context)` scaler in effect when
+  /// this bundle was built.
+  final TextScaler textScaler;
+
+  /// `theme.textTheme.bodyLarge?.fontSize`, the lyric style's base size
+  /// (song_line_view.dart's `lyricStyle`).
+  final double lyricBaseFontSize;
+
+  /// `theme.textTheme.labelLarge?.fontSize`, the chord style's base size
+  /// (song_line_view.dart's `chordStyle`) -- also the leading capo/tuning
+  /// directive's base size (song_reader_section_grid.dart's `_DirectiveLine`
+  /// uses `labelLarge` too, just a different weight/color).
+  final double chordBaseFontSize;
+
+  /// `theme.textTheme.titleLarge?.fontSize`, the section header's base size
+  /// (song_reader_section_grid.dart's `_buildHeaderWidget`).
+  final double headerBaseFontSize;
+
+  /// `theme.textTheme.labelMedium?.fontSize`, the INLINE directive line's
+  /// base size (widgets/directive_line_view.dart's `DirectiveLineView`,
+  /// rendered for a directive that appears inside a section rather than the
+  /// leading capo/tuning line).
+  final double inlineDirectiveBaseFontSize;
+
+  /// Effective size multiplier for a style whose base (fontScale == 1.0, no
+  /// ambient scaling) point size is [baseFontSize], when the in-app font
+  /// control is at [fontScale]. Replaces the old `fontScale *
+  /// ambientTextScaleRatio` flattening: [TextScaler.scale] is evaluated at
+  /// the REAL rendered size (`baseFontSize * fontScale`), not at a fixed
+  /// 1px probe, so a non-linear scaler is honored at every style's actual
+  /// size instead of being collapsed to its ratio near zero.
+  ///
+  /// Pass `fontScale: 1.0` for styles the renderer never scales by the
+  /// in-app font control (the section header and the leading directive
+  /// line neither apply `sharedFontScale` to their `TextStyle` -- see
+  /// song_reader_section_grid.dart) so the factor reflects only the ambient
+  /// scaler, matching what actually renders.
+  double factorFor(double baseFontSize, double fontScale) {
+    if (baseFontSize <= 0) return fontScale;
+    return textScaler.scale(baseFontSize * fontScale) / baseFontSize;
+  }
+}
 
 // Height constants shared by the section grid and the fit-scale calculator.
 const double sectionGap = 20.0;
@@ -189,11 +278,12 @@ double _segmentPixelWidth(
   bool showChords, {
   required double lyricCharWidth,
   required double chordCharWidth,
-  required double fontScale,
+  required double lyricFactor,
+  required double chordFactor,
 }) {
-  final lyricWidth = segment.text.length * lyricCharWidth * fontScale;
+  final lyricWidth = segment.text.length * lyricCharWidth * lyricFactor;
   final chordWidth = (showChords && segment.displayChord != null)
-      ? segment.displayChord!.length * chordCharWidth * fontScale
+      ? segment.displayChord!.length * chordCharWidth * chordFactor
       : 0.0;
   return lyricWidth > chordWidth ? lyricWidth : chordWidth;
 }
@@ -234,13 +324,13 @@ double _segmentPixelWidth(
 int _segmentIntraLines({
   required SongReaderSegmentProjection segment,
   required double effectiveLineWidth,
-  required double fontScale,
+  required double lyricFactor,
   required double lyricCharWidth,
 }) {
   final text = segment.text;
   if (text.isEmpty) return 1;
 
-  final charWidth = lyricCharWidth * fontScale;
+  final charWidth = lyricCharWidth * lyricFactor;
   final spaceWidth = charWidth;
   final words = text.split(' ');
 
@@ -293,21 +383,28 @@ double _lineItemHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
-  final charsPerLine = (effectiveLineWidth / (lyricCharWidth * fontScale))
+  // Both lyricCharWidth and chordCharWidth are measured RAW (no ambient
+  // scaler baked in, see measureSongReaderCharWidths) at each style's own
+  // base size, so every quantity derived from them needs the REAL effective
+  // factor at that style's base size and the candidate fontScale -- not a
+  // single flattened ambient ratio applied uniformly (see
+  // SongReaderFitTextScale doc for why that breaks under a non-linear
+  // scaler). lyricFactor and chordFactor differ whenever the scaler is
+  // non-linear, since the lyric and chord styles have different base sizes.
+  final lyricFactor = textScale.factorFor(
+    textScale.lyricBaseFontSize,
+    fontScale,
+  );
+  final chordFactor = textScale.factorFor(
+    textScale.chordBaseFontSize,
+    fontScale,
+  );
+  final charsPerLine = (effectiveLineWidth / (lyricCharWidth * lyricFactor))
       .floor()
       .clamp(12, 140);
-  // Row-height constants (chordRowHeight, lyricRowHeight) are flat guesses,
-  // not TextPainter measurements, so -- unlike lyricCharWidth/chordCharWidth,
-  // which already bake the ambient scaler in via measureSongReaderCharWidths
-  // -- they need [ambientTextScaleRatio] multiplied in separately here.
-  // fontScale alone (the reader's own in-app font-scale control) is not the
-  // full picture: the rendered row is also taller when the OS/ambient
-  // MediaQuery.textScalerOf(context) scale is turned up, and that is an
-  // orthogonal multiplier on top of fontScale, not a substitute for it.
-  final rowScale = fontScale * ambientTextScaleRatio;
 
   switch (item) {
     case SongReaderLyricLineProjection():
@@ -401,7 +498,8 @@ double _lineItemHeight({
                 showChords,
                 lyricCharWidth: lyricCharWidth,
                 chordCharWidth: chordCharWidth,
-                fontScale: fontScale,
+                lyricFactor: lyricFactor,
+                chordFactor: chordFactor,
               ),
         );
         final groupHasChord = group.any((s) => s.displayChord != null);
@@ -447,13 +545,14 @@ double _lineItemHeight({
               showChords,
               lyricCharWidth: lyricCharWidth,
               chordCharWidth: chordCharWidth,
-              fontScale: fontScale,
+              lyricFactor: lyricFactor,
+              chordFactor: chordFactor,
             );
             final segHasChord = segment.displayChord != null;
             final segIntraLines = _segmentIntraLines(
               segment: segment,
               effectiveLineWidth: effectiveLineWidth,
-              fontScale: fontScale,
+              lyricFactor: lyricFactor,
               lyricCharWidth: lyricCharWidth,
             );
 
@@ -511,10 +610,10 @@ double _lineItemHeight({
       var runsHeight = 0.0;
       for (var i = 0; i < runHasChord.length; i++) {
         final lyricH = runHasLyric[i]
-            ? runIntraLines[i] * lyricRowHeight * rowScale
+            ? runIntraLines[i] * lyricRowHeight * lyricFactor
             : 0.0;
         final chordH = (runHasChord[i] && showChords)
-            ? (chordRowHeight * rowScale +
+            ? (chordRowHeight * chordFactor +
                   (runHasLyric[i] ? chordToLyricGap : 0.0))
             : 0.0;
         runsHeight += lyricH + chordH;
@@ -529,13 +628,22 @@ double _lineItemHeight({
       final commentWrapCount = commentLength == 0
           ? 1
           : (commentLength / charsPerLine).ceil().clamp(1, 14);
-      return commentWrapCount * (lyricRowHeight * rowScale) + lineGap;
+      return commentWrapCount * (lyricRowHeight * lyricFactor) + lineGap;
     case SongReaderTabProjection():
-      return item.rawLines.length * (lyricRowHeight * rowScale) +
+      return item.rawLines.length * (lyricRowHeight * lyricFactor) +
           lineGap +
           tabBlockVerticalPadding;
     case SongReaderDirectiveProjection():
-      return directiveLineHeight;
+      // DirectiveLineView (widgets/directive_line_view.dart) renders this
+      // INLINE directive at `theme.textTheme.labelMedium`, with no
+      // `sharedFontScale` applied to its `TextStyle` -- so, like the
+      // section header below, the factor uses a FIXED fontScale of 1.0:
+      // only the ambient scaler affects this style's rendered size.
+      final inlineDirectiveFactor = textScale.factorFor(
+        textScale.inlineDirectiveBaseFontSize,
+        1.0,
+      );
+      return directiveLineHeight * inlineDirectiveFactor;
   }
 }
 
@@ -558,14 +666,31 @@ double flowBlockHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   switch (block.kind) {
     case FlowBlockKind.leadingDirective:
-      return directiveLineHeight + sectionGap;
+      // _DirectiveLine (song_reader_section_grid.dart) renders the leading
+      // capo/tuning directive at `theme.textTheme.labelLarge` -- the same
+      // base size as the chord style, just a different weight/color -- and
+      // applies no `sharedFontScale` to its `TextStyle`, so (like the
+      // section header below) the factor is fixed at fontScale 1.0: only
+      // the ambient scaler affects this style's rendered size.
+      final leadingDirectiveFactor = textScale.factorFor(
+        textScale.chordBaseFontSize,
+        1.0,
+      );
+      return directiveLineHeight * leadingDirectiveFactor + sectionGap;
     case FlowBlockKind.sectionHeader:
+      // _buildHeaderWidget (song_reader_section_grid.dart) renders at
+      // `theme.textTheme.titleLarge`, also never scaled by
+      // `sharedFontScale` -- fontScale fixed at 1.0, ambient-only factor.
       // sectionGap is charged here (see gap-accounting note above).
-      return headerHeight + sectionGap;
+      final headerFactor = textScale.factorFor(
+        textScale.headerBaseFontSize,
+        1.0,
+      );
+      return headerHeight * headerFactor + sectionGap;
     case FlowBlockKind.line:
       final lineH = _lineItemHeight(
         item: block.line!,
@@ -574,7 +699,7 @@ double flowBlockHeight({
         fontScale: fontScale,
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
-        ambientTextScaleRatio: ambientTextScaleRatio,
+        textScale: textScale,
       );
       // For unlabeled sections the first line carries the sectionGap.
       return block.isSectionStart ? lineH + sectionGap : lineH;
@@ -723,7 +848,7 @@ double estimateSectionHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
   final h = hasHeader ? headerHeight : 0.0;
@@ -736,7 +861,7 @@ double estimateSectionHeight({
       fontScale: fontScale,
       lyricCharWidth: lyricCharWidth,
       chordCharWidth: chordCharWidth,
-      ambientTextScaleRatio: ambientTextScaleRatio,
+      textScale: textScale,
     );
   }
   return h + linesHeight + sectionGap;
@@ -751,7 +876,7 @@ double estimateSongContentHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   return sections.fold<double>(
     0.0,
@@ -764,7 +889,7 @@ double estimateSongContentHeight({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
-          ambientTextScaleRatio: ambientTextScaleRatio,
+          textScale: textScale,
         ),
   );
 }
@@ -802,7 +927,7 @@ FlowLayout resolveFlowLayoutForSections({
   required bool hasLeadingDirective,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   final blocks = buildFlowBlocks(
     sections: sections,
@@ -817,7 +942,7 @@ FlowLayout resolveFlowLayoutForSections({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
-          ambientTextScaleRatio: ambientTextScaleRatio,
+          textScale: textScale,
         ),
       )
       .toList(growable: false);
@@ -858,7 +983,7 @@ RenderedHeightEstimate estimateRenderedLayout({
   double leadingDirectiveHeight = 0,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   // Single-column total: blocks at full width.
   final hasLeadingDirective = leadingDirectiveHeight > 0;
@@ -875,7 +1000,7 @@ RenderedHeightEstimate estimateRenderedLayout({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
-          ambientTextScaleRatio: ambientTextScaleRatio,
+          textScale: textScale,
         ),
       )
       .fold<double>(0.0, (a, b) => a + b);
@@ -898,7 +1023,7 @@ RenderedHeightEstimate estimateRenderedLayout({
     hasLeadingDirective: hasLeadingDirective,
     lyricCharWidth: lyricCharWidth,
     chordCharWidth: chordCharWidth,
-    ambientTextScaleRatio: ambientTextScaleRatio,
+    textScale: textScale,
   );
 
   if (layout.columnCount == 2) {
@@ -931,7 +1056,7 @@ double resolveFitFontScale({
   double leadingDirectiveHeight = 0,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
-  double ambientTextScaleRatio = 1.0,
+  SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   bool fits(double scale) =>
       estimateRenderedLayout(
@@ -944,7 +1069,7 @@ double resolveFitFontScale({
         leadingDirectiveHeight: leadingDirectiveHeight,
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
-        ambientTextScaleRatio: ambientTextScaleRatio,
+        textScale: textScale,
       ).height <=
       availableHeight;
 

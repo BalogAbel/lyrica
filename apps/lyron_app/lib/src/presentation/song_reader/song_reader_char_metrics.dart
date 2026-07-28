@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 
-/// Measured average per-character advance (in logical pixels, at
-/// `fontScale == 1.0`) of the lyric and chord text styles the reader
-/// actually renders with.
+/// Measured average per-character advance (in logical pixels, at the
+/// RAW base point size -- fontScale == 1.0, no ambient scaling) of the
+/// lyric and chord text styles the reader actually renders with, plus the
+/// [SongReaderFitTextScale] bundle needed to convert those raw widths (and
+/// every flat row-height constant in song_reader_fit.dart) to the actual
+/// rendered size at any candidate fontScale.
 ///
 /// [song_reader_fit.dart]'s estimator used to guess both widths with a
 /// single flat constant (`characterWidthEstimate = 10.0`). Real
@@ -11,38 +15,49 @@ import 'package:flutter/material.dart';
 ///   - chord (`labelLarge`, size 14, `w700`): ~14.1 px/char
 ///   - lyric (`bodyLarge`, size 16): ~16.5 px/char
 /// [measureSongReaderCharWidths] replaces the guess with a real measurement
-/// so the estimator tracks whichever theme/text-scale is actually active,
-/// instead of a number that only happened to match one specific theme.
+/// so the estimator tracks whichever theme is actually active, instead of a
+/// number that only happened to match one specific theme.
+///
+/// These widths are measured at the RAW base size, deliberately WITHOUT the
+/// ambient `MediaQuery.textScalerOf(context)` scaler baked in (unlike an
+/// earlier version of this function, which measured with the ambient
+/// scaler applied and left callers to multiply by `fontScale` alone
+/// afterward). That flattened design assumed the ambient ratio measured at
+/// the base size still applies unchanged once `fontScale` moves the
+/// candidate font away from that base size -- true only for a LINEAR
+/// scaler. `TextScaler.scale` is not linear in general (Android 14+
+/// "non-linear font scaling" boosts small text more than large text), so
+/// the ratio at, say, 14px chord text differs from the ratio at whatever
+/// probe size the old design happened to measure at. Measuring raw here and
+/// applying [SongReaderFitTextScale.factorFor] downstream (in
+/// song_reader_fit.dart) at the REAL candidate rendered size fixes this: the
+/// scaler is always evaluated at the size it will actually apply to.
 class SongReaderCharWidths {
   const SongReaderCharWidths({
     required this.lyricCharWidth,
     required this.chordCharWidth,
-    required this.ambientTextScaleRatio,
+    required this.textScale,
   });
 
   /// Average px/char advance of the lyric body style (`bodyLarge`, `height:
-  /// 1.25`), at fontScale == 1.0. Already includes the ambient
-  /// `MediaQuery.textScalerOf(context)` factor (see below), so callers only
-  /// need to multiply by their own `sharedFontScale` on top of this.
+  /// 1.25`), measured RAW at its base point size (`textScale.lyricBaseFontSize`,
+  /// fontScale == 1.0, no ambient scaling). Callers convert this to the
+  /// width at any candidate `sharedFontScale` via
+  /// `lyricCharWidth * textScale.factorFor(textScale.lyricBaseFontSize, sharedFontScale)`.
   final double lyricCharWidth;
 
   /// Average px/char advance of the chord label style (`labelLarge`,
-  /// `FontWeight.w700`), at fontScale == 1.0. Same ambient-scaler note as
-  /// [lyricCharWidth] applies.
+  /// `FontWeight.w700`), measured RAW at its base point size
+  /// (`textScale.chordBaseFontSize`). Same conversion rule as
+  /// [lyricCharWidth] applies, using `textScale.chordBaseFontSize`.
   final double chordCharWidth;
 
-  /// The ambient `MediaQuery.textScalerOf(context)` ratio at the time of
-  /// measurement (`textScaler.scale(1.0)`), for callers that need to scale a
-  /// quantity OTHER than character width by the same ambient factor -- e.g.
-  /// song_reader_fit.dart's row-height constants (`chordRowHeight`,
-  /// `lyricRowHeight`), which are flat guesses rather than TextPainter
-  /// measurements, so they cannot bake the ambient scaler in themselves the
-  /// way [lyricCharWidth]/[chordCharWidth] do. Pass this as
-  /// `ambientTextScaleRatio` to `resolveFitFontScale` /
-  /// `estimateSongContentHeight` / friends -- do NOT also fold it into the
-  /// `fontScale` argument to those functions, or [lyricCharWidth] (which
-  /// already includes it) would be scaled by it twice.
-  final double ambientTextScaleRatio;
+  /// The ambient [SongReaderFitTextScale] bundle (scaler + every base font
+  /// size song_reader_fit.dart's estimator models), captured once per build
+  /// alongside the char-width measurements above. Pass this straight through
+  /// as the `textScale` argument to `resolveFitFontScale` /
+  /// `estimateSongContentHeight` / `resolveFlowLayoutForSections` / friends.
+  final SongReaderFitTextScale textScale;
 }
 
 // Representative sample strings used to measure an AVERAGE per-character
@@ -60,27 +75,31 @@ const _chordMeasureSample = 'ABCDEFG#b/mjasdimug 0123456789';
 /// builds for chord and lyric text:
 ///   - chord: `theme.textTheme.labelLarge` + `FontWeight.w700`
 ///   - lyric: `theme.textTheme.bodyLarge` + `height: 1.25`
-/// at their BASE font size (fontScale == 1.0) -- callers scale the returned
-/// widths linearly by fontScale themselves rather than re-measuring at every
-/// scale. This keeps `resolveFitFontScale`'s ~24-iteration binary search
-/// (song_reader_fit.dart) free of repeated `TextPainter` layout work: this
-/// function is meant to be called once per build (or once per event, for a
-/// one-shot double-tap handler), with the result reused across every line
-/// and every binary-search iteration in that call.
+/// at their BASE font size (fontScale == 1.0) -- callers convert the
+/// returned widths to any candidate fontScale via
+/// `SongReaderFitTextScale.factorFor` (song_reader_fit.dart) rather than
+/// re-measuring at every scale. This keeps `resolveFitFontScale`'s
+/// ~24-iteration binary search free of repeated `TextPainter` layout work:
+/// this function is meant to be called once per build (or once per event,
+/// for a one-shot double-tap handler), with the result reused across every
+/// line and every binary-search iteration in that call.
 ///
-/// Uses `MediaQuery.textScalerOf(context)`, the SAME scaler the rendered
-/// `Text` widgets pick up ambiently (song_line_view.dart never sets its own
-/// `textScaler`, so Flutter applies the ambient one from `MediaQuery`).
-/// Measuring with `TextScaler.noScaling` here while the render uses the
-/// ambient scaler made the two diverge whenever a user turns up system font
-/// scaling: the estimate would keep assuming 1.0x glyph width while the
-/// actual render grew by the system's scale factor, silently reintroducing
-/// the same "estimate below render" failure mode `sharedFontScale` handles
-/// for the in-app font control. `sharedFontScale` and the ambient text
-/// scaler are two independent multipliers on the SAME rendered glyph size,
-/// so both must be reflected somewhere: the ambient scaler here (baked into
-/// the measured px/char), `sharedFontScale` by the caller (multiplied in
-/// afterwards, as before).
+/// Measures RAW, at exactly the style's base point size -- deliberately
+/// WITHOUT the ambient `MediaQuery.textScalerOf(context)` scaler applied to
+/// the `TextPainter` (an earlier version of this function baked the ambient
+/// scaler into the measurement itself and left callers to multiply by
+/// `fontScale` alone). That flattened design assumed the ambient ratio
+/// measured at the base size still holds once `fontScale` moves the
+/// candidate font away from that base size -- true only for a LINEAR
+/// scaler; `TextScaler.scale` is not linear in general (Android 14+
+/// "non-linear font scaling" boosts small text more than large text), so a
+/// single baked-in ratio silently reintroduces the same "estimate below
+/// render" failure mode `sharedFontScale` exists to prevent (a real user
+/// with non-linear system font scaling turned on is exactly the user this
+/// must not overflow for). Instead, the ambient scaler is captured
+/// unevaluated in [SongReaderFitTextScale] and applied downstream
+/// (song_reader_fit.dart) at the REAL candidate rendered size for each
+/// style, via `SongReaderFitTextScale.factorFor`.
 SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
   final theme = Theme.of(context);
   final textScaler = MediaQuery.textScalerOf(context);
@@ -93,7 +112,6 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     final painter = TextPainter(
       text: TextSpan(text: sample, style: style),
       textDirection: TextDirection.ltr,
-      textScaler: textScaler,
     );
     try {
       painter.layout();
@@ -106,6 +124,13 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
   return SongReaderCharWidths(
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
-    ambientTextScaleRatio: textScaler.scale(1.0),
+    textScale: SongReaderFitTextScale(
+      textScaler: textScaler,
+      lyricBaseFontSize: lyricStyle?.fontSize ?? 16.0,
+      chordBaseFontSize: chordStyle?.fontSize ?? 14.0,
+      headerBaseFontSize: theme.textTheme.titleLarge?.fontSize ?? 22.0,
+      inlineDirectiveBaseFontSize:
+          theme.textTheme.labelMedium?.fontSize ?? 12.0,
+    ),
   );
 }

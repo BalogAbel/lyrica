@@ -142,7 +142,7 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
             : 0,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
-        ambientTextScaleRatio: charWidths.ambientTextScaleRatio,
+        textScale: charWidths.textScale,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);
