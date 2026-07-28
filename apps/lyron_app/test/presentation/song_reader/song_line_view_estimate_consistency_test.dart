@@ -432,6 +432,133 @@ void main() {
     });
   });
 
+  group('SongLineView per-line estimate/render consistency: chord label '
+      'wraps within its own run', () {
+    // `_SongLineSegmentView`'s chord `Text` has no `ConstrainedBox` of its
+    // own (widgets/song_line_view.dart) -- only the lyric `Text` below it
+    // gets one -- but `RenderWrap` constrains EVERY child's main-axis size
+    // to its own `constraints.maxWidth` regardless (Flutter SDK,
+    // `RenderWrap._computeRuns`: `BoxConstraints(maxWidth:
+    // constraints.maxWidth)` applied uniformly to every child, whether or
+    // not that child wraps itself in its own ConstrainedBox). So a chord
+    // label wider than the line wraps internally onto a second (or
+    // further) line, growing the segment taller -- this is reachable with
+    // NO non-linear scaler at all, just a long enough chord label at a
+    // narrow enough column, so these cases use the default (no custom)
+    // TextScaler to isolate the mechanism from the non-linear-scaler group
+    // below.
+    //
+    // width=130 -- ABOVE _lineItemHeight's own `columnWidth.clamp(120.0,
+    // 1200.0)` floor (song_reader_fit.dart), so the estimator's
+    // effectiveLineWidth matches the real column width exactly rather than
+    // being clamped up to 120 while the real widget still lays out at a
+    // narrower width than that. A width below 120 would make the estimator
+    // and the render disagree on the width being tested, not just on the
+    // chord-wrap math this group exists to exercise.
+
+    testWidgets('a long chord label alone must wrap at a narrow width', (
+      tester,
+    ) async {
+      final line = SongReaderLyricLineProjection(
+        segments: const [
+          SongReaderSegmentProjection(displayChord: 'Cmaj7#11/G', text: ''),
+        ],
+      );
+
+      // 'Cmaj7#11/G' (10 chars -- a slash chord roughly the length of the
+      // coordinator's "ten-character chord" example) at the default
+      // (unscaled) chord style is ~141px wide (see
+      // measureSongReaderCharWidths doc, ~14.1px/char) -- wider than a
+      // 130px column, forcing ceil(141 / 130) = 2 chord rows.
+      final rendered = await _renderAndMeasure(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 130.0,
+        fontScale: fontScale,
+      );
+      final estimated = _estimatedLineHeight(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 130.0,
+        fontScale: fontScale,
+      );
+
+      // PRE-FIX (2026-07-28): rendered=52.0 estimated=32.0 -- RED, a
+      // genuine under-estimate (the estimator assumed the chord label
+      // always fit on one row). POST-FIX: rendered=52.0 estimated=52.0 --
+      // exact match.
+      expect(
+        estimated,
+        greaterThanOrEqualTo(rendered),
+        reason:
+            'the estimate must never fall below the real render when a '
+            'chord label alone must wrap onto multiple lines; '
+            'rendered=$rendered estimated=$estimated',
+      );
+      expect(
+        estimated,
+        lessThan(rendered * 1.3),
+        reason:
+            'the estimate must not be uselessly loose either; '
+            'rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.3}',
+      );
+    });
+
+    testWidgets(
+      'a wrapping chord label over a lyric syllable combines chord rows, '
+      'the gap, and the lyric line correctly',
+      (tester) async {
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'Cmaj7#11/G', text: 'a'),
+          ],
+        );
+
+        // Same wrapping chord as above, now with a one-character lyric
+        // syllable under it -- exercises _segmentRowHeight's
+        // chordRows*chordRowHeight + gap + lyricLines*lyricRowHeight
+        // combination, not just the chord-only path.
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28): rendered=74.0 estimated=58.0 -- RED, same
+        // under-estimate as above. POST-FIX: rendered=74.0 estimated=78.0
+        // (ratio 1.05x).
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'wrapping chord label sits over lyric text; rendered=$rendered '
+              'estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.3),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.3}',
+        );
+      },
+    );
+  });
+
   group('SongLineView per-line estimate/render consistency under a '
       'non-default text scaler', () {
     // song_reader_char_metrics.dart used to measure with
@@ -543,23 +670,22 @@ void main() {
         ],
       );
 
-      // width=260 (not the narrower 150 used by the linear-scaler fixture
-      // above): at this scaler, 'Cmaj7#11' scales to ~189px -- wider than
-      // 150, which would make the chord Text's OWN content wrap onto a
-      // second line inside a single run (SongLineView never constrains a
-      // chord Text's width -- only the lyric Text gets a ConstrainedBox,
-      // see widgets/song_line_view.dart -- so Wrap's own per-run maxWidth
-      // squeeze is the only thing bounding it). That is a real, separate
-      // gap this estimator does not model at all (chord labels are always
-      // assumed to render on exactly one line), orthogonal to the
-      // effectiveFactor conversion this fixture exists to exercise. 260px
-      // keeps every chord's scaled width under the line width so this
-      // fixture isolates the effectiveFactor bug cleanly.
+      // width=150 -- narrow enough that at this scaler 'Cmaj7#11' (scaled
+      // to ~214px, near the 14px style's 1.9x peak factor) exceeds the line
+      // width. `_SongLineSegmentView`'s chord
+      // `Text` has no `ConstrainedBox` of its own (only the lyric `Text`
+      // does, see widgets/song_line_view.dart), but `RenderWrap` still
+      // constrains EVERY child's main-axis size to its own
+      // `constraints.maxWidth` regardless (see
+      // `RenderWrap._computeRuns` in the Flutter SDK), so the chord label
+      // wraps internally onto a second line here -- exercising
+      // song_reader_fit.dart's `_segmentRowHeight` chord-wrap modelling,
+      // not just the effectiveFactor conversion.
       final rendered = await _renderAndMeasure(
         tester,
         line: line,
         viewMode: viewMode,
-        width: 260.0,
+        width: 150.0,
         fontScale: fontScale,
         textScaler: textScaler,
       );
@@ -567,11 +693,11 @@ void main() {
         tester,
         line: line,
         viewMode: viewMode,
-        width: 260.0,
+        width: 150.0,
         fontScale: fontScale,
       );
 
-      // POST-FIX (2026-07-28): rendered=194.0 estimated=194.0 -- exact
+      // POST-FIX (2026-07-28): rendered=346.0 estimated=346.0 -- exact
       // match. Ceiling pinned at 1.3x, comfortably above.
       expect(
         estimated,
