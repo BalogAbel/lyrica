@@ -71,6 +71,76 @@ Future<double> _renderAndMeasure(
   return _measuredLineHeight(tester);
 }
 
+// ---------------------------------------------------------------------------
+// Non-linear TextScaler fixture.
+// ---------------------------------------------------------------------------
+//
+// `TextScaler.linear(x)` scales every font size by the same ratio `x`, so
+// flattening it to a single probe -- `textScaler.scale(1.0)` -- and
+// multiplying every quantity by that one number happens to be correct: the
+// ratio at 1px equals the ratio at any other size. Real non-linear scalers
+// (Android 14+ "non-linear font scaling") do not have this property.
+//
+// This scaler models a "hump" shape: real accessibility scaling curves
+// typically boost near-illegible TINY text only modestly, boost COMMON
+// READING sizes (roughly the 12-16px range this reader's directive/chord/
+// lyric styles live in) the MOST, and taper back down for already-large
+// text (headlines, this reader's 22px section header) that doesn't need as
+// much help. Concretely: 1.1x at/below 2px, rising to a 1.9x peak at 14px,
+// falling back to 1.2x at/above 22px, linearly interpolated in between.
+//
+// This shape is what makes `textScaler.scale(1.0)` -- the flattened probe
+// the old ambientTextScaleRatio bug evaluated at, 1.0 being comfortably in
+// the near-zero "modest boost" region -- a genuine UNDER-estimate of the
+// real ratio at every one of this reader's actual text styles (1.1x at the
+// probe vs. ~1.7-1.9x at the chord/lyric/directive styles' real sizes),
+// not just "a different number": using the flattened 1.1x in place of each
+// style's own ~1.7-1.9x factor charges LESS row height than the real render
+// needs, reproducing the reviewer's under-estimate directly. A simple
+// monotonically-decreasing curve (small sizes boosted more than large, no
+// hump) was tried first and could NOT reproduce a genuine under-estimate
+// here: since `scale(1.0)` would then be the curve's global maximum, the
+// flattened ratio would only ever be a conservative OVER-estimate of every
+// larger style's real ratio -- safe, if uselessly loose, never the actual
+// failure mode. The hump shape is also the more realistic model: it is not
+// how a font-scaling curve for READABILITY would be designed to boost
+// microscopic decorative text harder than the body copy people actually
+// read.
+class _NonLinearTextScaler extends TextScaler {
+  const _NonLinearTextScaler();
+
+  static const _tinySize = 2.0;
+  static const _tinyFactor = 1.1;
+  static const _peakSize = 14.0;
+  static const _peakFactor = 1.9;
+  static const _largeSize = 22.0;
+  static const _largeFactor = 1.2;
+
+  @override
+  double scale(double fontSize) {
+    if (fontSize <= _tinySize) return fontSize * _tinyFactor;
+    if (fontSize <= _peakSize) {
+      final t = (fontSize - _tinySize) / (_peakSize - _tinySize);
+      return fontSize * (_tinyFactor + (_peakFactor - _tinyFactor) * t);
+    }
+    if (fontSize <= _largeSize) {
+      final t = (fontSize - _peakSize) / (_largeSize - _peakSize);
+      return fontSize * (_peakFactor + (_largeFactor - _peakFactor) * t);
+    }
+    return fontSize * _largeFactor;
+  }
+
+  @override
+  // ignore: deprecated_member_use
+  double get textScaleFactor => scale(_peakSize) / _peakSize;
+
+  @override
+  bool operator ==(Object other) => other is _NonLinearTextScaler;
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+}
+
 // Note: no textScaler parameter here -- measureSongReaderCharWidths reads
 // the ambient MediaQuery textScaler straight off the element's context,
 // which already sits inside whatever MediaQuery override _renderAndMeasure
@@ -98,7 +168,7 @@ double _estimatedLineHeight(
     fontScale: fontScale,
     lyricCharWidth: charWidths.lyricCharWidth,
     chordCharWidth: charWidths.chordCharWidth,
-    ambientTextScaleRatio: charWidths.ambientTextScaleRatio,
+    textScale: charWidths.textScale,
   );
 }
 
@@ -409,11 +479,14 @@ void main() {
         // textScaler=1.5x). estimated > rendered (ratio 1.34x) -- the
         // combination of the word-wrap model's own over-count (see the
         // plain-lyric-line fixture above, ratio 1.27x at scale 1.0) and
-        // song_reader_fit.dart's `ambientTextScaleRatio` parameter (which
-        // scales the flat chordRowHeight/lyricRowHeight row-height guesses by
-        // the same ambient factor lyricCharWidth/chordCharWidth already bake
-        // in via measureSongReaderCharWidths) never drops below the render.
-        // Ceiling pinned at 1.5x, just above the measured ratio.
+        // song_reader_fit.dart's `SongReaderFitTextScale.factorFor` (which
+        // scales the flat chordRowHeight/lyricRowHeight row-height guesses,
+        // and converts lyricCharWidth/chordCharWidth, by the real effective
+        // factor at each style's own base size) never drops below the
+        // render. `TextScaler.linear(1.5)` is linear, so factorFor gives the
+        // same 1.5x at every base size -- these numbers are unchanged from
+        // before the non-linear-scaler fix. Ceiling pinned at 1.5x, just
+        // above the measured ratio.
         expect(
           estimated,
           greaterThanOrEqualTo(rendered),
@@ -429,6 +502,203 @@ void main() {
               'the estimate must not be uselessly loose under a '
               'non-default text scaler either; rendered=$rendered '
               'estimated=$estimated ceiling=${rendered * 1.5}',
+        );
+      },
+    );
+  });
+
+  group('SongLineView per-line estimate/render consistency under a '
+      'NON-LINEAR text scaler', () {
+    // A fifth review round found the estimator still undershoots under a
+    // NON-linear TextScaler: song_reader_char_metrics.dart flattened the
+    // ambient scaler to `textScaler.scale(1.0)` -- a ratio measured at a 1px
+    // probe -- and song_reader_fit.dart multiplied every row-height constant
+    // by that single number regardless of the style's actual rendered size.
+    // For `TextScaler.linear(x)` this coincides with the real ratio at every
+    // size (which is why the 1.5x group above passed), but a non-linear
+    // scaler has a different real ratio at every size, so collapsing it to
+    // one flat number is wrong. _NonLinearTextScaler models this with a hump
+    // shape (see its doc comment for why a hump, not a monotonic curve, is
+    // needed to reproduce a genuine under-estimate).
+    //
+    // PRE-FIX (2026-07-28), captured by temporarily reverting
+    // song_reader_fit.dart / song_reader_char_metrics.dart to their
+    // pre-non-linear-scaler-fix state and re-running just this group:
+    //   chord-only bar (fontScale=1.0, width=260):     rendered=194.0 estimated=130.0  RED (estimated < rendered)
+    //   plain lyric line (fontScale=1.0, width=160):   rendered=610.0 estimated=566.4  RED (estimated < rendered)
+    //   plain lyric line (fontScale=1.3, width=200):   rendered=488.0 estimated=732.72 RED (exceeds ceiling; not
+    //                                                   an under-estimate here, but still proves the flattened
+    //                                                   ratio produces wrong numbers once fontScale != 1.0)
+    // POST-FIX numbers are documented on each case below.
+    const textScaler = _NonLinearTextScaler();
+
+    testWidgets("chord-only instrumental bar (reviewer's repro shape) under a "
+        'non-linear text scaler', (tester) async {
+      final line = SongReaderLyricLineProjection(
+        segments: const [
+          SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),
+          SongReaderSegmentProjection(displayChord: 'Cmaj7#11', text: ''),
+          SongReaderSegmentProjection(displayChord: 'C#m/G#', text: ''),
+          SongReaderSegmentProjection(displayChord: 'Cmaj7#11', text: ''),
+        ],
+      );
+
+      // width=260 (not the narrower 150 used by the linear-scaler fixture
+      // above): at this scaler, 'Cmaj7#11' scales to ~189px -- wider than
+      // 150, which would make the chord Text's OWN content wrap onto a
+      // second line inside a single run (SongLineView never constrains a
+      // chord Text's width -- only the lyric Text gets a ConstrainedBox,
+      // see widgets/song_line_view.dart -- so Wrap's own per-run maxWidth
+      // squeeze is the only thing bounding it). That is a real, separate
+      // gap this estimator does not model at all (chord labels are always
+      // assumed to render on exactly one line), orthogonal to the
+      // effectiveFactor conversion this fixture exists to exercise. 260px
+      // keeps every chord's scaled width under the line width so this
+      // fixture isolates the effectiveFactor bug cleanly.
+      final rendered = await _renderAndMeasure(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 260.0,
+        fontScale: fontScale,
+        textScaler: textScaler,
+      );
+      final estimated = _estimatedLineHeight(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 260.0,
+        fontScale: fontScale,
+      );
+
+      // POST-FIX (2026-07-28): rendered=194.0 estimated=194.0 -- exact
+      // match. Ceiling pinned at 1.3x, comfortably above.
+      expect(
+        estimated,
+        greaterThanOrEqualTo(rendered),
+        reason:
+            'the estimate must never fall below the real render under a '
+            'non-linear text scaler; rendered=$rendered '
+            'estimated=$estimated',
+      );
+      expect(
+        estimated,
+        lessThan(rendered * 1.3),
+        reason:
+            'the estimate must not be uselessly loose under a non-linear '
+            'text scaler either; rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.3}',
+      );
+    });
+
+    testWidgets('plain wrapping lyric line under a non-linear text scaler', (
+      tester,
+    ) async {
+      final line = SongReaderLyricLineProjection(
+        segments: [
+          const SongReaderSegmentProjection(
+            displayChord: null,
+            text:
+                'This is a long lyric line without any chords and it will '
+                'definitely wrap across several rows',
+          ),
+        ],
+      );
+
+      final rendered = await _renderAndMeasure(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 160.0,
+        fontScale: fontScale,
+        textScaler: textScaler,
+      );
+      final estimated = _estimatedLineHeight(
+        tester,
+        line: line,
+        viewMode: viewMode,
+        width: 160.0,
+        fontScale: fontScale,
+      );
+
+      // POST-FIX (2026-07-28): rendered=610.0 estimated=881.4 (ratio
+      // 1.44x) -- the word-wrap model's own over-count (see the linear
+      // fixtures above) compounds with the peak ~1.9x factor at this
+      // style's 16px base size, but estimated stays above rendered.
+      // Ceiling pinned at 1.5x, just above the measured ratio.
+      expect(
+        estimated,
+        greaterThanOrEqualTo(rendered),
+        reason:
+            'the estimate must never fall below the real render under a '
+            'non-linear text scaler; rendered=$rendered '
+            'estimated=$estimated',
+      );
+      expect(
+        estimated,
+        lessThan(rendered * 1.5),
+        reason:
+            'the estimate must not be uselessly loose under a non-linear '
+            'text scaler either; rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.5}',
+      );
+    });
+
+    testWidgets(
+      'plain wrapping lyric line under a non-linear text scaler AND a '
+      'non-1.0 sharedFontScale (in-app font control not at its default)',
+      (tester) async {
+        const scaledFontScale = 1.3;
+        final line = SongReaderLyricLineProjection(
+          segments: [
+            const SongReaderSegmentProjection(
+              displayChord: null,
+              text:
+                  'This is a long lyric line without any chords and it will '
+                  'definitely wrap across several rows',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 200.0,
+          fontScale: scaledFontScale,
+          textScaler: textScaler,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 200.0,
+          fontScale: scaledFontScale,
+        );
+
+        // POST-FIX (2026-07-28): rendered=488.0 estimated=622.74 (ratio
+        // 1.28x). PRE-FIX this same case was 732.72 (ratio 1.50x, over the
+        // 1.5x ceiling) -- fixing the width conversion (lyricCharWidth is
+        // now converted via the factor at the REAL candidate rendered size,
+        // `textScaler.scale(lyricBaseFontSize * sharedFontScale)`, instead
+        // of the old `fontScale` alone assuming the ambient-baked-in
+        // measurement scaled proportionally) tightens the estimate back
+        // toward the render without ever dropping below it.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render under a '
+              'non-linear text scaler at a non-1.0 sharedFontScale; '
+              'rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.5),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.5}',
         );
       },
     );
