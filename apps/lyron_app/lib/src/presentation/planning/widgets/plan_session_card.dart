@@ -65,6 +65,11 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
   // Whether the one-reload post-write grace (see resolveReorderOverlay) has
   // already been spent for the current optimistic item order.
   var _itemReorderPostWriteReloadConsumed = false;
+  // Whether the guaranteed follow-up refresh (see build()) has already been
+  // scheduled for the current optimistic item order. Without this, every
+  // build after the grace is consumed would schedule another invalidate,
+  // looping forever.
+  var _itemReorderFollowUpScheduled = false;
   Future<void> _itemReorderTail = Future<void>.value();
   var _pickerOpen = false;
   var _addSongInFlight = false;
@@ -110,6 +115,24 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
           priorOptimisticItemOrder != null &&
           _optimisticItemOrder == priorOptimisticItemOrder) {
         _itemReorderPostWriteReloadConsumed = true;
+        // Consuming the grace only records that it was spent; nothing else
+        // guarantees another build with a fresh projection ever arrives to
+        // re-consult the rule and drop the overlay. Force exactly one
+        // follow-up refresh so it does. Guarded by its own flag (reset
+        // alongside the consumed flag whenever a new reorder starts) so
+        // this fires once per consumed grace, not once per build -- once
+        // the follow-up projection arrives, the rule above drops the
+        // overlay and this block is no longer reached for this optimistic
+        // order.
+        if (!_itemReorderFollowUpScheduled) {
+          _itemReorderFollowUpScheduled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            this.ref.invalidate(
+              planningPlanDetailProvider(widget.planDetail.plan.id),
+            );
+          });
+        }
       }
     }
     final items = _orderedItems(session);
@@ -532,6 +555,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     currentOrder.insert(newIndex, movedId);
     final generation = ++_itemReorderGeneration;
     _itemReorderPostWriteReloadConsumed = false;
+    _itemReorderFollowUpScheduled = false;
 
     setState(() {
       _optimisticItemOrder = currentOrder;

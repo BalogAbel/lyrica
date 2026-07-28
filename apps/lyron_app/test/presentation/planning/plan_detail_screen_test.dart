@@ -803,9 +803,27 @@ void main() {
       },
     );
 
+    var reads = 0;
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
+          }
+          // The second (newer) write actually succeeded, so a real backend
+          // would reflect its applied reorder on every subsequent read --
+          // the guaranteed post-grace follow-up refresh must see this
+          // settled, agreeing order rather than a fixture frozen at the
+          // pre-write state.
+          return Future.value(
+            _threeSessionFixtureInOrder(const [
+              'session-2',
+              'session-3',
+              'session-1',
+            ]),
+          );
+        },
         writeService: writeService,
       ),
     );
@@ -1087,6 +1105,84 @@ void main() {
       );
     },
   );
+
+  testWidgets('a consumed reorder grace refreshes the projection on its own', (
+    tester,
+  ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var reads = 0;
+    final firstSettledProjectionCompleter = Completer<PlanDetail>();
+    // Matches neither the original order (Warm-Up, Main Set, Closing) nor
+    // the optimistic order the drag below produces (Main Set, Closing,
+    // Warm-Up), the way a concurrent remote reorder would.
+    final disagreeingProjection = _threeSessionFixtureInOrder(const [
+      'session-3',
+      'session-1',
+      'session-2',
+    ]);
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
+          }
+          if (reads == 2) {
+            return firstSettledProjectionCompleter.future;
+          }
+          // Every read after the first post-write reload keeps returning
+          // the SAME disagreeing order. Nothing here forces a second
+          // emission by hand -- the only way the screen can end up
+          // showing this order is if it schedules its own follow-up
+          // refresh once the grace is consumed.
+          return Future.value(disagreeingProjection);
+        },
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // Drag first session to the end: Warm-Up, Main Set, Closing ->
+    // Main Set, Closing, Warm-Up.
+    sessionList.onReorder(0, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // The write completes immediately, invalidating the projection and
+    // triggering the second read: the one disagreeing post-write reload.
+    firstSettledProjectionCompleter.complete(disagreeingProjection);
+    await tester.pumpAndSettle();
+
+    // No manual invalidate, no hand-forced third emission: the screen
+    // must refresh on its own so the disagreeing projection (Closing,
+    // Warm-Up, Main Set) wins instead of the optimistic order masking it
+    // forever.
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+  });
 
   testWidgets(
     'long-press drag on the session handle reorders sessions',
@@ -2081,9 +2177,23 @@ void main() {
       },
     );
 
+    var reads = 0;
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: _planDetailWithThreeItemsFixture(),
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_planDetailWithThreeItemsFixture());
+          }
+          // The second (newer) write actually succeeded, so a real backend
+          // would reflect its applied reorder on every subsequent read --
+          // the guaranteed post-grace follow-up refresh must see this
+          // settled, agreeing order rather than a fixture frozen at the
+          // pre-write state.
+          return Future.value(
+            _threeItemFixtureInOrder(const ['item-2', 'item-3', 'item-1']),
+          );
+        },
         writeService: writeService,
         visibleSongs: const [
           SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
@@ -2130,6 +2240,90 @@ void main() {
       greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
     );
   });
+
+  testWidgets(
+    'a consumed item reorder grace refreshes the projection on its own',
+    (tester) async {
+      var reads = 0;
+      final firstSettledProjectionCompleter = Completer<PlanDetail>();
+      // Matches neither the original order (Alpha, Beta, Gamma) nor the
+      // optimistic order the drag below produces (Beta, Gamma, Alpha), the
+      // way a concurrent remote reorder would.
+      final disagreeingProjection = _threeItemFixtureInOrder(const [
+        'item-3',
+        'item-1',
+        'item-2',
+      ]);
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: () {
+            reads += 1;
+            if (reads == 1) {
+              return Future.value(_planDetailWithThreeItemsFixture());
+            }
+            if (reads == 2) {
+              return firstSettledProjectionCompleter.future;
+            }
+            // Every read after the first post-write reload keeps returning
+            // the SAME disagreeing order. Nothing here forces a second
+            // emission by hand -- the only way the card can end up showing
+            // this order is if it schedules its own follow-up refresh once
+            // the grace is consumed.
+            return Future.value(disagreeingProjection);
+          },
+          writeService: writeService,
+          visibleSongs: const [
+            SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+            SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+            SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+          ],
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final itemList = tester
+          .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+          .elementAt(1);
+      // Drag first item to the end: Alpha, Beta, Gamma -> Beta, Gamma, Alpha.
+      itemList.onReorder(0, 3);
+      await tester.pump();
+
+      expect(
+        tester.getTopLeft(find.textContaining('Beta')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.textContaining('Gamma')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+      );
+
+      // The write completes immediately, invalidating the projection and
+      // triggering the second read: the one disagreeing post-write reload.
+      firstSettledProjectionCompleter.complete(disagreeingProjection);
+      await tester.pumpAndSettle();
+
+      // No manual invalidate, no hand-forced third emission: the card must
+      // refresh on its own so the disagreeing projection (Gamma, Alpha,
+      // Beta) wins instead of the optimistic order masking it forever.
+      expect(
+        tester.getTopLeft(find.textContaining('Gamma')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.textContaining('Alpha')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+      );
+    },
+  );
 
   testWidgets('rolls the session item order back when the write fails', (
     tester,
@@ -2852,6 +3046,26 @@ PlanDetail _planDetailWithThreeItemsFixture() {
         position: 20,
         items: [],
       ),
+    ],
+  );
+}
+
+/// The three-item fixture above, with session-1's items reordered by id.
+PlanDetail _threeItemFixtureInOrder(List<String> itemIdOrder) {
+  final base = _planDetailWithThreeItemsFixture();
+  final warmUp = base.sessions.first;
+  final itemsById = {for (final item in warmUp.items) item.id: item};
+  return PlanDetail(
+    plan: base.plan,
+    sessions: [
+      SessionSummary(
+        id: warmUp.id,
+        slug: warmUp.slug,
+        name: warmUp.name,
+        position: warmUp.position,
+        items: [for (final id in itemIdOrder) itemsById[id]!],
+      ),
+      ...base.sessions.skip(1),
     ],
   );
 }

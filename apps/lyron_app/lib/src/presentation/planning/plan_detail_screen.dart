@@ -40,6 +40,11 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
   // Whether the one-reload post-write grace (see resolveReorderOverlay) has
   // already been spent for the current optimistic session order.
   var _sessionReorderPostWriteReloadConsumed = false;
+  // Whether the guaranteed follow-up refresh (see build()) has already been
+  // scheduled for the current optimistic session order. Without this, every
+  // build after the grace is consumed would schedule another invalidate,
+  // looping forever.
+  var _sessionReorderFollowUpScheduled = false;
   Future<void> _sessionReorderTail = Future<void>.value();
 
   String get planId => widget.planId;
@@ -128,6 +133,22 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
                 priorOptimisticSessionOrder != null &&
                 _optimisticSessionOrder == priorOptimisticSessionOrder) {
               _sessionReorderPostWriteReloadConsumed = true;
+              // Consuming the grace only records that it was spent; nothing
+              // else guarantees another build with a fresh projection ever
+              // arrives to re-consult the rule and drop the overlay. Force
+              // exactly one follow-up refresh so it does. Guarded by its
+              // own flag (reset alongside the consumed flag whenever a new
+              // reorder starts) so this fires once per consumed grace, not
+              // once per build -- once the follow-up projection arrives,
+              // the rule above drops the overlay and this block is no
+              // longer reached for this optimistic order.
+              if (!_sessionReorderFollowUpScheduled) {
+                _sessionReorderFollowUpScheduled = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  ref.invalidate(planningPlanDetailProvider(planId));
+                });
+              }
             }
           }
           final sessions = _orderedSessions(detail);
@@ -312,6 +333,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     currentOrder.insert(newIndex, movedId);
     final generation = ++_sessionReorderGeneration;
     _sessionReorderPostWriteReloadConsumed = false;
+    _sessionReorderFollowUpScheduled = false;
 
     setState(() {
       _optimisticSessionOrder = currentOrder;

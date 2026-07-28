@@ -85,6 +85,25 @@ The same rule and the same message apply to the session-level overlay in
 `plan_detail_screen.dart` and the item-level overlay in
 `widgets/plan_session_card.dart`.
 
+Consuming the grace only records that it was spent; dropping the overlay
+still requires another build with a settled projection, and nothing
+otherwise guarantees one ever arrives. If the first post-write projection
+disagrees and no independent invalidation follows, the optimistic order
+would keep masking the server state until some unrelated rebuild happened to
+occur. Each screen closes that gap itself: the moment the grace is consumed,
+it schedules exactly one follow-up refresh, via
+`WidgetsBinding.instance.addPostFrameCallback`, of the same family-scoped
+provider it already depends on (`planningPlanDetailProvider(planId)`), so the
+rule is guaranteed to be re-consulted against a fresh projection. A second
+"follow-up already scheduled" flag — reset alongside the consumed flag
+whenever the generation counter bumps — keeps this to one invalidate per
+consumed grace rather than one per build, which would otherwise loop. Once
+that follow-up projection arrives, the rule above drops the overlay (either
+because it now matches, or because the grace is spent and a second
+disagreement is authoritative), and with the overlay gone nothing schedules
+again — the lifecycle always terminates without depending on an unrelated
+rebuild.
+
 ## Consequences
 
 - The overlay can no longer outlive the write it belongs to plus one
