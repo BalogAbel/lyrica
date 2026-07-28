@@ -461,15 +461,33 @@ int _wordWrapLineCount({
 /// under a non-linear scaler near its peak boost and a raised in-app
 /// `sharedFontScale`, comfortably exceeds a 375px phone's content width.
 ///
-/// Unlike [_segmentIntraLines] (the lyric text's own wrap count), the chord
-/// label is modelled with a plain `ceil(chordWidth / effectiveLineWidth)`
-/// division rather than a word-boundary-aware greedy pack: a chord label is
-/// a single token with no spaces to break on in the general case (extended/
-/// slash chords like "Cmaj7#11" or "Bbsus4/D" have no word boundaries a
-/// line-breaking algorithm would reliably use the way lyric text's spaces
-/// provide them), so an even division is the right model here, mirroring
-/// exactly how [_segmentIntraLines] already treats a single lyric word wider
-/// than a whole line (`ceil(wordWidth / effectiveLineWidth)`).
+/// A sixth review round found a chord label CAN contain a space -- `N.C.`
+/// plus a performance annotation (`N.C. (fade out)`), a capo note
+/// (`C (capo 2)`), or any label a caller chooses to pass through
+/// `displayChord` -- and Flutter's `Text` breaks at a space the same as it
+/// does anywhere else. A plain `ceil(chordWidth / effectiveLineWidth)`
+/// division over the label's TOTAL width does not know that, so it can
+/// undercount: e.g. `"C CCCCCCCCCC"` at a 130px column renders 3 rows ("C"
+/// takes its own row, then "CCCCCCCCCC" -- itself wider than the column --
+/// wraps onto two more), while dividing the label's combined width by the
+/// column width sees only `ceil(169.2 / 130) = 2`, one row short. This is
+/// the exact "estimate below render" failure `resolveFitFontScale` exists to
+/// prevent (see this file's header doc), so the chord label now uses the
+/// SAME [_wordWrapLineCount] greedy word-boundary model [_segmentIntraLines]
+/// already uses for the lyric text below it, measured with the chord
+/// style's own char width and factor.
+///
+/// This is not a trade-off against the old even-division model -- it
+/// strictly subsumes it. A chord label with no space in it (an ordinary
+/// chord like "Cmaj7#11" or "Bbsus4/D") is a single "word" to
+/// [_wordWrapLineCount], and for a single word wider than the line, that
+/// helper already falls back to exactly the same
+/// `ceil(wordWidth / effectiveLineWidth)` division the old code used. So
+/// every case the old branch got right, the word-wrap model reproduces
+/// exactly; the only cases it changes are the ones the old branch got
+/// wrong. There is no shape of chord label the even-division model handled
+/// better, so there is no reason to keep two code paths for what is really
+/// one model applied to two kinds of text.
 double _segmentRowHeight({
   required SongReaderSegmentProjection segment,
   required bool showChords,
@@ -491,15 +509,13 @@ double _segmentRowHeight({
         )
       : 0;
 
-  var chordRows = 0;
-  if (hasChord) {
-    final chordWidth =
-        segment.displayChord!.length * chordCharWidth * chordFactor;
-    chordRows = effectiveLineWidth > 0
-        ? (chordWidth / effectiveLineWidth).ceil()
-        : 1;
-    if (chordRows < 1) chordRows = 1;
-  }
+  final chordRows = hasChord
+      ? _wordWrapLineCount(
+          text: segment.displayChord!,
+          effectiveLineWidth: effectiveLineWidth,
+          charWidth: chordCharWidth * chordFactor,
+        )
+      : 0;
 
   final chordH = chordRows * chordRowHeight * chordFactor;
   final lyricH = lyricLines * lyricRowHeight * lyricFactor;

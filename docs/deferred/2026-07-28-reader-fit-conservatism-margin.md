@@ -99,14 +99,17 @@ practice: a ten-plus character extended/slash chord at a 14px base size,
 under a non-linear scaler near its peak boost and a raised `sharedFontScale`,
 comfortably exceeds a 375px phone's content width.
 
-Fixed by modelling chord self-wrap in `song_reader_fit.dart`'s
-`_segmentRowHeight`: a segment's chord occupies
+Fixed (first pass) by modelling chord self-wrap in `song_reader_fit.dart`'s
+`_segmentRowHeight`: a segment's chord occupied
 `ceil(chordWidth / effectiveLineWidth)` chord rows (using the chord style's
 own per-style factor), the same way an over-long lyric word already occupied
-`ceil(wordWidth / effectiveLineWidth)` lines — a chord label has no spaces to
-break on in the general case (extended/slash chords have no reliable word
-boundary), so an even division is the right model here, unlike lyric text,
-where word-boundary-aware greedy packing was needed. The run/group height
+`ceil(wordWidth / effectiveLineWidth)` lines. This first pass reasoned that a
+chord label has no spaces to break on in the general case (extended/slash
+chords have no reliable word boundary), so an even division was the right
+model here, unlike lyric text, where word-boundary-aware greedy packing was
+needed — **this reasoning was wrong** (see the sixth-round section below: a
+chord label CAN contain a space, and the even-division model was replaced
+outright, not kept alongside the word-wrap one). The run/group height
 computation was also changed from separately maxing "chord rows across the
 run" and "lyric lines across the run" and summing those maxes, to computing
 each segment's own combined height (`chordRows * chordRowHeight` + gap +
@@ -136,6 +139,65 @@ chord label does NOT need to wrap (every segment's own width is already
 two whole-song fixtures' chords (longest 8 characters) stay well under
 their ~327px tile width, so neither triggers the chord-wrap path either —
 their numbers are unchanged.
+
+## Chord label containing a space (2026-07-28, sixth review round)
+
+A sixth review round found the chord self-wrap fix above still undercounts
+whenever the chord label itself contains a space: `N.C.` plus a performance
+annotation (`N.C. (fade out)`), a capo note (`C (capo 2)`), or any label a
+caller passes through `displayChord` can carry one, and Flutter's `Text`
+breaks at a space the same as it does anywhere else. The even-division
+model — `ceil(chordWidth / effectiveLineWidth)` over the label's TOTAL
+width — does not know that. Reproduction: `"C CCCCCCCCCC"` (a short leading
+word, then a run of `C`s wider than the column on its own) at a 130px
+column renders 3 rows ("C" takes its own row, then "CCCCCCCCCC" wraps onto
+two more), while even division saw only `ceil(169.2 / 130) = 2` — one row
+short, a genuine under-estimate of exactly the kind `resolveFitFontScale`
+must never produce.
+
+Fixed by replacing the even-division branch outright with
+`_wordWrapLineCount` — the same greedy word-boundary model
+`_segmentIntraLines` already uses for the lyric text below the chord, and
+that the comment/inline-directive/leading-directive/section-header kinds
+already use (see "Full-kind sweep" below) — measured with the chord style's
+own char width and factor. This is not a trade-off kept alongside the old
+model: it strictly subsumes it. A chord label with no space is a single
+"word" to `_wordWrapLineCount`, and for a single word wider than the line
+that helper already falls back to exactly the same
+`ceil(wordWidth / effectiveLineWidth)` division the old code used — every
+case the even-division branch got right, the word-wrap model reproduces
+exactly, and the only cases it changes are the ones the even-division
+branch got wrong. There is no shape of chord label the old model handled
+better, so there is no reason for two code paths.
+
+A repo-wide check confirmed this was the only remaining even-division site
+over text that can contain a space: comment lines, both directive kinds,
+and the section header already used `_wordWrapLineCount` (see "Full-kind
+sweep" below); tab blocks scroll rather than wrap and were never a
+candidate; the one other `.ceil()` division left in `song_reader_fit.dart`
+is `_wordWrapLineCount`'s own oversized-single-word sub-case, which is
+correct by construction since a "word" (already split on spaces) contains
+no space by definition.
+
+Measured, no custom `TextScaler`, at a 130px column (above the 120px clamp
+floor, same reasoning as the self-wrap fix above):
+
+| Line shape | Rendered | Estimated | Ratio |
+|------------|----------|-----------|-------|
+| `"C CCCCCCCCCC"` (reviewer's repro) | 72 px | 72 px | 1.00 |
+| `"N.C. (fade out)"` (realistic annotation) | 72 px | 72 px | 1.00 |
+
+Pre-fix, both were RED: 72 rendered vs. 52 estimated in both cases — the
+chord-row contribution was undercounted by exactly one `chordRowHeight`
+(20px) because even division saw 2 rows over the label's total width where
+the real render, breaking at the space, needed 3. Both fixtures land on an
+exact match post-fix; this is not guaranteed in general (real Flutter line
+breaking can, at some widths, pack part of an over-wide word onto the
+preceding line rather than starting it fresh — a real quirk of the line
+breaker, not a defect in the greedy model, which only needs to stay at or
+above the render). No other fixture in either consistency test file moved:
+none of their chord labels contain a space, and a single-word label reduces
+to the exact same arithmetic as before.
 
 ## Full-kind sweep (2026-07-28, same round): every kind the estimator assigns a height to
 

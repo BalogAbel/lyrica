@@ -559,6 +559,150 @@ void main() {
     );
   });
 
+  group('SongLineView per-line estimate/render consistency: chord label '
+      'containing a space wraps at the space, not evenly', () {
+    // A sixth review round found the chord self-wrap model
+    // (song_reader_fit.dart's `_segmentRowHeight`) undercounts whenever the
+    // chord label itself contains a space: it counted wrapped chord rows as
+    // `ceil(chordWidth / effectiveLineWidth)`, a plain even division over the
+    // label's TOTAL width. That is only correct for a label with no internal
+    // break points. Flutter's `Text` breaks at spaces same as any other text
+    // -- a chord label CAN contain one (`N.C.`, `C (capo 2)`, or the
+    // reviewer's synthetic case below), and once it does, even division
+    // undercounts for the exact same reason `_segmentIntraLines`'s old
+    // per-character division undercounted lyric text: it lets the estimator
+    // pack more characters onto a row than real word-boundary breaking
+    // would allow.
+    testWidgets(
+      "reviewer's repro: a chord label with an internal space wraps at "
+      'the space, not by even character division',
+      (tester) async {
+        // 'C CCCCCCCCCC' (12 chars: 'C', a space, then 10 C's) at a 130px
+        // column: real layout puts 'C' on its own row, then wraps
+        // 'CCCCCCCCCC' (itself wider than 130px) onto two more rows -- three
+        // rows total. Even division over the label's total width instead
+        // saw ceil(12 chars worth of width / 130) = 2, one row short.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'C CCCCCCCCCC', text: ''),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28): rendered=72.0 estimated=52.0 -- RED, a
+        // genuine under-estimate (even division counts 2 chord rows over
+        // the label's full width; the real render breaks at the space and
+        // needs 3). POST-FIX: rendered=72.0 estimated=72.0 -- exact match
+        // (this label's own words happen to line up exactly with the
+        // greedy word-wrap model's row boundaries; ceiling pinned tight).
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'chord label contains a space that forces a word-boundary '
+              'wrap; rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.05),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.05}',
+        );
+      },
+    );
+
+    testWidgets(
+      'realistic annotated chord label ("N.C. (fade out)") must wrap at a '
+      'width above the 120px clamp floor',
+      (tester) async {
+        // A parenthetical performance annotation appended to a chord label
+        // is a realistic shape (not just the reviewer's all-C synthetic
+        // repro above) -- "N.C." (no chord) followed by a performance
+        // direction is standard lead-sheet notation. Measured directly with
+        // a real TextPainter at this style/width: real Flutter line-breaking
+        // fills as many characters of an over-wide word onto the PRECEDING
+        // line as still fit, rather than always starting the oversized word
+        // on a fresh line the way [_wordWrapLineCount]'s simpler model
+        // assumes -- so not every spaced label reproduces an under-estimate
+        // at every width (a real quirk of the real line breaker, not a
+        // defect in the fix below, which only needs to stay >= the render,
+        // never match it exactly). This label at this width does reproduce
+        // it: "N.C." takes its own row, and "(fade out)" -- wider than the
+        // column on its own -- wraps onto two more, three rows total, while
+        // even division over the label's full width undercounts to two.
+        //
+        // width=130 -- same as the "chord label wraps within its own run"
+        // group above and for the same reason: it must stay ABOVE
+        // _lineItemHeight's own `columnWidth.clamp(120.0, 1200.0)` floor, or
+        // the estimator would silently evaluate at a wider effective column
+        // than the real render uses, confounding this case's own wrap-model
+        // bug with an unrelated clamp mismatch.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: 'N.C. (fade out)',
+              text: '',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28): rendered=72.0 estimated=52.0 -- RED, same
+        // under-estimate shape as the repro above (even division over the
+        // label's total width undercounts the leading short word's own
+        // row). POST-FIX: rendered=72.0 estimated=72.0 -- exact match,
+        // ceiling pinned tight.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render for a '
+              'realistic annotated chord label that must wrap; '
+              'rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.05),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.05}',
+        );
+      },
+    );
+  });
+
   group('SongLineView per-line estimate/render consistency under a '
       'non-default text scaler', () {
     // song_reader_char_metrics.dart used to measure with
