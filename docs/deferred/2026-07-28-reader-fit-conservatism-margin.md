@@ -407,3 +407,46 @@ from each file directly (the two whole-song fixtures: 1082/1198 and 2574/2630,
 unchanged; every block-kind fixture in `song_reader_block_estimate_consistency_test
 .dart`, unchanged; a sample of `song_line_view_estimate_consistency_test.dart`'s
 plain-space fixtures, unchanged).
+
+### VERTICAL TAB / FORM FEED follow-up (2026-07-28, same round, coordinator review)
+
+The sweep above deliberately scoped `_mandatoryLineBreak` to `\n`, `\r\n`, and the
+Unicode line/paragraph separators, and flagged (rather than silently fixed) that
+U+000B (VERTICAL TAB) and U+000C (FORM FEED) were ALSO measured to force a break
+identical to `\n` — `TextPainter.getLineBoundary` places both characters' line
+boundary immediately after the preceding content, and a doubled occurrence of
+either produces a genuine blank line the same way `AAAA\n\nBBBB` does. Neither is
+expected in ChordPro-parsed song text, which was the reason given for leaving them
+out initially.
+
+Coordinator's call: close the gap anyway. This helper's contract is an upper bound
+over arbitrary strings, not over trusted input, and every round of this review
+sequence has turned somebody's "real data won't contain it" into the next round's
+finding — two characters in a regex is cheap insurance against repeating that
+pattern a third time. Both are now in `_mandatoryLineBreak` alongside `\n`, `\r\n`,
+U+2028, and U+2029.
+
+Reproduction, isolated the same way as the `\n` case above (no ASCII space
+anywhere in the text, so the old code saw one comfortably-fitting "word"):
+`Verse\u000BChorus` (U+000B written out for readability; the actual character is a literal VERTICAL TAB) at a 300px column.
+
+| Case | Rendered | Pre-fix estimated | Post-fix estimated | Post-fix ratio |
+|------|----------|--------------------|---------------------|-----------------|
+| Lyric segment with embedded U+000B (`Verse\u000BChorus`), width 300 | 52 px | 36 px **RED** | 60 px | 1.15 |
+
+RED pre-fix, identical numbers to the `\n` case post-fix (as expected — U+000B is
+now handled by the exact same code path). Only U+000B is exercised by a test;
+U+000C was measured with the same `TextPainter` probe and behaves identically in
+every respect that matters to this helper (same line-boundary placement, same
+double-occurrence blank-line behavior), so a second, functionally-identical test
+would prove nothing additional. Re-ran all three consistency files and the full
+suite after this change: still green, no ceiling moved.
+
+Still unverified by a dedicated render-vs-estimate test in this file (measured via
+`TextPainter` only, or not measured at all): U+1680 (OGHAM SPACE MARK), U+2000
+through U+200A individually (only the aggregate range and U+200B were exercised via
+fixtures — U+3000 and TAB stand in for the class), U+205F (MEDIUM MATHEMATICAL
+SPACE), and U+00A0/U+202F's "stealing" behavior at widths other than the ones
+tried. None of these are expected to differ from the group they were measured
+alongside, but "expected not to differ" is exactly the kind of claim this review
+sequence keeps finding exceptions to, so it is recorded here rather than implied.

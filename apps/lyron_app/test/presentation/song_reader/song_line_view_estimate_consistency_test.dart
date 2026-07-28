@@ -973,6 +973,75 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'a lyric line containing an embedded VERTICAL TAB (U+000B) is ALSO a '
+      'MANDATORY break, not just \\n',
+      (tester) async {
+        // Same isolation reasoning as the '\n' case above (no ASCII space
+        // anywhere in the text, so the old code sees one comfortably-fitting
+        // "word" and reports 1 line): a coordinator follow-up asked whether
+        // U+000B (VERTICAL TAB) and U+000C (FORM FEED) are ALSO honored as
+        // mandatory breaks by Flutter, since this helper's contract is an
+        // upper bound over arbitrary strings, not just trusted ChordPro
+        // output. Measured with a real TextPainter first:
+        // TextPainter.getLineBoundary places U+000B's line boundary
+        // identically to '\n' (line ends immediately after the preceding
+        // content), and a double U+000B produces a genuine blank line the
+        // same way 'AAAA\n\nBBBB' does -- confirmed to behave exactly like
+        // '\n', not merely "close enough." U+000C (FORM FEED) was measured
+        // the same way with the same result; only one of the two is
+        // exercised here since both are identical in every way that
+        // matters to this helper.
+        final line = SongReaderLyricLineProjection(
+          segments: [
+            SongReaderSegmentProjection(
+              displayChord: null,
+              text: 'VerseChorus',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 300.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 300.0,
+          fontScale: fontScale,
+        );
+
+        // PRE-FIX (2026-07-28, coordinator follow-up): rendered=52.0
+        // estimated=36.0 -- RED, the same shape as the '\n' case: U+000B
+        // was not yet in _mandatoryLineBreak, so the old code saw one
+        // comfortably-fitting "word" and reported 1 line.
+        // POST-FIX: rendered=52.0 estimated=60.0 -- same numbers as the
+        // '\n' case, since U+000B is now in _mandatoryLineBreak alongside
+        // it.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'lyric segment contains an embedded VERTICAL TAB mandatory '
+              'break; rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.25),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.25}',
+        );
+      },
+    );
   });
 
   group('SongLineView per-line estimate/render consistency under a '

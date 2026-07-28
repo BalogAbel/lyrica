@@ -389,7 +389,18 @@ int _segmentIntraLines({
 /// after the preceding content, the separator itself consumed as the
 /// terminator, never left dangling on the line the way trailing
 /// [_breakableWhitespace] is).
-final RegExp _mandatoryLineBreak = RegExp('\r\n|\n| | ');
+///
+/// U+000B (VERTICAL TAB) and U+000C (FORM FEED) are included for the same
+/// measured reason: `getLineBoundary` places their line boundary identically
+/// to `\n` (line ends immediately after the preceding content; a double
+/// occurrence produces a genuine blank line, same as `AAAA\n\nBBBB` does).
+/// Neither is expected to appear in ChordPro-parsed song text -- this
+/// helper's contract is an upper bound over ARBITRARY strings, not over
+/// trusted input, so a character Flutter genuinely honors as a forced break
+/// is handled regardless of how implausible its source is. Leaving either
+/// out on a "real data won't contain it" assumption is exactly the kind of
+/// gap this review sequence keeps finding one round later.
+final RegExp _mandatoryLineBreak = RegExp('\r\n|\n| | |\u000B|\u000C');
 
 /// Breakable whitespace: characters Flutter's line breaker treats as an
 /// ordinary word-boundary break OPPORTUNITY (not a forced line end -- see
