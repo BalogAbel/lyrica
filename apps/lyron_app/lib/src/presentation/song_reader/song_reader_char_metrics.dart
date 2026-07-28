@@ -36,6 +36,7 @@ class SongReaderCharWidths {
   const SongReaderCharWidths({
     required this.lyricCharWidth,
     required this.chordCharWidth,
+    required this.headerCharWidth,
     required this.textScale,
   });
 
@@ -50,7 +51,26 @@ class SongReaderCharWidths {
   /// `FontWeight.w700`), measured RAW at its base point size
   /// (`textScale.chordBaseFontSize`). Same conversion rule as
   /// [lyricCharWidth] applies, using `textScale.chordBaseFontSize`.
+  ///
+  /// Also used, deliberately, as the word-wrap width proxy for BOTH
+  /// directive kinds (inline and leading) -- see
+  /// `song_reader_fit.dart`'s `flowBlockHeight`/`_lineItemHeight` doc
+  /// comments for why reusing this larger, bolder-than-either-directive-
+  /// style measurement is a safe (over- rather than under-estimating)
+  /// approximation, not a new source of imprecision.
   final double chordCharWidth;
+
+  /// Average px/char advance of the section header style (`titleLarge`, no
+  /// weight override), measured RAW at its base point size
+  /// (`textScale.headerBaseFontSize`). Same conversion rule as
+  /// [lyricCharWidth] applies, using `textScale.headerBaseFontSize`. Unlike
+  /// [chordCharWidth] (14px, reused as a directive-width proxy), 22px
+  /// header text is LARGER than every other measured style, so no existing
+  /// measurement is a safe (conservative) stand-in for it -- an
+  /// under-sized proxy would UNDER-count how many lines a long header
+  /// label wraps into, exactly the failure this whole file exists to
+  /// prevent. Hence its own real measurement.
+  final double headerCharWidth;
 
   /// The ambient [SongReaderFitTextScale] bundle (scaler + every base font
   /// size song_reader_fit.dart's estimator models), captured once per build
@@ -68,6 +88,8 @@ class SongReaderCharWidths {
 const _lyricMeasureSample =
     'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 const _chordMeasureSample = 'ABCDEFG#b/mjasdimug 0123456789';
+const _headerMeasureSample =
+    'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 
 /// Measures [SongReaderCharWidths] for the current [context]'s theme.
 ///
@@ -107,6 +129,10 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     fontWeight: FontWeight.w700,
   );
   final lyricStyle = theme.textTheme.bodyLarge?.copyWith(height: 1.25);
+  // Mirrors song_reader_section_grid.dart's `_buildHeaderWidget`: titleLarge
+  // with no weight/size override (only `color` is overridden there, which
+  // does not affect layout).
+  final headerStyle = theme.textTheme.titleLarge;
 
   double measure(String sample, TextStyle? style) {
     final painter = TextPainter(
@@ -124,11 +150,12 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
   return SongReaderCharWidths(
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
+    headerCharWidth: measure(_headerMeasureSample, headerStyle),
     textScale: SongReaderFitTextScale(
       textScaler: textScaler,
       lyricBaseFontSize: lyricStyle?.fontSize ?? 16.0,
       chordBaseFontSize: chordStyle?.fontSize ?? 14.0,
-      headerBaseFontSize: theme.textTheme.titleLarge?.fontSize ?? 22.0,
+      headerBaseFontSize: headerStyle?.fontSize ?? 22.0,
       inlineDirectiveBaseFontSize:
           theme.textTheme.labelMedium?.fontSize ?? 12.0,
     ),

@@ -156,6 +156,7 @@ class FlowBlock {
     required this.sectionIndex,
     this.line,
     this.isSectionStart = false,
+    this.blockText,
   });
 
   /// Kind of this block.
@@ -171,6 +172,19 @@ class FlowBlock {
   /// has one, otherwise its first line).  Used by [resolveFlowLayout] to prefer
   /// section-boundary split candidates.
   final bool isSectionStart;
+
+  /// The real displayed text for [FlowBlockKind.sectionHeader] (the
+  /// section's label, exactly as `_buildHeaderWidget`
+  /// (song_reader_section_grid.dart) renders it) or
+  /// [FlowBlockKind.leadingDirective] (the leading capo/tuning string,
+  /// exactly as `_DirectiveLine` renders it) -- null for every other kind,
+  /// and null when a caller constructs a [FlowBlock] directly without going
+  /// through [buildFlowBlocks] (in which case [flowBlockHeight] falls back
+  /// to treating the block as exactly one line, matching this file's
+  /// pre-word-wrap behavior so existing direct-construction tests are
+  /// unaffected). [flowBlockHeight] uses this to model these two kinds'
+  /// real word-wrap growth instead of assuming a flat one-line constant.
+  final String? blockText;
 }
 
 /// Converts [sections] (and the optional leading directive) into an ordered
@@ -183,15 +197,26 @@ class FlowBlock {
 ///     intrinsic height.  The sum of all block heights for a section therefore
 ///     equals `estimateSectionHeight`, within floating-point rounding.
 ///   - Empty unlabeled sections (no header, no lines) produce zero blocks.
+///
+/// [leadingDirectiveText] is optional and purely additive: pass the real
+/// leading-directive string (e.g. a song's capo/tuning line) so
+/// [flowBlockHeight] can model its real word-wrap growth; omit it (or pass
+/// `hasLeadingDirective: true` with no text, as every pre-existing caller
+/// does) to keep the old flat-height behavior for that block.
 List<FlowBlock> buildFlowBlocks({
   required List<SongReaderSectionProjection> sections,
   required bool hasLeadingDirective,
+  String? leadingDirectiveText,
 }) {
   final result = <FlowBlock>[];
 
   if (hasLeadingDirective) {
     result.add(
-      const FlowBlock(kind: FlowBlockKind.leadingDirective, sectionIndex: -1),
+      FlowBlock(
+        kind: FlowBlockKind.leadingDirective,
+        sectionIndex: -1,
+        blockText: leadingDirectiveText,
+      ),
     );
   }
 
@@ -200,12 +225,17 @@ List<FlowBlock> buildFlowBlocks({
     final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
 
     if (hasHeader) {
+      // Mirrors song_reader_section_grid.dart's `_sectionLabel`.
+      final headerLabel = section.number == null
+          ? section.label
+          : '${section.label} ${section.number}';
       // The header block is the section start; it carries sectionGap.
       result.add(
         FlowBlock(
           kind: FlowBlockKind.sectionHeader,
           sectionIndex: i,
           isSectionStart: true,
+          blockText: headerLabel,
         ),
       );
       // Line blocks within a labeled section are never isSectionStart.
@@ -329,8 +359,42 @@ int _segmentIntraLines({
 }) {
   final text = segment.text;
   if (text.isEmpty) return 1;
+  return _wordWrapLineCount(
+    text: text,
+    effectiveLineWidth: effectiveLineWidth,
+    charWidth: lyricCharWidth * lyricFactor,
+  );
+}
 
-  final charWidth = lyricCharWidth * lyricFactor;
+/// Number of visual lines greedy word-boundary wrapping breaks [text] into
+/// at [effectiveLineWidth], given a flat per-character advance of
+/// [charWidth]. Shared by every kind of text this file estimates that DOES
+/// break at word boundaries in the real render: the lyric segment
+/// ([_segmentIntraLines]), a comment line, and a directive line (both the
+/// inline and the leading capo/tuning variant) -- see each call site's own
+/// comment for why THAT kind uses this word-boundary model rather than the
+/// even-division model `_segmentRowHeight` uses for a chord label (which
+/// has no reliable word boundaries in the general case).
+///
+/// Splits on spaces and greedily packs whole words onto a line, starting a
+/// new line whenever the next word would overflow. A single word wider
+/// than a whole line is placed on its own and spans
+/// `ceil(wordWidth / effectiveLineWidth)` lines by itself (mirroring how a
+/// single unbreakable token still gets clipped into multiple lines by
+/// `Text`'s own line-breaking, since there is no word boundary inside it to
+/// break at). A plain `ceil(textWidth / effectiveLineWidth)` division would
+/// undercount: it lets a wrap point fall in the middle of a word, packing
+/// more characters onto a line than real layout would allow, which pushes
+/// the estimate below the rendered height -- exactly backwards for
+/// `resolveFitFontScale`, which must never choose a scale whose estimated
+/// height is less than what actually renders.
+int _wordWrapLineCount({
+  required String text,
+  required double effectiveLineWidth,
+  required double charWidth,
+}) {
+  if (text.isEmpty) return 1;
+
   final spaceWidth = charWidth;
   final words = text.split(' ');
 
@@ -469,9 +533,6 @@ double _lineItemHeight({
     textScale.chordBaseFontSize,
     fontScale,
   );
-  final charsPerLine = (effectiveLineWidth / (lyricCharWidth * lyricFactor))
-      .floor()
-      .clamp(12, 140);
 
   switch (item) {
     case SongReaderLyricLineProjection():
@@ -672,12 +733,42 @@ double _lineItemHeight({
           lineGap +
           lineWidgetBottomPadding;
     case SongReaderCommentProjection():
-      final commentLength = item.text.length;
-      final commentWrapCount = commentLength == 0
-          ? 1
-          : (commentLength / charsPerLine).ceil().clamp(1, 14);
+      // CommentLineView (widgets/comment_line_view.dart) renders at
+      // `theme.textTheme.bodyMedium` (14px, italic), scaled by
+      // `sharedFontScale` the same way the lyric style is -- it sits
+      // directly in the section grid's Column (no ConstrainedBox of its
+      // own, but the Column gives it the full available width, exactly
+      // like a lyric segment's own Text), so it wraps at WORD boundaries
+      // in the real render. A plain character-count division (the old
+      // formula here) undercounts wraps the same way the lyric
+      // char-count division used to, for the same reason: it lets a
+      // wrap point fall mid-word.
+      //
+      // No bodyMedium char width is separately measured; lyricCharWidth
+      // (bodyLarge, 16px) is reused here as a deliberately conservative
+      // proxy: 16px characters are WIDER than the real 14px comment
+      // text, so this can only ever fit FEWER real characters per
+      // estimated line than the comment text truly allows -- over-
+      // counting wrapped lines, never under-counting. The per-wrapped-
+      // line height charge (`lyricRowHeight`) is the SAME pre-existing
+      // reuse of the lyric row constant this file has always used for
+      // comment lines; only the WRAP COUNT changes here, from a flat
+      // division to real word-boundary wrapping.
+      final commentWrapCount = _wordWrapLineCount(
+        text: item.text,
+        effectiveLineWidth: effectiveLineWidth,
+        charWidth: lyricCharWidth * lyricFactor,
+      );
       return commentWrapCount * (lyricRowHeight * lyricFactor) + lineGap;
     case SongReaderTabProjection():
+      // TabBlockView (widgets/tab_block_view.dart) draws its raw lines
+      // inside a `SingleChildScrollView(scrollDirection: Axis.horizontal)`:
+      // a tab line SCROLLS rather than wraps, no matter how long it is or
+      // how narrow the column is (proven by
+      // song_reader_block_estimate_consistency_test.dart's "several LONG
+      // tab lines at a narrow width" case), so one estimated row per raw
+      // line -- with no word-wrap or even-division growth possible -- is
+      // already exact, not an approximation to tighten.
       return item.rawLines.length * (lyricRowHeight * lyricFactor) +
           lineGap +
           tabBlockVerticalPadding;
@@ -686,12 +777,38 @@ double _lineItemHeight({
       // INLINE directive at `theme.textTheme.labelMedium`, with no
       // `sharedFontScale` applied to its `TextStyle` -- so, like the
       // section header below, the factor uses a FIXED fontScale of 1.0:
-      // only the ambient scaler affects this style's rendered size.
+      // only the ambient scaler affects this style's rendered size. Its
+      // Text sits directly in the grid's Column (full available width),
+      // so it wraps at WORD boundaries like comment/lyric text, not the
+      // chord label's even-division model.
+      //
+      // No labelMedium char width is separately measured; chordCharWidth
+      // (labelLarge, 14px, `w700`) is reused as a deliberately
+      // conservative proxy for the same reason comment reuses
+      // lyricCharWidth above: labelMedium is smaller (12px) and
+      // lighter-weight than labelLarge+w700, so chordCharWidth can only
+      // ever fit FEWER real characters per line than the real render
+      // allows, over-counting wrapped lines rather than under-counting.
       final inlineDirectiveFactor = textScale.factorFor(
         textScale.inlineDirectiveBaseFontSize,
         1.0,
       );
-      return directiveLineHeight * inlineDirectiveFactor;
+      final chordFactorAt1 = textScale.factorFor(
+        textScale.chordBaseFontSize,
+        1.0,
+      );
+      // Mirrors DirectiveLineView's exact display string -- the curly
+      // braces and separator are real rendered characters too, not just
+      // the raw name/value.
+      final directiveLabel = item.value != null
+          ? '{${item.name}: ${item.value}}'
+          : '{${item.name}}';
+      final inlineDirectiveLines = _wordWrapLineCount(
+        text: directiveLabel,
+        effectiveLineWidth: effectiveLineWidth,
+        charWidth: chordCharWidth * chordFactorAt1,
+      );
+      return inlineDirectiveLines * directiveLineHeight * inlineDirectiveFactor;
   }
 }
 
@@ -714,8 +831,11 @@ double flowBlockHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
+  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
+
   switch (block.kind) {
     case FlowBlockKind.leadingDirective:
       // _DirectiveLine (song_reader_section_grid.dart) renders the leading
@@ -723,22 +843,63 @@ double flowBlockHeight({
       // base size as the chord style, just a different weight/color -- and
       // applies no `sharedFontScale` to its `TextStyle`, so (like the
       // section header below) the factor is fixed at fontScale 1.0: only
-      // the ambient scaler affects this style's rendered size.
+      // the ambient scaler affects this style's rendered size. Its Text
+      // sits directly in the grid's Column (full available width), so it
+      // wraps at WORD boundaries, not the chord label's even-division
+      // model -- same reasoning as the inline directive
+      // (_lineItemHeight's SongReaderDirectiveProjection case), including
+      // reusing chordCharWidth as a deliberately conservative width proxy
+      // (labelLarge+w700 is bolder than this style's actual w600, so it
+      // can only ever fit fewer real characters per line, over-counting
+      // wrapped lines rather than under-counting).
+      //
+      // `block.blockText` is null when a caller constructs this FlowBlock
+      // directly rather than via buildFlowBlocks (every pre-existing test
+      // that predates word-wrap modelling here does exactly that) --
+      // _wordWrapLineCount(text: '', ...) degrades to exactly 1 line in
+      // that case, reproducing the old flat-constant formula exactly, so
+      // those callers are unaffected.
       final leadingDirectiveFactor = textScale.factorFor(
         textScale.chordBaseFontSize,
         1.0,
       );
-      return directiveLineHeight * leadingDirectiveFactor + sectionGap;
+      final leadingDirectiveLines = _wordWrapLineCount(
+        text: block.blockText ?? '',
+        effectiveLineWidth: effectiveLineWidth,
+        charWidth: chordCharWidth * leadingDirectiveFactor,
+      );
+      return leadingDirectiveLines *
+              directiveLineHeight *
+              leadingDirectiveFactor +
+          sectionGap;
     case FlowBlockKind.sectionHeader:
       // _buildHeaderWidget (song_reader_section_grid.dart) renders at
       // `theme.textTheme.titleLarge`, also never scaled by
       // `sharedFontScale` -- fontScale fixed at 1.0, ambient-only factor.
+      // Its Text sits directly in the grid's Column too, so it wraps at
+      // word boundaries -- a section label CAN be long in practice (a
+      // ChordPro `start_of_verse`-style directive can carry an arbitrary
+      // custom label), so this is not a hypothetical. `headerCharWidth` is
+      // titleLarge's own real measurement (see
+      // SongReaderCharWidths.headerCharWidth doc for why, unlike the
+      // directive kinds, no existing measurement is a safe proxy here:
+      // 22px header text is LARGER than every other measured style, so
+      // reusing a smaller one would UNDER-count, not over-count).
       // sectionGap is charged here (see gap-accounting note above).
+      //
+      // `block.blockText` null (direct FlowBlock construction, as every
+      // pre-existing test does) degrades to exactly 1 line, same as
+      // above.
       final headerFactor = textScale.factorFor(
         textScale.headerBaseFontSize,
         1.0,
       );
-      return headerHeight * headerFactor + sectionGap;
+      final headerLines = _wordWrapLineCount(
+        text: block.blockText ?? '',
+        effectiveLineWidth: effectiveLineWidth,
+        charWidth: headerCharWidth * headerFactor,
+      );
+      return headerLines * headerHeight * headerFactor + sectionGap;
     case FlowBlockKind.line:
       final lineH = _lineItemHeight(
         item: block.line!,
@@ -896,10 +1057,28 @@ double estimateSectionHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
-  final h = hasHeader ? headerHeight : 0.0;
+  // Kept consistent with flowBlockHeight's FlowBlockKind.sectionHeader case
+  // (see that doc for why a section label needs word-wrap modelling, not a
+  // flat constant): mirrors song_reader_section_grid.dart's `_sectionLabel`.
+  double h;
+  if (hasHeader) {
+    final headerLabel = section.number == null
+        ? section.label
+        : '${section.label} ${section.number}';
+    final headerFactor = textScale.factorFor(textScale.headerBaseFontSize, 1.0);
+    final headerLines = _wordWrapLineCount(
+      text: headerLabel,
+      effectiveLineWidth: maxWidth.clamp(120.0, 1200.0),
+      charWidth: headerCharWidth * headerFactor,
+    );
+    h = headerLines * headerHeight * headerFactor;
+  } else {
+    h = 0.0;
+  }
   var linesHeight = 0.0;
   for (final item in section.lines) {
     linesHeight += _lineItemHeight(
@@ -924,6 +1103,7 @@ double estimateSongContentHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   return sections.fold<double>(
@@ -937,6 +1117,7 @@ double estimateSongContentHeight({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          headerCharWidth: headerCharWidth,
           textScale: textScale,
         ),
   );
@@ -973,13 +1154,16 @@ FlowLayout resolveFlowLayoutForSections({
   required double fontScale,
   required bool allowTwoColumns,
   required bool hasLeadingDirective,
+  String? leadingDirectiveText,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   final blocks = buildFlowBlocks(
     sections: sections,
     hasLeadingDirective: hasLeadingDirective,
+    leadingDirectiveText: leadingDirectiveText,
   );
   final blockHeights = blocks
       .map(
@@ -990,6 +1174,7 @@ FlowLayout resolveFlowLayoutForSections({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          headerCharWidth: headerCharWidth,
           textScale: textScale,
         ),
       )
@@ -1029,15 +1214,27 @@ RenderedHeightEstimate estimateRenderedLayout({
   required double fontScale,
   required bool allowTwoColumns,
   double leadingDirectiveHeight = 0,
+  String? leadingDirectiveText,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   // Single-column total: blocks at full width.
-  final hasLeadingDirective = leadingDirectiveHeight > 0;
+  //
+  // [leadingDirectiveText] is the real leading-directive string (so
+  // flowBlockHeight can model its word-wrap growth instead of assuming a
+  // flat one line); [leadingDirectiveHeight] is the older, purely additive
+  // way callers signalled "there IS a leading directive" without giving
+  // its text (every pre-existing caller does this, so `hasLeadingDirective`
+  // must stay true for them even though `leadingDirectiveText` is null).
+  final hasLeadingDirective =
+      (leadingDirectiveText != null && leadingDirectiveText.isNotEmpty) ||
+      leadingDirectiveHeight > 0;
   final singleBlocks = buildFlowBlocks(
     sections: sections,
     hasLeadingDirective: hasLeadingDirective,
+    leadingDirectiveText: leadingDirectiveText,
   );
   final single = singleBlocks
       .map(
@@ -1048,6 +1245,7 @@ RenderedHeightEstimate estimateRenderedLayout({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          headerCharWidth: headerCharWidth,
           textScale: textScale,
         ),
       )
@@ -1069,8 +1267,10 @@ RenderedHeightEstimate estimateRenderedLayout({
     fontScale: fontScale,
     allowTwoColumns: true,
     hasLeadingDirective: hasLeadingDirective,
+    leadingDirectiveText: leadingDirectiveText,
     lyricCharWidth: lyricCharWidth,
     chordCharWidth: chordCharWidth,
+    headerCharWidth: headerCharWidth,
     textScale: textScale,
   );
 
@@ -1102,8 +1302,10 @@ double resolveFitFontScale({
   required double maxScale,
   bool allowTwoColumns = false,
   double leadingDirectiveHeight = 0,
+  String? leadingDirectiveText,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
   bool fits(double scale) =>
@@ -1115,8 +1317,10 @@ double resolveFitFontScale({
         fontScale: scale,
         allowTwoColumns: allowTwoColumns,
         leadingDirectiveHeight: leadingDirectiveHeight,
+        leadingDirectiveText: leadingDirectiveText,
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
+        headerCharWidth: headerCharWidth,
         textScale: textScale,
       ).height <=
       availableHeight;

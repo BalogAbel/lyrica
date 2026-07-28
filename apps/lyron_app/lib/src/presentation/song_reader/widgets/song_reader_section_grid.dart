@@ -46,6 +46,7 @@ class SongReaderSectionGrid extends StatelessWidget {
         final blocks = buildFlowBlocks(
           sections: sections,
           hasLeadingDirective: hasLeadingDirective,
+          leadingDirectiveText: leadingDirectiveText,
         );
 
         // Measure the real per-character advance of the lyric and chord text
@@ -68,8 +69,10 @@ class SongReaderSectionGrid extends StatelessWidget {
           fontScale: sharedFontScale,
           allowTwoColumns: normalizedColumns > 1,
           hasLeadingDirective: hasLeadingDirective,
+          leadingDirectiveText: leadingDirectiveText,
           lyricCharWidth: charWidths.lyricCharWidth,
           chordCharWidth: charWidths.chordCharWidth,
+          headerCharWidth: charWidths.headerCharWidth,
           textScale: charWidths.textScale,
         );
         final effectiveColumns = layout.columnCount;

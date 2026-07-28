@@ -166,8 +166,10 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
         leadingDirectiveHeight: widget.projection.capoDirectiveText != null
             ? directiveLineHeight + sectionGap
             : 0,
+        leadingDirectiveText: widget.projection.capoDirectiveText,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
+        headerCharWidth: charWidths.headerCharWidth,
         textScale: charWidths.textScale,
       );
       _lastAppliedFitScale = fit;
