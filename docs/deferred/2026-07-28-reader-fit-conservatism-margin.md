@@ -67,19 +67,75 @@ under):
 
 | Line shape | Rendered | Estimated | Ratio |
 |------------|----------|-----------|-------|
-| chord-only instrumental bar (fontScale 1.0) | 194 px | 194 px | 1.00 |
+| chord-only instrumental bar (fontScale 1.0, width 150) | 346 px | 346 px | 1.00 |
 | plain wrapping lyric line (fontScale 1.0) | 610 px | 881.4 px | 1.44 |
 | plain wrapping lyric line (fontScale 1.3) | 488 px | 622.74 px | 1.28 |
 
-Pre-fix, the same three cases were RED: chord-only bar 194 rendered vs. 130
-estimated (a genuine under-estimate — the exact failure mode this round
-exists to close), plain lyric line 610 vs. 566.4 (also under), and the
-fontScale-1.3 case 488 vs. 732.72 (over the ceiling, i.e. wrong in the other
-direction once `sharedFontScale != 1.0` is in play). The whole-song fixtures
-(both measured under the identity scaler at fontScale 1.0) were unaffected —
-their numbers above are unchanged post-fix, since `SongReaderFitTextScale`'s
-default (`TextScaler.noScaling`, base sizes 16/14/22/12) reduces to the
-pre-fix arithmetic exactly when the scaler is linear.
+Pre-fix, the same three cases were RED: chord-only bar (width 150) 346
+rendered vs. 194 estimated (a genuine under-estimate — the exact failure
+mode this round exists to close), plain lyric line 610 vs. 566.4 (also
+under), and the fontScale-1.3 case 488 vs. 732.72 (over the ceiling, i.e.
+wrong in the other direction once `sharedFontScale != 1.0` is in play). The
+whole-song fixtures (both measured under the identity scaler at fontScale
+1.0) were unaffected — their numbers above are unchanged post-fix, since
+`SongReaderFitTextScale`'s default (`TextScaler.noScaling`, base sizes
+16/14/22/12) reduces to the pre-fix arithmetic exactly when the scaler is
+linear.
+
+## Chord label self-wrap (2026-07-28, same round, closed before merge)
+
+A follow-up review of the non-linear-scaler fix found the chord-only bar
+fixture above was passing for the wrong reason at some widths: it had been
+widened from 150px to 260px specifically to dodge a SEPARATE bug rather than
+prove the fix. `_SongLineSegmentView`'s chord `Text` (widgets/song_line_view.dart)
+has no `ConstrainedBox` of its own — only the lyric `Text` below it does —
+but `RenderWrap` constrains EVERY child's main-axis size to its own
+`constraints.maxWidth` regardless (Flutter SDK, `RenderWrap._computeRuns`).
+So a chord label wider than the line wraps internally onto a second (or
+further) line, growing the segment taller, and the estimator (which assumed
+every chord label renders on exactly one line, always charging exactly one
+`chordRowHeight`) fell under the render whenever that happened. Reachable in
+practice: a ten-plus character extended/slash chord at a 14px base size,
+under a non-linear scaler near its peak boost and a raised `sharedFontScale`,
+comfortably exceeds a 375px phone's content width.
+
+Fixed by modelling chord self-wrap in `song_reader_fit.dart`'s
+`_segmentRowHeight`: a segment's chord occupies
+`ceil(chordWidth / effectiveLineWidth)` chord rows (using the chord style's
+own per-style factor), the same way an over-long lyric word already occupied
+`ceil(wordWidth / effectiveLineWidth)` lines — a chord label has no spaces to
+break on in the general case (extended/slash chords have no reliable word
+boundary), so an even division is the right model here, unlike lyric text,
+where word-boundary-aware greedy packing was needed. The run/group height
+computation was also changed from separately maxing "chord rows across the
+run" and "lyric lines across the run" and summing those maxes, to computing
+each segment's own combined height (`chordRows * chordRowHeight` + gap +
+`lyricLines * lyricRowHeight`) and taking the run's height as the max of its
+segments' combined heights — max(a)+max(b) can exceed max(a+b) when the
+tallest-chord segment and the tallest-lyric segment in a run differ, so the
+old sum-of-maxes was already an (harmless, over-estimating) approximation;
+the new per-segment max matches what `Wrap` actually measures.
+
+Measured, no custom `TextScaler` (default/unscaled), at a 130px column (just
+above `_lineItemHeight`'s own 120px `columnWidth.clamp` floor, so the
+estimator and the real render agree on the width being tested):
+
+| Line shape | Rendered | Estimated | Ratio |
+|------------|----------|-----------|-------|
+| long chord label alone must wrap (`Cmaj7#11/G`, 10 chars) | 52 px | 52 px | 1.00 |
+| wrapping chord label over a lyric syllable | 74 px | 78 px | 1.05 |
+
+Pre-fix, both were RED: 52 rendered vs. 32 estimated, and 74 rendered vs. 58
+estimated — the estimator's chord-row contribution was a flat 20px
+(`chordRowHeight`) regardless of how many rows the label actually needed.
+None of the other per-line fixtures in the table above moved: the group/run
+height computation change is provably conservative-or-equal everywhere a
+chord label does NOT need to wrap (every segment's own width is already
+`<= effectiveLineWidth` whenever its group is not flagged over-wide, so
+`_segmentRowHeight` can never compute more than 1 chord row there), and the
+two whole-song fixtures' chords (longest 8 characters) stay well under
+their ~327px tile width, so neither triggers the chord-wrap path either —
+their numbers are unchanged.
 
 Reducing the overshoot means making the modelled word packing agree more closely
 with real text layout (trailing-space handling, the exact width the `Text` is given
