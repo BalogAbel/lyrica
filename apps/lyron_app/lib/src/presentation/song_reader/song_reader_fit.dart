@@ -214,13 +214,12 @@ double _lineItemHeight({
       // width and a chord wider than its lyric sets the segment's width.
       //
       // Greedily pack groups into runs of effectiveLineWidth, mirroring the
-      // renderer's outer Wrap. A group wider than a whole run occupies
-      // ceil(groupWidth / effectiveLineWidth) runs on its own -- this
-      // mirrors the renderer's inner ConstrainedBox+Wrap fallback, which
-      // forces the same runSpacing between its own wrapped rows. Only the
-      // first of those runs is credited with the group's chord, since the
-      // renderer draws the chord once above the (possibly internally
-      // wrapped) lyric text.
+      // renderer's outer Wrap. A group wider than a whole run is instead
+      // packed segment-by-segment into its own runs (see the branch below),
+      // mirroring the renderer's inner ConstrainedBox+Wrap fallback
+      // (song_line_view.dart), which lays out that group's segments in
+      // their own Wrap with spacing: 0 and gives every run that receives a
+      // chorded segment its own chord row.
       //
       // A chord-only line skips word grouping (each segment is its own
       // "group", see `groups` above) and the renderer's outer Wrap uses
@@ -254,12 +253,52 @@ double _lineItemHeight({
         final groupHasChord = group.any((s) => s.displayChord != null);
 
         if (groupWidth > effectiveLineWidth) {
+          // This group alone won't fit in one run. It starts on a fresh run
+          // (flushRun below closes whatever run was already in progress),
+          // then its own segments are packed the way the renderer's inner
+          // Wrap packs them: greedily, with 0 spacing between segments in
+          // the same group (song_line_view.dart's inner Wrap uses
+          // spacing: 0). Each resulting run remembers whether it received a
+          // chorded segment, since every such run draws its own chord row.
           flushRun();
-          final runsNeeded = (groupWidth / effectiveLineWidth).ceil();
-          runHasChord.add(groupHasChord);
-          for (var i = 1; i < runsNeeded; i++) {
-            runHasChord.add(false);
+
+          var segRunWidth = 0.0;
+          var segRunHasChord = false;
+          var segRunStarted = false;
+
+          void flushSegRun() {
+            if (segRunStarted) {
+              runHasChord.add(segRunHasChord);
+            }
+            segRunWidth = 0.0;
+            segRunHasChord = false;
+            segRunStarted = false;
           }
+
+          for (final segment in group) {
+            final segWidth =
+                _segmentCharWidth(segment, showChords) *
+                characterWidthEstimate *
+                fontScale;
+            final segHasChord = segment.displayChord != null;
+
+            // A segment wider than a whole run still occupies its own run
+            // (it is never split further): the check below only closes an
+            // already-started run, so a lone oversized segment is placed
+            // into a fresh run regardless of its own width, and the next
+            // segment then forces a new run in turn.
+            if (segRunStarted && segRunWidth + segWidth > effectiveLineWidth) {
+              flushSegRun();
+            }
+            if (segRunStarted) {
+              segRunWidth += segWidth; // 0 spacing within the group
+            } else {
+              segRunStarted = true;
+              segRunWidth = segWidth;
+            }
+            segRunHasChord = segRunHasChord || segHasChord;
+          }
+          flushSegRun();
           continue;
         }
 

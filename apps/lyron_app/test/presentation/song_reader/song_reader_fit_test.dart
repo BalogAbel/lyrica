@@ -1326,6 +1326,66 @@ void main() {
   // Bug fix: group width must account for chord width, not just lyric chars.
   // ---------------------------------------------------------------------------
 
+  group('over-wide group packs its own segments into runs', () {
+    // Reviewer's repro: 12 segments in a single word group (no whitespace
+    // between them, so groupSegmentsIntoWords keeps them together), each
+    // with a wide chord ('C#m/G#', 6 chars -> 60px) over a one-character
+    // lyric ('a'). At columnWidth=120 (the estimator's clamp floor), each
+    // segment is 60px wide, so 2 fit per run (0 inter-segment spacing,
+    // mirroring song_line_view.dart's inner Wrap) -> 6 runs of 2 segments
+    // each, every run carrying a chord.
+    //
+    // The buggy code instead divides the group's total width
+    // (12*60=720px) by the effective line width (120px) to get
+    // runsNeeded=6, but only marks the FIRST of those 6 runs as carrying a
+    // chord. The renderer disagrees: every run that receives a chorded
+    // segment draws a chord row, because the over-wide group is laid out
+    // by its own inner Wrap where every segment carries its own chord
+    // column.
+    test('charges a chord row for every inner run of an over-wide group', () {
+      const chord = 'C#m/G#'; // 6 chars -> 60px at characterWidthEstimate
+      const segmentCount = 12;
+      const columnWidth = 120.0; // clamps to the estimator's floor
+      final line = SongReaderLyricLineProjection(
+        segments: List.generate(
+          segmentCount,
+          (_) =>
+              const SongReaderSegmentProjection(displayChord: chord, text: 'a'),
+        ),
+      );
+      final section = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Unlabeled',
+        number: null,
+        isUnknown: false,
+        lines: [line],
+      );
+
+      // Widths imply: segment width = 60px, effectiveLineWidth = 120px,
+      // 0 spacing within the group -> 2 segments/run -> 6 runs, all
+      // chorded.
+      const runsImplied = 6;
+
+      final height = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: columnWidth,
+        fontScale: fontScale,
+      );
+
+      final minExpected = runsImplied * (chordRowHeight + lyricRowHeight);
+
+      expect(
+        height,
+        greaterThanOrEqualTo(minExpected),
+        reason:
+            'every inner run of the over-wide group carries a chord, so '
+            'the estimate must be at least $runsImplied * '
+            '(chordRowHeight + lyricRowHeight) = $minExpected; got $height',
+      );
+    });
+  });
+
   group('_lineItemHeight accounts for chord width', () {
     // Narrow enough that a single wide (8-char = 80px) chord segment already
     // occupies most of the run, so two of them can never share a run.
