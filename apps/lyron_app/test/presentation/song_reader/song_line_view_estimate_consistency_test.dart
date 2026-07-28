@@ -217,6 +217,54 @@ void main() {
       );
     });
 
+    testWidgets('wide chords with NO whitespace at any join force the inner '
+        'over-wide-group Wrap branch (not just inter-group packing)', (
+      tester,
+    ) async {
+      // The "wide chords over short syllables" fixture above uses segment
+      // texts ending in spaces ('a ', 'b ', 'c '), so
+      // groupSegmentsIntoWords splits them into separate single-segment
+      // groups -- it only ever exercises inter-GROUP packing (the normal
+      // groups loop in _lineItemHeight), never the inner, over-wide-GROUP
+      // Wrap branch that packs several segments of the SAME group
+      // segment-by-segment (song_reader_fit.dart's `if (groupWidth >
+      // effectiveLineWidth)` branch), because each of its groups has only
+      // one segment.
+      //
+      // This fixture has NO whitespace at any join (every segment's text
+      // is exactly 'a', no trailing/leading space), so
+      // groupSegmentsIntoWords merges all four segments into ONE group.
+      // Four "C#m/G#" chords (~84.6px each) sum to roughly 340px, several
+      // times over a 120-150px line, so the group as a whole is over-wide
+      // and must be packed segment-by-segment inside its own Wrap --
+      // exactly the branch this fixture targets.
+      final line = SongReaderLyricLineProjection(
+        segments: List.generate(
+          4,
+          (_) => const SongReaderSegmentProjection(
+            displayChord: 'C#m/G#',
+            text: 'a',
+          ),
+        ),
+      );
+
+      // Measured 2026-07-28: rendered=210.0 estimated=226.0 (width=130,
+      // ratio 1.08x). Same run structure and numbers as the "wide chords
+      // over short syllables" fixture above -- at both 130px and 150px, a
+      // single 'C#m/G#' chord (~84.6px) fits one run but any two never do,
+      // so both widths pack down to 4 runs of one segment each. estimated
+      // > rendered throughout, confirming the over-wide-group branch
+      // (song_reader_fit.dart's `if (groupWidth > effectiveLineWidth)`)
+      // handles a multi-segment group correctly, not just the
+      // single-segment case the other fixtures exercise.
+      await expectUpperBound(
+        tester,
+        line: line,
+        width: 130.0,
+        ceilingMultiplier: 1.15,
+      );
+    });
+
     testWidgets('chord-only instrumental bar of several wide chords', (
       tester,
     ) async {
