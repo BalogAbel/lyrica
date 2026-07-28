@@ -137,6 +137,110 @@ two whole-song fixtures' chords (longest 8 characters) stay well under
 their ~327px tile width, so neither triggers the chord-wrap path either —
 their numbers are unchanged.
 
+## Full-kind sweep (2026-07-28, same round): every kind the estimator assigns a height to
+
+Three rounds in a row found the same shape of defect (some rendered element
+wraps/grows in a way the estimator does not model) one fixture at a time —
+the ambient-scaler flattening, then the chord label's own wrap, then the
+inline directive's 6.3x under-estimate found in passing while checking for
+more of the same. Rather than wait for a fourth fixture to stumble onto the
+next one, every kind `_lineItemHeight`'s switch and `flowBlockHeight`'s
+`FlowBlockKind` switch (song_reader_fit.dart) assign a height to was
+enumerated and given a real render-vs-estimate case (short instance + long
+instance at a narrow width) in
+`song_reader_block_estimate_consistency_test.dart` (the lyric line itself
+is covered exhaustively by `song_line_view_estimate_consistency_test.dart`,
+above).
+
+Pre-fix sweep (2026-07-28), default/unscaled `TextScaler`, fontScale 1.0:
+
+| Kind | Case | Rendered | Estimated | Status |
+|------|------|----------|-----------|--------|
+| Comment | short, width 300 | 30 px | 34 px | OK |
+| Comment | long, width 150 | 410 px | 346 px | **RED** (under) |
+| Tab block | short, width 300 | 46 px | 50 px | OK |
+| Tab block | 4 long lines, width 100 | 106 px | 122 px | OK |
+| Inline directive | short, width 300 | 30 px | 36 px | OK |
+| Inline directive | long value, width 150 | 238 px | 36 px | **RED** (6.6x under) |
+| Leading directive | short, width 300 | 44 px | 56 px | OK |
+| Leading directive | long, width 150 | 304 px | 56 px | **RED** (5.4x under) |
+| Section header | short label, width 300 | 40 px | 60 px | OK |
+| Section header | long custom label, width 150 | 404 px | 60 px | **RED** (6.7x under) |
+
+Four of five non-lyric kinds were broken. Tab blocks were the exception:
+`TabBlockView` (widgets/tab_block_view.dart) draws its raw lines inside a
+`SingleChildScrollView(scrollDirection: Axis.horizontal)`, so a tab line
+SCROLLS rather than wraps no matter how long it is or how narrow the column
+is — proven by the "several LONG tab lines at a narrow width" case above,
+which stayed green with NO fix. One estimated row per raw line was already
+exact; the constant was left alone, per "a proven-tight case is a useful
+result, not a wasted one."
+
+Fixes, one per kind, each in `song_reader_fit.dart`:
+- **Comment** (`SongReaderCommentProjection`): `CommentLineView` sits
+  directly in the grid's Column (full available width) and wraps at word
+  boundaries like a lyric segment does — the old formula was a plain
+  character-count division, the same undercounting bug the lyric line had
+  before its own word-wrap fix. Now uses `_wordWrapLineCount` (the lyric
+  line's word-boundary model, extracted into a shared helper), reusing
+  `lyricCharWidth` as a deliberately conservative width proxy (comment's
+  real style, `bodyMedium` 14px, is smaller than lyric's `bodyLarge` 16px,
+  so this can only over-count wraps, never under).
+- **Inline directive** (`SongReaderDirectiveProjection` /
+  `DirectiveLineView`) and **leading directive**
+  (`FlowBlockKind.leadingDirective` / `_DirectiveLine`): both sit directly
+  in a Column and wrap at word boundaries too — word-boundary text, not a
+  chord label, so both use `_wordWrapLineCount` as well, reusing
+  `chordCharWidth` (`labelLarge`+`w700`, bolder and same-or-larger than
+  either directive style) as a conservative proxy. The flat
+  `directiveLineHeight` constant was previously charged once regardless of
+  the directive's own text length; it is now multiplied by the real
+  word-wrapped line count.
+- **Section header** (`FlowBlockKind.sectionHeader` /
+  `_buildHeaderWidget`): also word-boundary text, but unlike the directive
+  kinds, no existing measured char width is a safe (conservative) proxy —
+  `titleLarge` (22px) is LARGER than every other measured style, so
+  reusing a smaller one would UNDER-count, not over-count. A genuine
+  `headerCharWidth` measurement (titleLarge, no weight override) was added
+  to `SongReaderCharWidths`. Section labels are not a hypothetical edge
+  case: a ChordPro `start_of_verse`-style directive can carry an arbitrary
+  custom label.
+
+Modelling the header and leading-directive fixes required a real (if
+additive) API extension: `FlowBlock` previously carried no text at all for
+these two kinds, so `flowBlockHeight` had nothing to measure. `FlowBlock`
+gained an optional `blockText` field, populated by `buildFlowBlocks` from
+the section's label / the leading-directive string; `flowBlockHeight`,
+`resolveFlowLayoutForSections`, `estimateRenderedLayout`, and
+`resolveFitFontScale` gained optional `headerCharWidth` /
+`leadingDirectiveText` parameters, all defaulting to today's flat-constant
+behavior so the ~40 pre-existing call sites in `song_reader_fit_test.dart`
+(which construct `FlowBlock`s directly, without text) needed no changes and
+all still pass unchanged.
+
+Post-fix sweep:
+
+| Kind | Case | Rendered | Estimated | Ratio |
+|------|------|----------|-----------|-------|
+| Comment | short, width 300 | 30 px | 34 px | 1.13 |
+| Comment | long, width 150 | 410 px | 586 px | 1.43 |
+| Tab block | short, width 300 | 46 px | 50 px | 1.09 |
+| Tab block | 4 long lines, width 100 | 106 px | 122 px | 1.15 |
+| Inline directive | short, width 300 | 30 px | 36 px | 1.20 |
+| Inline directive | long value, width 150 | 238 px | 540 px | 2.27 |
+| Leading directive | short, width 300 | 44 px | 56 px | 1.27 |
+| Leading directive | long, width 150 | 304 px | 560 px | 1.84 |
+| Section header | short label, width 300 | 40 px | 60 px | 1.50 |
+| Section header | long custom label, width 150 | 404 px | 660 px | 1.63 |
+
+Every kind holds the one-sided contract. The two directive kinds' ratios
+(2.27x, 1.84x) are the loosest in this document — the cost of reusing
+`chordCharWidth` as a conservative proxy rather than measuring each
+directive style's own char width — but loose is the acceptable failure
+mode here; under is not. The whole-song fixtures (both measured under the
+identity scaler, short section labels only) are unchanged by this round:
+1082/1198 and 2574/2630, same as above.
+
 Reducing the overshoot means making the modelled word packing agree more closely
 with real text layout (trailing-space handling, the exact width the `Text` is given
 inside its `ConstrainedBox`, and how a run's height is derived from its tallest
