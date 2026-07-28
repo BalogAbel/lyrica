@@ -17,15 +17,32 @@ class SongReaderCharWidths {
   const SongReaderCharWidths({
     required this.lyricCharWidth,
     required this.chordCharWidth,
+    required this.ambientTextScaleRatio,
   });
 
   /// Average px/char advance of the lyric body style (`bodyLarge`, `height:
-  /// 1.25`), at fontScale == 1.0.
+  /// 1.25`), at fontScale == 1.0. Already includes the ambient
+  /// `MediaQuery.textScalerOf(context)` factor (see below), so callers only
+  /// need to multiply by their own `sharedFontScale` on top of this.
   final double lyricCharWidth;
 
   /// Average px/char advance of the chord label style (`labelLarge`,
-  /// `FontWeight.w700`), at fontScale == 1.0.
+  /// `FontWeight.w700`), at fontScale == 1.0. Same ambient-scaler note as
+  /// [lyricCharWidth] applies.
   final double chordCharWidth;
+
+  /// The ambient `MediaQuery.textScalerOf(context)` ratio at the time of
+  /// measurement (`textScaler.scale(1.0)`), for callers that need to scale a
+  /// quantity OTHER than character width by the same ambient factor -- e.g.
+  /// song_reader_fit.dart's row-height constants (`chordRowHeight`,
+  /// `lyricRowHeight`), which are flat guesses rather than TextPainter
+  /// measurements, so they cannot bake the ambient scaler in themselves the
+  /// way [lyricCharWidth]/[chordCharWidth] do. Pass this as
+  /// `ambientTextScaleRatio` to `resolveFitFontScale` /
+  /// `estimateSongContentHeight` / friends -- do NOT also fold it into the
+  /// `fontScale` argument to those functions, or [lyricCharWidth] (which
+  /// already includes it) would be scaled by it twice.
+  final double ambientTextScaleRatio;
 }
 
 // Representative sample strings used to measure an AVERAGE per-character
@@ -50,8 +67,23 @@ const _chordMeasureSample = 'ABCDEFG#b/mjasdimug 0123456789';
 /// function is meant to be called once per build (or once per event, for a
 /// one-shot double-tap handler), with the result reused across every line
 /// and every binary-search iteration in that call.
+///
+/// Uses `MediaQuery.textScalerOf(context)`, the SAME scaler the rendered
+/// `Text` widgets pick up ambiently (song_line_view.dart never sets its own
+/// `textScaler`, so Flutter applies the ambient one from `MediaQuery`).
+/// Measuring with `TextScaler.noScaling` here while the render uses the
+/// ambient scaler made the two diverge whenever a user turns up system font
+/// scaling: the estimate would keep assuming 1.0x glyph width while the
+/// actual render grew by the system's scale factor, silently reintroducing
+/// the same "estimate below render" failure mode `sharedFontScale` handles
+/// for the in-app font control. `sharedFontScale` and the ambient text
+/// scaler are two independent multipliers on the SAME rendered glyph size,
+/// so both must be reflected somewhere: the ambient scaler here (baked into
+/// the measured px/char), `sharedFontScale` by the caller (multiplied in
+/// afterwards, as before).
 SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
   final theme = Theme.of(context);
+  final textScaler = MediaQuery.textScalerOf(context);
   final chordStyle = theme.textTheme.labelLarge?.copyWith(
     fontWeight: FontWeight.w700,
   );
@@ -61,13 +93,19 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     final painter = TextPainter(
       text: TextSpan(text: sample, style: style),
       textDirection: TextDirection.ltr,
-      textScaler: TextScaler.noScaling,
-    )..layout();
-    return painter.width / sample.length;
+      textScaler: textScaler,
+    );
+    try {
+      painter.layout();
+      return painter.width / sample.length;
+    } finally {
+      painter.dispose();
+    }
   }
 
   return SongReaderCharWidths(
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
+    ambientTextScaleRatio: textScaler.scale(1.0),
   );
 }

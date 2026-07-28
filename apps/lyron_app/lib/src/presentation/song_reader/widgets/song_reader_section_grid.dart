@@ -70,6 +70,7 @@ class SongReaderSectionGrid extends StatelessWidget {
           hasLeadingDirective: hasLeadingDirective,
           lyricCharWidth: charWidths.lyricCharWidth,
           chordCharWidth: charWidths.chordCharWidth,
+          ambientTextScaleRatio: charWidths.ambientTextScaleRatio,
         );
         final effectiveColumns = layout.columnCount;
 

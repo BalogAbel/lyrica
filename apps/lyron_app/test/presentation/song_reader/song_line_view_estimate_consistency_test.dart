@@ -37,20 +37,32 @@ Future<double> _renderAndMeasure(
   required SongReaderViewMode viewMode,
   required double width,
   required double fontScale,
+  TextScaler? textScaler,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: width,
-            child: SongLineView(
-              line: line,
-              viewMode: viewMode,
-              sharedFontScale: fontScale,
-            ),
-          ),
+        body: Builder(
+          builder: (context) {
+            Widget content = Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                child: SongLineView(
+                  line: line,
+                  viewMode: viewMode,
+                  sharedFontScale: fontScale,
+                ),
+              ),
+            );
+            if (textScaler != null) {
+              content = MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+                child: content,
+              );
+            }
+            return content;
+          },
         ),
       ),
     ),
@@ -59,6 +71,11 @@ Future<double> _renderAndMeasure(
   return _measuredLineHeight(tester);
 }
 
+// Note: no textScaler parameter here -- measureSongReaderCharWidths reads
+// the ambient MediaQuery textScaler straight off the element's context,
+// which already sits inside whatever MediaQuery override _renderAndMeasure
+// installed, so the estimate automatically picks up a non-default scaler
+// once the widget tree carries one.
 double _estimatedLineHeight(
   WidgetTester tester, {
   required SongReaderLyricLineProjection line,
@@ -81,6 +98,7 @@ double _estimatedLineHeight(
     fontScale: fontScale,
     lyricCharWidth: charWidths.lyricCharWidth,
     chordCharWidth: charWidths.chordCharWidth,
+    ambientTextScaleRatio: charWidths.ambientTextScaleRatio,
   );
 }
 
@@ -294,5 +312,77 @@ void main() {
         ceilingMultiplier: 1.15,
       );
     });
+  });
+
+  group('SongLineView per-line estimate/render consistency under a '
+      'non-default text scaler', () {
+    // song_reader_char_metrics.dart used to measure with
+    // TextScaler.noScaling while the rendered Text inherits
+    // MediaQuery.textScalerOf(context): with system font scaling turned up,
+    // the estimate stayed at 1.0x glyph width while the real render grew,
+    // reintroducing an under-estimate -- an accessibility-relevant
+    // correctness bug (a real user with large-text turned on is exactly the
+    // user this must not overflow for), not a nicety. 1.5x is a scale a
+    // real user with system-level large-text accessibility settings would
+    // plausibly use.
+    testWidgets(
+      'plain lyric line still satisfies the one-sided contract at 1.5x '
+      'text scaling',
+      (tester) async {
+        final line = SongReaderLyricLineProjection(
+          segments: [
+            const SongReaderSegmentProjection(
+              displayChord: null,
+              text:
+                  'This is a long lyric line without any chords and it will '
+                  'definitely wrap across several rows',
+            ),
+          ],
+        );
+        const textScaler = TextScaler.linear(1.5);
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 160.0,
+          fontScale: fontScale,
+          textScaler: textScaler,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 160.0,
+          fontScale: fontScale,
+        );
+
+        // Measured 2026-07-28: rendered=492.0 estimated=660.0 (width=160,
+        // textScaler=1.5x). estimated > rendered (ratio 1.34x) -- the
+        // combination of the word-wrap model's own over-count (see the
+        // plain-lyric-line fixture above, ratio 1.27x at scale 1.0) and
+        // song_reader_fit.dart's `ambientTextScaleRatio` parameter (which
+        // scales the flat chordRowHeight/lyricRowHeight row-height guesses by
+        // the same ambient factor lyricCharWidth/chordCharWidth already bake
+        // in via measureSongReaderCharWidths) never drops below the render.
+        // Ceiling pinned at 1.5x, just above the measured ratio.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render even '
+              'under a non-default ambient text scaler; rendered=$rendered '
+              'estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.5),
+          reason:
+              'the estimate must not be uselessly loose under a '
+              'non-default text scaler either; rendered=$rendered '
+              'estimated=$estimated ceiling=${rendered * 1.5}',
+        );
+      },
+    );
   });
 }

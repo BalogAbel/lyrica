@@ -293,11 +293,21 @@ double _lineItemHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
   final charsPerLine = (effectiveLineWidth / (lyricCharWidth * fontScale))
       .floor()
       .clamp(12, 140);
+  // Row-height constants (chordRowHeight, lyricRowHeight) are flat guesses,
+  // not TextPainter measurements, so -- unlike lyricCharWidth/chordCharWidth,
+  // which already bake the ambient scaler in via measureSongReaderCharWidths
+  // -- they need [ambientTextScaleRatio] multiplied in separately here.
+  // fontScale alone (the reader's own in-app font-scale control) is not the
+  // full picture: the rendered row is also taller when the OS/ambient
+  // MediaQuery.textScalerOf(context) scale is turned up, and that is an
+  // orthogonal multiplier on top of fontScale, not a substitute for it.
+  final rowScale = fontScale * ambientTextScaleRatio;
 
   switch (item) {
     case SongReaderLyricLineProjection():
@@ -501,10 +511,10 @@ double _lineItemHeight({
       var runsHeight = 0.0;
       for (var i = 0; i < runHasChord.length; i++) {
         final lyricH = runHasLyric[i]
-            ? runIntraLines[i] * lyricRowHeight * fontScale
+            ? runIntraLines[i] * lyricRowHeight * rowScale
             : 0.0;
         final chordH = (runHasChord[i] && showChords)
-            ? (chordRowHeight * fontScale +
+            ? (chordRowHeight * rowScale +
                   (runHasLyric[i] ? chordToLyricGap : 0.0))
             : 0.0;
         runsHeight += lyricH + chordH;
@@ -519,9 +529,9 @@ double _lineItemHeight({
       final commentWrapCount = commentLength == 0
           ? 1
           : (commentLength / charsPerLine).ceil().clamp(1, 14);
-      return commentWrapCount * (lyricRowHeight * fontScale) + lineGap;
+      return commentWrapCount * (lyricRowHeight * rowScale) + lineGap;
     case SongReaderTabProjection():
-      return item.rawLines.length * (lyricRowHeight * fontScale) +
+      return item.rawLines.length * (lyricRowHeight * rowScale) +
           lineGap +
           tabBlockVerticalPadding;
     case SongReaderDirectiveProjection():
@@ -548,6 +558,7 @@ double flowBlockHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   switch (block.kind) {
     case FlowBlockKind.leadingDirective:
@@ -563,6 +574,7 @@ double flowBlockHeight({
         fontScale: fontScale,
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
+        ambientTextScaleRatio: ambientTextScaleRatio,
       );
       // For unlabeled sections the first line carries the sectionGap.
       return block.isSectionStart ? lineH + sectionGap : lineH;
@@ -711,6 +723,7 @@ double estimateSectionHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
   final h = hasHeader ? headerHeight : 0.0;
@@ -723,6 +736,7 @@ double estimateSectionHeight({
       fontScale: fontScale,
       lyricCharWidth: lyricCharWidth,
       chordCharWidth: chordCharWidth,
+      ambientTextScaleRatio: ambientTextScaleRatio,
     );
   }
   return h + linesHeight + sectionGap;
@@ -737,6 +751,7 @@ double estimateSongContentHeight({
   required double fontScale,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   return sections.fold<double>(
     0.0,
@@ -749,6 +764,7 @@ double estimateSongContentHeight({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          ambientTextScaleRatio: ambientTextScaleRatio,
         ),
   );
 }
@@ -786,6 +802,7 @@ FlowLayout resolveFlowLayoutForSections({
   required bool hasLeadingDirective,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   final blocks = buildFlowBlocks(
     sections: sections,
@@ -800,6 +817,7 @@ FlowLayout resolveFlowLayoutForSections({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          ambientTextScaleRatio: ambientTextScaleRatio,
         ),
       )
       .toList(growable: false);
@@ -840,6 +858,7 @@ RenderedHeightEstimate estimateRenderedLayout({
   double leadingDirectiveHeight = 0,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   // Single-column total: blocks at full width.
   final hasLeadingDirective = leadingDirectiveHeight > 0;
@@ -856,6 +875,7 @@ RenderedHeightEstimate estimateRenderedLayout({
           fontScale: fontScale,
           lyricCharWidth: lyricCharWidth,
           chordCharWidth: chordCharWidth,
+          ambientTextScaleRatio: ambientTextScaleRatio,
         ),
       )
       .fold<double>(0.0, (a, b) => a + b);
@@ -878,6 +898,7 @@ RenderedHeightEstimate estimateRenderedLayout({
     hasLeadingDirective: hasLeadingDirective,
     lyricCharWidth: lyricCharWidth,
     chordCharWidth: chordCharWidth,
+    ambientTextScaleRatio: ambientTextScaleRatio,
   );
 
   if (layout.columnCount == 2) {
@@ -910,6 +931,7 @@ double resolveFitFontScale({
   double leadingDirectiveHeight = 0,
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
+  double ambientTextScaleRatio = 1.0,
 }) {
   bool fits(double scale) =>
       estimateRenderedLayout(
@@ -922,6 +944,7 @@ double resolveFitFontScale({
         leadingDirectiveHeight: leadingDirectiveHeight,
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
+        ambientTextScaleRatio: ambientTextScaleRatio,
       ).height <=
       availableHeight;
 
