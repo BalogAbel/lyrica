@@ -174,6 +174,34 @@ int _segmentCharWidth(SongReaderSegmentProjection segment, bool showChords) {
   return lyricChars > chordChars ? lyricChars : chordChars;
 }
 
+/// Number of visual lines a segment's own lyric `Text` soft-wraps into when
+/// laid out at [effectiveLineWidth].
+///
+/// This is a DIFFERENT quantity from [_segmentCharWidth] and must use a
+/// DIFFERENT input: `_segmentCharWidth` uses the wider of the lyric text and
+/// the chord label because that decides how much horizontal room a segment
+/// occupies for Wrap-packing purposes (a chord wider than its lyric still
+/// pushes neighbours onto the next run). But the chord label itself never
+/// wraps -- in `_SongLineSegmentView` (song_line_view.dart) it is a single
+/// `Text` with no `ConstrainedBox`, drawn once above the lyric. Only the
+/// lyric `Text` sits inside a `ConstrainedBox(maxWidth: maxWidth)` with
+/// `softWrap: true`, so only the lyric character count may push this count
+/// above 1. Using the wider (chord-inclusive) width here would wrongly
+/// inflate the line count for a short lyric syllable under a long chord.
+///
+/// Conflating these two widths is exactly how the chord-row/lyric-wrap bugs
+/// in this file keep recurring -- keep them separate.
+int _segmentIntraLines({
+  required SongReaderSegmentProjection segment,
+  required double effectiveLineWidth,
+  required double fontScale,
+}) {
+  final lyricWidth = segment.text.length * characterWidthEstimate * fontScale;
+  if (lyricWidth <= 0) return 1;
+  final lines = (lyricWidth / effectiveLineWidth).ceil();
+  return lines < 1 ? 1 : lines;
+}
+
 double _lineItemHeight({
   required SongReaderSectionItemProjection item,
   required SongReaderViewMode viewMode,
@@ -228,7 +256,17 @@ double _lineItemHeight({
       // packed into the same run.
       final interGroupSpacing = hasLyrics ? 0.0 : chordOnlySpacing;
 
+      // Per run: whether it carries a chord, and how many lyric lines its
+      // TALLEST segment's own Text wraps into (Wrap sizes a run to its
+      // tallest child -- see _segmentIntraLines). Runs built by the normal
+      // group-packing loop below always record 1: a group only reaches
+      // that loop when it is NOT over-wide, which means every one of its
+      // segments individually fits within effectiveLineWidth too (their
+      // widths sum to at most effectiveLineWidth), so none of them can
+      // need more than one lyric line. Only the over-wide branch further
+      // down can produce a run whose tallest segment needs >1.
       final runHasChord = <bool>[];
+      final runIntraLines = <int>[];
       var currentRunWidth = 0.0;
       var currentRunHasChord = false;
       var currentRunStarted = false;
@@ -236,6 +274,7 @@ double _lineItemHeight({
       void flushRun() {
         if (currentRunStarted) {
           runHasChord.add(currentRunHasChord);
+          runIntraLines.add(1);
         }
         currentRunWidth = 0.0;
         currentRunHasChord = false;
@@ -264,14 +303,22 @@ double _lineItemHeight({
 
           var segRunWidth = 0.0;
           var segRunHasChord = false;
+          var segRunIntraLines = 1;
           var segRunStarted = false;
 
           void flushSegRun() {
             if (segRunStarted) {
               runHasChord.add(segRunHasChord);
+              // A run's height is the max of its segments' heights (Wrap
+              // sizes a run to its tallest child), so the run's intra-line
+              // count is the max over its segments, not a sum: a segment
+              // whose own text wraps to N lines makes that ONE segment
+              // taller, it does not add N separate rows to the run.
+              runIntraLines.add(segRunIntraLines);
             }
             segRunWidth = 0.0;
             segRunHasChord = false;
+            segRunIntraLines = 1;
             segRunStarted = false;
           }
 
@@ -281,6 +328,11 @@ double _lineItemHeight({
                 characterWidthEstimate *
                 fontScale;
             final segHasChord = segment.displayChord != null;
+            final segIntraLines = _segmentIntraLines(
+              segment: segment,
+              effectiveLineWidth: effectiveLineWidth,
+              fontScale: fontScale,
+            );
 
             // A segment wider than a whole run still occupies its own run
             // (it is never split further): the check below only closes an
@@ -297,6 +349,9 @@ double _lineItemHeight({
               segRunWidth = segWidth;
             }
             segRunHasChord = segRunHasChord || segHasChord;
+            segRunIntraLines = segRunIntraLines > segIntraLines
+                ? segRunIntraLines
+                : segIntraLines;
           }
           flushSegRun();
           continue;
@@ -319,15 +374,17 @@ double _lineItemHeight({
 
       if (runHasChord.isEmpty) {
         runHasChord.add(false);
+        runIntraLines.add(1);
       }
 
-      final runsHeight = runHasChord.fold<double>(0.0, (sum, hasChord) {
-        final lyricH = lyricRowHeight * fontScale;
-        final chordH = (hasChord && showChords)
+      var runsHeight = 0.0;
+      for (var i = 0; i < runHasChord.length; i++) {
+        final lyricH = runIntraLines[i] * lyricRowHeight * fontScale;
+        final chordH = (runHasChord[i] && showChords)
             ? (chordRowHeight * fontScale + chordToLyricGap)
             : 0.0;
-        return sum + lyricH + chordH;
-      });
+        runsHeight += lyricH + chordH;
+      }
 
       return runsHeight + (runHasChord.length - 1) * lineRunSpacing + lineGap;
     case SongReaderCommentProjection():

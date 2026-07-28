@@ -1386,6 +1386,138 @@ void main() {
     });
   });
 
+  group('a single over-wide segment models its own lyric text wrap', () {
+    // The most common "over-wide group" shape is NOT several chorded
+    // segments stacked with no whitespace between them (the reviewer's
+    // repro above) -- it's a single, ordinary lyric segment whose own text
+    // is simply long (no chord splits it into multiple segments), e.g. a
+    // full sentence under one leading chord or no chord at all. The
+    // renderer's inner Wrap sees exactly one child in that case (one
+    // segment, no siblings to wrap between), but the segment's OWN lyric
+    // `Text` still soft-wraps internally within its ConstrainedBox
+    // (_SongLineSegmentView in song_line_view.dart), producing multiple
+    // VISUAL lines under one chord (drawn once, at the top of that
+    // segment's Column). The estimator must charge extra LYRIC-only height
+    // for those extra wrapped lines without adding extra chord rows --
+    // that's a different effect than the between-segment run-packing
+    // fixed above, and both must be modeled.
+    SongReaderSectionProjection singleSegmentUnlabeledSection(String text) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Unlabeled',
+          number: null,
+          isUnknown: false,
+          lines: [
+            SongReaderLyricLineProjection(
+              segments: [
+                SongReaderSegmentProjection(displayChord: null, text: text),
+              ],
+            ),
+          ],
+        );
+
+    test(
+      'estimate grows with the number of wrapped lines a long segment implies',
+      () {
+        const columnWidth = 120.0; // == the estimator's clamp floor
+        // shortText: 6 chars -> 60px -> fits in one 120px line -> 1 line.
+        // longText: 30 chars -> 300px -> ceil(300/120) = 3 lines.
+        const shortText = 'aaaaaa'; // 6 chars
+        const longText = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; // 30 chars
+        const shortLines = 1;
+        final longLines =
+            (longText.length * characterWidthEstimate / columnWidth).ceil();
+        expect(
+          longLines,
+          equals(3),
+          reason: 'sanity check on the fixture\'s own arithmetic',
+        );
+
+        final shortHeight = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(shortText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+        final longHeight = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(longText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+
+        final diff = longHeight - shortHeight;
+        final minExpectedDiff =
+            (longLines - shortLines) * lyricRowHeight * fontScale;
+
+        expect(
+          diff,
+          greaterThanOrEqualTo(minExpectedDiff),
+          reason:
+              'a lone over-wide segment with no chord siblings still wraps '
+              'its own lyric text into multiple visual lines; the estimate '
+              'must grow by at least ${longLines - shortLines} extra lyric '
+              'row(s) ($minExpectedDiff px), not stay flat at one lyric row '
+              'regardless of how wide the segment\'s text is '
+              '(short=$shortHeight, long=$longHeight, diff=$diff)',
+        );
+      },
+    );
+
+    test(
+      'does not charge an extra chord row for a wrapped lyric-only segment',
+      () {
+        // Same long segment, but WITH a chord. The chord must still be
+        // charged exactly once (drawn once above the wrapped lyric text),
+        // not once per implied wrapped line.
+        const columnWidth = 120.0;
+        const longText = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; // 30 chars, 3 lines
+        final section = SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Unlabeled',
+          number: null,
+          isUnknown: false,
+          lines: [
+            SongReaderLyricLineProjection(
+              segments: [
+                const SongReaderSegmentProjection(
+                  displayChord: 'C',
+                  text: longText,
+                ),
+              ],
+            ),
+          ],
+        );
+        final withChord = estimateSectionHeight(
+          section: section,
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+        final withoutChord = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(longText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+
+        final chordContribution = withChord - withoutChord;
+        expect(
+          chordContribution,
+          moreOrLessEquals(
+            chordRowHeight * fontScale + chordToLyricGap,
+            epsilon: 0.01,
+          ),
+          reason:
+              'the chord is drawn exactly once above the (internally '
+              'wrapped) lyric text, so it must add exactly one chord row, '
+              'never one per wrapped lyric line '
+              '(contribution=$chordContribution)',
+        );
+      },
+    );
+  });
+
   group('_lineItemHeight accounts for chord width', () {
     // Narrow enough that a single wide (8-char = 80px) chord segment already
     // occupies most of the run, so two of them can never share a run.

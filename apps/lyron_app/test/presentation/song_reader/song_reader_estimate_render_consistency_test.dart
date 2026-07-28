@@ -468,59 +468,59 @@ void main() {
       final relativeError = absoluteError / rendered;
 
       // ---------------------------------------------------------------
-      // Re-measured 2026-07-28 after fixing the over-wide-GROUP chord-row
-      // bug in _lineItemHeight: a word group too wide for one run now packs
-      // its own segments into inner runs the way song_line_view.dart's
-      // inner Wrap does (spacing: 0 between segments of the same group),
-      // instead of dividing the group's total width by the effective line
-      // width and guessing a run count (see song_reader_fit.dart, and the
-      // "over-wide group packs its own segments into runs" test in
-      // song_reader_fit_test.dart for the reviewer's original repro).
+      // Re-measured 2026-07-28 after fixing TWO related bugs in
+      // _lineItemHeight's over-wide-group branch (song_reader_fit.dart):
+      //
+      // 1. Between segments: a word group too wide for one run now packs
+      //    its own segments into inner runs the way song_line_view.dart's
+      //    inner Wrap does (spacing: 0 between segments of the same
+      //    group), instead of dividing the group's total width by the
+      //    effective line width and guessing a run count. See the
+      //    "over-wide group packs its own segments into runs" test in
+      //    song_reader_fit_test.dart for the reviewer's original repro.
+      //
+      // 2. Inside one segment: a lone over-wide segment (no chord-induced
+      //    mid-word split -- the shape of an ordinary long lyric line) now
+      //    also charges extra LYRIC-only height for the visual lines its
+      //    own `Text` soft-wraps into (_segmentIntraLines), on top of
+      //    exactly one chord row, matching _SongLineSegmentView's
+      //    Column(chord, lyric) shape in song_line_view.dart. See the "a
+      //    single over-wide segment models its own lyric text wrap" group
+      //    in song_reader_fit_test.dart.
+      //
+      // Fixing (1) alone regressed this fixture (rendered=1082.0
+      // estimated=890.0, 17.7%/192px) because this fixture's first line
+      // ("A long lyric line that will wrap across multiple rows", one
+      // segment, ~530px wide against a 327px column) lost the old
+      // ceil(groupWidth / effectiveLineWidth)'s accidental approximation
+      // of its own Text-internal wrap once that guess was replaced by
+      // correct per-segment run packing. Fixing (2) restores that
+      // modeling on a principled basis (lyric-only width, not the
+      // chord-inclusive packing width) without reintroducing the extra
+      // (wrong) chord row the old guess also produced.
+      //
       // Against this fixture (4 sections / 11 lines: long wrapping chorded
       // lines, a 4-chord instrumental bar with no lyric text under any
       // chord, and a blank ChordproParser-shaped separator line --
       // LyricLine(segments: [LyricSegment(text: '')])) at 375x812,
       // contentPadding=24 all sides, fontScale=1.0:
-      //   rendered=1082.0  estimated=890.0  relativeError=0.1774 (17.7%)
-      //   absoluteError=192.0
+      //   rendered=1082.0  estimated=1010.0  relativeError=0.0665 (6.7%)
+      //   absoluteError=72.0
+      // Back in the same ballpark as the original pre-chord-row-bug-fix
+      // measurement (2.0%/22px) -- not pixel-identical, because the new
+      // model's ceil(lyricWidth / effectiveLineWidth) line count is a
+      // different (more principled, chord-label-excluded) approximation
+      // than the old group-width-based guess, not the same formula by
+      // coincidence.
       //
-      // This is a genuine, deliberate regression from the pre-fix
-      // 2.0%/22px, not fixture noise or a coding mistake: this fixture's
-      // first line ("A long lyric line that will wrap across multiple
-      // rows", one segment, no chord-embedded mid-word break so it never
-      // splits into more than one word group) is ~530px wide against a
-      // 327px rendered column -- a single-segment over-wide group. The old
-      // ceil(groupWidth / effectiveLineWidth) division guessed 2 runs for
-      // it, which (by coincidence) roughly approximated the Text widget's
-      // own internal soft-wrap into 2 visual lines at render time. The
-      // fixed code recognises this case as exactly what the renderer's
-      // Wrap actually sees -- ONE child, hence ONE run -- and per this
-      // fix's own spec a lone over-wide segment "occupies its own run ...
-      // do not divide it further". That correctly fixes the chord-row
-      // count (this task's assigned defect) but drops the old guessed
-      // second row's height (24px lyric + 10px run gap = 34px per such
-      // line), and this fixture has one such line.
-      //
-      // In other words: this estimator now gets the CHORD-row count right
-      // for every shape tested, but still does not model how many visual
-      // LYRIC lines a single long unbroken segment's own text wraps into
-      // -- that is a separate, pre-existing gap in the character-width
-      // model (distinct from the chord-row bug this change fixes), newly
-      // exposed now that the old code's ceil()-based guess no longer masks
-      // it. Flagged for follow-up separately; not fixed here, since this
-      // task's scope is the chord-row miscount on over-wide groups, not
-      // intra-segment line-wrap estimation.
-      //
-      // Widened from 0.05/48px to 0.22/250px (~1.2-1.3x the newly measured
-      // error) to match this re-measured, currently-accepted estimator
-      // behaviour. This bound does not certify accuracy for a long,
-      // unbroken single-segment lyric line -- it only guards against the
-      // estimator drifting further than what is measured and understood
-      // here.
+      // Tightened from the interim 0.22/250px (pinned right after fixing
+      // only bug (1), before intra-segment modeling existed) back down to
+      // 0.15/160px -- headroom similar to the file's original convention
+      // (~2.2-2.3x the measured error) now that both effects are modeled.
       // ---------------------------------------------------------------
       expect(
         relativeError,
-        lessThan(0.22),
+        lessThan(0.15),
         reason:
             'estimateSongContentHeight must track the rendered content '
             'height within a tight relative bound; measured $relativeError '
@@ -529,7 +529,7 @@ void main() {
 
       expect(
         absoluteError,
-        lessThan(250.0),
+        lessThan(160.0),
         reason:
             'absolute drift between estimate and render must stay bounded; '
             'measured $absoluteError px',
@@ -565,11 +565,19 @@ void main() {
       final relativeError = absoluteError / rendered;
 
       // ---------------------------------------------------------------
-      // Re-measured 2026-07-28 after fixing the over-wide-GROUP chord-row
-      // bug in _lineItemHeight (a group too wide for one run now packs its
-      // own segments into inner runs, mirroring song_line_view.dart's
-      // inner Wrap, instead of dividing the group's total width and
-      // guessing a run count; see song_reader_fit.dart).
+      // Re-measured 2026-07-28 after fixing TWO related bugs in
+      // _lineItemHeight's over-wide-group branch (song_reader_fit.dart):
+      // (1) between-segment run packing now mirrors song_line_view.dart's
+      // inner Wrap (spacing: 0) instead of guessing a run count from the
+      // group's total width, giving every run its correct chord-row
+      // count; and (2) a lone over-wide segment (no chord-induced
+      // mid-word split) now also charges extra LYRIC-only height for the
+      // visual lines its own text soft-wraps into (_segmentIntraLines),
+      // using the lyric-only width so a chord label never inflates that
+      // line count. See song_reader_fit_test.dart's "over-wide group
+      // packs its own segments into runs" and "a single over-wide segment
+      // models its own lyric text wrap" groups.
+      //
       // Against the chord-heavy fixture (4 sections / 10 lines: wide
       // extended/slash chords -- Cmaj7#11, F#m7b5, Bbsus4/D, G#dim7,
       // Eb6/9 (5-9 chars each) -- a line of three single-character
@@ -578,43 +586,37 @@ void main() {
       // them), and the same blank ChordproParser-shaped separator line as
       // the plain fixture) at 375x812, contentPadding=24 all sides,
       // fontScale=1.0:
-      //   rendered=2574.0  estimated=3354.0  relativeError=0.3030 (30.3%)
-      //   absoluteError=780.0
+      //   rendered=2574.0  estimated=3378.0  relativeError=0.3124 (31.2%)
+      //   absoluteError=804.0
       //
-      // Down slightly from the pre-fix 31.6%/814px. This fixture's only
-      // single-segment over-wide line ("Chorus line with a wide chord up
-      // front" under Cmaj7#11) previously earned an extra guessed
-      // lyric-only row from the old ceil(groupWidth / effectiveLineWidth)
-      // division; the new segment-packing approach charges a lone
-      // over-wide segment exactly one run (matching the renderer's
-      // Wrap-child count), which removes that extra guessed row's height
-      // (24px lyric + 10px run gap = 34px) from the estimate. None of
-      // this fixture's other multi-segment merged groups (e.g. the
-      // "Cmaj7#11/a"+"F#m7b5/b"+"Bbsus4/D/c" run, merged because there is
-      // no whitespace between the segments) are actually over-wide at
-      // this column width (~220px combined vs ~327px column), so the
-      // reviewer's multi-segment chord-row bug this task fixes doesn't
-      // itself manifest in this fixture; the two 80-chord instrumental
-      // bars are unaffected too, since each chord-only segment is well
-      // under the column width on its own and never enters the over-wide
-      // branch. The remaining ~30% error is the separate, already-known
-      // characterWidthEstimate/bold-chord-glyph calibration gap described
-      // in docs/deferred/2026-07-27-reader-fit-character-width-calibration.md,
+      // Essentially back to the original pre-chord-row-bug-fix measurement
+      // (31.6%/814px), slightly better (804 < 814): fix (1) alone dropped
+      // this to 30.3%/780px by removing the old ceil()-guess's second row
+      // for this fixture's one single-segment over-wide line ("Chorus line
+      // with a wide chord up front" under Cmaj7#11); fix (2) restores that
+      // row on a principled basis. None of this fixture's other
+      // multi-segment merged groups (e.g. the "Cmaj7#11/a"+"F#m7b5/b"+
+      // "Bbsus4/D/c" run, merged because there is no whitespace between
+      // the segments) are actually over-wide at this column width (~220px
+      // combined vs ~327px column), so the reviewer's multi-segment
+      // chord-row bug doesn't itself manifest in this fixture; the two
+      // 80-chord instrumental bars are unaffected too, since each
+      // chord-only segment is well under the column width on its own and
+      // never enters the over-wide branch. The remaining ~31% error is the
+      // separate, already-known characterWidthEstimate/bold-chord-glyph
+      // calibration gap described in
+      // docs/deferred/2026-07-27-reader-fit-character-width-calibration.md,
       // not a wrap/run-count defect -- this fixture exists to bound that
-      // drift, not to hide it. See song_reader_fit_test.dart's "over-wide
-      // group packs its own segments into runs" and "_lineItemHeight
-      // accounts for chord width" groups for tighter, non-widget
-      // unit-level checks of the run/wrap counting this fixture also
-      // exercises.
+      // drift, not to hide it.
       //
-      // Tightened from 0.38/950px to 0.36/900px (~1.2x the newly measured
-      // error, matching the original bound's headroom ratio) since
-      // accuracy improved and a loose bound left over the old number
-      // would no longer be testing anything real.
+      // Bounds restored to essentially the original 0.38/950px (tightened
+      // very slightly to 0.37/930px, matching the file's original ~1.2x
+      // headroom ratio over the measured error) now that both effects are
+      // modeled and the number is back where it started.
       // ---------------------------------------------------------------
       expect(
         relativeError,
-        lessThan(0.36),
+        lessThan(0.37),
         reason:
             'estimateSongContentHeight must track the rendered content '
             'height within a bounded relative error on a chord-heavy '
@@ -623,7 +625,7 @@ void main() {
       );
       expect(
         absoluteError,
-        lessThan(900.0),
+        lessThan(930.0),
         reason:
             'absolute drift between estimate and render must stay bounded '
             'on a chord-heavy fixture too; measured $absoluteError px',
