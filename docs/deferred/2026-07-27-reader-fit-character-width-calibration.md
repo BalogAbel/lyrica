@@ -11,22 +11,34 @@ The fit estimator derives every width from a single `characterWidthEstimate`
 `bodyLarge` and chords in `labelLarge` with `FontWeight.w700` — two different
 styles with different glyph widths — so one constant cannot be right for both.
 
-Measured on the chord-heavy consistency fixture at 375 px: rendered 2574 px
-against an estimate of 3388 px, a 31.6% overestimate. The same constant
-overshoots bold chord glyphs enough that, on moderately chorded content, the
-older estimator's *ignoring* of chord width partly cancelled the overshoot and
-looked more accurate than the corrected one. That coincidence is why the
-chord-width defect survived the first consistency test.
+Measured at 375 px, after the second review round corrected the run and
+intra-segment wrap accounting:
 
-The failure direction is the safe one: an overestimate makes auto-fit choose a
-smaller font than strictly necessary, where an underestimate would let content
-overflow the viewport. That is why this was not treated as a blocker.
+| Fixture | Rendered | Estimated | Error |
+|---------|----------|-----------|-------|
+| Plain | 1082 px | 1010 px | 6.7% **under** |
+| Chord-heavy | 2574 px | 3378 px | 31.2% **over** |
+
+The two errors point in opposite directions, which is the signature of a single
+constant serving two styles: it overshoots bold chord glyphs and undershoots
+lyric glyphs. The overshoot is the safe direction (auto-fit picks a smaller font
+than needed); the 6.7% undershoot on plain content is the direction that can let
+content overflow, which is why the residual is recorded rather than dismissed.
+
+The same constant coincidence made the older, *more broken* estimator look more
+accurate on the plain fixture (2.0%): its `ceil()` division over a group's total
+width happened to approximate the intra-segment text wrap it did not model.
+Removing that accident without replacing it regressed the plain fixture to 17.7%
+under before the wrap model was added. Two separate defects hid inside one
+number — worth remembering before anyone "simplifies" this code by a measured
+error alone.
 
 Left out of the ui-decomposition-phase2 slice deliberately. Closing it means
 calibrating a separate chord character-width constant (or measuring both styles
 with a `TextPainter`) and re-deriving the bounds in
-`song_reader_estimate_render_consistency_test.dart`, which currently pin 0.38
-relative / 950 px absolute on the chord-heavy fixture. A `TextPainter` approach
+`song_reader_estimate_render_consistency_test.dart`, which currently pin 0.15
+relative / 160 px absolute on the plain fixture and 0.37 / 930 px on the
+chord-heavy one. A `TextPainter` approach
 has to be weighed against reader fit performance: `resolveFitFontScale` runs a
 24-iteration binary search over every line, and the review's fit-layout
 **performance** regression test is itself still missing.
