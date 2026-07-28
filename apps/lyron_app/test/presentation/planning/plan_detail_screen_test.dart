@@ -803,27 +803,13 @@ void main() {
       },
     );
 
-    var reads = 0;
+    // Deliberately a projection frozen at the pre-write order: this test is
+    // about the overlay, so the projection must never agree with the drag.
+    // If it did, the assertions below would pass even with the overlay gone
+    // and the test would stop discriminating.
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: () {
-          reads += 1;
-          if (reads == 1) {
-            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
-          }
-          // The second (newer) write actually succeeded, so a real backend
-          // would reflect its applied reorder on every subsequent read --
-          // the guaranteed post-grace follow-up refresh must see this
-          // settled, agreeing order rather than a fixture frozen at the
-          // pre-write state.
-          return Future.value(
-            _threeSessionFixtureInOrder(const [
-              'session-2',
-              'session-3',
-              'session-1',
-            ]),
-          );
-        },
+        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
         writeService: writeService,
       ),
     );
@@ -851,7 +837,14 @@ void main() {
     );
 
     firstReorderCompleter.complete();
-    await tester.pumpAndSettle();
+    // Deliberately pump rather than settle: this asserts the state right
+    // after the stale failure resolves, while the overlay is still
+    // legitimately alive. Settling here would also drain the post-grace
+    // follow-up refresh, after which the projection is supposed to win --
+    // that later hand-off is covered by 'stops masking the projection when
+    // sync settles on a different order' and by the two grace tests.
+    await tester.pump();
+    await tester.pump();
 
     // If the stale (failing) first result incorrectly cleared the
     // optimistic order, this would fall back to the original order
@@ -865,6 +858,9 @@ void main() {
       tester.getTopLeft(find.text('Warm-Up')).dy,
       greaterThan(tester.getTopLeft(find.text('Closing')).dy),
     );
+
+    // Drain the scheduled follow-up so the test does not end mid-flight.
+    await tester.pumpAndSettle();
   });
 
   testWidgets('a superseded reorder failure stays silent', (tester) async {
@@ -2177,23 +2173,13 @@ void main() {
       },
     );
 
-    var reads = 0;
+    // Deliberately a projection frozen at the pre-write order: this test is
+    // about the overlay, so the projection must never agree with the drag.
+    // If it did, the assertions below would pass even with the overlay gone
+    // and the test would stop discriminating.
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: () {
-          reads += 1;
-          if (reads == 1) {
-            return Future.value(_planDetailWithThreeItemsFixture());
-          }
-          // The second (newer) write actually succeeded, so a real backend
-          // would reflect its applied reorder on every subsequent read --
-          // the guaranteed post-grace follow-up refresh must see this
-          // settled, agreeing order rather than a fixture frozen at the
-          // pre-write state.
-          return Future.value(
-            _threeItemFixtureInOrder(const ['item-2', 'item-3', 'item-1']),
-          );
-        },
+        planDetailValue: _planDetailWithThreeItemsFixture(),
         writeService: writeService,
         visibleSongs: const [
           SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
@@ -2229,7 +2215,13 @@ void main() {
     );
 
     firstReorderCompleter.complete();
-    await tester.pumpAndSettle();
+    // Deliberately pump rather than settle: this asserts the state right
+    // after the stale failure resolves, while the overlay is still
+    // legitimately alive. Settling here would also drain the post-grace
+    // follow-up refresh, after which the projection is supposed to win --
+    // that later hand-off is covered by the two grace tests.
+    await tester.pump();
+    await tester.pump();
 
     expect(
       tester.getTopLeft(find.textContaining('Alpha')).dy,
@@ -2239,6 +2231,9 @@ void main() {
       tester.getTopLeft(find.textContaining('Alpha')).dy,
       greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
     );
+
+    // Drain the scheduled follow-up so the test does not end mid-flight.
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
