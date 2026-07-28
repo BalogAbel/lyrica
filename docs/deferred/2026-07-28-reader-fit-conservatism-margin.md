@@ -450,3 +450,126 @@ SPACE), and U+00A0/U+202F's "stealing" behavior at widths other than the ones
 tried. None of these are expected to differ from the group they were measured
 alongside, but "expected not to differ" is exactly the kind of claim this review
 sequence keeps finding exceptions to, so it is recorded here rather than implied.
+
+
+## Standalone `\r` and U+0085 NEXT LINE: host vs. web disagree (2026-07-28, eighth review round)
+
+The seventh round measured a bare `\r` (no following `\n`) as NOT a break at all on
+the HOST text stack — `TextPainter.getLineBoundary` (run via `flutter test`,
+default platform) showed it glued to its neighbours, no break opportunity
+whatsoever, and it was deliberately left out of both `_mandatoryLineBreak` and
+`_breakableWhitespace` on that basis.
+
+An eighth round pointed out that measurement was host-only, and this app ships to
+Flutter WEB too (there is a Cloudflare Pages deployment of this branch). Verified
+empirically rather than assumed — `flutter test --platform chrome
+test/presentation/song_reader/song_line_view_estimate_consistency_test.dart` runs
+cleanly against a real Chrome (Chrome 150, via `CHROME_EXECUTABLE`), and a temporary
+scratch probe (rendered once, in both directions, then deleted — never committed;
+per "do not add a chrome-only test file to the repo") measured a standalone `\r`
+and a standalone U+0085 in real Chrome, run twice: once with the pre-fix estimator
+(HEAD's committed code, via a single-file `git stash`) and once with the fix
+applied.
+
+Chrome forces a break at both characters, identically to `\n` — the host text
+stack does not. This is a genuine cross-platform disagreement in what counts as a
+mandatory break, not a measurement error on either side.
+
+**Fixed by adding both to `_mandatoryLineBreak` unconditionally** (no `kIsWeb`
+check, no platform fork): this helper's contract is an upper bound
+(`estimated >= rendered`) over whatever platform actually renders the text, and the
+mandatory set is therefore the UNION of every character any target platform treats
+as a forced break. A union is always safe under an upper-bound contract — treating
+a character as mandatory when some platform doesn't actually break there can only
+ever ADD estimated lines, never remove them, so it can never turn a safe estimate
+into an under-estimate on any platform. A per-platform set would not have this
+property (the same estimator code runs everywhere and must stay safe everywhere at
+once), so the union is not just simpler than a platform fork, it is the only choice
+that is provably correct without one.
+
+`\r\n` was already listed before the lone `\n` in the pattern for the same
+single-match-per-pair reason (see the seventh round's note above); adding a lone
+`\r` alternative requires it to also come before that new alternative, or a CRLF
+pair matches `\r` alone first, leaves the `\n` to match separately immediately
+after, and splits into three chunks instead of two — an over-estimate (safe under
+the contract) but still the wrong line count for a single CRLF pair. Final order:
+`\r\n|\r|\n|U+2028|U+2029|U+0085|U+000B|U+000C`. Pinned by a dedicated ordering test
+in `song_reader_fit_test.dart`'s "eighth review round" group, plus two pure unit
+tests asserting the standalone-`\r` and standalone-U+0085 forced-break line counts
+directly — all three are host-runnable (`flutter test`, no chrome flag), so
+`scripts/verify.sh` actually enforces them, unlike a chrome-only fixture would.
+
+Measured (host, `flowBlockHeight` directly, width 300, single lyric segment, no
+chord — `lyricRowHeight * lines + lineGap + lineWidgetBottomPadding = 24*lines+12`):
+
+| Case | Pre-fix estimated | Post-fix estimated |
+|------|--------------------|----------------------|
+| `A\rB` (standalone `\r`) | 36 px (1 line) | 60 px (2 lines) |
+| `A[U+0085]B` (standalone NEL) | 36 px (1 line) | 60 px (2 lines) |
+| `A\r\nB` (CRLF, ordering pin) | 60 px (2 lines, unchanged) | 60 px (2 lines, unchanged — proves the ordering fix didn't regress the already-correct CRLF case) |
+
+Measured (real Chrome render, same shape as the seventh round's `\n`/U+000B
+fixtures, width 300):
+
+| Case | Rendered | Pre-fix estimated | Post-fix estimated | Post-fix ratio |
+|------|----------|--------------------|----------------------|-----------------|
+| standalone `\r` (`Verse\rChorus`) | 52 px | 36 px **RED (under)** | 60 px | 1.15 |
+| standalone U+0085 (`VerseChorus`) | 52 px | 36 px **RED (under)** | 60 px | 1.15 |
+
+Both were a genuine under-estimate pre-fix on Chrome specifically — the exact
+failure mode `resolveFitFontScale` exists to prevent, on a platform this app ships
+to — and both are fixed with the same numbers as the seventh round's `\n`/VT
+cases post-fix (1.15x ratio), since all of them now go through the identical
+mandatory-break code path.
+
+Re-ran all three consistency test files
+(`song_line_view_estimate_consistency_test.dart`,
+`song_reader_block_estimate_consistency_test.dart`,
+`song_reader_estimate_render_consistency_test.dart`) plus `song_reader_fit_test.dart`
+and `song_reader_fit_to_screen_test.dart` on host after this change: 77 tests, all
+green, no ceiling moved — none of the pre-existing fixtures' text contains a
+standalone `\r` or U+0085, so `_mandatoryLineBreak`'s new alternatives never fire
+for them.
+
+### Separator classification, by verification method (running tally)
+
+To keep straight what's actually been checked and how, rather than implied:
+
+- **Host-verified via `TextPainter` (`flutter test`, default platform)**: `\n`,
+  `\r\n` (as a unit), U+2028, U+2029, U+000B, U+000C (all mandatory, seventh round);
+  ASCII space, TAB, U+00A0, U+1680, U+2000-U+200A, U+200B, U+202F, U+205F, U+3000
+  (all breakable-opportunity, seventh round); a standalone `\r` was measured as
+  glued (NOT breaking) on host, same round.
+- **Web-only per this (eighth) review round, measured in real Chrome, NOT
+  confirmed to break on host**: standalone `\r`, U+0085 NEXT LINE — both
+  mandatory on Chrome, glued/unmeasured-as-breaking on host. This is the one
+  documented case in this file where host and web genuinely disagree.
+- **The mandatory and breakable-whitespace sets are each a deliberate UNION across
+  every target platform**, not a value tuned to any one platform's text stack. A
+  character is added to a set the moment ANY target platform is measured (or
+  reasonably known) to treat it that way, because a union can only ever tighten
+  the "forced break" side of the estimate (more lines counted, never fewer) —
+  which is always safe under this file's `estimated >= rendered` upper-bound
+  contract. This is also why no `kIsWeb` branch exists anywhere in
+  `_mandatoryLineBreak` or `_breakableWhitespace`: a per-platform fork would not
+  have the union's safety property, since the same estimator code must stay a
+  valid upper bound on every platform it runs on, not just the one it happened to
+  be tuned against.
+
+### Web test lane: not added, cost noted for a human decision
+
+`scripts/verify.sh` runs `flutter test` on the host only; a `--platform chrome`
+lane is not part of CI for this repo today. This round's Chrome run (see above)
+worked without any project changes — Chrome is already recognized by `flutter
+doctor` on this machine, and no `--web-renderer` or extra flags were needed beyond
+`CHROME_EXECUTABLE`. Cost of making that permanent: CI would need Chrome available
+(either a hosted-runner-provided browser or downloading one), a slower job (Chrome
+headless startup adds real wall-clock time per run, and this repo's fit-estimator
+suite alone is dozens of widget-pump tests), and, if any web-only fixture besides
+`\r`/U+0085 shows up later, ongoing maintenance of a platform-specific fixture set
+alongside the host-only one. Given this round found exactly two characters where
+host and web disagree across four rounds of increasingly aggressive separator
+hunting, and the fix for both was a one-line regex addition covered entirely by
+host-runnable unit tests, a dedicated CI web lane does not currently look
+justified by the defect rate — but that is a call for a human to make with the CI
+budget in view, not something to fold into this PR.

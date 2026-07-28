@@ -1613,4 +1613,100 @@ void main() {
       );
     });
   });
+
+  group('mandatory line break: standalone \\r and U+0085 NEXT LINE (eighth '
+      'review round)', () {
+    // Pure unit tests on flowBlockHeight's forced-break line count -- no
+    // widget pump, no tester, host-runnable the same way every other test in
+    // this file is, so `flutter test` (what scripts/verify.sh actually runs)
+    // enforces them. The render-side claim (that Flutter WEB additionally
+    // treats a standalone `\r` and U+0085 as mandatory breaks, where the host
+    // text stack does not -- see the seventh round's doc comment on
+    // `_mandatoryLineBreak`, which measured a lone `\r` as NOT breaking on the
+    // host) is checked empirically in
+    // song_line_view_estimate_consistency_test.dart's Chrome run; this group
+    // only pins the ARITHMETIC consequence of adding both to the mandatory
+    // set, which every platform's `flutter test` enforces regardless of
+    // which text stack is underneath.
+    //
+    // Width 300, no chord, single short segment -- same shape as the
+    // seventh round's '\n'/U+000B fixtures in
+    // song_line_view_estimate_consistency_test.dart, chosen so the group
+    // width (well under 300px) never triggers width-driven wrapping: the
+    // only thing that can change the line count here is the mandatory-break
+    // split itself. lyricRowHeight=24, lineGap=10, lineWidgetBottomPadding=2,
+    // so a single-run lyric line's height is `lyricLines * 24 + 12`.
+    const wideWidth = 300.0;
+
+    double lineHeightFor(String text) {
+      final block = FlowBlock(
+        kind: FlowBlockKind.line,
+        sectionIndex: 0,
+        line: SongReaderLyricLineProjection(
+          segments: [
+            SongReaderSegmentProjection(displayChord: null, text: text),
+          ],
+        ),
+      );
+      return flowBlockHeight(
+        block: block,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        columnWidth: wideWidth,
+        fontScale: 1.0,
+      );
+    }
+
+    test('a standalone \\r (no following \\n) forces a break', () {
+      // PRE-FIX: a bare \r is neither in _mandatoryLineBreak nor
+      // _breakableWhitespace, so 'A\rB' is one unbreakable 3-char "word"
+      // that fits comfortably in 300px -- 1 line, height 1*24+12=36.
+      // POST-FIX: \r alone joins the mandatory set, splitting into ['A','B']
+      // -- 2 lines, height 2*24+12=60.
+      expect(
+        lineHeightFor('A\rB'),
+        equals(60.0),
+        reason:
+            'a standalone \\r must force a break the same as \\n (measured '
+            'on Flutter web, Chrome renders 52px where the pre-fix '
+            'estimator computes 36px) -- treating it as mandatory can only '
+            'ever add estimated lines, never remove them, so this is safe '
+            'even though the host text stack alone does not break here',
+      );
+    });
+
+    test('a standalone U+0085 NEXT LINE forces a break', () {
+      // Same shape and same arithmetic as the \\r case above: PRE-FIX
+      // 'AB' is one 3-char "word" (height 36.0); POST-FIX U+0085 joins
+      // the mandatory set (height 60.0).
+      expect(
+        lineHeightFor('AB'),
+        equals(60.0),
+        reason:
+            'U+0085 NEXT LINE must force a break the same as \\n (measured '
+            'on Flutter web, Chrome renders 52px where the pre-fix '
+            'estimator computes 36px)',
+      );
+    });
+
+    test('\\r\\n still counts as ONE break, not two, now that a lone \\r is '
+        'also mandatory', () {
+      // Guards the alternation order in _mandatoryLineBreak: \r\n must be
+      // tried before the lone \r alternative, or 'A\r\nB' would match \r
+      // first (consuming only the \r), leave the \n to match separately
+      // as its own mandatory break immediately after, and produce THREE
+      // chunks (['A', '', 'B']) instead of two -- an invisible-in-the-
+      // ratio bug (it only ever over-estimates, 3*24+12=84 instead of the
+      // correct 2*24+12=60) but still the wrong line count for a single
+      // CRLF pair.
+      expect(
+        lineHeightFor('A\r\nB'),
+        equals(60.0),
+        reason:
+            'a single \\r\\n pair must still produce exactly one break '
+            '(2 chunks, height 60.0), not two breaks (3 chunks, height '
+            '84.0) -- \\r\\n must be matched before the lone \\r '
+            'alternative in _mandatoryLineBreak',
+      );
+    });
+  });
 }

@@ -371,17 +371,41 @@ int _segmentIntraLines({
 /// segment starts on a fresh line, regardless of remaining width) rather
 /// than mere break OPPORTUNITIES like [_breakableWhitespace] below.
 ///
-/// `\r\n` is listed before the lone `\n` so the pair matches as a single
-/// break, not two: measured with a real `TextPainter`
-/// (`song_line_view_estimate_consistency_test.dart`'s empirical probe;
-/// `AAAA\r\nBBBB\r\nCCCC` produces exactly 3 lines, one break per `\r\n`
-/// pair), a bare `\r` with no following `\n` is NOT a break at all --
-/// `TextPainter.getLineBoundary` shows it glued to its neighbours with no
-/// break opportunity whatsoever, unlike every other candidate tested. It is
-/// therefore deliberately left OUT of both this pattern and
-/// [_breakableWhitespace]: a stray `\r` is treated as an ordinary character
-/// (still charged its `charWidth` like any other glyph, which can only ever
-/// push a token wider and a line count higher -- the safe direction).
+/// `\r\n` is listed before the lone `\r` (and before the lone `\n`) so the
+/// pair always matches as a single break, not two: measured with a real
+/// `TextPainter` (`song_line_view_estimate_consistency_test.dart`'s
+/// empirical probe; `AAAA\r\nBBBB\r\nCCCC` produces exactly 3 lines, one
+/// break per `\r\n` pair). Regex alternation tries alternatives in order
+/// and stops at the first match, so if the lone `\r` alternative came
+/// first, a `\r\n` pair would match `\r` alone, leave the `\n` to match
+/// separately as its own mandatory break immediately after, and split into
+/// THREE chunks instead of two -- a bug invisible in the ratio (it only
+/// ever over-estimates, never falls under the render) but still the wrong
+/// line count for a single CRLF pair, so the ordering is pinned by a
+/// dedicated test (`song_reader_fit_test.dart`'s "eighth review round"
+/// group) rather than left to alternation order alone.
+///
+/// A standalone `\r` (no following `\n`) and U+0085 NEXT LINE are included
+/// alongside the lone `\n`. An eighth review round found the HOST text
+/// stack -- what `flutter test` measures, and what a sixth-round
+/// `TextPainter` probe measured a bare `\r` against -- does NOT break at a
+/// lone `\r` (glued to its neighbours, no break opportunity at all).
+/// Flutter WEB does: measured in Chrome, both a standalone `\r` and U+0085
+/// render 52px where the (host-tuned) pre-fix estimator computed 36px, a
+/// genuine under-estimate on a platform this app also ships to (there is a
+/// Cloudflare Pages deployment of this app). This helper's contract is an
+/// upper bound (`estimated >= rendered`) over WHATEVER platform actually
+/// renders the text, not just the host platform `flutter test` happens to
+/// run against -- so the mandatory set is the UNION of every character any
+/// target platform treats as a forced break, not a per-platform fork. This
+/// union is always safe under an upper-bound contract: treating a character
+/// as mandatory when some platform doesn't force a break there can only
+/// ever ADD estimated lines (more forced splits, never fewer), so it can
+/// never turn a safe estimate into an under-estimate on any platform -- a
+/// per-platform set (e.g. `kIsWeb`-gated) would not have this property,
+/// since the same estimator code runs on every platform and must stay safe
+/// on all of them at once. Both are therefore unconditional here, not
+/// behind a platform check.
 ///
 /// U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR are included
 /// because the same empirical probe confirmed Flutter forces a break there
@@ -400,12 +424,15 @@ int _segmentIntraLines({
 /// is handled regardless of how implausible its source is. Leaving either
 /// out on a "real data won't contain it" assumption is exactly the kind of
 /// gap this review sequence keeps finding one round later.
-final RegExp _mandatoryLineBreak = RegExp('\r\n|\n| | |\u000B|\u000C');
+final RegExp _mandatoryLineBreak = RegExp(
+  '\r\n|\r|\n|\u2028|\u2029|\u0085|\u000B|\u000C',
+);
 
 /// Breakable whitespace: characters Flutter's line breaker treats as an
-/// ordinary word-boundary break OPPORTUNITY (not a forced line end -- see
-/// [_mandatoryLineBreak] above), verified with a real `TextPainter` rather
-/// than assumed from the Unicode category name
+/// ordinary word-boundary break OPPORTUNITY (not a forced line end -- a bare
+/// `\r` and U+0085 moved to [_mandatoryLineBreak] as of the eighth review
+/// round; see that pattern's doc for why), verified with a real
+/// `TextPainter` rather than assumed from the Unicode category name
 /// (`song_line_view_estimate_consistency_test.dart`'s empirical probe):
 /// ASCII space and TAB, plus the Unicode Zs "space separator" characters
 /// (U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F, U+3000) and U+200B ZERO
