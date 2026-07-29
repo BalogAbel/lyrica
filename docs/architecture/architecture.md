@@ -62,6 +62,8 @@ Authorization is backend-enforced. The Flutter client consumes capability result
 
 The authentication boundary is split into two concerns: provider-managed identity (Supabase Auth: Google, Apple, magic link) and database-enforced membership (the `invitations` + `memberships` tables and `redeem_invitation` RPC). A Supabase Auth session is necessary but not sufficient to access application data; the client must hold an active membership row obtained through `redeem_invitation`. The Flutter client cannot bypass this gate because the RPC runs as `security definer` in Postgres.
 
+Redemption itself is fully backend-enforced and returns a `jsonb` status envelope (`{"status", "organization_id"}`) rather than raising for business outcomes. It is email-bound when the invitation carries an address — the caller's own confirmed account email must match, case- and whitespace-insensitively — and stays a bearer link when it does not; either way the caller is rate limited (suspicious outcomes only, keyed on `auth.uid()`), and every attempt, successful or not, is written to `public.invitation_redemption_attempts` with only a token digest retained, never the raw token. See [ADR-025](decisions/ADR-025-invitation-redemption-model.md).
+
 Backend policy helpers are responsible for:
 
 - deriving organization membership scope from `auth.uid()`

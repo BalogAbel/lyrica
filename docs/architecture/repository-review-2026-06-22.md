@@ -59,7 +59,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | LF-2 | Local-first | Per-mutation full refresh inside the sync loop (N refreshes for N mutations) | High |
 | LF-3 | Local-first | No internal single-flight guard on mutation sync | High |
 | LF-4 | Local-first | Failed/conflicted local edits silently revert in the main UI | High |
-| SEC-1 | Security | `redeem_invitation` token is bearer-only, no email binding, no rate limit | High |
+| ~~SEC-1~~ | Security | ~~`redeem_invitation` token is bearer-only, no email binding, no rate limit~~ **Done (security-read-boundary-phase3).** | High |
 | ~~UX-1~~ | UI/UX | ~~Mobile reader wraps lyric lines mid-word, breaking chord alignment~~ **Done (ui-decomposition-phase2).** | High |
 | ~~UX-2~~ | UI/UX | ~~Plan date edited as raw ISO-8601 text field (no picker)~~ **Done (ui-decomposition-phase2).** | High |
 | UX-8 | UI/UX | Failed local edits silently revert in the main UI (same mechanism as LF-4) | High |
@@ -138,6 +138,16 @@ carry the detail; this is the digest.
   trade-off is documented in `architecture.md`.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
+- **SEC-1** (security-read-boundary-phase3 slice) — `redeem_invitation` is now
+  hybrid email-bound (email-bound when the invitation carries an address, bearer
+  otherwise), rate limited per caller on `not_found`/`email_mismatch` outcomes, and
+  every attempt is audited in `public.invitation_redemption_attempts`
+  (`supabase/migrations/202607290001_invitation_redemption_audit.sql`,
+  `supabase/migrations/202607290002_invitation_redemption_contract.sql`). The RPC
+  returns a `jsonb` status envelope instead of raising for business outcomes, which
+  is what makes both the audit trail and the rate limit possible. ADR-025 records
+  the model and the rejected alternatives; pinned by
+  `scripts/tests/invitation-redemption-contract-test.sh`.
 
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
@@ -153,7 +163,7 @@ carry the detail; this is the digest.
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
+**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, SEC-4, all
 ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
@@ -230,9 +240,16 @@ packages or drop the overhead.
 stores `p_email` but never checks it against the caller; any authenticated user holding
 a valid token joins the org. No rate limiting on redemption. Token entropy makes
 brute force impractical, but a **leaked invite link = unintended org membership**.
-**Recommendation**: bind redemption to the invited email (or explicitly document and
+~~**Recommendation**: bind redemption to the invited email (or explicitly document and
 accept the "link == entry ticket" model), add rate limiting + an audit trail, and write
-an ADR.
+an ADR.~~
+**Status (2026-07-29, security read-boundary phase 3, SEC-1): fixed.** Redemption is
+email-bound when the invitation carries an address
+(`supabase/migrations/202607290002_invitation_redemption_contract.sql`), rate limited
+per caller, and audited in `public.invitation_redemption_attempts`
+(`supabase/migrations/202607290001_invitation_redemption_audit.sql`). Model and
+rejected alternatives recorded in ADR-025; pinned by
+`scripts/tests/invitation-redemption-contract-test.sh`.
 
 **SEC-4 [verified, team-known] — client-authoritative shadow metadata.** `title`,
 `artist`, `key_signature`, `tempo_bpm`, `tags`, `metadata_json` are derived client-side
@@ -527,7 +544,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
-- SEC-1: invite email-binding + rate limit + audit + ADR.
+- ~~SEC-1: invite email-binding + rate limit + audit + ADR.~~ **Done (security-read-boundary-phase3).**
 - DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
 
 **Strategic (1+ month)**

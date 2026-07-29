@@ -1,6 +1,6 @@
 # SEC-1: Invitation Redemption Hardening
 
-> Status: Draft
+> Status: Implemented
 
 ## Goal
 
