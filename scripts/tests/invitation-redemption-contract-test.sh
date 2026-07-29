@@ -112,6 +112,67 @@ check(
     f"a bearer (null-email) invitation must still redeem, got: {raw!r}",
 )
 
+# --- Case 2: the outcome enum exists with the agreed values. -----------------
+enum_values = run_sql(dedent("""
+    select string_agg(e.enumlabel, ',' order by e.enumsortorder)
+    from pg_type t
+    join pg_enum e on e.enumtypid = t.oid
+    join pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'public'
+      and t.typname = 'invitation_redemption_outcome';
+"""))
+check(
+    "case 2 outcome enum",
+    enum_values == "redeemed,not_found,expired,already_redeemed,"
+                   "already_member,email_mismatch,rate_limited",
+    f"unexpected invitation_redemption_outcome values: {enum_values!r}",
+)
+
+# --- Case 3: authenticated cannot write the audit table directly. ------------
+for verb, statement in (
+    ("insert", "insert into public.invitation_redemption_attempts "
+               "(token_sha256, outcome) values (sha256('x'::bytea), 'not_found')"),
+    ("update", "update public.invitation_redemption_attempts set outcome = 'redeemed'"),
+    ("delete", "delete from public.invitation_redemption_attempts"),
+):
+    sql = dedent(f"""
+        begin;
+        select set_config('request.jwt.claim.sub', {sql_quote(BEARER_USER)}, true);
+        select set_config('request.jwt.claim.role', 'authenticated', true);
+        set local role authenticated;
+        {statement};
+        rollback;
+    """)
+    out = run_sql(sql, expect_error=True)
+    check(
+        f"case 3 audit {verb} denied",
+        "denied" in out or "permission" in out or "violates row-level security" in out,
+        f"authenticated {verb} on invitation_redemption_attempts was not denied: {out!r}",
+    )
+
+# A non-admin of the organization sees no attempt rows even though select is
+# granted to authenticated: RLS scopes reads to organization admins.
+run_sql(dedent(f"""
+    insert into public.invitation_redemption_attempts
+      (token_sha256, outcome, organization_id)
+    values (sha256('rls-probe'::bytea), 'not_found', {sql_quote(ORG_ID)});
+"""))
+OUTSIDER = "aaaaaaa1-0000-0000-0000-0000000000ff"
+make_user(OUTSIDER, "outsider@lyron.local")
+visible = run_sql(dedent(f"""
+    begin;
+    select set_config('request.jwt.claim.sub', {sql_quote(OUTSIDER)}, true);
+    select set_config('request.jwt.claim.role', 'authenticated', true);
+    set local role authenticated;
+    select count(*) from public.invitation_redemption_attempts;
+    rollback;
+""")).splitlines()[-1].strip()
+check(
+    "case 3 audit select scoped",
+    visible == "0",
+    f"a non-admin must not read another organization's attempts, saw {visible!r}",
+)
+
 if failures:
     raise SystemExit(
         "SEC-1 invitation redemption contract failed:\n  " + "\n  ".join(failures)
