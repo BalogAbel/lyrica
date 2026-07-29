@@ -6,7 +6,7 @@
 
 **Goal:** Close three deferred items with one slice: (1) an ADR that keeps the read boundary on RLS-protected table reads with no code change, (2) move the `unaccent` extension out of `public` and pin `public.slugify` to a schema-qualified call, behaviour pinned by a parity test written first, and (3) make `create_song` / `song_write_update_common` derive `title`, `artist`, `key_signature`, `tempo_bpm`, and `tags` from canonical ChordPro inside the `security definer` write boundary, removing the client-supplied parameters for those fields (`p_metadata_json` too) from both RPC families.
 
-**Architecture:** All backend work lands in `supabase/migrations/`, continuing the numbering already on this branch (`202607290000`–`202607290002`) from `202607290003`. Two new migrations: one for the `unaccent` move (isolated because it is unrelated to song metadata), one for the ChordPro extraction functions and the song RPC changes (built up across several tasks since it is one coherent, unmerged change). Every schema change is proven by a bash + inlined-python3 contract test against the local Supabase Postgres container, following the house style in `scripts/tests/invitation-redemption-contract-test.sh`. A small SQL "scanner" function reproduces the ChordPro directive grammar (`chordpro_line_scanner.dart:66-84`); five small `immutable` extractor functions sit on top of it, one per derived field, each pinned by its own unit-level SQL assertions before it is wired into the write RPCs.
+**Architecture:** All backend work lands in `supabase/migrations/`, continuing the numbering already on this branch (`202607290000`–`202607290002`) from `202607290003`. Two new migrations: one for the `unaccent` move (isolated because it is unrelated to song metadata), one for the ChordPro extraction functions and the song RPC changes (built up across several tasks since it is one coherent, unmerged change). Every schema change is proven by a bash + inlined-python3 contract test against the local Supabase Postgres container, following the house style in `scripts/tests/invitation-redemption-contract-test.sh`. A stateful SQL "scanner" function reproduces the ChordPro directive grammar (`chordpro_line_scanner.dart:66-84`) and the two structural gates from `chordpro_parser.dart` that apply before any field rule — tab-block inertness (affects every field) and the key window (affects only `key_signature`, with one named, tested divergence) — as an ordered `plpgsql` walk carrying `in_tab`/`has_seen_song_content` state, not a stateless SQL sweep. Five small `immutable` extractor functions sit on top of it, one per derived field, each pinned by its own unit-level SQL assertions before it is wired into the write RPCs.
 
 **Tech Stack:** PostgreSQL 17 (Supabase), PL/pgSQL and SQL functions, bash + python3 contract tests driven through `docker exec ... psql`, no Dart/Flutter changes (the client never sent the removed parameters).
 
@@ -17,9 +17,9 @@
 | File | Responsibility |
 |---|---|
 | `supabase/migrations/202607290003_relocate_unaccent_extension.sql` | Moves `unaccent` to the `extensions` schema; redefines `public.slugify` to call `extensions.unaccent(...)`, inlining `set search_path = public` so the setting survives the `create or replace`. |
-| `supabase/migrations/202607290004_derive_song_metadata.sql` | New: `public.chordpro_scan_directives`, `public.chordpro_derive_title`, `public.chordpro_derive_artist`, `public.chordpro_derive_key_signature`, `public.chordpro_derive_tempo_bpm`, `public.chordpro_derive_tags`. Modified in place across tasks: drops and recreates `public.create_song`, `public.song_write_update_common`, `public.update_song`, `public.overwrite_song_update` with the derived-metadata bodies and the narrower parameter lists, and reapplies `revoke`/`grant` for every new signature. |
+| `supabase/migrations/202607290004_derive_song_metadata.sql` | New: `public.chordpro_scan_directives` (a stateful `plpgsql` scanner implementing the directive grammar plus tab-block inertness and the key window), `public.chordpro_derive_title`, `public.chordpro_derive_artist`, `public.chordpro_derive_key_signature` (the only extractor that reads the scanner's `key_window_open` flag), `public.chordpro_derive_tempo_bpm`, `public.chordpro_derive_tags`. Modified in place across tasks: drops and recreates `public.create_song`, `public.song_write_update_common`, `public.update_song`, `public.overwrite_song_update` with the derived-metadata bodies and the narrower parameter lists, and reapplies `revoke`/`grant` for every new signature. |
 | `scripts/tests/slug-parity-contract-test.sh` | New. Pins `public.slugify` output across accented characters, punctuation runs, leading/trailing separators, and the empty result. Written and green before the `unaccent` move; unedited by the move itself. |
-| `scripts/tests/song-derived-metadata-contract-test.sh` | New. Unit-level assertions on the scanner and each extractor, then integration assertions on `create_song` / `update_song` / `overwrite_song_update`, then the grant/signature regression check. Built up incrementally, one section per task. |
+| `scripts/tests/song-derived-metadata-contract-test.sh` | New. Unit-level assertions on the scanner (including tab-block inertness and the key-window flag) and each extractor, then integration assertions on `create_song` / `update_song` / `overwrite_song_update`, then the grant/signature regression check. Built up incrementally, one section per task. |
 | `scripts/tests/song-crud-write-contract-test.sh` | Modified. Removes the now-false "update preserves arbitrary shadow metadata" assertions and renumbers the two downstream version expectations that depended on them. |
 | `scripts/backend-write-contracts.sh` | Modified. Chains the two new test scripts alongside the existing ones. |
 | `docs/architecture/decisions/ADR-026-rls-protected-read-boundary.md` | New. Records the read-boundary decision (no code change). |
@@ -303,7 +303,16 @@ EOF
 - Create: `scripts/tests/song-derived-metadata-contract-test.sh`
 - Modify: `scripts/backend-write-contracts.sh`
 
-This function reproduces the grammar in `chordpro_line_scanner.dart:66-84` exactly: normalise `\r\n` to `\n`, trim each line (matching Dart's `.trim()`, which strips more than the ASCII space that SQL's default `trim()` strips — so this uses `btrim(x, E' \t\n\r\v\f')` throughout, not bare `trim()`), a directive line starts with `{` and ends with `}`, an empty body is not a directive, the first `:` splits name (trimmed, lowercased) from value (trimmed), and a body with no `:` is a name with a null value. It returns every directive occurrence with its source line number — "last occurrence wins" is left to the per-field extractors built in later tasks, not decided here.
+This function reproduces the grammar in `chordpro_line_scanner.dart:66-84` exactly: normalise `\r\n` to `\n`, trim each line (matching Dart's `.trim()`, which strips more than the ASCII space that SQL's default `trim()` strips — so this uses `btrim(x, E' \t\n\r\v\f')` throughout, not bare `trim()`), a directive line starts with `{` and ends with `}`, an empty body is not a directive, the first `:` splits name (trimmed, lowercased) from value (trimmed), and a body with no `:` is a name with a null value.
+
+It also implements the **two structural gates** from `chordpro_parser.dart`, both of which apply before any field rule is evaluated, per the spec's corrected Target Behaviour section:
+
+- **Tab-block inertness** (`chordpro_parser.dart:52-54`). While the scan is inside a `{start_of_tab}` ... `{end_of_tab}` block, any directive whose name does not start with `end_of_` is swallowed as tab content — it is not emitted as a directive row at all. This is a structural gate at the scanner level, so it automatically applies to every field extractor built on top of this function; no extractor needs its own tab check.
+- **The key window.** A running `has_seen_song_content` flag starts `false` and is set `true` by the first lyric line (`:36`), any `start_of_*` directive (`:150`), or any `end_of_*` directive (`:201`). Each emitted directive row carries `key_window_open`, the negation of that flag *as it stood before this line's own effect* — used only by `chordpro_derive_key_signature` (Task 6), harmless for every other extractor. One trigger is deliberately **not** reproduced: a `{comment}`/`{c}` directive that `_parseCommentSection` recognises as a section start (`:138`) also closes the window in Dart. Reproducing that would mean duplicating `_parseCommentSection` itself — more of exactly the parser surface this finding treats as risk — so this is the one accepted, named divergence, pinned by a test in Task 6 rather than left as a silent gap.
+
+Because this needs sequential state carried across lines (`in_tab`, `has_seen_song_content`), the scanner is written in `plpgsql` with an explicit ordered walk over lines, not a stateless SQL sweep — a recursive CTE could express the same state machine, but a `for` loop with two boolean locals is far easier for an unfamiliar reader to verify line-by-line against the Dart source above.
+
+It returns every *emitted* directive occurrence with its source line number and the key-window flag — "last occurrence wins" among emitted rows is left to the per-field extractors built in later tasks, not decided here.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -490,15 +499,19 @@ def check(label: str, condition: bool, detail: str = "") -> None:
 
 # --- Section A: chordpro_scan_directives (Task 3) ---------------------------
 
-def scan(source: str) -> list[tuple[str, str | None]]:
+def scan(source: str, with_window: bool = False):
     rows = run_psql_rows(
-        "select directive_name, coalesce(directive_value, '<null>') "
+        "select directive_name, coalesce(directive_value, '<null>'), key_window_open "
         f"from public.chordpro_scan_directives({sql_quote(source)}) "
         "order by line_number;"
     )
-    return [
-        (name, None if value == "<null>" else value) for name, value in rows
+    parsed = [
+        (name, None if value == "<null>" else value, window == "t")
+        for name, value, window in rows
     ]
+    if with_window:
+        return parsed
+    return [(name, value) for name, value, _window in parsed]
 
 
 check(
@@ -543,6 +556,59 @@ check(
     str(scan("{title: First}\nLyric line\n{title: Second}")),
 )
 
+# Item 18: Unicode whitespace (tab, vertical tab, form feed), not just the
+# ASCII space SQL's bare trim() strips, must be trimmed away -- matching
+# Dart's String.trim().
+check(
+    "scanner: vertical tab and form feed are trimmed like Dart's String.trim(), not just spaces/tabs",
+    scan("{title:\t\x0b\x0c  Padded Title  \x0c\x0b\t}") == [("title", "Padded Title")],
+    str(scan("{title:\t\x0b\x0c  Padded Title  \x0c\x0b\t}")),
+)
+
+# Tab-block inertness (supporting Item 14 at the scanner level -- Task 4
+# pins the title-specific manifestation the spec names). A directive whose
+# name does not start with end_of_ is swallowed entirely while inside a tab
+# block: not emitted as a row at all.
+check(
+    "scanner: a directive inside a tab block is swallowed, not emitted",
+    scan("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}")
+    == [("start_of_tab", None), ("end_of_tab", None)],
+    str(scan("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}")),
+)
+check(
+    "scanner: a directive after end_of_tab is emitted normally",
+    scan("{start_of_tab}\n{end_of_tab}\n{title: Real Title}")
+    == [("start_of_tab", None), ("end_of_tab", None), ("title", "Real Title")],
+    str(scan("{start_of_tab}\n{end_of_tab}\n{title: Real Title}")),
+)
+
+# key_window_open: exposed per row as the negation of has_seen_song_content
+# as it stood before that row's own effect. Task 6 filters on this for key
+# extraction; these assertions pin the flag itself, at the scanner level,
+# for each of the three reproduced triggers.
+check(
+    "scanner: key_window_open is true before any lyric/section content",
+    scan("{key: G}", with_window=True) == [("key", "G", True)],
+    str(scan("{key: G}", with_window=True)),
+)
+check(
+    "scanner: key_window_open is false once a lyric line has been seen",
+    scan("[C] lyric line\n{key: G}", with_window=True) == [("key", "G", False)],
+    str(scan("[C] lyric line\n{key: G}", with_window=True)),
+)
+check(
+    "scanner: key_window_open is false once a start_of_* directive has been seen",
+    scan("{start_of_verse}\n{key: G}", with_window=True)
+    == [("start_of_verse", None, True), ("key", "G", False)],
+    str(scan("{start_of_verse}\n{key: G}", with_window=True)),
+)
+check(
+    "scanner: key_window_open is false once an end_of_* directive has been seen",
+    scan("{end_of_verse}\n{key: G}", with_window=True)
+    == [("end_of_verse", None, True), ("key", "G", False)],
+    str(scan("{end_of_verse}\n{key: G}", with_window=True)),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)
@@ -569,62 +635,125 @@ Create `supabase/migrations/202607290004_derive_song_metadata.sql`:
 
 ```sql
 -- ChordPro directive scanner. Reproduces chordpro_line_scanner.dart:66-84
--- exactly: normalize \r\n -> \n, trim each line, a directive line starts
--- with `{` and ends with `}`, an empty body is not a directive, the first
--- `:` splits name (trimmed, lowercased) from value (trimmed); no colon means
--- the whole body is the name and the value is null. Returns every
--- occurrence with its line number; last-occurrence-wins is a decision for
--- the per-field extractors built on top of this, not this function.
+-- exactly for the grammar (brace-delimited body, first-colon name/value
+-- split, name lowercased, empty body ignored), plus the two structural
+-- gates from chordpro_parser.dart that apply before any field rule:
+--
+--   * tab-block inertness (:52-54) -- while inside a
+--     {start_of_tab}...{end_of_tab} block, a directive whose name does not
+--     start with end_of_ is swallowed as tab content and is not emitted as
+--     a directive row at all.
+--   * the key window -- a has_seen_song_content flag, false at the start,
+--     set true by the first lyric line (:36), any start_of_* directive
+--     (:150), or any end_of_* directive (:201). Exposed per emitted row as
+--     key_window_open (the negation of that flag as it stood BEFORE this
+--     line's own effect), consumed only by chordpro_derive_key_signature.
+--     Deliberately NOT set by a {comment}/{c} directive recognised as a
+--     section start (:138, via _parseCommentSection) -- reproducing that
+--     would duplicate a second small parser inside this one. This is the
+--     one accepted, named divergence; see ADR-027 and Task 6's tests.
+--
+-- Written in plpgsql with an explicit ordered walk, not a stateless SQL
+-- sweep, because in_tab and has_seen_song_content are sequential state
+-- carried across lines -- a recursive CTE could express the same state
+-- machine, but a `for` loop with two booleans is far easier to verify
+-- line-by-line against the Dart source above.
 --
 -- Uses btrim(x, E' \t\n\r\v\f') rather than bare trim(), because SQL's
 -- trim() strips only the ASCII space by default, while Dart's String.trim()
--- strips all whitespace -- a ChordPro line indented with a tab would
--- otherwise fail to match a directive that Dart parses correctly.
+-- strips all whitespace -- a ChordPro line indented with a tab, vertical
+-- tab, or form feed would otherwise fail to match what Dart parses.
 create or replace function public.chordpro_scan_directives(source text)
-returns table(line_number integer, directive_name text, directive_value text)
-language sql
+returns table(
+  line_number integer,
+  directive_name text,
+  directive_value text,
+  key_window_open boolean
+)
+language plpgsql
 immutable
 as $$
-  with normalized as (
-    select replace(coalesce(source, ''), chr(13) || chr(10), chr(10))
-      as normalized_source
-  ),
-  numbered_lines as (
-    select
-      line_no::integer as line_number,
-      btrim(raw_line, E' \t\n\r\v\f') as trimmed_line
-    from normalized,
-      unnest(string_to_array(normalized.normalized_source, chr(10)))
-        with ordinality as t(raw_line, line_no)
-  ),
-  directive_candidates as (
-    select
-      line_number,
-      btrim(
-        substring(trimmed_line from 2 for length(trimmed_line) - 2),
+declare
+  v_normalized_source text := replace(coalesce(source, ''), chr(13) || chr(10), chr(10));
+  v_line text;
+  v_line_number integer := 0;
+  v_trimmed_line text;
+  v_body text;
+  v_colon_pos integer;
+  v_name text;
+  v_value text;
+  v_in_tab boolean := false;
+  v_has_seen_song_content boolean := false;
+begin
+  foreach v_line in array string_to_array(v_normalized_source, chr(10))
+  loop
+    v_line_number := v_line_number + 1;
+    v_trimmed_line := btrim(v_line, E' \t\n\r\v\f');
+
+    if v_trimmed_line = '' then
+      -- Empty line: no effect on any state, matching ChordproLineKind.empty.
+      continue;
+    end if;
+
+    if v_trimmed_line like '{%}' and length(v_trimmed_line) >= 2 then
+      v_body := btrim(
+        substring(v_trimmed_line from 2 for length(v_trimmed_line) - 2),
         E' \t\n\r\v\f'
-      ) as body
-    from numbered_lines
-    where trimmed_line like '{%}'
-      and length(trimmed_line) >= 2
-  ),
-  valid_directives as (
-    select line_number, body, position(':' in body) as colon_pos
-    from directive_candidates
-    where body <> ''
-  )
-  select
-    line_number,
-    case
-      when colon_pos = 0 then lower(body)
-      else lower(btrim(substring(body from 1 for colon_pos - 1), E' \t\n\r\v\f'))
-    end as directive_name,
-    case
-      when colon_pos = 0 then null
-      else btrim(substring(body from colon_pos + 1), E' \t\n\r\v\f')
-    end as directive_value
-  from valid_directives
-  order by line_number;
+      );
+
+      if v_body = '' then
+        -- An empty-body brace pair ("{}") is not a directive to the
+        -- scanner, so chordpro_line_scanner.dart classifies the whole line
+        -- as lyric-kind instead -- which the parser then uses to set
+        -- has_seen_song_content, same as any other lyric line.
+        v_has_seen_song_content := true;
+        continue;
+      end if;
+
+      v_colon_pos := position(':' in v_body);
+      if v_colon_pos = 0 then
+        v_name := lower(v_body);
+        v_value := null;
+      else
+        v_name := lower(btrim(substring(v_body from 1 for v_colon_pos - 1), E' \t\n\r\v\f'));
+        v_value := btrim(substring(v_body from v_colon_pos + 1), E' \t\n\r\v\f');
+      end if;
+
+      if v_in_tab and v_name not like 'end_of_%' then
+        -- Tab-block inertness: swallowed as tab content, not emitted, and
+        -- no state change at all -- matching that this whole branch in the
+        -- Dart parser bypasses the field-rule chain entirely.
+        continue;
+      end if;
+
+      -- Emit with the key-window state as it stood BEFORE this line's own
+      -- effect (below) is applied.
+      line_number := v_line_number;
+      directive_name := v_name;
+      directive_value := v_value;
+      key_window_open := not v_has_seen_song_content;
+      return next;
+
+      if v_name = 'start_of_tab' then
+        v_in_tab := true;
+        v_has_seen_song_content := true;
+      elsif v_name like 'start_of_%' then
+        v_has_seen_song_content := true;
+      elsif v_name like 'end_of_%' then
+        v_in_tab := false;
+        v_has_seen_song_content := true;
+      end if;
+    else
+      -- A non-empty, non-directive line is a lyric line. The scanner
+      -- classifies purely on brace matching, irrespective of tab-section
+      -- state; chordpro_parser.dart:36 sets has_seen_song_content on every
+      -- lyric-kind line, including ones inside a tab block.
+      v_has_seen_song_content := true;
+    end if;
+  end loop;
+
+  return;
+end;
 $$;
 
 revoke all on function public.chordpro_scan_directives(text)
@@ -653,11 +782,17 @@ git add supabase/migrations/202607290004_derive_song_metadata.sql \
   scripts/tests/song-derived-metadata-contract-test.sh \
   scripts/backend-write-contracts.sh
 git commit -m "$(cat <<'EOF'
-feat(db): add chordpro_scan_directives, parity-tested against the grammar
+feat(db): add chordpro_scan_directives with the two structural gates
 
 Reproduces the ChordPro directive grammar from
 chordpro_line_scanner.dart:66-84 in SQL: brace-delimited lines, first-colon
-name/value split, name lowercased, empty body ignored. Uses an explicit
+name/value split, name lowercased, empty body ignored. Also reproduces the
+two structural gates from chordpro_parser.dart that apply before any field
+rule: tab-block inertness (swallows any non-end_of_ directive while inside
+a tab block) and the key window (has_seen_song_content, set by a lyric
+line or any start_of_*/end_of_* directive, exposed per row as
+key_window_open). Written in plpgsql with an explicit line walk since both
+gates are sequential state, not a stateless sweep. Uses an explicit
 whitespace charset for trimming since SQL trim() strips only spaces by
 default and Dart's trim() strips more. This is the shared foundation the
 per-field extractors in the next tasks are built on.
@@ -675,7 +810,7 @@ EOF
 - Modify: `supabase/migrations/202607290004_derive_song_metadata.sql`
 - Modify: `scripts/tests/song-derived-metadata-contract-test.sh`
 
-Extraction rule: `title` or `t` directive, last occurrence wins, value or `''` (matching `title = line.directiveValue ?? ''` at `chordpro_parser.dart:55-56,125-126`).
+Extraction rule: `title` or `t` directive, last occurrence wins, value or `''` (matching `title = line.directiveValue ?? ''` at `chordpro_parser.dart:55-56,125-126`). `title` is not gated by the key window — it is honoured anywhere outside a tab block — but it **is** subject to tab-block inertness, which `chordpro_scan_directives` already enforces by never emitting a swallowed directive as a row at all, so this function needs no extra logic for it; testing-strategy item 14 is pinned here at the title level (Task 3 already pinned the same gate at the scanner level).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -709,6 +844,20 @@ check(
     "title: no directive -> empty string, not null",
     derive_title("[C] Lyric only, no directive") == "",
     repr(derive_title("[C] Lyric only, no directive")),
+)
+
+# Item 14: tab-block inertness, at the title level. A {title: X} between
+# {start_of_tab} and {end_of_tab} is not a title; one after {end_of_tab} is.
+check(
+    "title: a directive inside a tab block does not become the title",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}\n{title: Real Title}")
+    == "Real Title",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}\n{title: Real Title}"),
+)
+check(
+    "title: with no title after the tab block, falls back to '' (the swallowed one never counted)",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}") == "",
+    repr(derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}")),
 )
 ```
 
@@ -758,7 +907,10 @@ git commit -m "$(cat <<'EOF'
 feat(db): add chordpro_derive_title
 
 title/t directive, last occurrence wins, value or '' -- matching
-chordpro_parser.dart:55-56,125-126 exactly.
+chordpro_parser.dart:55-56,125-126 exactly. Pins tab-block inertness
+(testing-strategy item 14) at the title level: chordpro_scan_directives
+already never emits a directive swallowed inside a tab block, so this
+function needs no extra logic, only the test.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -865,9 +1017,9 @@ EOF
 - Modify: `supabase/migrations/202607290004_derive_song_metadata.sql`
 - Modify: `scripts/tests/song-derived-metadata-contract-test.sh`
 
-Extraction rule per the spec: `key` directive, last occurrence wins, invalid values ignored.
+Extraction rule per the spec: `key` directive, honoured only while the key window is open (`chordpro_scan_directives`'s `key_window_open`, tracking `has_seen_song_content` exactly as `chordpro_parser.dart:62` does — closed by the first lyric line, any `start_of_*` directive, or any `end_of_*` directive), last valid occurrence among those wins, and a null-or-empty-after-trim value inside the window is skipped without clearing a previously valid one.
 
-**Important divergence from the full Dart behaviour, noted here deliberately (see plan self-review below):** `chordpro_parser.dart:61-79` only honours a `key` directive `if (!hasSeenSongContent)` — i.e. before any lyric line or section directive has appeared — and, among those, an invalid (null/empty after trim) value is *skipped* (not assigned), so it does not overwrite a previously-assigned valid value. The spec's extraction-rules table states only "last occurrence wins; invalid values are ignored" and does not mention the position gate. This function implements exactly the stated rule — last valid occurrence wins, from anywhere in the source, invalid occurrences skipped rather than overwriting — and does not gate on song content having started. This matches the spec's literal text; it does not fully replicate the Dart parser's position sensitivity.
+**One accepted, deliberately scoped divergence (see ADR-027, Task 13):** the Dart parser also closes the key window on a `{comment}`/`{c}` directive that `_parseCommentSection` recognises as a section start (`chordpro_parser.dart:138`) — e.g. `{c: Verse}`. `chordpro_scan_directives` does not reproduce comment-as-section recognition (Task 3), so this one trigger is missing from `key_window_open`. Reproducing it would mean duplicating `_parseCommentSection` — itself a small parser (bracket-unwrapping, then a regex against `verse`/`chorus`/`bridge`/`intro`/arbitrary bare words) — inside this one, which is more of exactly the parser surface this finding treats as risk. This is the *only* divergence; the other three triggers (lyric line, `start_of_*`, `end_of_*`) and the empty-value-does-not-clear rule are all reproduced exactly. Item 17 below pins the divergence explicitly, asserting the SQL's actual (documented) behaviour rather than leaving it to silently drift.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -893,6 +1045,9 @@ check(
     derive_key("[C] no key directive") is None,
     str(derive_key("[C] no key directive")),
 )
+
+# Item 16: an invalid (empty) occurrence inside the window does not clear an
+# earlier valid one.
 check(
     "key: an invalid (empty) later occurrence does not overwrite an earlier valid one",
     derive_key("{key: C}\n{key:}") == "C",
@@ -902,6 +1057,45 @@ check(
     "key: all-invalid occurrences -> null",
     derive_key("{key:}\n{key:   }") is None,
     str(derive_key("{key:}\n{key:   }")),
+)
+
+# Item 15: the key window -- honoured before any song content, ignored after
+# a lyric line, after a start_of_*, and after an end_of_*.
+check(
+    "key window: honoured before any lyric line or section directive",
+    derive_key("{key: G}\n[C] Amazing grace") == "G",
+    str(derive_key("{key: G}\n[C] Amazing grace")),
+)
+check(
+    "key window: ignored once a lyric line has been seen",
+    derive_key("[C] Amazing grace\n{key: G}") is None,
+    str(derive_key("[C] Amazing grace\n{key: G}")),
+)
+check(
+    "key window: ignored once a start_of_* directive has been seen",
+    derive_key("{start_of_verse}\n{key: G}") is None,
+    str(derive_key("{start_of_verse}\n{key: G}")),
+)
+check(
+    "key window: ignored once an end_of_* directive has been seen",
+    derive_key("{end_of_verse}\n{key: G}") is None,
+    str(derive_key("{end_of_verse}\n{key: G}")),
+)
+
+# Item 17: the one accepted divergence, pinned explicitly. The Dart parser
+# treats {c: Verse} as a section-start comment (_parseCommentSection matches
+# a bare word like "Verse"), which would close the key window, so the real
+# parser would leave the key null here. chordpro_scan_directives does not
+# implement comment-as-section recognition, so this SAME source derives a
+# key in SQL. This asserts the SQL's actual behaviour and names the
+# divergence, so a future change on either side (SQL growing comment
+# support, or the Dart parser's rule changing) fails this assertion loudly
+# instead of the two silently drifting further apart.
+check(
+    "key window: accepted divergence -- a comment Dart reads as a section "
+    "start does not close the window in SQL (see ADR-027)",
+    derive_key("{c: Verse}\n{key: G}") == "G",
+    str(derive_key("{c: Verse}\n{key: G}")),
 )
 ```
 
@@ -915,9 +1109,15 @@ Expected: `psql failed` with stderr containing `function public.chordpro_derive_
 Append to `supabase/migrations/202607290004_derive_song_metadata.sql`:
 
 ```sql
--- key_signature | key | last occurrence wins among valid values;
--- invalid (empty-after-trim) occurrences are skipped, not assigned, so they
--- do not overwrite a previously valid value.
+-- key_signature | key | honoured only while the key window is open
+-- (chordpro_scan_directives' key_window_open, tracking has_seen_song_content
+-- the way chordpro_parser.dart:62 does -- closed by a lyric line or any
+-- start_of_*/end_of_* directive); last valid occurrence among those wins;
+-- invalid (empty-after-trim) occurrences are skipped, not assigned, so
+-- they do not overwrite a previously valid value. Does NOT close the
+-- window on a comment recognised as a section start
+-- (chordpro_parser.dart:138) -- the one accepted, documented divergence;
+-- see ADR-027.
 create or replace function public.chordpro_derive_key_signature(source text)
 returns text
 language sql
@@ -926,6 +1126,7 @@ as $$
   select nullif(trim(directive_value), '')
   from public.chordpro_scan_directives(source)
   where directive_name = 'key'
+    and key_window_open
     and nullif(trim(directive_value), '') is not null
   order by line_number desc
   limit 1;
@@ -946,13 +1147,16 @@ Expected: `song derived metadata contract passed.`
 git add supabase/migrations/202607290004_derive_song_metadata.sql \
   scripts/tests/song-derived-metadata-contract-test.sh
 git commit -m "$(cat <<'EOF'
-feat(db): add chordpro_derive_key_signature
+feat(db): add chordpro_derive_key_signature with the key window
 
-key directive, last occurrence among valid values wins; invalid
-(empty-after-trim) occurrences are skipped rather than overwriting, per
-the spec's extraction-rules table. Does not replicate the Dart parser's
-additional !hasSeenSongContent position gate (chordpro_parser.dart:62),
-which the spec's table does not call for.
+key directive, honoured only while chordpro_scan_directives' key_window_open
+is true (has_seen_song_content closed by a lyric line or any
+start_of_*/end_of_* directive, matching chordpro_parser.dart:62), last
+valid occurrence among those wins, invalid occurrences skipped without
+clearing a prior valid value. Does not reproduce the Dart parser's
+comment-as-section trigger for closing the window
+(chordpro_parser.dart:138) -- the one accepted, named divergence, pinned
+explicitly by its own test rather than left as a silent gap.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -2339,26 +2543,44 @@ acceptance, so there is exactly one derivation that counts — drift becomes a
 cosmetic difference between a provisional local display and the accepted
 state, not a divergence between a record and its source. Second, the grammar
 being reproduced is small and fully specified: `chordpro_line_scanner.dart:66-84`
-is a fifteen-line rule, and only seven directive names matter (`title`, `t`,
-`artist`, `key`, `tempo`, `tags`, `tag`). This is parity that can be pinned by
-tests, not approximated.
+is a fifteen-line rule, only seven directive names matter (`title`, `t`,
+`artist`, `key`, `tempo`, `tags`, `tag`), and the two structural gates
+(tab-block inertness and the key window) that apply before any field rule
+are each a boolean carried across an ordered line walk. This is parity that
+can be pinned by tests, not approximated — with one named, tested exception,
+recorded next.
 
 ## Known divergence
 
-`chordpro_parser.dart:61-79` additionally gates the `key` directive on
-`!hasSeenSongContent` (a `key` directive is only honoured before any lyric
-line or section directive has appeared) and, among honoured occurrences,
-skips invalid values without overwriting a prior valid one. The SQL
-extractor (`public.chordpro_derive_key_signature`) implements the
-last-valid-occurrence-wins and invalid-is-skipped halves of that rule from
-anywhere in the source, without the position gate — matching this ADR's
-extraction-rules table exactly, at the cost of not fully replicating the
-Dart parser's position sensitivity for `key`. A source with a `key` directive
-appearing only after lyric content has started will therefore derive a key
-signature server-side that the Dart parser itself would have ignored. This is
-accepted as an edge case narrow enough (a key directive placed after the song
-body has started) not to warrant reproducing `hasSeenSongContent` tracking
-across the whole scan.
+`chordpro_parser.dart:62` honours the `key` directive only while
+`hasSeenSongContent` is false — a "key window" that closes on the first
+lyric line, any `start_of_*` directive, any `end_of_*` directive, or a
+`{comment}`/`{c}` directive that `_parseCommentSection` recognises as a
+section start (`chordpro_parser.dart:138`). `public.chordpro_scan_directives`
+(`supabase/migrations/202607290004_derive_song_metadata.sql`) reproduces the
+first three triggers exactly, tracked as it walks lines in order, and
+exposes the result per directive as `key_window_open`, which
+`chordpro_derive_key_signature` filters on. It does **not** reproduce the
+fourth: comment-as-section recognition (`_parseCommentSection`) is itself a
+small parser — unwrapping `<...>`/`[...]` wrappers, then regex-matching a
+bare word against `verse`/`chorus`/`bridge`/`intro`/anything else — that
+would have to be duplicated in SQL to close the window on it. Reproducing it
+would add more of exactly the parser surface this finding treats as risk, and
+would put every future comment-section rule in two places to keep in sync.
+
+Concretely: a source where a `{comment}`/`{c}` directive that Dart reads as a
+section start (e.g. `{c: Verse}`) precedes a `{key:}` directive, with no
+prior lyric line or `start_of_*`/`end_of_*` directive, derives a key
+signature in SQL that the real Dart parser would have ignored (its key
+window would already be closed by the comment). This is the one accepted
+divergence: narrow, named, and pinned by a contract test
+(`scripts/tests/song-derived-metadata-contract-test.sh`, testing-strategy
+item 17) that asserts the SQL's actual behaviour, so a future change on
+either side — SQL growing comment-section support, or the Dart parser's rule
+changing — fails that assertion loudly instead of the two silently drifting
+further apart. Tab-block inertness and the key window's other three triggers
+are fully reproduced, not approximated; only this fourth trigger is the
+accepted gap.
 
 ## Risks accepted
 
@@ -2387,9 +2609,11 @@ docs(architecture): add ADR-027, derive song shadow metadata at write acceptance
 Records why create_song and song_write_update_common now derive
 title/artist/key_signature/tempo_bpm/tags from canonical ChordPro
 instead of accepting them from the client, the rejected alternatives,
-and the one known divergence from the Dart parser's key-directive
-position gating. Closes the 2026-05-09 song-write-derived-fields
-deferred item.
+the two structural gates (tab-block inertness, the key window) the SQL
+reproduces, and the one accepted divergence: the key window's
+comment-as-section trigger is not reproduced, since that would mean
+duplicating _parseCommentSection itself. Closes the 2026-05-09
+song-write-derived-fields deferred item.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 EOF
@@ -2563,7 +2787,7 @@ In `docs/testing/testing-strategy.md`, in the `### Backend Verification` bullet 
 
 ```markdown
 - `public.slugify` output parity across accented characters, punctuation runs, leading/trailing separators, and the empty result, pinned before and unchanged after the `unaccent` extension's relocation out of `public`, verified in `scripts/tests/slug-parity-contract-test.sh`
-- Backend-derived song shadow metadata: the ChordPro directive-scanner grammar, each of the five per-field extractors (`title`/`t`, `artist`, `key`, `tempo`, `tags`/`tag`) including last-occurrence-wins and invalid-value handling, `create_song`'s and `song_write_update_common`'s title-fallback chain, re-derivation on an update that carries no new source, and the `create_song`/`update_song`/`overwrite_song_update`/`song_write_update_common` signature and grant contract after parameter removal, verified in `scripts/tests/song-derived-metadata-contract-test.sh`
+- Backend-derived song shadow metadata: the ChordPro directive-scanner grammar including its two structural gates (tab-block inertness, affecting every field, and the key window governing `key_signature`), each of the five per-field extractors (`title`/`t`, `artist`, `key`, `tempo`, `tags`/`tag`) including last-occurrence-wins, invalid-value handling, and Unicode-whitespace trimming, the one accepted divergence in the key window (a comment the Dart parser reads as a section start does not close it in SQL) pinned as a named boundary rather than left to drift, `create_song`'s and `song_write_update_common`'s title-fallback chain, re-derivation on an update that carries no new source, and the `create_song`/`update_song`/`overwrite_song_update`/`song_write_update_common` signature and grant contract after parameter removal, verified in `scripts/tests/song-derived-metadata-contract-test.sh`
 ```
 
 - [ ] **Step 4: Commit**
@@ -2644,22 +2868,36 @@ Expected: no output (the spec's own evidence already established the Flutter cli
 
 ## Self-review against the spec
 
+> **Revision note (this pass):** the spec was corrected in commit `8cd1573`
+> after this plan's first draft flagged the `key` extraction rule as
+> underspecified relative to `chordpro_parser.dart`. The correction turned
+> out to be bigger than `key` alone: it added a mandatory, all-fields
+> tab-block-inertness gate to the scanner, brought the key window fully
+> in scope (all but one of its four triggers), and named the one trigger
+> that stays a deliberate, tested divergence. Task 3 (the scanner), Task 4
+> (title's tab-inertness test), Task 6 (the key window, its own tests, and
+> the narrower divergence), and Task 13 (ADR-027) were rewritten against
+> the corrected spec; Tasks 1, 2, 5, 7–12, and 14–16 were unaffected and are
+> unchanged from the first draft.
+
 Walking `docs/specs/2026-07-29-read-boundary-and-derived-song-metadata.md` section by section:
 
 - **Decision 1 (read boundary stays on RLS)** → Task 12 (ADR-026), no code task needed, matching the spec's own "No repository changes" scope line.
 - **Decision 2 (song metadata derived at write acceptance)** → Tasks 9–10 (the two write RPCs), Task 13 (ADR-027).
 - **Directive grammar parity** → Task 3 (`chordpro_scan_directives`), unit-tested against brace/colon/case/trim/CRLF rules directly, not just indirectly through the field extractors.
-- **Extraction rules table (title/t, artist, key, tempo, tags/tag)** → Tasks 4–8, one function and one test section per row of the table.
+- **The two structural gates** (tab-block inertness, affecting every field; the key window, affecting only `key_signature`) → Task 3 implements both inside the scanner as sequential state (`in_tab`, `has_seen_song_content`) carried across an ordered `plpgsql` line walk, exposing tab-swallowed directives as simply absent from the output and the key window as a per-row `key_window_open` flag. Task 4 pins tab-inertness at the title level (item 14); Task 6 pins the key window and its one accepted divergence (items 15–17).
+- **Extraction rules table (title/t, artist, key, tempo, tags/tag)** → Tasks 4–8, one function and one test section per row of the table; `key_signature` additionally filters on `key_window_open` (Task 6).
+- **The one accepted divergence** (comment-as-section not closing the key window) → implemented by omission in Task 3 (the scanner's state machine has no comment-recognition branch), documented in Task 6's description and ADR-027's "Known divergence" section, and pinned by its own explicit test (item 17, Task 6) rather than left to silently drift.
 - **`create_song` behaviour** (derive from `coalesce(p_chordpro_source, '')`, title fallback chain, slug follows derived title, `metadata_json` as `'{}'`) → Task 9, every clause implemented and asserted (items 1–7, 10, 11 partial, 12 partial in the testing-strategy numbering).
 - **`song_write_update_common` behaviour** (effective source via `coalesce`, all five fields re-derived on every write including no-new-source, title fallback to `coalesce(p_title, song.title)`, `metadata_json` untouched) → Task 10 (items 8, 9, 13, 11/12 remaining).
 - **Grants** → Task 9 and Task 10 each drop the old signature(s) they touch and reapply `revoke`/`grant` for the new ones; Task 10's test asserts both the four old signatures are gone (`to_regprocedure(...) is null`) and the new ones' `has_function_privilege` matrix.
 - **`unaccent` move** → Tasks 1–2, parity-test-first as mandated, file unedited across the move to make the proof literal (`git diff` empty).
-- **Testing Strategy's 13 numbered items** → all present, distributed across Tasks 3–10 as cross-referenced above.
-- **Documentation list** → ADR-026 (Task 12), ADR-027 (Task 13), repository review (Task 14), architecture.md/domain-model.md/testing-strategy.md (Task 15), both deferred docs removed (Task 16).
+- **Testing Strategy's 18 numbered items** → all present: 1–13 distributed across Tasks 9–10 as before; 14 (tab inertness) in Tasks 3 and 4; 15 (key window, all three reproduced triggers) and 16 (empty key non-clearing) and 17 (the named divergence) in Task 6; 18 (Unicode whitespace) in Task 3.
+- **Documentation list** → ADR-026 (Task 12), ADR-027 (Task 13, including the corrected divergence section), repository review (Task 14), architecture.md/domain-model.md/testing-strategy.md (Task 15, testing-strategy bullet expanded for the two gates), both deferred docs removed (Task 16).
 - **Risks section** — no backfill (Task 10's design, item 9's test), title-drift-after-sync (accepted, documented in ADR-027), breaking signature change (Task 11), `unaccent` behaviour parity (Tasks 1–2), `slugify` immutable-vs-`unaccent`-stable pre-existing mismatch (out of scope per the spec; not touched by this plan).
 
-**Placeholder scan:** no `TBD`, no "add appropriate handling," no "similar to Task N" — every task's SQL, python, and bash is complete and runnable as written.
+**Placeholder scan:** no `TBD`, no "add appropriate handling," no "similar to Task N" — every task's SQL, python, and bash is complete and runnable as written, including the corrected `plpgsql` scanner and its expanded test sections.
 
-**Type/signature consistency check:** `create_song(uuid, text, text, text, uuid)` (Task 9) is the exact signature used in Task 10's `overwrite_song_update` call and in Task 10's and Task 16's grant/regprocedure assertions. `song_write_update_common(uuid, uuid, bigint, text, text, boolean)`, `update_song(uuid, uuid, bigint, text, text)`, and `overwrite_song_update(uuid, uuid, bigint, text, text, text)` (all introduced in Task 10) match across the implementation, the grant statements, and the test assertions with no drift.
+**Type/signature consistency check:** `public.chordpro_scan_directives(source text)` now returns `table(line_number integer, directive_name text, directive_value text, key_window_open boolean)` everywhere it is referenced — Task 3's implementation and scanner-level tests, and Tasks 4–8's extractors built on it (only Task 6's `chordpro_derive_key_signature` reads the fourth column; the others correctly ignore it). `create_song(uuid, text, text, text, uuid)` (Task 9) is the exact signature used in Task 10's `overwrite_song_update` call and in Task 10's and Task 16's grant/regprocedure assertions. `song_write_update_common(uuid, uuid, bigint, text, text, boolean)`, `update_song(uuid, uuid, bigint, text, text)`, and `overwrite_song_update(uuid, uuid, bigint, text, text, text)` (all introduced in Task 10) match across the implementation, the grant statements, and the test assertions with no drift.
 
-**Underspecified item found and resolved:** the spec's extraction-rules table states the `key` rule as "last occurrence wins; invalid values are ignored, as the parser does," without mentioning `chordpro_parser.dart`'s additional `!hasSeenSongContent` position gate (a `key` directive is only honoured before any lyric line or section directive appears). Task 6 and ADR-027 both implement and document the literal table rule (last valid occurrence from anywhere in the source; invalid occurrences skipped, not overwriting) without the position gate, and call out the resulting known divergence explicitly rather than silently under- or over-implementing it.
+**Underspecified items found in this pass:** none. The corrected spec now states the tab-block gate as mandatory and field-general, names all four key-window triggers explicitly, and names + scopes the one accepted comment-as-section divergence itself (rather than leaving it for the plan to discover), so there is nothing left in the Target Behaviour or Testing Strategy sections that this plan had to infer or guess at. The one thing worth flagging as an implementation judgment call rather than a spec gap: the scanner also treats a bare, brace-matched, empty-body line (`"{}"`) as lyric-kind content that sets `has_seen_song_content`, mirroring `chordpro_line_scanner.dart`'s actual classification (an empty body fails `_parseDirective` and falls through to lyric-kind) rather than treating it as inert. The spec does not call this out explicitly, but it follows directly from the directive grammar the spec does specify, so it is implemented rather than flagged as a divergence.
