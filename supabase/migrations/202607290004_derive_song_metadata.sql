@@ -143,3 +143,20 @@ $$;
 
 revoke all on function public.chordpro_derive_title(text)
 from public, anon, authenticated;
+
+-- artist | artist | last occurrence wins | trimmed (assigned every
+-- occurrence, so a later bare {artist} can null out an earlier value)
+create or replace function public.chordpro_derive_artist(source text)
+returns text
+language sql
+immutable
+as $$
+  select trim(directive_value)
+  from public.chordpro_scan_directives(source)
+  where directive_name = 'artist'
+  order by line_number desc
+  limit 1;
+$$;
+
+revoke all on function public.chordpro_derive_artist(text)
+from public, anon, authenticated;

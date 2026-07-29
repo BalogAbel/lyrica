@@ -331,6 +331,31 @@ check(
     repr(derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}")),
 )
 
+# --- Section C: chordpro_derive_artist (Task 5) ------------------------------
+
+def derive_artist(source: str):
+    raw = run_psql(
+        f"select coalesce(public.chordpro_derive_artist({sql_quote(source)}), '<null>');"
+    )
+    return None if raw == "<null>" else raw
+
+
+check(
+    "artist: last occurrence wins",
+    derive_artist("{artist: First Artist}\n{artist: Second Artist}") == "Second Artist",
+    str(derive_artist("{artist: First Artist}\n{artist: Second Artist}")),
+)
+check(
+    "artist: no directive -> null",
+    derive_artist("[C] no artist directive here") is None,
+    str(derive_artist("[C] no artist directive here")),
+)
+check(
+    "artist: a later bare occurrence nulls an earlier value (last occurrence wins unconditionally)",
+    derive_artist("{artist: Someone}\n{artist}") is None,
+    str(derive_artist("{artist: Someone}\n{artist}")),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)
