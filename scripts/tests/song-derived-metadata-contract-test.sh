@@ -463,6 +463,43 @@ check(
     str(derive_tempo("{tempo: 99999999999}")),
 )
 
+# --- Section F: chordpro_derive_tags (Task 8) --------------------------------
+
+def derive_tags(source: str) -> list[str]:
+    raw = run_psql(
+        f"select public.chordpro_derive_tags({sql_quote(source)})::text;"
+    )
+    # Postgres text[] literal form, e.g. {a,b,c} or {}
+    inner = raw.strip("{}")
+    return [] if inner == "" else inner.split(",")
+
+
+check(
+    "tags: split on comma, trimmed, empties dropped",
+    derive_tags("{tags: a, b ,, c}") == ["a", "b", "c"],
+    str(derive_tags("{tags: a, b ,, c}")),
+)
+check(
+    "tags: tag is an alias for tags",
+    derive_tags("{tag: solo, worship}") == ["solo", "worship"],
+    str(derive_tags("{tag: solo, worship}")),
+)
+check(
+    "tags: last occurrence wins",
+    derive_tags("{tags: old, stale}\n{tags: new, fresh}") == ["new", "fresh"],
+    str(derive_tags("{tags: old, stale}\n{tags: new, fresh}")),
+)
+check(
+    "tags: no directive -> empty array, not null",
+    derive_tags("[C] no tags directive") == [],
+    str(derive_tags("[C] no tags directive")),
+)
+check(
+    "tags: bare directive with no value -> empty array",
+    derive_tags("{tags}") == [],
+    str(derive_tags("{tags}")),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)

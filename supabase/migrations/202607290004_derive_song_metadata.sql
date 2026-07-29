@@ -223,3 +223,31 @@ $$;
 
 revoke all on function public.chordpro_derive_tempo_bpm(text)
 from public, anon, authenticated;
+
+-- tags | tags, tag | last occurrence wins | split on ',', trim each, drop
+-- empties; no matching directive (or a bare one) yields '{}', never null,
+-- since songs.tags is not null default '{}'.
+create or replace function public.chordpro_derive_tags(source text)
+returns text[]
+language sql
+immutable
+as $$
+  select coalesce(
+    (
+      select array_agg(trim(tag_value))
+      from (
+        select directive_value
+        from public.chordpro_scan_directives(source)
+        where directive_name in ('tags', 'tag')
+        order by line_number desc
+        limit 1
+      ) as last_tags,
+      unnest(string_to_array(last_tags.directive_value, ',')) as tag_value
+      where trim(tag_value) <> ''
+    ),
+    '{}'::text[]
+  );
+$$;
+
+revoke all on function public.chordpro_derive_tags(text)
+from public, anon, authenticated;
