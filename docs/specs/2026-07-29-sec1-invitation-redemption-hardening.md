@@ -67,9 +67,9 @@ real audit trail nor a count-based rate limit is possible. Any fix to gaps 2 and
 ## Decisions (from brainstorm)
 
 1. **Hybrid email binding.** When `invitations.email is not null`, redemption
-   requires the caller's JWT email claim to match it. When it is null, the token
-   remains a bearer credential. The issuing admin chooses per invitation:
-   targeted or open link.
+   requires the caller's confirmed account email to match it. When it is null,
+   the token remains a bearer credential. The issuing admin chooses per
+   invitation: targeted or open link.
 
    *Rejected — strict binding always* (require `p_email`, always compare): the
    admin types the address, but the user signs in through Google or Apple SSO
@@ -244,7 +244,8 @@ Backend cases:
 
 1. Bearer invitation (`email is null`) redeems successfully for any
    authenticated caller — the hybrid model must not break open links.
-2. Email-bound invitation redeems when the caller's JWT email matches.
+2. Email-bound invitation redeems when the caller's confirmed account email
+   matches.
 3. Email match is case- and whitespace-insensitive.
 4. Email mismatch returns `email_mismatch`, creates **no** membership row, and
    writes an audit row.

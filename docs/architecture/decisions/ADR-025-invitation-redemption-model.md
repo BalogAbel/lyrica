@@ -95,6 +95,42 @@ stale link, or clicking an old invite a second time, produces them without any
 adversarial intent. Counting benign outcomes would let ordinary retry behavior
 lock a legitimate user out of their own redemption attempt.
 
+## Rate-limited audit cap: one marker row per caller per window
+
+`rate_limited` is itself excluded from `v_suspicious_attempts`, on purpose —
+otherwise a caller who trips the limit would push themselves straight back
+below it by continuing to call the RPC. That exclusion has a side effect,
+though: nothing else bounds how many `rate_limited` rows an already-limited
+caller can write. Since redemption records an audit row on every path, a
+client looping on the RPC after hitting the limit would grow
+`invitation_redemption_attempts` without limit — the rate limit throttles
+redemption, not the audit write it causes. `redeem_invitation` now records
+`rate_limited` at most once per caller per 15-minute window: if a
+`rate_limited` row already exists for the caller in the window, it returns the
+identical `jsonb` envelope without inserting another one. The audit signal
+that matters is "this caller hit the limit," not how many times they retried
+afterwards, and the two branches share one envelope-building function
+(`public.invitation_redemption_envelope`) so the client cannot observe which
+branch ran.
+
+## Concurrency guarantee: a caller-keyed advisory lock
+
+`redeem_invitation` takes `pg_advisory_xact_lock(hashtext(v_caller::text)::bigint)`
+immediately after the auth check, added after this ADR was first written. It
+closes a real race: the `for update` lock on the invitation row only covers a
+single token, so two different invitations to the same organization, redeemed
+concurrently by the same caller, could both pass the `already_member` check
+before either commits. Because `memberships_organization_scope_unique_idx`
+includes `role_code`, two invitations granting **different roles** would not
+even collide on that index — the caller would end up holding two active
+memberships in the same organization. With the same role, the second insert
+raised `unique_violation` instead, aborting the transaction and discarding the
+audit row the returned-status contract exists to preserve. The lock is keyed
+on the caller, so unrelated callers never contend, and it is released at
+transaction end. The same lock also makes the read-then-decide rate-limit
+count above safe: two concurrent calls by the same caller cannot both read the
+count before either's outcome is recorded.
+
 ## Email source: `auth.users.email`, not the JWT claim
 
 The binding check reads `auth.users.email` and `auth.users.email_confirmed_at`
@@ -134,8 +170,13 @@ confirmation.
   invitation.** This includes phone-only accounts and accounts with an
   unconfirmed address. The bearer path (null `invitations.email`) remains the
   issuing admin's escape hatch when this matters.
+- **`rate_limited` is treated as retryable in the redeem UI, on purpose.** The
+  15-minute window clears on its own with no admin action, so retrying is the
+  correct affordance once it does. Retrying during the window is harmless to
+  the audit trail: the per-caller-per-window cap above means those retries
+  write no additional rows.
 - **Model and rejected alternatives are pinned by test, not just by this
-  document.** `scripts/tests/invitation-redemption-contract-test.sh` (16
+  document.** `scripts/tests/invitation-redemption-contract-test.sh` (17
   cases, chained from `./scripts/backend-write-contracts.sh`) covers the full
   outcome matrix, including grant survival across the function's
   drop-and-recreate.
