@@ -199,6 +199,40 @@ check(
     f"a non-admin must not read another organization's attempts, saw {visible!r}",
 )
 
+# An organization_admin of ORG_ID can see the rows already inserted for it. A
+# `using (false)` policy for everyone -- including admins -- would pass the
+# non-admin check above just as well, so that check alone is vacuous; this is
+# the positive half that actually proves the documented "org admins can review
+# attempts against their own organization" behavior. The demo user provisioned
+# by provision-local-demo-user.sh is only organization_member, so a dedicated
+# admin membership is seeded here.
+ORG_ADMIN_USER = "aaaaaaa1-0000-0000-0000-0000000000ad"
+make_user(ORG_ADMIN_USER, "orgadmin@lyron.local")
+run_sql(dedent(f"""
+    insert into public.memberships (
+      user_id, organization_id, role_code, scope_type, status
+    )
+    values (
+      {sql_quote(ORG_ADMIN_USER)}::uuid, {sql_quote(ORG_ID)}::uuid,
+      'organization_admin', 'organization', 'active'
+    );
+"""))
+admin_visible = run_sql(dedent(f"""
+    begin;
+    select set_config('request.jwt.claim.sub', {sql_quote(ORG_ADMIN_USER)}, true);
+    select set_config('request.jwt.claim.role', 'authenticated', true);
+    set local role authenticated;
+    select count(*) from public.invitation_redemption_attempts
+    where organization_id = {sql_quote(ORG_ID)};
+    rollback;
+""")).splitlines()[-1].strip()
+check(
+    "case 3 audit select visible to org admin",
+    admin_visible.isdigit() and int(admin_visible) > 0,
+    "an organization_admin of ORG_ID must be able to read the audit rows "
+    f"already recorded for it, saw count {admin_visible!r}",
+)
+
 # --- Case 4: the successful bearer redemption from case 1 was audited. -------
 rows = attempt_rows(BEARER_USER)
 check(
