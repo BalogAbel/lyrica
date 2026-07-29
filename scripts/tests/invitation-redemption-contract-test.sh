@@ -19,8 +19,11 @@ fi
 
 python3 - "$db_container_name" <<'PY'
 import json
+import queue
 import subprocess
 import sys
+import threading
+import time
 from textwrap import dedent
 
 container = sys.argv[1]
@@ -422,6 +425,135 @@ check(
     retention.startswith("cleanup-invitation-redemption-attempts|"),
     f"expected a scheduled retention job for the audit table, got: {retention!r}",
 )
+
+# --- Case 17: a caller-keyed advisory lock closes the two concurrency races. -
+# Two different invitations to the same organization, redeemed concurrently by
+# the same caller, both pass the already_member check before either commits
+# unless something serializes them; the invitation row's `for update` lock only
+# covers a single token. The fix is a transaction-scoped advisory lock keyed on
+# the caller, taken immediately after the auth check. We cannot exercise the
+# actual race deterministically, so instead we prove the lock is taken (a
+# concurrent call by the same caller blocks) and that it is caller-scoped (a
+# concurrent call by a different caller is not blocked): hold the identical
+# advisory lock from a second session and observe both.
+LOCK_CALLER = "aaaaaaa1-0000-0000-0000-00000000000b"
+LOCK_OTHER_CALLER = "aaaaaaa1-0000-0000-0000-00000000000c"
+make_user(LOCK_CALLER, "lockholder@lyron.local")
+make_user(LOCK_OTHER_CALLER, "lockbystander@lyron.local")
+
+
+def run_sql_capture(sql):
+    """Run sql in a fresh session; never raises, returns (returncode, stdout, stderr)."""
+    cmd = ["docker", "exec", "-i", container, "psql", "-U", "postgres",
+           "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-X", "-qAt",
+           "-F", "\t", "-c", sql]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode, result.stdout, result.stderr
+
+
+def drain_lines(stream, sink):
+    for line in iter(stream.readline, ""):
+        sink.put(line)
+    sink.put(None)
+
+
+holder_sql = dedent(f"""
+    begin;
+    select pg_advisory_xact_lock(hashtext({sql_quote(LOCK_CALLER)}::text)::bigint);
+    select pg_backend_pid();
+    select pg_sleep(20);
+    commit;
+""")
+holder = subprocess.Popen(
+    ["docker", "exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres",
+     "-v", "ON_ERROR_STOP=1", "-X", "-qAt", "-F", "\t"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+)
+holder.stdin.write(holder_sql)
+holder.stdin.close()
+
+out_lines = queue.Queue()
+err_lines = queue.Queue()
+threading.Thread(target=drain_lines, args=(holder.stdout, out_lines), daemon=True).start()
+threading.Thread(target=drain_lines, args=(holder.stderr, err_lines), daemon=True).start()
+
+holder_pid = None
+deadline = time.time() + 10
+while time.time() < deadline:
+    try:
+        line = out_lines.get(timeout=max(0.1, deadline - time.time()))
+    except queue.Empty:
+        break
+    if line is None:
+        break
+    line = line.strip()
+    if line.isdigit():
+        holder_pid = int(line)
+        break
+
+try:
+    if holder_pid is None:
+        stray_err = []
+        while True:
+            try:
+                stray_err.append(err_lines.get_nowait())
+            except queue.Empty:
+                break
+        check(
+            "case 17 lock holder ready",
+            False,
+            "advisory lock holder session never reported its backend pid in time, "
+            f"stderr so far: {stray_err!r}",
+        )
+    else:
+        # Assertion 1: the same caller's redeem_invitation call must try to take
+        # the identical advisory lock and therefore block on it, tripping a short
+        # statement_timeout while the holder session keeps it.
+        same_caller_sql = dedent(f"""
+            set statement_timeout = '1s';
+            do $$
+            begin
+              perform set_config('request.jwt.claim.sub', {sql_quote(LOCK_CALLER)}, true);
+              perform set_config('request.jwt.claim.role', 'authenticated', true);
+            end $$;
+            select public.redeem_invitation('lock-probe-token-same-caller');
+        """)
+        rc, out, err = run_sql_capture(same_caller_sql)
+        check(
+            "case 17 same caller blocks on the held lock",
+            rc != 0 and "canceling statement due to statement timeout" in err,
+            "expected redeem_invitation for the lock holder's own caller to hit a "
+            f"statement timeout while the advisory lock is held, got rc={rc} "
+            f"stdout={out!r} stderr={err!r}",
+        )
+
+        # Assertion 2: a different caller must not contend with the lock at all
+        # -- proving it is keyed per caller, not a global bottleneck.
+        other_payload = redeem_payload(
+            LOCK_OTHER_CALLER, "lock-probe-token-other-caller"
+        )
+        check(
+            "case 17 different caller is not blocked",
+            other_payload.get("status") == "not_found",
+            "expected a different caller's redeem_invitation call to proceed "
+            f"unblocked while the lock is held for LOCK_CALLER, got: {other_payload!r}",
+        )
+finally:
+    # The lock holder must never survive this case, win or lose, or it wedges
+    # the database (and its held lock) for every case that runs after it.
+    try:
+        if holder_pid is not None:
+            run_sql(f"select pg_terminate_backend({holder_pid});")
+    except Exception:
+        pass
+    try:
+        holder.kill()
+    except Exception:
+        pass
+    try:
+        holder.wait(timeout=5)
+    except Exception:
+        pass
 
 if failures:
     raise SystemExit(

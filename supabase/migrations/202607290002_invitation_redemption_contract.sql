@@ -60,6 +60,17 @@ begin
       message = 'invitation_redeem_requires_auth';
   end if;
 
+  -- Serialize this caller's concurrent redemptions. Two races need it:
+  -- the rate-limit count below is read-then-decide, and the already_member
+  -- check further down is read-then-insert while the invitation row lock only
+  -- covers a single token. Without this, two different invitations to the same
+  -- organization can both pass the membership check; with different role_code
+  -- values they do not even collide on
+  -- memberships_organization_scope_unique_idx, leaving one user holding two
+  -- active organization memberships. The lock is per caller, so unrelated
+  -- callers never contend, and it is released at transaction end.
+  perform pg_advisory_xact_lock(hashtext(v_caller::text)::bigint);
+
   -- Only outcomes that look like token probing count. Benign retries (expired,
   -- already redeemed, already a member) are excluded so a real user retrying a
   -- stale link cannot lock themselves out. The window expires on its own.
