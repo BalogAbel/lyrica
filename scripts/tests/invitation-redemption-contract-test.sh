@@ -423,6 +423,36 @@ check(
     "a rate-limited call must leave the invitation unredeemed",
 )
 
+# The rate limit throttles redemption but must not let an already-limited
+# caller grow the audit table without bound: rate_limited is excluded from
+# v_suspicious_attempts on purpose, so nothing else caps how many rate_limited
+# rows a looping caller could otherwise write. Five more calls as the same
+# caller must still report rate_limited to the client, but only the first one
+# (asserted above) may have inserted a row.
+for i in range(5):
+    payload = redeem_payload(PROBER_USER, valid_token)
+    check(
+        f"case 14 post-limit retry {i} still rate_limited",
+        payload.get("status") == "rate_limited",
+        f"retry {i} after the limit trips must still report rate_limited, "
+        f"got: {payload!r}",
+    )
+
+prober_rows = attempt_rows(PROBER_USER)
+prober_outcomes = [row[0] for row in prober_rows]
+check(
+    "case 14 single rate_limited audit row",
+    prober_outcomes.count("rate_limited") == 1,
+    "expected exactly one rate_limited row for the prober despite six calls "
+    f"past the limit, got {prober_outcomes.count('rate_limited')} in {prober_rows!r}",
+)
+check(
+    "case 14 counted outcomes undisturbed",
+    prober_outcomes.count("not_found") == 10,
+    "the audit cap must not disturb the 10 counted not_found rows, got "
+    f"{prober_outcomes.count('not_found')} in {prober_rows!r}",
+)
+
 # --- Case 15: benign outcomes do not accumulate toward the limit. ------------
 PATIENT_USER = "aaaaaaa1-0000-0000-0000-00000000000a"
 make_user(PATIENT_USER, "patient@lyron.local")

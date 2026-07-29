@@ -2,6 +2,32 @@
 -- raising. Raising aborts the transaction, which would roll back the audit row
 -- written alongside it; returning lets every attempt persist.
 
+-- Builds the jsonb envelope redeem_invitation returns. Factored out so the
+-- two callers that need it -- the audit-writing path below and the
+-- rate-limit cap in redeem_invitation, which must return the identical shape
+-- without writing a row -- cannot drift apart.
+create or replace function public.invitation_redemption_envelope(
+  p_outcome public.invitation_redemption_outcome,
+  p_organization_id uuid
+)
+returns jsonb
+language sql
+immutable
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'status', p_outcome::text,
+    'organization_id',
+    case when p_outcome = 'redeemed' then p_organization_id else null end
+  );
+$$;
+
+-- Not granted to any client role: it is a pure formatting helper only ever
+-- reached through the security-definer redemption function below.
+revoke all on function public.invitation_redemption_envelope(
+  public.invitation_redemption_outcome, uuid
+) from public, anon, authenticated;
+
 create or replace function public.record_invitation_redemption_attempt(
   p_invitation_id uuid,
   p_token_sha256 bytea,
@@ -20,11 +46,7 @@ begin
     p_invitation_id, p_token_sha256, p_actor, p_outcome, p_organization_id
   );
 
-  return jsonb_build_object(
-    'status', p_outcome::text,
-    'organization_id',
-    case when p_outcome = 'redeemed' then p_organization_id else null end
-  );
+  return public.invitation_redemption_envelope(p_outcome, p_organization_id);
 end;
 $$;
 
@@ -81,6 +103,24 @@ begin
     and a.created_at > now() - interval '15 minutes';
 
   if v_suspicious_attempts >= 10 then
+    -- The limit throttles redemption, not the audit write it causes. rate_limited
+    -- is deliberately excluded from v_suspicious_attempts above, so without this
+    -- guard an already-limited caller looping on the RPC would insert one audit
+    -- row per call forever -- the rate limit would bound membership attempts but
+    -- not the table growth they trigger. One marker row per caller per window is
+    -- enough to preserve the audit signal ("this caller hit the limit") while
+    -- capping the write; the envelope is identical either way so the client
+    -- cannot tell which branch ran.
+    if exists (
+      select 1
+      from public.invitation_redemption_attempts a
+      where a.actor_user_id = v_caller
+        and a.outcome = 'rate_limited'
+        and a.created_at > now() - interval '15 minutes'
+    ) then
+      return public.invitation_redemption_envelope('rate_limited', null);
+    end if;
+
     return public.record_invitation_redemption_attempt(
       null, v_token_sha256, v_caller, 'rate_limited', null
     );
