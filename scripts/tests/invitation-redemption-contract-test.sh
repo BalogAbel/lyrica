@@ -65,6 +65,29 @@ def redeem_as(user_id, token):
     return run_sql(sql)
 
 
+def redeem_payload(user_id, token):
+    raw = redeem_as(user_id, token)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"status": f"<unparsable: {raw!r}>"}
+
+
+def attempt_rows(user_id):
+    out = run_sql(dedent(f"""
+        select outcome, coalesce(invitation_id::text, ''),
+               coalesce(organization_id::text, ''), length(token_sha256)
+        from public.invitation_redemption_attempts
+        where actor_user_id = {sql_quote(user_id)}
+        order by created_at;
+    """))
+    rows = []
+    for line in out.splitlines():
+        if line.strip():
+            rows.append(line.split("\t"))
+    return rows
+
+
 def check(label, condition, detail=""):
     if not condition:
         failures.append(f"{label}: {detail}")
@@ -171,6 +194,94 @@ check(
     "case 3 audit select scoped",
     visible == "0",
     f"a non-admin must not read another organization's attempts, saw {visible!r}",
+)
+
+# --- Case 4: the successful bearer redemption from case 1 was audited. -------
+rows = attempt_rows(BEARER_USER)
+check(
+    "case 4 success audited",
+    len(rows) == 1 and rows[0][0] == "redeemed" and rows[0][1] != ""
+    and rows[0][2] == ORG_ID and rows[0][3] == "32",
+    f"expected one audited 'redeemed' attempt with a 32-byte digest, got: {rows!r}",
+)
+
+# --- Case 5: an unknown token returns not_found and audits a null invitation. -
+make_user(WRONG_USER, "wrong@lyron.local")
+payload = redeem_payload(WRONG_USER, "definitely-not-a-real-token")
+check(
+    "case 5 not_found status",
+    payload.get("status") == "not_found" and payload.get("organization_id") is None,
+    f"unknown token must return not_found, got: {payload!r}",
+)
+rows = attempt_rows(WRONG_USER)
+check(
+    "case 5 not_found audited",
+    len(rows) == 1 and rows[0][0] == "not_found" and rows[0][1] == ""
+    and rows[0][2] == "" and rows[0][3] == "32",
+    f"expected an audited not_found attempt with no invitation, got: {rows!r}",
+)
+
+# --- Case 6: a second redemption of the same token reports already_redeemed. --
+SECOND_USER = "aaaaaaa1-0000-0000-0000-000000000004"
+make_user(SECOND_USER, "second@lyron.local")
+payload = redeem_payload(SECOND_USER, bearer_token)
+check(
+    "case 6 already_redeemed",
+    payload.get("status") == "already_redeemed",
+    f"a spent token must report already_redeemed, got: {payload!r}",
+)
+
+# --- Case 7: an expired invitation reports expired. --------------------------
+EXPIRED_USER = "aaaaaaa1-0000-0000-0000-000000000005"
+make_user(EXPIRED_USER, "expired@lyron.local")
+expired_token = make_invitation(email=None)
+run_sql(
+    "update public.invitations set expires_at = now() - interval '1 day' "
+    f"where token = {sql_quote(expired_token)};"
+)
+payload = redeem_payload(EXPIRED_USER, expired_token)
+check(
+    "case 7 expired",
+    payload.get("status") == "expired",
+    f"an expired token must report expired, got: {payload!r}",
+)
+
+# --- Case 8: an existing member reports already_member. ----------------------
+member_token = make_invitation(email=None)
+payload = redeem_payload(BEARER_USER, member_token)
+check(
+    "case 8 already_member",
+    payload.get("status") == "already_member",
+    f"an existing member must report already_member, got: {payload!r}",
+)
+
+# --- Case 9: no failed outcome may create a membership. ----------------------
+membership_count = run_sql(dedent(f"""
+    select count(*) from public.memberships
+    where user_id in ({sql_quote(WRONG_USER)}, {sql_quote(SECOND_USER)},
+                      {sql_quote(EXPIRED_USER)})
+      and status = 'active';
+"""))
+check(
+    "case 9 no membership from failures",
+    membership_count == "0",
+    f"failed redemptions must not create memberships, got {membership_count}",
+)
+
+# --- Case 10: grants survived the drop-and-recreate. -------------------------
+grants = run_sql(dedent("""
+    select
+      has_function_privilege('authenticated', 'public.redeem_invitation(text)', 'execute'),
+      has_function_privilege('anon', 'public.redeem_invitation(text)', 'execute'),
+      has_function_privilege('authenticated',
+        'public.record_invitation_redemption_attempt('
+        'uuid, bytea, uuid, public.invitation_redemption_outcome, uuid)', 'execute');
+""")).split("\t")
+check(
+    "case 10 execute grants",
+    grants == ["t", "f", "f"],
+    "expected redeem_invitation executable by authenticated only and the audit "
+    f"helper executable by neither, got: {grants!r}",
 )
 
 if failures:
