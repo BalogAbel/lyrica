@@ -350,3 +350,172 @@ revoke all on function public.create_song(uuid, text, text, text, uuid)
 from public, anon, authenticated;
 grant execute on function public.create_song(uuid, text, text, text, uuid)
 to authenticated;
+
+drop function if exists public.song_write_update_common(
+  uuid, uuid, bigint, text, text, text, integer, text[], text, jsonb, boolean
+);
+drop function if exists public.update_song(
+  uuid, uuid, bigint, text, text, text, integer, text[], text, jsonb
+);
+drop function if exists public.overwrite_song_update(
+  uuid, uuid, bigint, text, text, text, text, integer, text[], text, jsonb
+);
+
+create or replace function public.song_write_update_common(
+  p_organization_id uuid,
+  p_song_id uuid,
+  p_base_version bigint,
+  p_title text,
+  p_chordpro_source text default null,
+  p_enforce_version boolean default true
+)
+returns public.songs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  existing_song public.songs%rowtype;
+  updated_song public.songs%rowtype;
+begin
+  perform public.require_song_write_access(p_organization_id);
+
+  if p_enforce_version and p_base_version is null then
+    raise exception using
+      errcode = 'P0001',
+      message = 'song_version_conflict',
+      detail = format(
+        'expected base_version %s but found current version %s',
+        coalesce(p_base_version::text, 'null'),
+        'unknown'
+      );
+  end if;
+
+  update public.songs as song
+  set
+    title = coalesce(
+      nullif(
+        trim(public.chordpro_derive_title(coalesce(p_chordpro_source, song.chordpro_source))),
+        ''
+      ),
+      nullif(p_title, ''),
+      song.title
+    ),
+    artist = public.chordpro_derive_artist(coalesce(p_chordpro_source, song.chordpro_source)),
+    key_signature = public.chordpro_derive_key_signature(coalesce(p_chordpro_source, song.chordpro_source)),
+    tempo_bpm = public.chordpro_derive_tempo_bpm(coalesce(p_chordpro_source, song.chordpro_source)),
+    tags = public.chordpro_derive_tags(coalesce(p_chordpro_source, song.chordpro_source)),
+    chordpro_source = coalesce(p_chordpro_source, song.chordpro_source),
+    version = song.version + 1,
+    base_version = coalesce(p_base_version, song.version),
+    sync_status = 'synced',
+    last_modified_by = auth.uid()
+  where song.organization_id = p_organization_id
+    and song.id = p_song_id
+    and (not p_enforce_version or song.version = p_base_version)
+  returning * into updated_song;
+
+  if found then
+    return updated_song;
+  end if;
+
+  select *
+  into existing_song
+  from public.songs as song
+  where song.organization_id = p_organization_id
+    and song.id = p_song_id;
+
+  if not found then
+    raise exception using
+      errcode = 'P0002',
+      message = 'song_not_found',
+      detail = 'The target song does not exist in the requested organization';
+  end if;
+
+  raise exception using
+    errcode = 'P0001',
+    message = 'song_version_conflict',
+    detail = format(
+      'expected base_version %s but found current version %s',
+      coalesce(p_base_version::text, 'null'),
+      existing_song.version::text
+    );
+end;
+$$;
+
+create or replace function public.update_song(
+  p_organization_id uuid,
+  p_song_id uuid,
+  p_base_version bigint,
+  p_title text,
+  p_chordpro_source text default null
+)
+returns public.songs
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return public.song_write_update_common(
+    p_organization_id,
+    p_song_id,
+    p_base_version,
+    p_title,
+    p_chordpro_source,
+    true
+  );
+end;
+$$;
+
+create or replace function public.overwrite_song_update(
+  p_organization_id uuid,
+  p_song_id uuid,
+  p_base_version bigint,
+  p_title text,
+  p_requested_slug text default null,
+  p_chordpro_source text default null
+)
+returns public.songs
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1
+    from public.songs as song
+    where song.organization_id = p_organization_id
+      and song.id = p_song_id
+  ) then
+    return public.create_song(
+      p_organization_id => p_organization_id,
+      p_title => p_title,
+      p_chordpro_source => p_chordpro_source,
+      p_requested_slug => p_requested_slug,
+      p_song_id => p_song_id
+    );
+  end if;
+
+  return public.song_write_update_common(
+    p_organization_id,
+    p_song_id,
+    p_base_version,
+    p_title,
+    p_chordpro_source,
+    false
+  );
+end;
+$$;
+
+revoke all on function public.song_write_update_common(uuid, uuid, bigint, text, text, boolean)
+from public, anon, authenticated;
+
+revoke all on function public.update_song(uuid, uuid, bigint, text, text)
+from public, anon, authenticated;
+grant execute on function public.update_song(uuid, uuid, bigint, text, text)
+to authenticated;
+
+revoke all on function public.overwrite_song_update(uuid, uuid, bigint, text, text, text)
+from public, anon, authenticated;
+grant execute on function public.overwrite_song_update(uuid, uuid, bigint, text, text, text)
+to authenticated;

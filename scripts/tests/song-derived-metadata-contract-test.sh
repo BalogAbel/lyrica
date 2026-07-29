@@ -653,6 +653,269 @@ check(
     f"sqlstate={removed_param_sql!r} message={removed_param_message!r}",
 )
 
+# --- Section H: song_write_update_common / update_song / overwrite_song_update (Task 10) --
+
+def update_song(
+    song_id: str,
+    base_version: int,
+    title: str,
+    chordpro_source: str | None = None,
+    overwrite: bool = False,
+    requested_slug: str | None = None,
+    user_id: str | None = None,
+) -> dict:
+    function_name = "public.overwrite_song_update" if overwrite else "public.update_song"
+    source_arg = (
+        f", p_chordpro_source => {sql_quote(chordpro_source)}"
+        if chordpro_source is not None
+        else ""
+    )
+    slug_arg = (
+        f", p_requested_slug => {sql_quote(requested_slug)}"
+        if requested_slug is not None and overwrite
+        else ""
+    )
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb({function_name}(
+              p_organization_id => {sql_quote(organization_id)},
+              p_song_id => {sql_quote(song_id)},
+              p_base_version => {base_version},
+              p_title => {sql_quote(title)}{source_arg}{slug_arg}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+# Item 8: an update carrying a new source re-derives every shadow field.
+update_target = create_song(
+    "Update Target",
+    song_source_with("{title: Update Target}"),
+    requested_slug="update-target-song",
+    user_id=demo_user_id,
+)
+check(
+    "update_target starts with no artist",
+    update_target["artist"] is None,
+    update_target["artist"],
+)
+updated_with_source = update_song(
+    update_target["id"],
+    update_target["version"],
+    "Ignored Title",
+    chordpro_source=song_source_with(
+        "{title: Updated Title}\n{artist: New Artist}\n{key: D}\n"
+        "{tempo: 90}\n{tags: new}"
+    ),
+    user_id=demo_user_id,
+)
+check(
+    "update_song: new source re-derives title",
+    updated_with_source["title"] == "Updated Title",
+    updated_with_source["title"],
+)
+check(
+    "update_song: new source re-derives artist",
+    updated_with_source["artist"] == "New Artist",
+    updated_with_source["artist"],
+)
+check(
+    "update_song: new source re-derives key_signature",
+    updated_with_source["key_signature"] == "D",
+    updated_with_source["key_signature"],
+)
+check(
+    "update_song: new source re-derives tempo_bpm",
+    updated_with_source["tempo_bpm"] == 90,
+    updated_with_source["tempo_bpm"],
+)
+check(
+    "update_song: new source re-derives tags",
+    updated_with_source["tags"] == ["new"],
+    updated_with_source["tags"],
+)
+
+# Item 9: an update carrying NO source still re-derives from the stored
+# source -- a row with a stale null artist gains it on the next unrelated
+# update. Simulate a legacy row by writing chordpro_source directly (not
+# through the RPC), leaving artist stale-null, then updating with no source.
+legacy_target = create_song(
+    "Legacy Target",
+    song_source_with("{title: Legacy Target}"),
+    requested_slug="legacy-target-song",
+    user_id=demo_user_id,
+)
+check(
+    "legacy_target starts with no artist",
+    legacy_target["artist"] is None,
+    legacy_target["artist"],
+)
+run_psql(
+    dedent(
+        f"""
+        update public.songs
+        set chordpro_source = {sql_quote(
+            song_source_with("{title: Legacy Target}\n{artist: Late Arrival}")
+        )}
+        where organization_id = {sql_quote(organization_id)}
+          and id = {sql_quote(legacy_target['id'])};
+        """
+    )
+)
+converged = update_song(
+    legacy_target["id"],
+    legacy_target["version"],
+    "Legacy Target",
+    chordpro_source=None,
+    user_id=demo_user_id,
+)
+check(
+    "update_song: no-source update re-derives from the already-stored source",
+    converged["artist"] == "Late Arrival",
+    converged["artist"],
+)
+
+# Item 13: version-conflict behaviour on update_song is unchanged.
+stale_sql, stale_message, _stale_detail = capture_error(
+    dedent(
+        f"""
+        perform public.update_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(update_target['id'])},
+          p_base_version => 1,
+          p_title => 'Stale Write',
+          p_chordpro_source => {sql_quote(song_source_with("{title: Stale Write}"))}
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+check(
+    "update_song: stale base_version still raises song_version_conflict",
+    stale_sql == "P0001" and stale_message == "song_version_conflict",
+    f"sqlstate={stale_sql!r} message={stale_message!r}",
+)
+
+# Item 11 (remaining): the removed parameters no longer exist on update_song.
+removed_update_sql, _removed_update_message, _removed_update_detail = capture_error(
+    dedent(
+        f"""
+        perform public.update_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_song_id => {sql_quote(update_target['id'])},
+          p_base_version => {updated_with_source['version']},
+          p_title => 'Should Not Exist',
+          p_artist => 'Should Not Exist'
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+check(
+    "update_song: p_artist is no longer a valid parameter",
+    removed_update_sql == "42883",
+    removed_update_sql,
+)
+
+# overwrite_song_update recreate path still works with the new signature.
+overwrite_recreate_target = create_song(
+    "Overwrite Recreate Target",
+    song_source_with("{title: Overwrite Recreate Target}"),
+    requested_slug="overwrite-recreate-target",
+    user_id=demo_user_id,
+)
+run_psql(
+    dedent(
+        f"""
+        delete from public.songs
+        where organization_id = {sql_quote(organization_id)}
+          and id = {sql_quote(overwrite_recreate_target['id'])};
+        """
+    )
+)
+recreated = update_song(
+    overwrite_recreate_target["id"],
+    1,
+    "Ignored",
+    chordpro_source=song_source_with("{title: Recreated Title}\n{artist: Recreated Artist}"),
+    overwrite=True,
+    requested_slug="overwrite-recreate-target",
+    user_id=demo_user_id,
+)
+check(
+    "overwrite_song_update: recreate path derives title from source",
+    recreated["title"] == "Recreated Title",
+    recreated["title"],
+)
+check(
+    "overwrite_song_update: recreate path derives artist from source",
+    recreated["artist"] == "Recreated Artist",
+    recreated["artist"],
+)
+
+# Item 12: grants pin the new signatures and the old ones being gone.
+old_create_song_gone = run_psql(
+    "select to_regprocedure("
+    "'public.create_song(uuid, text, text, text, integer, text[], text, jsonb, text, uuid)'"
+    ") is null;"
+)
+old_update_song_gone = run_psql(
+    "select to_regprocedure("
+    "'public.update_song(uuid, uuid, bigint, text, text, text, integer, text[], text, jsonb)'"
+    ") is null;"
+)
+old_overwrite_song_update_gone = run_psql(
+    "select to_regprocedure("
+    "'public.overwrite_song_update(uuid, uuid, bigint, text, text, text, text, integer, text[], text, jsonb)'"
+    ") is null;"
+)
+old_song_write_update_common_gone = run_psql(
+    "select to_regprocedure("
+    "'public.song_write_update_common(uuid, uuid, bigint, text, text, text, integer, text[], text, jsonb, boolean)'"
+    ") is null;"
+)
+check(
+    "grants: all four old signatures are gone",
+    [
+        old_create_song_gone,
+        old_update_song_gone,
+        old_overwrite_song_update_gone,
+        old_song_write_update_common_gone,
+    ]
+    == ["t", "t", "t", "t"],
+    [
+        old_create_song_gone,
+        old_update_song_gone,
+        old_overwrite_song_update_gone,
+        old_song_write_update_common_gone,
+    ],
+)
+
+new_signature_grants = run_psql(
+    dedent(
+        """
+        select
+          has_function_privilege('authenticated', 'public.create_song(uuid, text, text, text, uuid)', 'execute'),
+          has_function_privilege('anon', 'public.create_song(uuid, text, text, text, uuid)', 'execute'),
+          has_function_privilege('authenticated', 'public.update_song(uuid, uuid, bigint, text, text)', 'execute'),
+          has_function_privilege('anon', 'public.update_song(uuid, uuid, bigint, text, text)', 'execute'),
+          has_function_privilege('authenticated', 'public.overwrite_song_update(uuid, uuid, bigint, text, text, text)', 'execute'),
+          has_function_privilege('anon', 'public.overwrite_song_update(uuid, uuid, bigint, text, text, text)', 'execute'),
+          has_function_privilege('authenticated', 'public.song_write_update_common(uuid, uuid, bigint, text, text, boolean)', 'execute'),
+          has_function_privilege('anon', 'public.song_write_update_common(uuid, uuid, bigint, text, text, boolean)', 'execute');
+        """
+    )
+).split("\t")
+check(
+    "grants: new signatures executable by authenticated, none by anon, "
+    "song_write_update_common executable by neither (internal-only helper)",
+    new_signature_grants == ["t", "f", "t", "f", "t", "f", "f", "f"],
+    new_signature_grants,
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)
