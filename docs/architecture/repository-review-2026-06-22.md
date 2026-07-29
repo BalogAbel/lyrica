@@ -64,7 +64,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | ~~UX-2~~ | UI/UX | ~~Plan date edited as raw ISO-8601 text field (no picker)~~ **Done (ui-decomposition-phase2).** | High |
 | UX-8 | UI/UX | Failed local edits silently revert in the main UI (same mechanism as LF-4) | High |
 | ARCH-1 | Architecture | `providers.dart` god-file (762 lines) incl. 110-line inline reconcile switch | High |
-| SEC-4 | Security | Song shadow fields client-authoritative, not backend-derived from ChordPro | Medium |
+| ~~SEC-4~~ | Security | ~~Song shadow fields client-authoritative, not backend-derived from ChordPro~~ **Done (read-boundary-and-derived-song-metadata).** | Medium |
 | SEC-5 | Security | No DB `unique(session_id, song_id)`; "song once per session" only RPC-enforced | Medium |
 | LF-5 | Local-first | `planEdit` merge blanks `description`/`scheduledFor` (asymmetric vs `name`) | Medium |
 | LF-6 | Local-first | Optimistic merge can show a duplicate song in a session | Medium |
@@ -148,6 +148,14 @@ carry the detail; this is the digest.
   is what makes both the audit trail and the rate limit possible. ADR-025 records
   the model and the rejected alternatives; pinned by
   `scripts/tests/invitation-redemption-contract-test.sh`.
+- **SEC-4** (read-boundary-and-derived-song-metadata slice) — `create_song`
+  and `song_write_update_common` now derive `title`, `artist`,
+  `key_signature`, `tempo_bpm`, and `tags` from canonical ChordPro at the
+  write-acceptance boundary instead of accepting them from the client; the
+  original finding's severity was also corrected, since five of the six
+  named fields were never written by the client at all rather than
+  client-authoritative and drifting. ADR-027. Pinned by
+  `scripts/tests/song-derived-metadata-contract-test.sh`.
 
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
@@ -163,7 +171,7 @@ carry the detail; this is the digest.
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, SEC-4, all
+**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, all
 ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
@@ -251,13 +259,23 @@ per caller, and audited in `public.invitation_redemption_attempts`
 rejected alternatives recorded in ADR-025; pinned by
 `scripts/tests/invitation-redemption-contract-test.sh`.
 
-**SEC-4 [verified, team-known] — client-authoritative shadow metadata.** `title`,
-`artist`, `key_signature`, `tempo_bpm`, `tags`, `metadata_json` are derived client-side
-from canonical ChordPro and written as shadow fields, **not enforced from source at the
-write-acceptance boundary**. Client/server parser drift can desync metadata from the
-canonical source. Documented in `docs/deferred/2026-05-09-song-write-derived-fields.md`.
-**Recommendation**: derive shadow metadata at the backend/write-acceptance boundary;
-treat client shadow fields as provisional only.
+**SEC-4 [verified] — corrected and fixed.** The original finding overstated
+the problem for five of the six named fields. Verified against the code:
+`SongMutationRecord` and the sync payload never carried `artist`,
+`key_signature`, `tempo_bpm`, `tags`, or `metadata_json` at all — those four
+shadow fields were simply never written by the application (they stayed null
+or empty for every app-created song), not "client-authoritative and
+drifting." Only `title` was genuinely client-supplied and could drift from
+its source. `metadata_json` has no ChordPro origin to derive from and
+remains out of scope.
+**Status (2026-07-29, read-boundary-and-derived-song-metadata slice):
+fixed.** `create_song` and `song_write_update_common`
+(`supabase/migrations/202607290004_derive_song_metadata.sql`) now derive
+`title`, `artist`, `key_signature`, `tempo_bpm`, and `tags` from canonical
+ChordPro inside the `security definer` write boundary; the corresponding
+client-supplied RPC parameters (plus `p_metadata_json`) are removed. See
+[ADR-027](decisions/ADR-027-backend-derived-song-metadata.md), pinned by
+`scripts/tests/song-derived-metadata-contract-test.sh`.
 
 **SEC-5 [verified] — missing DB invariant.** `session_items` has only
 `unique(session_id, position)` — there is **no** `unique(session_id, song_id)`. The
@@ -514,10 +532,10 @@ tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
 **Team-known deferred items** (`docs/deferred/`): popup-row recovery `WidgetRef` lifetime
 (stale UI if popup closed mid-op — fix by delegating recovery actions to a long-lived
 controller with `ProviderRef` so invalidations/refreshes fire regardless of popup mount
-state, rather than relying on the transient `WidgetRef`/`context.mounted`), planning
-reorder optimistic-overlay cleanup, and
-SEC-4 (song shadow fields). Per `docs/deferred/README.md`, these become priority work
-when a slice re-enters their area.
+state, rather than relying on the transient `WidgetRef`/`context.mounted`), and planning
+reorder optimistic-overlay cleanup. Per `docs/deferred/README.md`, these become priority
+work when a slice re-enters their area. ~~SEC-4 (song shadow fields)~~ **Done
+(read-boundary-and-derived-song-metadata)** — see ADR-027.
 
 ## 12. Dependencies (DX-1)
 
@@ -551,7 +569,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
 - ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ~~ARCH-3: decompose plan_detail / song_editor.~~ **Done (ui-decomposition-phase2).**
-- SEC-4: backend-derived shadow metadata.
+- ~~SEC-4: backend-derived shadow metadata.~~ **Done (read-boundary-and-derived-song-metadata).**
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;
   dark mode (UX-7).
 
