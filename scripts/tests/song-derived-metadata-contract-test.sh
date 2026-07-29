@@ -109,7 +109,11 @@ def run_psql(sql: str, user_id: str | None = None) -> str:
         raise SystemExit(
             f"psql failed:\nSQL:\n{sql}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-    return result.stdout.strip()
+    # Strip only the trailing newline psql always appends, not surrounding
+    # tabs -- a plain .strip() would eat a trailing tab that represents a
+    # genuinely empty last column (e.g. capture_error's detail field for an
+    # error with a HINT but no DETAIL), collapsing a 3-column row into 2.
+    return result.stdout.strip("\n")
 
 
 def run_psql_rows(sql: str) -> list[list[str]]:
@@ -498,6 +502,155 @@ check(
     "tags: bare directive with no value -> empty array",
     derive_tags("{tags}") == [],
     str(derive_tags("{tags}")),
+)
+
+# --- Section G: create_song derivation (Task 9) ------------------------------
+
+def song_source_with(directives: str, body_title: str = "Body") -> str:
+    return directives + "\n[C] " + body_title
+
+
+def create_song(
+    title: str,
+    chordpro_source: str,
+    requested_slug: str | None = None,
+    user_id: str | None = None,
+) -> dict:
+    slug_arg = (
+        f", p_requested_slug => {sql_quote(requested_slug)}"
+        if requested_slug is not None
+        else ""
+    )
+    return fetch_json(
+        dedent(
+            f"""
+            select to_jsonb(public.create_song(
+              p_organization_id => {sql_quote(organization_id)},
+              p_title => {sql_quote(title)},
+              p_chordpro_source => {sql_quote(chordpro_source)}{slug_arg}
+            ));
+            """
+        ),
+        user_id=user_id,
+    )
+
+
+# Item 1: derived title wins over a different p_title.
+created_1 = create_song(
+    "Different Title",
+    song_source_with("{title: Real Title}"),
+    requested_slug="derived-title-wins",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: derived title wins over supplied p_title",
+    created_1["title"] == "Real Title",
+    created_1["title"],
+)
+# Item 10: the slug follows the derived title, not the supplied p_title.
+check(
+    "create_song: slug follows the derived title",
+    created_1["slug"] == "derived-title-wins",
+    created_1["slug"],
+)
+
+# Item 2: no {title} directive -> falls back to p_title.
+created_2 = create_song(
+    "Fallback Title",
+    song_source_with("{artist: Nobody}"),
+    requested_slug="fallback-title-song",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: falls back to p_title when source has no title",
+    created_2["title"] == "Fallback Title",
+    created_2["title"],
+)
+
+# Item 3: {t: ...} is honoured identically to {title: ...}.
+created_3 = create_song(
+    "Ignored",
+    song_source_with("{t: T Alias Title}"),
+    requested_slug="t-alias-title-song",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: t is honoured identically to title",
+    created_3["title"] == "T Alias Title",
+    created_3["title"],
+)
+
+# Item 4: later occurrences win over earlier ones.
+created_4 = create_song(
+    "Ignored",
+    song_source_with("{title: First}\n{title: Second}"),
+    requested_slug="last-occurrence-title-song",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: later directive occurrence wins",
+    created_4["title"] == "Second",
+    created_4["title"],
+)
+
+# Item 5: artist, key_signature, tempo_bpm, tags populated from source.
+created_5 = create_song(
+    "Metadata Song",
+    song_source_with(
+        "{title: Metadata Song}\n{artist: The Testers}\n{key: G}\n"
+        "{tempo: 120}\n{tags: worship, test}"
+    ),
+    requested_slug="metadata-song",
+    user_id=demo_user_id,
+)
+check("create_song: artist derived", created_5["artist"] == "The Testers", created_5["artist"])
+check("create_song: key_signature derived", created_5["key_signature"] == "G", created_5["key_signature"])
+check("create_song: tempo_bpm derived", created_5["tempo_bpm"] == 120, created_5["tempo_bpm"])
+check("create_song: tags derived", created_5["tags"] == ["worship", "test"], created_5["tags"])
+
+# Item 6: tags splitting drops empties.
+created_6 = create_song(
+    "Tags Song",
+    song_source_with("{title: Tags Song}\n{tags: a, b ,, c}"),
+    requested_slug="tags-splitting-song",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: tags splitting drops empties",
+    created_6["tags"] == ["a", "b", "c"],
+    created_6["tags"],
+)
+
+# Item 7: non-integer tempo leaves tempo_bpm null, write still succeeds.
+created_7 = create_song(
+    "Tempo Song",
+    song_source_with("{title: Tempo Song}\n{tempo: allegro}"),
+    requested_slug="non-integer-tempo-song",
+    user_id=demo_user_id,
+)
+check(
+    "create_song: non-integer tempo does not fail the write",
+    created_7["tempo_bpm"] is None,
+    created_7["tempo_bpm"],
+)
+
+# Item 11: the removed parameters no longer exist on create_song.
+removed_param_sql, removed_param_message, removed_param_detail = capture_error(
+    dedent(
+        f"""
+        perform public.create_song(
+          p_organization_id => {sql_quote(organization_id)},
+          p_title => 'Should Not Exist',
+          p_artist => 'Should Not Exist'
+        );
+        """
+    ),
+    user_id=demo_user_id,
+)
+check(
+    "create_song: p_artist is no longer a valid parameter",
+    removed_param_sql == "42883",
+    f"sqlstate={removed_param_sql!r} message={removed_param_message!r}",
 )
 
 if failures:

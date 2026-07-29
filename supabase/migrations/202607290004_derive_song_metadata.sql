@@ -251,3 +251,102 @@ $$;
 
 revoke all on function public.chordpro_derive_tags(text)
 from public, anon, authenticated;
+
+drop function if exists public.create_song(
+  uuid, text, text, text, integer, text[], text, jsonb, text, uuid
+);
+
+create or replace function public.create_song(
+  p_organization_id uuid,
+  p_title text,
+  p_chordpro_source text default null,
+  p_requested_slug text default null,
+  p_song_id uuid default null
+)
+returns public.songs
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  created_song public.songs%rowtype;
+  candidate_slug text;
+  v_constraint_name text;
+  v_effective_source text := coalesce(p_chordpro_source, '');
+  v_derived_title text := public.chordpro_derive_title(v_effective_source);
+  v_title text := coalesce(
+    nullif(trim(v_derived_title), ''),
+    nullif(p_title, ''),
+    gen_random_uuid()::text
+  );
+begin
+  perform public.require_song_write_access(p_organization_id);
+
+  candidate_slug := public.song_next_slug(
+    p_organization_id,
+    coalesce(
+      nullif(p_requested_slug, ''),
+      nullif(v_title, ''),
+      gen_random_uuid()::text
+    )
+  );
+
+  loop
+    begin
+      insert into public.songs (
+        id,
+        organization_id,
+        title,
+        artist,
+        key_signature,
+        tempo_bpm,
+        tags,
+        chordpro_source,
+        metadata_json,
+        slug,
+        version,
+        base_version,
+        sync_status,
+        last_modified_by
+      )
+      values (
+        coalesce(p_song_id, gen_random_uuid()),
+        p_organization_id,
+        v_title,
+        public.chordpro_derive_artist(v_effective_source),
+        public.chordpro_derive_key_signature(v_effective_source),
+        public.chordpro_derive_tempo_bpm(v_effective_source),
+        public.chordpro_derive_tags(v_effective_source),
+        v_effective_source,
+        '{}'::jsonb,
+        candidate_slug,
+        1,
+        null,
+        'synced',
+        auth.uid()
+      )
+      returning * into created_song;
+
+      return created_song;
+    exception
+      when unique_violation then
+        get stacked diagnostics v_constraint_name = constraint_name;
+        if v_constraint_name <> 'songs_organization_slug_unique' then
+          raise;
+        end if;
+
+        candidate_slug := public.song_next_slug(p_organization_id, candidate_slug);
+    end;
+  end loop;
+
+  raise exception using
+    errcode = 'P0001',
+    message = 'song_slug_generation_failed',
+    detail = 'create_song loop terminated unexpectedly without returning a row';
+end;
+$$;
+
+revoke all on function public.create_song(uuid, text, text, text, uuid)
+from public, anon, authenticated;
+grant execute on function public.create_song(uuid, text, text, text, uuid)
+to authenticated;
