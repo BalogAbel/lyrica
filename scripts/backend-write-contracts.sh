@@ -42,3 +42,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 capability_search_path_test_script="${CAPABILITY_SEARCH_PATH_TEST_SCRIPT:-./scripts/tests/capability-search-path-contract-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$capability_search_path_test_script"
+
+invitation_redemption_test_script="${INVITATION_REDEMPTION_TEST_SCRIPT:-./scripts/tests/invitation-redemption-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$invitation_redemption_test_script"
