@@ -39,6 +39,10 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$song_crud_write_contract_test_script"
 
+song_derived_metadata_test_script="${SONG_DERIVED_METADATA_TEST_SCRIPT:-./scripts/tests/song-derived-metadata-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$song_derived_metadata_test_script"
+
 organization_read_only_test_script="${ORGANIZATION_READ_ONLY_TEST_SCRIPT:-./scripts/tests/organization-read-only-role-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$organization_read_only_test_script"
