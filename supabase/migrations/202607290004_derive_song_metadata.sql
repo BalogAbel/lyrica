@@ -122,3 +122,24 @@ $$;
 
 revoke all on function public.chordpro_scan_directives(text)
 from public, anon, authenticated;
+
+-- title | title, t | last occurrence wins | value or ''
+create or replace function public.chordpro_derive_title(source text)
+returns text
+language sql
+immutable
+as $$
+  select coalesce(
+    (
+      select directive_value
+      from public.chordpro_scan_directives(source)
+      where directive_name in ('title', 't')
+      order by line_number desc
+      limit 1
+    ),
+    ''
+  );
+$$;
+
+revoke all on function public.chordpro_derive_title(text)
+from public, anon, authenticated;

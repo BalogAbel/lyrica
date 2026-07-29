@@ -288,6 +288,49 @@ check(
     str(scan("{end_of_verse}\n{key: G}", with_window=True)),
 )
 
+# --- Section B: chordpro_derive_title (Task 4) -------------------------------
+
+def derive_title(source: str) -> str:
+    return run_psql(
+        f"select public.chordpro_derive_title({sql_quote(source)});"
+    )
+
+
+check(
+    "title: last occurrence wins",
+    derive_title("{title: First}\n{title: Second}") == "Second",
+    derive_title("{title: First}\n{title: Second}"),
+)
+check(
+    "title: t is an alias for title",
+    derive_title("{t: T Alias Title}") == "T Alias Title",
+    derive_title("{t: T Alias Title}"),
+)
+check(
+    "title: t and title share the last-occurrence pool",
+    derive_title("{title: First}\n{t: Second Via T}") == "Second Via T",
+    derive_title("{title: First}\n{t: Second Via T}"),
+)
+check(
+    "title: no directive -> empty string, not null",
+    derive_title("[C] Lyric only, no directive") == "",
+    repr(derive_title("[C] Lyric only, no directive")),
+)
+
+# Item 14: tab-block inertness, at the title level. A {title: X} between
+# {start_of_tab} and {end_of_tab} is not a title; one after {end_of_tab} is.
+check(
+    "title: a directive inside a tab block does not become the title",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}\n{title: Real Title}")
+    == "Real Title",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}\n{title: Real Title}"),
+)
+check(
+    "title: with no title after the tab block, falls back to '' (the swallowed one never counted)",
+    derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}") == "",
+    repr(derive_title("{start_of_tab}\n{title: Tab Title}\n{end_of_tab}")),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)
