@@ -168,9 +168,11 @@ acceptable. First, the derivation is authoritative and the client's value is
 discarded on acceptance, so there is exactly one derivation that counts — drift
 becomes a cosmetic difference between a provisional local display and the
 accepted state, not a divergence between a record and its source. Second, the
-grammar being reproduced is small and fully specified: `chordpro_line_scanner.dart:66-84`
-is a fifteen-line rule, and only seven directive names matter. This is parity
-that can be pinned by tests, not approximated.
+grammar being reproduced is small and fully specified: the directive rule in
+`chordpro_line_scanner.dart:66-84` is fifteen lines, only seven directive names
+matter, and the two structural gates described under Target Behaviour are a
+boolean each. This is parity that can be pinned by tests, not approximated —
+with one named, tested exception, also recorded there.
 
 ## Target Behaviour
 
@@ -185,18 +187,54 @@ For each line of the source, after `\r\n` → `\n` normalisation and trimming:
   value is trimmed;
 - with no `:`, the whole body is the name and the value is null.
 
-### Extraction rules (must match `chordpro_parser.dart`)
+### Two structural gates (must match `chordpro_parser.dart`)
+
+The scan is a small state machine, not a stateless directive sweep. Both gates
+below apply before any field rule is evaluated.
+
+**Tab-block inertness** (`chordpro_parser.dart:52-54`). While the current
+section is a tab section, a directive whose name does not start with `end_of_`
+is treated as tab content, not as a directive. A `{title: X}` between
+`{start_of_tab}` and `{end_of_tab}` is therefore **not** a title. This gate
+affects every field.
+
+**The key window** (`chordpro_parser.dart:62`). The `key` directive is honoured
+only while `hasSeenSongContent` is false. That flag is set by:
+- the first lyric line (`:36`);
+- any `start_of_*` directive (`:150`);
+- any `end_of_*` directive (`:201`);
+- a `{comment}` / `{c}` that the parser recognises as a section start (`:138`).
+
+`title`, `artist`, `tempo` and `tags` are **not** gated this way — they are
+honoured anywhere outside a tab block.
+
+**One accepted divergence, deliberately scoped.** The SQL implements the key
+window from lyric lines and from `start_of_*` / `end_of_*` directives, but does
+**not** reproduce the comment-as-section branch. Reproducing
+`_parseCommentSection` would duplicate materially more parser logic — more of
+exactly what this finding calls a risk — and would put every future comment rule
+in two places. The divergence can only be observed when a comment the Dart
+parser reads as a section start precedes a `{key:}` directive and no lyric line
+or section directive has appeared yet. It affects `key_signature` only, is
+recorded in ADR-027, and is pinned by a test so it stays a known boundary rather
+than a surprise.
+
+### Field rules (must match `chordpro_parser.dart`)
 
 | field | directives | rule |
 |---|---|---|
 | `title` | `title`, `t` | last occurrence wins; value or `''` |
 | `artist` | `artist` | last occurrence wins; trimmed |
-| `key_signature` | `key` | last occurrence wins; invalid values are ignored, as the parser does |
-| `tempo_bpm` | `tempo` | last occurrence wins; integer parse, non-integer ignored |
+| `key_signature` | `key` | inside the key window only; a null or empty trimmed value is skipped **without clearing** an earlier valid one; last valid occurrence wins |
+| `tempo_bpm` | `tempo` | last occurrence wins; integer parse, non-integer ignored; a value outside `int4` must not abort the write |
 | `tags` | `tags`, `tag` | last occurrence wins; split on `,`, trim each, drop empties |
 
 Last-occurrence-wins is not a choice: the Dart parser assigns on every matching
 directive as it scans, so the final one survives. The SQL must do the same.
+
+Note that Dart's `String.trim()` strips Unicode whitespace while SQL's `trim()`
+defaults to ASCII space only; the SQL must trim the same character set
+explicitly or the two will disagree on padded values.
 
 ### `create_song`
 
@@ -280,6 +318,19 @@ chained from `./scripts/backend-write-contracts.sh`):
 12. `redeem`-style grant check: the new signatures are executable by
     `authenticated` and not by `anon`; the old signatures are gone.
 13. Version-conflict behaviour on `update_song` is unchanged (regression guard).
+14. Tab-block inertness: a `{title: X}` between `{start_of_tab}` and
+    `{end_of_tab}` does not become the title, while one after `{end_of_tab}`
+    does.
+15. Key window: `{key: G}` before any lyric line is honoured; `{key: G}` after a
+    lyric line, after a `{start_of_verse}`, and after an `{end_of_verse}` is
+    ignored in each case.
+16. An empty `{key:}` inside the window does not clear a valid key set earlier.
+17. The accepted divergence is pinned explicitly: a `{comment}` that the Dart
+    parser treats as a section start does **not** close the key window in SQL.
+    The test asserts the SQL behaviour and names the divergence, so a future
+    change to either side fails loudly instead of drifting.
+18. Unicode whitespace padding around a directive value is trimmed identically
+    to Dart's `String.trim()`.
 
 **Parity with the Dart parser.** The extraction rules above are asserted against
 the same fixtures the Dart parser tests use, so a divergence shows up as a
