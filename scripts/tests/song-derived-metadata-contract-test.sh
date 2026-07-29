@@ -428,6 +428,41 @@ check(
     str(derive_key("{c: Verse}\n{key: G}")),
 )
 
+# --- Section E: chordpro_derive_tempo_bpm (Task 7) ---------------------------
+
+def derive_tempo(source: str):
+    raw = run_psql(
+        f"select coalesce(public.chordpro_derive_tempo_bpm({sql_quote(source)})::text, '<null>');"
+    )
+    return None if raw == "<null>" else int(raw)
+
+
+check(
+    "tempo: last occurrence wins",
+    derive_tempo("{tempo: 100}\n{tempo: 140}") == 140,
+    str(derive_tempo("{tempo: 100}\n{tempo: 140}")),
+)
+check(
+    "tempo: no directive -> null",
+    derive_tempo("[C] no tempo directive") is None,
+    str(derive_tempo("[C] no tempo directive")),
+)
+check(
+    "tempo: non-integer value -> null, write is not expected to fail",
+    derive_tempo("{tempo: allegro}") is None,
+    str(derive_tempo("{tempo: allegro}")),
+)
+check(
+    "tempo: a later non-integer occurrence overwrites an earlier valid one with null",
+    derive_tempo("{tempo: 120}\n{tempo: fast}") is None,
+    str(derive_tempo("{tempo: 120}\n{tempo: fast}")),
+)
+check(
+    "tempo: an out-of-int4-range value is ignored rather than raising",
+    derive_tempo("{tempo: 99999999999}") is None,
+    str(derive_tempo("{tempo: 99999999999}")),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)

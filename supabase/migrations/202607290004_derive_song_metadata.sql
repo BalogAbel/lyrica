@@ -186,3 +186,40 @@ $$;
 
 revoke all on function public.chordpro_derive_key_signature(text)
 from public, anon, authenticated;
+
+-- tempo_bpm | tempo | last occurrence wins (unconditionally -- a later
+-- non-integer occurrence nulls an earlier valid one); integer parse,
+-- non-integer (including out-of-int4-range) ignored rather than raising.
+create or replace function public.chordpro_derive_tempo_bpm(source text)
+returns integer
+language plpgsql
+immutable
+as $$
+declare
+  v_directive_value text;
+  v_result integer;
+begin
+  select directive_value
+  into v_directive_value
+  from public.chordpro_scan_directives(source)
+  where directive_name = 'tempo'
+  order by line_number desc
+  limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  begin
+    v_result := trim(v_directive_value)::integer;
+  exception
+    when invalid_text_representation or numeric_value_out_of_range then
+      return null;
+  end;
+
+  return v_result;
+end;
+$$;
+
+revoke all on function public.chordpro_derive_tempo_bpm(text)
+from public, anon, authenticated;
