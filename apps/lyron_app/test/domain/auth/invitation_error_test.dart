@@ -25,7 +25,10 @@ void main() {
   });
 
   test('maps an unknown or missing status to unknown', () {
-    expect(invitationErrorFromStatus('something_else'), InvitationError.unknown);
+    expect(
+      invitationErrorFromStatus('something_else'),
+      InvitationError.unknown,
+    );
     expect(invitationErrorFromStatus(null), InvitationError.unknown);
   });
 }

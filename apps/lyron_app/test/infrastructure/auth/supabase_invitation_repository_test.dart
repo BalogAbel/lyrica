@@ -52,11 +52,14 @@ void main() {
     expect((result as RedeemFailure).error, InvitationError.unknown);
   });
 
-  test('redeem maps a connectivity failure to InvitationError.network', () async {
-    final repo = SupabaseInvitationRepository.testing(
-      redeem: (token) async => throw const SocketException('offline'),
-    );
-    final result = await repo.redeem('tok');
-    expect((result as RedeemFailure).error, InvitationError.network);
-  });
+  test(
+    'redeem maps a connectivity failure to InvitationError.network',
+    () async {
+      final repo = SupabaseInvitationRepository.testing(
+        redeem: (token) async => throw const SocketException('offline'),
+      );
+      final result = await repo.redeem('tok');
+      expect((result as RedeemFailure).error, InvitationError.network);
+    },
+  );
 }
