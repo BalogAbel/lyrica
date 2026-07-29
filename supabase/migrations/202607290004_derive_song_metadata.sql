@@ -273,22 +273,25 @@ declare
   candidate_slug text;
   v_constraint_name text;
   v_effective_source text := coalesce(p_chordpro_source, '');
-  v_derived_title text := public.chordpro_derive_title(v_effective_source);
-  v_title text := coalesce(
-    nullif(trim(v_derived_title), ''),
+  v_title text;
+begin
+  -- Authorize before parsing: a DECLARE-block initializer would run first, so
+  -- an unauthorized caller could still make the server parse their source.
+  perform public.require_song_write_access(p_organization_id);
+
+  v_title := coalesce(
+    nullif(trim(public.chordpro_derive_title(v_effective_source)), ''),
     nullif(p_title, ''),
     gen_random_uuid()::text
   );
-begin
-  perform public.require_song_write_access(p_organization_id);
 
+  -- p_requested_slug still wins: the sync payload carries the slug an offline
+  -- client already routed by, and reassigning it here would break slug-based
+  -- routing for rows created offline. v_title is never empty by construction,
+  -- so it is the effective fallback.
   candidate_slug := public.song_next_slug(
     p_organization_id,
-    coalesce(
-      nullif(p_requested_slug, ''),
-      nullif(v_title, ''),
-      gen_random_uuid()::text
-    )
+    coalesce(nullif(p_requested_slug, ''), v_title)
   );
 
   loop
