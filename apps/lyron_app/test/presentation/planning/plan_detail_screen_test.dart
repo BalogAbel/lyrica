@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -26,8 +27,11 @@ import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -78,6 +82,14 @@ void main() {
       overrides: [
         planningPlanDetailProvider('plan-1').overrideWith((ref) {
           ref.watch(planningDataRevisionProvider);
+          // A zero-arg factory is invoked afresh on every rebuild (initial
+          // load, revision bump, or explicit invalidate), unlike a plain
+          // Future which is captured once and replayed on later rebuilds.
+          // Use this when a test needs distinct successive projections.
+          if (planDetailValue is Future<PlanDetail> Function()) {
+            return planDetailValue();
+          }
+
           if (planDetailValue is Future<PlanDetail>) {
             return planDetailValue;
           }
@@ -246,16 +258,20 @@ void main() {
     );
   });
 
-  testWidgets('shows the plan scheduled date in the header', (tester) async {
+  testWidgets('shows the plan scheduled date and time in the header', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildApp(planDetailValue: _editablePlanDetailFixture()),
     );
     await tester.pumpAndSettle();
 
     final titleContext = tester.element(find.text('Team Rehearsal'));
-    final scheduledForLabel = MaterialLocalizations.of(
+    final scheduledFor = DateTime(2026, 4, 10, 18);
+    final scheduledForLabel = formatScheduledForInstant(
       titleContext,
-    ).formatMediumDate(DateTime(2026, 4, 10, 18));
+      scheduledFor,
+    );
 
     expect(find.text('Fixture'), findsOneWidget);
     expect(find.text(scheduledForLabel), findsOneWidget);
@@ -517,6 +533,28 @@ void main() {
     expect(writeService.renamedSessionDraft?.name, 'Warm-Up Updated');
   });
 
+  testWidgets('session rename rejects an empty name', (tester) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await openSessionNamePopup(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('session-editor-name')),
+      '   ',
+    );
+    await tester.tap(find.text(AppStrings.planSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.renamedSessionDraft, isNull);
+  });
+
   testWidgets('deletes an empty session locally after confirmation', (
     tester,
   ) async {
@@ -538,6 +576,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(writeService.deletedSessionDraft?.sessionId, 'session-2');
+  });
+
+  testWidgets('cancelling the session delete dialog does not delete', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.deletedSessionDraft, isNull);
   });
 
   testWidgets('tap on the session drag handle does not reorder sessions', (
@@ -622,6 +683,501 @@ void main() {
 
     expect(writeService.reorderSessionsCallCount, 2);
     expect(writeService.reorderedSessionDrafts, hasLength(2));
+  });
+
+  testWidgets('shows reordered sessions before the local write completes', (
+    tester,
+  ) async {
+    final reorderCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) => reorderCompleter.future,
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // _editablePlanDetailFixture has two sessions (Warm-Up, Closing), so
+    // newIndex 2 is the pre-removal "insert at end" position.
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    reorderCompleter.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('rolls the session order back when the reorder write fails', (
+    tester,
+  ) async {
+    final failCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        await failCompleter.future;
+        throw StateError('session reorder failed');
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    failCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+    expect(tester.takeException(), isA<StateError>());
+  });
+
+  testWidgets('shows a message when the session reorder write fails', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async =>
+          throw StateError('session reorder failed'),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first
+        .onReorder(0, 2);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<StateError>());
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsOneWidget);
+  });
+
+  testWidgets('stale session reorder result does not clear newer order', (
+    tester,
+  ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final firstReorderCompleter = Completer<void>();
+    var reorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        reorderCalls += 1;
+        if (reorderCalls == 1) {
+          await firstReorderCompleter.future;
+          throw StateError('late session reorder failure');
+        }
+      },
+    );
+
+    // Deliberately a projection frozen at the pre-write order: this test is
+    // about the overlay, so the projection must never agree with the drag.
+    // If it did, the assertions below would pass even with the overlay gone
+    // and the test would stop discriminating.
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // First drag (stale, blocked on firstReorderCompleter): Warm-Up, Main
+    // Set, Closing -> Main Set, Warm-Up, Closing.
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    // Second drag (newer, queued behind the first): Main Set, Warm-Up,
+    // Closing -> Main Set, Closing, Warm-Up.
+    sessionList.onReorder(1, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    firstReorderCompleter.complete();
+    // Deliberately pump rather than settle: this asserts the state right
+    // after the stale failure resolves, while the overlay is still
+    // legitimately alive. Settling here would also drain the post-grace
+    // follow-up refresh, after which the projection is supposed to win --
+    // that later hand-off is covered by 'stops masking the projection when
+    // sync settles on a different order' and by the two grace tests.
+    await tester.pump();
+    await tester.pump();
+
+    // If the stale (failing) first result incorrectly cleared the
+    // optimistic order, this would fall back to the original order
+    // (Warm-Up, Main Set, Closing) instead of holding the second drag's
+    // order (Main Set, Closing, Warm-Up).
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // Drain the scheduled follow-up so the test does not end mid-flight.
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a superseded reorder failure stays silent', (tester) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final firstReorderCompleter = Completer<void>();
+    var reorderCalls = 0;
+    final writeService = _FakePlanningWriteService(
+      onReorderSessions: (_) async {
+        reorderCalls += 1;
+        if (reorderCalls == 1) {
+          await firstReorderCompleter.future;
+          throw StateError('late session reorder failure');
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailWithThreeSessionsFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // First drag (stale, blocked on firstReorderCompleter).
+    sessionList.onReorder(0, 2);
+    await tester.pump();
+    // Second drag (newer, queued behind the first) supersedes the first
+    // drag's generation before it settles.
+    sessionList.onReorder(1, 3);
+    await tester.pump();
+
+    firstReorderCompleter.complete();
+    await tester.pumpAndSettle();
+
+    // The first drag's write failed, but it was superseded by the second
+    // drag before that failure landed, so it must not roll anything back
+    // and must not tell the user anything went wrong.
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsNothing);
+  });
+
+  testWidgets('drops the session overlay once the projection catches up', (
+    tester,
+  ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var reads = 0;
+    final matchingProjectionCompleter = Completer<PlanDetail>();
+    final originalProjectionCompleter = Completer<PlanDetail>();
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
+          }
+          if (reads == 2) {
+            return matchingProjectionCompleter.future;
+          }
+          return originalProjectionCompleter.future;
+        },
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // Drag first session to the end: Warm-Up, Main Set, Closing ->
+    // Main Set, Closing, Warm-Up.
+    sessionList.onReorder(0, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // The write completes immediately, which invalidates the projection
+    // and triggers the second read. The refreshed projection already
+    // matches the optimistic order.
+    matchingProjectionCompleter.complete(
+      _threeSessionFixtureInOrder(const [
+        'session-2',
+        'session-3',
+        'session-1',
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // A later, independent refresh arrives in the ORIGINAL order.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlanDetailScreen)),
+    );
+    container.invalidate(planningPlanDetailProvider('plan-1'));
+    await tester.pump();
+    originalProjectionCompleter.complete(
+      _editablePlanDetailWithThreeSessionsFixture(),
+    );
+    await tester.pumpAndSettle();
+
+    // This is what fails today: a stale-but-compatible overlay masks the
+    // refreshed projection forever, so the screen keeps showing
+    // Main Set, Closing, Warm-Up instead of the original order.
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Main Set')).dy,
+      lessThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+  });
+
+  testWidgets(
+    'stops masking the projection when sync settles on a different order',
+    (tester) async {
+      // Three sessions need a taller viewport than the default test surface
+      // to stay on-screen (and buildable) at once.
+      await tester.binding.setSurfaceSize(const Size(1024, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      var reads = 0;
+      final firstSettledProjectionCompleter = Completer<PlanDetail>();
+      final secondSettledProjectionCompleter = Completer<PlanDetail>();
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: () {
+            reads += 1;
+            if (reads == 1) {
+              return Future.value(
+                _editablePlanDetailWithThreeSessionsFixture(),
+              );
+            }
+            if (reads == 2) {
+              return firstSettledProjectionCompleter.future;
+            }
+            return secondSettledProjectionCompleter.future;
+          },
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final sessionList = tester
+          .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+          .first;
+      // Drag first session to the end: Warm-Up, Main Set, Closing ->
+      // Main Set, Closing, Warm-Up.
+      sessionList.onReorder(0, 3);
+      await tester.pump();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+      );
+
+      // The write completes immediately, which invalidates the projection
+      // and triggers the second read. Sync settles on a THIRD order --
+      // neither the original nor the optimistic one, as a concurrent
+      // remote reorder would produce. This is the first projection to
+      // arrive after the write completed, so the overlay's one-reload
+      // grace keeps the optimistic order on screen for it.
+      firstSettledProjectionCompleter.complete(
+        _threeSessionFixtureInOrder(const [
+          'session-3',
+          'session-1',
+          'session-2',
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+      );
+
+      // The same third order arrives again. The grace is spent now, so the
+      // projection must win: this is what fails today, because the
+      // unbounded overlay keeps masking the projection forever.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+      container.invalidate(planningPlanDetailProvider('plan-1'));
+      await tester.pump();
+      secondSettledProjectionCompleter.complete(
+        _threeSessionFixtureInOrder(const [
+          'session-3',
+          'session-1',
+          'session-2',
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Closing')).dy,
+        lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Warm-Up')).dy,
+        lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+      );
+    },
+  );
+
+  testWidgets('a consumed reorder grace refreshes the projection on its own', (
+    tester,
+  ) async {
+    // Three sessions need a taller viewport than the default test surface
+    // to stay on-screen (and buildable) at once.
+    await tester.binding.setSurfaceSize(const Size(1024, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    var reads = 0;
+    final firstSettledProjectionCompleter = Completer<PlanDetail>();
+    // Matches neither the original order (Warm-Up, Main Set, Closing) nor
+    // the optimistic order the drag below produces (Main Set, Closing,
+    // Warm-Up), the way a concurrent remote reorder would.
+    final disagreeingProjection = _threeSessionFixtureInOrder(const [
+      'session-3',
+      'session-1',
+      'session-2',
+    ]);
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () {
+          reads += 1;
+          if (reads == 1) {
+            return Future.value(_editablePlanDetailWithThreeSessionsFixture());
+          }
+          if (reads == 2) {
+            return firstSettledProjectionCompleter.future;
+          }
+          // Every read after the first post-write reload keeps returning
+          // the SAME disagreeing order. Nothing here forces a second
+          // emission by hand -- the only way the screen can end up
+          // showing this order is if it schedules its own follow-up
+          // refresh once the grace is consumed.
+          return Future.value(disagreeingProjection);
+        },
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sessionList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .first;
+    // Drag first session to the end: Warm-Up, Main Set, Closing ->
+    // Main Set, Closing, Warm-Up.
+    sessionList.onReorder(0, 3);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      greaterThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      greaterThan(tester.getTopLeft(find.text('Closing')).dy),
+    );
+
+    // The write completes immediately, invalidating the projection and
+    // triggering the second read: the one disagreeing post-write reload.
+    firstSettledProjectionCompleter.complete(disagreeingProjection);
+    await tester.pumpAndSettle();
+
+    // No manual invalidate, no hand-forced third emission: the screen
+    // must refresh on its own so the disagreeing projection (Closing,
+    // Warm-Up, Main Set) wins instead of the optimistic order masking it
+    // forever.
+    expect(
+      tester.getTopLeft(find.text('Closing')).dy,
+      lessThan(tester.getTopLeft(find.text('Warm-Up')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Warm-Up')).dy,
+      lessThan(tester.getTopLeft(find.text('Main Set')).dy),
+    );
   });
 
   testWidgets(
@@ -1617,6 +2173,10 @@ void main() {
       },
     );
 
+    // Deliberately a projection frozen at the pre-write order: this test is
+    // about the overlay, so the projection must never agree with the drag.
+    // If it did, the assertions below would pass even with the overlay gone
+    // and the test would stop discriminating.
     await tester.pumpWidget(
       buildApp(
         planDetailValue: _planDetailWithThreeItemsFixture(),
@@ -1655,7 +2215,13 @@ void main() {
     );
 
     firstReorderCompleter.complete();
-    await tester.pumpAndSettle();
+    // Deliberately pump rather than settle: this asserts the state right
+    // after the stale failure resolves, while the overlay is still
+    // legitimately alive. Settling here would also drain the post-grace
+    // follow-up refresh, after which the projection is supposed to win --
+    // that later hand-off is covered by the two grace tests.
+    await tester.pump();
+    await tester.pump();
 
     expect(
       tester.getTopLeft(find.textContaining('Alpha')).dy,
@@ -1665,35 +2231,300 @@ void main() {
       tester.getTopLeft(find.textContaining('Alpha')).dy,
       greaterThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
     );
+
+    // Drain the scheduled follow-up so the test does not end mid-flight.
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('shows a validation error for invalid scheduled-for input', (
+  testWidgets(
+    'a consumed item reorder grace refreshes the projection on its own',
+    (tester) async {
+      var reads = 0;
+      final firstSettledProjectionCompleter = Completer<PlanDetail>();
+      // Matches neither the original order (Alpha, Beta, Gamma) nor the
+      // optimistic order the drag below produces (Beta, Gamma, Alpha), the
+      // way a concurrent remote reorder would.
+      final disagreeingProjection = _threeItemFixtureInOrder(const [
+        'item-3',
+        'item-1',
+        'item-2',
+      ]);
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: () {
+            reads += 1;
+            if (reads == 1) {
+              return Future.value(_planDetailWithThreeItemsFixture());
+            }
+            if (reads == 2) {
+              return firstSettledProjectionCompleter.future;
+            }
+            // Every read after the first post-write reload keeps returning
+            // the SAME disagreeing order. Nothing here forces a second
+            // emission by hand -- the only way the card can end up showing
+            // this order is if it schedules its own follow-up refresh once
+            // the grace is consumed.
+            return Future.value(disagreeingProjection);
+          },
+          writeService: writeService,
+          visibleSongs: const [
+            SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+            SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+            SongSummary(id: 'song-3', slug: 'gamma', title: 'Gamma'),
+          ],
+          catalogSnapshotState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.online,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final itemList = tester
+          .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+          .elementAt(1);
+      // Drag first item to the end: Alpha, Beta, Gamma -> Beta, Gamma, Alpha.
+      itemList.onReorder(0, 3);
+      await tester.pump();
+
+      expect(
+        tester.getTopLeft(find.textContaining('Beta')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Gamma')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.textContaining('Gamma')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+      );
+
+      // The write completes immediately, invalidating the projection and
+      // triggering the second read: the one disagreeing post-write reload.
+      firstSettledProjectionCompleter.complete(disagreeingProjection);
+      await tester.pumpAndSettle();
+
+      // No manual invalidate, no hand-forced third emission: the card must
+      // refresh on its own so the disagreeing projection (Gamma, Alpha,
+      // Beta) wins instead of the optimistic order masking it forever.
+      expect(
+        tester.getTopLeft(find.textContaining('Gamma')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.textContaining('Alpha')).dy,
+        lessThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+      );
+    },
+  );
+
+  testWidgets('rolls the session item order back when the write fails', (
     tester,
   ) async {
-    final writeService = _FakePlanningWriteService();
+    final failCompleter = Completer<void>();
+    final writeService = _FakePlanningWriteService(
+      onReorderSessionItems: (_) async {
+        await failCompleter.future;
+        throw StateError('item reorder failed');
+      },
+    );
 
     await tester.pumpWidget(
       buildApp(
-        planDetailValue: _editablePlanDetailFixture(),
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+    itemList.onReorder(1, 0);
+    await tester.pump();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Beta')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Alpha')).dy),
+    );
+
+    failCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.textContaining('Alpha')).dy,
+      lessThan(tester.getTopLeft(find.textContaining('Beta')).dy),
+    );
+    expect(tester.takeException(), isA<StateError>());
+  });
+
+  testWidgets('shows a message when the session item reorder write fails', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService(
+      onReorderSessionItems: (_) async =>
+          throw StateError('item reorder failed'),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1)
+        .onReorder(1, 0);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isA<StateError>());
+    expect(find.text(AppStrings.planningReorderFailedMessage), findsOneWidget);
+  });
+
+  testWidgets(
+    'picking a date and time produces a UTC value in the edited draft',
+    (tester) async {
+      final writeService = _FakePlanningWriteService();
+
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip(AppStrings.planEditAction));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('scheduled-for-pick')));
+      await tester.pumpAndSettle();
+      final localizations = MaterialLocalizations.of(
+        tester.element(find.byKey(const ValueKey('scheduled-for-pick'))),
+      );
+      // Date picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+      // Time picker.
+      await tester.tap(
+        find.widgetWithText(TextButton, localizations.okButtonLabel).first,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(AppStrings.planSaveAction));
+      await tester.pumpAndSettle();
+
+      expect(writeService.editedDraft?.scheduledFor, isNotNull);
+      expect(writeService.editedDraft!.scheduledFor!.isUtc, isTrue);
+    },
+  );
+
+  testWidgets('clearing the schedule survives a projection re-read', (
+    tester,
+  ) async {
+    // Wires the REAL offline stack (Drift-backed mutation store + local
+    // read repository + write service), not the test fakes, so this
+    // exercises the actual merge logic instead of a hand-rolled stand-in.
+    final database = PlanningLocalDatabase.inMemory();
+    addTearDown(database.close);
+    final localStore = DriftPlanningLocalStore(database);
+    final mutationStore = DriftPlanningMutationStore(
+      database: database,
+      localStore: localStore,
+    );
+    final repository = PlanningLocalReadRepository(
+      store: localStore,
+      mutationStore: mutationStore,
+      contextReader: () async => const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+    );
+    final writeService = PlanningWriteService(
+      repository,
+      mutationStore: mutationStore,
+      activeContextReader: () async => const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+    );
+
+    await localStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          slug: 'team-rehearsal',
+          name: 'Team Rehearsal',
+          description: 'Fixture',
+          scheduledFor: DateTime.utc(2026, 4, 10, 18),
+          updatedAt: DateTime.utc(2026, 3, 31, 9),
+        ),
+      ],
+      sessions: const [],
+      items: const [],
+      refreshedAt: DateTime.utc(2026, 3, 31, 9),
+    );
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: () => repository.getPlanDetail('plan-1'),
         writeService: writeService,
       ),
     );
     await tester.pumpAndSettle();
 
+    final titleContext = tester.element(find.text('Team Rehearsal'));
+    final scheduledForLabel = formatScheduledForInstant(
+      titleContext,
+      DateTime.utc(2026, 4, 10, 18),
+    );
+    expect(find.text(scheduledForLabel), findsOneWidget);
+
     await tester.tap(find.byTooltip(AppStrings.planEditAction));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('plan-editor-scheduled-for')),
-      'not-a-date',
-    );
+
+    await tester.tap(find.byKey(const ValueKey('scheduled-for-clear')));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text(AppStrings.planSaveAction));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text(AppStrings.planScheduledForInvalidMessage),
-      findsOneWidget,
-    );
-    expect(writeService.editedDraft, isNull);
+    // The write flow bumps planningDataRevisionProvider and invalidates
+    // planningPlanDetailProvider, which re-invokes the factory above and
+    // forces a fresh repository.getPlanDetail call -- a real re-read of
+    // the merged projection, not a cached widget value.
+    expect(find.text(scheduledForLabel), findsNothing);
   });
 
   testWidgets(
@@ -2031,6 +2862,54 @@ PlanDetail _editablePlanDetailFixture() {
   );
 }
 
+PlanDetail _editablePlanDetailWithThreeSessionsFixture() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      slug: 'team-rehearsal',
+      name: 'Team Rehearsal',
+      description: 'Fixture',
+      scheduledFor: DateTime(2026, 4, 10, 18),
+      updatedAt: DateTime(2026, 3, 31, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        slug: 'warm-up',
+        name: 'Warm-Up',
+        position: 10,
+        items: [],
+      ),
+      SessionSummary(
+        id: 'session-2',
+        slug: 'main-set',
+        name: 'Main Set',
+        position: 20,
+        items: [],
+      ),
+      SessionSummary(
+        id: 'session-3',
+        slug: 'closing',
+        name: 'Closing',
+        position: 30,
+        items: [],
+      ),
+    ],
+  );
+}
+
+/// The three-session fixture above, with its sessions reordered by id.
+PlanDetail _threeSessionFixtureInOrder(List<String> sessionIdOrder) {
+  final base = _editablePlanDetailWithThreeSessionsFixture();
+  final sessionsById = {
+    for (final session in base.sessions) session.id: session,
+  };
+  return PlanDetail(
+    plan: base.plan,
+    sessions: [for (final id in sessionIdOrder) sessionsById[id]!],
+  );
+}
+
 class _ReorderHandleHarness extends StatefulWidget {
   const _ReorderHandleHarness();
 
@@ -2162,6 +3041,26 @@ PlanDetail _planDetailWithThreeItemsFixture() {
         position: 20,
         items: [],
       ),
+    ],
+  );
+}
+
+/// The three-item fixture above, with session-1's items reordered by id.
+PlanDetail _threeItemFixtureInOrder(List<String> itemIdOrder) {
+  final base = _planDetailWithThreeItemsFixture();
+  final warmUp = base.sessions.first;
+  final itemsById = {for (final item in warmUp.items) item.id: item};
+  return PlanDetail(
+    plan: base.plan,
+    sessions: [
+      SessionSummary(
+        id: warmUp.id,
+        slug: warmUp.slug,
+        name: warmUp.name,
+        position: warmUp.position,
+        items: [for (final id in itemIdOrder) itemsById[id]!],
+      ),
+      ...base.sessions.skip(1),
     ],
   );
 }

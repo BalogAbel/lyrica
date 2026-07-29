@@ -7,8 +7,10 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -456,6 +458,180 @@ Line two
     expect(service.createCalledWith?.title, 'New Creation');
     expect(find.textContaining('reader:'), findsOneWidget);
   });
+
+  testWidgets('edit mode save calls updateSong and refreshes the reader', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final service = _RecordingEditorUpdateSongLibraryService();
+    var rebuilds = 0;
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.songEditor.path.replaceFirst(
+        ':songSlug',
+        'egy-ut',
+      ),
+      routes: [
+        GoRoute(
+          path: AppRoutes.songEditor.path,
+          builder: (context, state) =>
+              const SongEditorScreen.edit(songId: 'song-1', songSlug: 'egy-ut'),
+        ),
+        GoRoute(
+          path: AppRoutes.songReader.path,
+          builder: (context, state) {
+            final slug = state.pathParameters['songSlug']!;
+            return Material(child: Text('reader:$slug'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
+          songLibraryServiceProvider.overrideWithValue(service),
+          songLibraryReaderProvider('song-1').overrideWith((ref) async {
+            rebuilds += 1;
+            return SongReaderResult(
+              song: ParsedSong(
+                title: 'A forrasnal',
+                sourceKey: 'C',
+                sections: const [],
+                diagnostics: const [],
+              ),
+            );
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Keep the family instance alive across the save so invalidation forces
+    // an observable rebuild instead of just lazily resolving on next read.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongEditorScreen)),
+    );
+    final subscription = container.listen(
+      songLibraryReaderProvider('song-1'),
+      (_, _) {},
+    );
+    addTearDown(subscription.close);
+
+    expect(rebuilds, 1);
+
+    await tester.enterText(find.byType(TextField), '{title: Edited Title}');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(service.updateCalledWith?.songId, 'song-1');
+    expect(service.updateCalledWith?.title, 'Edited Title');
+    expect(rebuilds, greaterThan(1));
+  });
+
+  testWidgets('save surfaces the conflict dialog when the write conflicts', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final service = _ConflictingEditorSongLibraryService();
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.songEditor.path.replaceFirst(
+        ':songSlug',
+        'egy-ut',
+      ),
+      routes: [
+        GoRoute(
+          path: AppRoutes.songEditor.path,
+          builder: (context, state) =>
+              const SongEditorScreen.edit(songId: 'song-1', songSlug: 'egy-ut'),
+        ),
+        GoRoute(
+          path: AppRoutes.songReader.path,
+          builder: (context, state) {
+            final slug = state.pathParameters['songSlug']!;
+            return Material(child: Text('reader:$slug'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          capabilityResolverProvider.overrideWith(
+            (_) => CapabilityResolver(gateway: _FullCapabilityGateway()),
+          ),
+          songLibraryServiceProvider.overrideWithValue(service),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '{title: Conflicted Edit}');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(AppStrings.songSaveAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.songConflictTitle), findsOneWidget);
+    expect(find.text(AppStrings.songConflictMessage), findsOneWidget);
+    expect(find.byType(SongEditorScreen), findsOneWidget);
+    expect(find.textContaining('reader:'), findsNothing);
+  });
+
+  testWidgets('summary list renders title, artist and key rows', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      const Size(1440, 1200),
+      initialSource: '''
+{title: Heart of Worship}
+{artist: Matt Redman}
+{key: G}
+''',
+    );
+
+    expect(find.text('Heart of Worship'), findsOneWidget);
+    expect(find.text('Matt Redman'), findsOneWidget);
+    expect(find.text('G'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpScreen(
@@ -542,5 +718,56 @@ class _RecordingEditorSongLibraryService extends Fake
     required String chordproSource,
   }) async {
     throw StateError('updateSong must not be called in create mode');
+  }
+}
+
+class _RecordingEditorUpdateSongLibraryService extends Fake
+    implements SongLibraryService {
+  ({String songId, String title, String chordproSource})? updateCalledWith;
+
+  @override
+  Future<SongMutationRecord> updateSong({
+    required ActiveCatalogContext context,
+    required String songId,
+    required String title,
+    required String chordproSource,
+  }) async {
+    updateCalledWith = (
+      songId: songId,
+      title: title,
+      chordproSource: chordproSource,
+    );
+    return SongMutationRecord(
+      id: songId,
+      organizationId: context.organizationId,
+      slug: 'egy-ut',
+      title: title,
+      chordproSource: chordproSource,
+      version: 2,
+      baseVersion: 1,
+      syncStatus: SongSyncStatus.pendingUpdate,
+    );
+  }
+
+  @override
+  Future<SongMutationRecord> createSong({
+    required ActiveCatalogContext context,
+    required String title,
+    required String chordproSource,
+  }) async {
+    throw StateError('createSong must not be called in edit mode');
+  }
+}
+
+class _ConflictingEditorSongLibraryService extends Fake
+    implements SongLibraryService {
+  @override
+  Future<SongMutationRecord> updateSong({
+    required ActiveCatalogContext context,
+    required String songId,
+    required String title,
+    required String chordproSource,
+  }) async {
+    throw SongConflictResolutionRequiredException(songId);
   }
 }

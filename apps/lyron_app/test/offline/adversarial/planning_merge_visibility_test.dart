@@ -10,8 +10,15 @@ import '../../support/drift_test_setup.dart';
 /// Adversarial coverage for the offline merge in
 /// `PlanningLocalReadRepository`: confirms actionable mutations
 /// (pending/accepted/failed*/conflict) stay visible over the base
-/// projection (LF-4), partial edits do not blank untouched fields (LF-5),
-/// and duplicate offline song-adds collapse to a single visible item (LF-6).
+/// projection (LF-4), a name-only edit does not corrupt the plan's
+/// unmodified description/scheduledFor (LF-5), and duplicate offline
+/// song-adds collapse to a single visible item (LF-6).
+///
+/// LF-5 carries the plan's *current* (unchanged) description/scheduledFor in
+/// the mutation draft rather than null, because a real edit draft always
+/// carries the complete form state (see PlanEditDraft's single construction
+/// site in plan_editor_dialog.dart): null on a planEdit mutation means the
+/// field was explicitly cleared, not "leave it as-is".
 void main() {
   suppressDriftMultipleDatabaseWarnings();
 
@@ -123,14 +130,16 @@ void main() {
           refreshedAt: DateTime.utc(2026, 4, 11, 10),
         );
 
-        // act: mutation only sets name; description/scheduledFor are null on the mutation
+        // act: mutation only changes the name; description/scheduledFor carry
+        // their current (unchanged) values, as the real editor dialog would
+        // -- null here would mean an explicit clear, not "leave as-is".
         await mutationStore.recordPlanEdit(
           context: context,
-          draft: const PlanningPlanEditMutationDraft(
+          draft: PlanningPlanEditMutationDraft(
             planId: 'plan-2',
             name: 'Updated Name',
-            description: null,
-            scheduledFor: null,
+            description: 'Important description',
+            scheduledFor: scheduledFor,
             baseVersion: 1,
           ),
         );

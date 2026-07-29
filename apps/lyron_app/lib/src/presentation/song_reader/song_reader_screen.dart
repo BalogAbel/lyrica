@@ -4,51 +4,32 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
-import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
-import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
-import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
-import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
-import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
-import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_providers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_scoped_navigation.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
-import 'package:lyron_app/src/router/app_routes.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_titles.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_zoom_persistence.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_shell.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_status_views.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-/// Overridable provider that resolves the current user's ID.
-///
-/// Defaults to reading from [supabaseClientProvider] so production behaviour is
-/// unchanged. Tests override this with a [Provider.value] to avoid initialising
-/// a real [SupabaseClient].
-final readerUserIdProvider = Provider<String?>((ref) {
-  try {
-    return ref.watch(supabaseClientProvider).auth.currentUser?.id;
-  } catch (_) {
-    return null;
-  }
-});
-
-enum _SongReaderOverflowAction {
-  toggleViewMode,
-  guitarView,
-  pianoView,
-  edit,
-  delete,
-}
+export 'song_reader_providers.dart' show readerUserIdProvider;
 
 class SongReaderScreen extends ConsumerStatefulWidget {
   const SongReaderScreen({
@@ -71,12 +52,36 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
-  static const _contentWidth = 960.0;
-  static const _contentPadding = EdgeInsets.all(24);
-
   late final SongReaderController _controller = SongReaderController();
-  Timer? _persistZoomTimer;
-  bool _seededZoom = false;
+  final _immersiveMode = SongReaderImmersiveMode();
+  final _zoomPersistence = SongReaderZoomPersistence();
+
+  // Rebuilt on every access (it is a cheap, stateless const-constructed value
+  // holder) so it always reflects the current widget.songId — this state can
+  // be reused across scoped song-to-song navigation, where widget.songId
+  // changes without a new State being created (see didUpdateWidget).
+  SongReaderSongActions get _songActions =>
+      SongReaderSongActions(songId: widget.songId);
+
+  // Same rationale as `_songActions`: cheap to rebuild, and `onChanged` must
+  // always close over the current `setState` (this State object never
+  // changes, but keeping construction here matches the other delegate
+  // getters and keeps `setState` ownership visibly on the screen).
+  SongReaderCommands get _commands => SongReaderCommands(
+    controller: _controller,
+    onChanged: () => setState(() {}),
+  );
+
+  // Same rationale again: cheap, and always reflects the current widget
+  // fields (needed for the same scoped song-to-song reason as `_songActions`).
+  SongReaderScopedNavigation get _scopedNavigation =>
+      SongReaderScopedNavigation(
+        planId: widget.planId,
+        sessionId: widget.sessionId,
+        sessionItemId: widget.sessionItemId,
+        warmPlanDetail: widget.warmPlanDetail,
+        songId: widget.songId,
+      );
 
   bool get _isScopedMode =>
       widget.planId != null &&
@@ -111,188 +116,128 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   @override
   void dispose() {
-    _persistZoomTimer?.cancel();
+    _zoomPersistence.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   /// Reads the stored zoom for this user+song once on open and applies it via
-  /// the same path as [_setSharedFontScale]. Guards with [_seededZoom] so it
-  /// fires only once per reader open and never clobbers a subsequent user change.
+  /// the same path as [_setSharedFontScale]. The one-shot guard lives in
+  /// [_zoomPersistence]; this method keeps the `mounted` checks, since those
+  /// belong to the screen's lifecycle, not to the persistence class.
   void _seedZoomFromStorage() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _seededZoom) {
+      if (!mounted) {
         return;
       }
-      _seededZoom = true;
 
       // Resolve userId inside the callback so tests can override the provider
       // and the read does not crash during Supabase-less test environments.
-      final userId = ref.read(readerUserIdProvider);
-      if (userId == null) {
+      final zoom = await _zoomPersistence.seedFromStorage(
+        userId: ref.read(readerUserIdProvider),
+        songId: widget.songId,
+        isMounted: () => mounted,
+        resolveStore: () => ref.read(songReaderPreferencesStoreProvider.future),
+      );
+      if (!mounted || zoom == null) {
         return;
       }
-
-      try {
-        final store = await ref.read(songReaderPreferencesStoreProvider.future);
-        if (!mounted) {
-          return;
-        }
-        final zoom = await store.readZoom(
-          userId: userId,
-          songId: widget.songId,
-        );
-        if (!mounted || zoom == null) {
-          return;
-        }
-        _setSharedFontScale(zoom);
-      } catch (_) {
-        // Best-effort — ignore read failures so the reader still opens.
-      }
+      _setSharedFontScale(zoom);
     });
   }
 
   /// Debounced persist: (re)starts a 400 ms timer that writes the current
   /// sharedFontScale for this user+song. Called on pinch-end and double-tap fit.
   void _persistFontScale() {
-    final userId = ref.read(readerUserIdProvider);
-    if (userId == null) {
-      return;
-    }
-
-    _persistZoomTimer?.cancel();
-    _persistZoomTimer = Timer(const Duration(milliseconds: 400), () async {
-      if (!mounted) {
-        return;
-      }
-
-      final scale = _isScopedMode
+    _zoomPersistence.schedulePersist(
+      userId: ref.read(readerUserIdProvider),
+      songId: widget.songId,
+      isMounted: () => mounted,
+      readScale: () => _isScopedMode
           ? ref
                 .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
                 .state
                 .readerState
                 .sharedFontScale
-          : _controller.state.sharedFontScale;
-
-      try {
-        final store = await ref.read(songReaderPreferencesStoreProvider.future);
-        await store.writeZoom(
-          userId: userId,
-          songId: widget.songId,
-          zoom: scale,
-        );
-      } catch (_) {
-        // Best-effort — ignore write failures silently.
-      }
-    });
-  }
-
-  void _updateState(void Function(SongReaderController controller) update) {
-    setState(() {
-      update(_controller);
-    });
+          : _controller.state.sharedFontScale,
+      resolveStore: () => ref.read(songReaderPreferencesStoreProvider.future),
+    );
   }
 
   void _toggleViewMode() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .toggleViewMode();
-      return;
-    }
-
-    _updateState((controller) => controller.toggleViewMode());
+    _commands.toggleViewMode(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _transposeDown() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .transposeDown();
-      return;
-    }
-
-    _updateState((controller) => controller.transposeDown());
+    _commands.transposeDown(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _transposeUp() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .transposeUp();
-      return;
-    }
-
-    _updateState((controller) => controller.transposeUp());
+    _commands.transposeUp(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _capoDown() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .capoDown();
-      return;
-    }
-
-    _updateState((controller) => controller.capoDown());
+    _commands.capoDown(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _capoUp() {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .capoUp();
-      return;
-    }
-
-    _updateState((controller) => controller.capoUp());
+    _commands.capoUp(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
-    if (_isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .setInstrumentDisplayMode(mode);
-      return;
-    }
-
-    _updateState((controller) => controller.setInstrumentDisplayMode(mode));
+    _commands.setInstrumentDisplayMode(
+      mode,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   void _adjustSharedFontScale(double delta) {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.setSharedFontScale(
-        runtimeController.state.readerState.sharedFontScale + delta,
-      );
-      _persistFontScale();
-      return;
-    }
-
-    _updateState((controller) {
-      controller.setSharedFontScale(controller.state.sharedFontScale + delta);
-    });
-    _persistFontScale();
+    _commands.adjustSharedFontScale(
+      delta,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+      persistFontScale: _persistFontScale,
+    );
   }
 
   void _setSharedFontScale(double scale) {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.setSharedFontScale(scale);
-      return;
-    }
-
-    _updateState((controller) {
-      controller.setSharedFontScale(scale);
-    });
+    _commands.setSharedFontScale(
+      scale,
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+    );
   }
 
   /// Reads whether the compact controls are currently visible from the active
-  /// state source (scoped runtime controller or local controller).
+  /// state source (scoped runtime controller or local controller). Kept on
+  /// the screen (not moved into [SongReaderCommands]) because it feeds
+  /// [_syncImmersiveToControls] and the `wasImmersive` capture in the edit
+  /// flow — both screen-lifecycle/immersive-mode concerns, not command
+  /// dispatch.
   bool get _areControlsVisible {
     if (_isScopedMode) {
       return ref
@@ -304,281 +249,34 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return _controller.state.areCompactControlsVisible;
   }
 
-  /// Last immersive value pushed to [SystemChrome]. Guards against redundant
-  /// platform channel calls and lets us detect when the global state has drifted
-  /// out of sync with this screen (e.g. after a `dispose` from a sibling screen
-  /// or returning from a pushed route).
-  bool? _lastAppliedImmersive;
-
-  void _applyImmersiveMode(bool active) {
-    if (_lastAppliedImmersive == active) {
-      return;
-    }
-    _lastAppliedImmersive = active;
-    SystemChrome.setEnabledSystemUIMode(
-      active ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
-    );
-  }
-
   /// Re-applies immersive mode to match the current control visibility. Used on
   /// open and when this screen regains focus after a sibling screen's `dispose`
-  /// or a pushed route's pop reset the global system UI state.
+  /// or a pushed route's pop reset the global system UI state. Kept on the
+  /// screen because it reads `mounted`, which only the `State` object has.
   void _syncImmersiveToControls() {
     if (!mounted) {
       return;
     }
-    _applyImmersiveMode(_areControlsVisible);
+    _immersiveMode.apply(_areControlsVisible);
   }
 
   void _toggleCompactControls() {
-    if (_isScopedMode) {
-      final runtimeController = ref.read(
-        sessionScopedReaderRuntimeControllerProvider(_sessionKey),
-      );
-      runtimeController.toggleCompactControls();
-      _applyImmersiveMode(
-        runtimeController.state.readerState.areCompactControlsVisible,
-      );
-      return;
-    }
-
-    _updateState((controller) => controller.toggleCompactControls());
-    _applyImmersiveMode(_controller.state.areCompactControlsVisible);
+    _commands.toggleCompactControls(
+      ref: ref,
+      isScopedMode: _isScopedMode,
+      sessionKey: _sessionKey,
+      immersiveMode: _immersiveMode,
+    );
   }
 
   void _handleBack(BuildContext context) {
-    _applyImmersiveMode(false);
-    if (context.canPop()) {
-      context.pop();
-      return;
-    }
-
-    if (_isScopedMode) {
-      final planSlug = widget.warmPlanDetail?.plan.slug ?? widget.planId!;
-      context.replace(PlanningRoutes.planDetailLocation(planSlug));
-      return;
-    }
-
-    context.replace(AppRoutes.home.path);
+    _scopedNavigation.handleBack(context, immersiveMode: _immersiveMode);
   }
 
   void _syncScopedRuntimeState() {
-    if (!_isScopedMode) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
-          .startSession(
-            planId: widget.planId!,
-            sessionId: widget.sessionId!,
-            songId: widget.songId,
-          );
-    });
-  }
-
-  void _navigateToScopedSong(
-    BuildContext context, {
-    required SessionScopedReaderContext scopedContext,
-    required String songSlug,
-  }) {
-    context.replace(
-      PlanningRoutes.planSessionSongReaderLocation(
-        planSlug: scopedContext.planSlug,
-        sessionSlug: scopedContext.sessionSlug,
-        songSlug: songSlug,
-      ),
-      extra: widget.warmPlanDetail,
-    );
-  }
-
-  VoidCallback? _buildScopedNeighborNavigationTap(
-    BuildContext context, {
-    required SessionScopedReaderContext? scopedContext,
-    required SessionScopedReaderNeighbor? neighbor,
-  }) {
-    if (scopedContext == null || neighbor == null) {
-      return null;
-    }
-
-    return () => _navigateToScopedSong(
-      context,
-      scopedContext: scopedContext,
-      songSlug: neighbor.songSlug,
-    );
-  }
-
-  String _resolveCurrentTitle({
-    required SessionScopedReaderContext? scopedContext,
-    required SongReaderProjection projection,
-  }) {
-    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
-    if (scopedTitle.isNotEmpty) {
-      return scopedTitle;
-    }
-    return projection.title;
-  }
-
-  String _resolvePreservedScopedTitle(
-    SessionScopedReaderContext? scopedContext,
-  ) {
-    final scopedTitle = scopedContext?.selectedItem.title.trim() ?? '';
-    if (scopedTitle.isNotEmpty) {
-      return scopedTitle;
-    }
-    final warmPlanDetail = widget.warmPlanDetail;
-    final sessionItemId = widget.sessionItemId;
-    if (warmPlanDetail != null && sessionItemId != null) {
-      for (final session in warmPlanDetail.sessions) {
-        for (final item in session.items) {
-          if (item.id == sessionItemId && item.song.id == widget.songId) {
-            final preservedTitle = item.song.title.trim();
-            if (preservedTitle.isNotEmpty) {
-              return preservedTitle;
-            }
-          }
-        }
-      }
-    }
-    return AppStrings.songReaderTitle;
-  }
-
-  Widget _buildScopedDeletedTombstone({
-    required SessionScopedReaderContext? scopedContext,
-    required SongMutationRecord? mutationRecord,
-  }) {
-    final message =
-        mutationRecord?.isRemoteDeletedConflict == true &&
-            mutationRecord?.effectiveSyncStatus == SongSyncStatus.pendingUpdate
-        ? AppStrings.songReaderDeletedConflictMessage
-        : AppStrings.songReaderDeletedMessage;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _resolvePreservedScopedTitle(scopedContext),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              AppStrings.songReaderDeletedTitle,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
-  }
-
-  bool _canShowScopedDeletedTombstone({
-    required CatalogSnapshotState catalogState,
-    required SongMutationRecord? mutationRecord,
-  }) {
-    return mutationRecord?.isRemoteDeletedConflict == true ||
-        catalogState.context != null;
-  }
-
-  String? _resolveNeighborTitle(String? title) {
-    final trimmed = title?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      return null;
-    }
-    return trimmed;
-  }
-
-  Future<void> _editSong(BuildContext context) async {
-    final activeContext = ref.read(activeCatalogContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-    final songSummary = await ref
-        .read(songLibraryServiceProvider)
-        .getSongSummaryById(context: activeContext, songId: widget.songId);
-    if (!context.mounted) {
-      return;
-    }
-
-    final songSlug = songSummary?.slug;
-    if (songSlug == null || songSlug.isEmpty) {
-      return;
-    }
-
-    // Capture control visibility before the async gap so we can restore the
-    // immersive state on return. The editor is pushed (not replaced), so this
-    // screen is not disposed and must restore the system UI itself.
-    final wasImmersive = _areControlsVisible;
-    _applyImmersiveMode(false);
-    await context.push(
-      AppRoutes.songEditor.path.replaceFirst(':songSlug', songSlug),
-    );
-    if (context.mounted) {
-      _applyImmersiveMode(wasImmersive);
-    }
-  }
-
-  Future<void> _deleteSong(BuildContext context) async {
-    final activeContext = ref.read(activeCatalogContextProvider);
-    if (activeContext == null) {
-      return;
-    }
-
-    try {
-      await ref
-          .read(songLibraryServiceProvider)
-          .deleteSong(context: activeContext, songId: widget.songId);
-      ref.invalidate(songMutationEntriesProvider);
-      ref.invalidate(songLibraryListProvider);
-      if (context.mounted) {
-        _handleBack(context);
-      }
-    } on SongDeleteBlockedException {
-      if (!context.mounted) {
-        return;
-      }
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          content: const Text(AppStrings.songDeleteBlockedMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(AppStrings.songCancelAction),
-            ),
-          ],
-        ),
-      );
-    } on SongConflictResolutionRequiredException {
-      if (!context.mounted) {
-        return;
-      }
-      await _showConflictResolutionRequiredDialog(context);
-    }
-  }
-
-  Future<void> _showConflictResolutionRequiredDialog(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(AppStrings.songConflictTitle),
-        content: const Text(AppStrings.songConflictMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(AppStrings.songCancelAction),
-          ),
-        ],
-      ),
+    _scopedNavigation.syncScopedRuntimeState(
+      ref: ref,
+      isMounted: () => mounted,
     );
   }
 
@@ -658,9 +356,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final projection = readerResult == null
         ? null
         : SongReaderProjection(song: readerResult.song, state: readerState);
+    final preservedScopedTitle = resolvePreservedScopedTitle(
+      scopedContext: resolvedScopedContext,
+      warmPlanDetail: widget.warmPlanDetail,
+      sessionItemId: widget.sessionItemId,
+      songId: widget.songId,
+    );
     final currentTitle = projection == null
-        ? _resolvePreservedScopedTitle(resolvedScopedContext)
-        : _resolveCurrentTitle(
+        ? preservedScopedTitle
+        : resolveCurrentTitle(
             scopedContext: resolvedScopedContext,
             projection: projection,
           );
@@ -675,316 +379,77 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     if (_isScopedMode && scopedContextAsync != null) {
       final scopedValue = scopedContextAsync.valueOrNull;
       if (scopedValue is SessionScopedReaderContextFailureResult) {
-        return Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            leading: IconButton(
-              tooltip: AppStrings.songReaderBackAction,
-              onPressed: () => _handleBack(context),
-              icon: const BackButtonIcon(),
-            ),
-            title: const Text(AppStrings.songReaderTitle),
-          ),
-          body: SafeArea(
-            child: Center(
-              child: Text(
-                AppStrings.scopedReaderContextUnavailableMessage,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
+        return SongReaderScopedContextFailureScaffold(
+          onBack: () => _handleBack(context),
         );
       }
     }
 
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: IconButton(
-          tooltip: AppStrings.songReaderBackAction,
-          onPressed: () => _handleBack(context),
-          icon: const BackButtonIcon(),
-        ),
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(currentTitle),
-            if (projection?.effectiveKey != null)
-              Builder(
-                builder: (context) {
-                  final theme = Theme.of(context);
-                  return Text(
-                    '${AppStrings.songReaderKeyLabelPrefix}${projection!.effectiveKey}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-        actions: [
-          if (hasRecoverableWarnings)
-            IconButton(
-              tooltip: AppStrings.songReaderWarningsSemantics,
-              icon: const Icon(Icons.warning_amber_outlined),
-              onPressed: () =>
-                  _showWarningsDialog(context, recoverableWarningCount),
-            ),
-          if (readerResult != null)
-            PopupMenuButton<_SongReaderOverflowAction>(
-              icon: const Icon(Icons.more_horiz),
-              onSelected: (action) {
-                switch (action) {
-                  case _SongReaderOverflowAction.toggleViewMode:
-                    _toggleViewMode();
-                    break;
-                  case _SongReaderOverflowAction.guitarView:
-                    _setInstrumentDisplayMode(
-                      SongReaderInstrumentDisplayMode.guitar,
-                    );
-                    break;
-                  case _SongReaderOverflowAction.pianoView:
-                    _setInstrumentDisplayMode(
-                      SongReaderInstrumentDisplayMode.piano,
-                    );
-                    break;
-                  case _SongReaderOverflowAction.edit:
-                    unawaited(_editSong(context));
-                    break;
-                  case _SongReaderOverflowAction.delete:
-                    unawaited(_deleteSong(context));
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.toggleViewMode,
-                  child: Text(
-                    readerState.viewMode == SongReaderViewMode.chordsAndLyrics
-                        ? AppStrings.songReaderLyricsOnlyAction
-                        : AppStrings.songReaderChordsAndLyricsAction,
-                  ),
+      appBar: SongReaderAppBar(
+        title: currentTitle,
+        effectiveKey: projection?.effectiveKey,
+        onBack: () => _handleBack(context),
+        hasRecoverableWarnings: hasRecoverableWarnings,
+        onShowWarnings: () =>
+            _showWarningsDialog(context, recoverableWarningCount),
+        showOverflowMenu: readerResult != null,
+        viewMode: readerState.viewMode,
+        canEditSongs: canEditSongs,
+        onOverflowAction: (action) {
+          switch (action) {
+            case SongReaderOverflowAction.toggleViewMode:
+              _toggleViewMode();
+              break;
+            case SongReaderOverflowAction.guitarView:
+              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.guitar);
+              break;
+            case SongReaderOverflowAction.pianoView:
+              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+              break;
+            case SongReaderOverflowAction.edit:
+              unawaited(
+                _songActions.edit(
+                  context,
+                  ref,
+                  immersiveMode: _immersiveMode,
+                  readControlsVisible: () => _areControlsVisible,
                 ),
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.guitarView,
-                  child: Text(AppStrings.songReaderGuitarViewAction),
-                ),
-                PopupMenuItem(
-                  value: _SongReaderOverflowAction.pianoView,
-                  child: Text(AppStrings.songReaderPianoViewAction),
-                ),
-                if (canEditSongs) ...[
-                  const PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: _SongReaderOverflowAction.edit,
-                    child: Text(AppStrings.songEditAction),
-                  ),
-                  PopupMenuItem(
-                    value: _SongReaderOverflowAction.delete,
-                    child: Text(AppStrings.songDeleteAction),
-                  ),
-                ],
-              ],
-            ),
-        ],
-      ),
-      body: PopScope<void>(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) {
-          if (didPop) {
-            return;
+              );
+              break;
+            case SongReaderOverflowAction.delete:
+              unawaited(
+                _songActions.delete(context, ref, onDeleted: _handleBack),
+              );
+              break;
           }
-
-          _handleBack(context);
         },
-        child: SafeArea(
-          child: isResolvingCatalogContext
-              ? const Center(child: Text(AppStrings.songReaderLoadingMessage))
-              : readerAsync.when(
-                  loading: () => const Center(
-                    child: Text(AppStrings.songReaderLoadingMessage),
-                  ),
-                  error: (error, stackTrace) {
-                    if (_isScopedMode) {
-                      if (error is SongNotFoundException) {
-                        if (_canShowScopedDeletedTombstone(
-                          catalogState: catalogState,
-                          mutationRecord: mutationRecord,
-                        )) {
-                          return _buildScopedDeletedTombstone(
-                            scopedContext: resolvedScopedContext,
-                            mutationRecord: mutationRecord,
-                          );
-                        }
-                      }
-                      return const Center(
-                        child: Text(
-                          AppStrings.scopedReaderContextUnavailableMessage,
-                          textAlign: TextAlign.center,
-                        ),
-                      );
-                    }
-
-                    if (error is SongAccessDeniedException) {
-                      return const Center(
-                        child: Text(AppStrings.songReaderAccessDeniedMessage),
-                      );
-                    }
-
-                    if (error is SongNotFoundException) {
-                      return const Center(
-                        child: Text(AppStrings.songReaderUnavailableMessage),
-                      );
-                    }
-
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            AppStrings.songReaderLoadFailureMessage,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-                          FilledButton(
-                            onPressed: () {
-                              ref.invalidate(
-                                songLibraryReaderProvider(widget.songId),
-                              );
-                            },
-                            child: const Text(AppStrings.retryAction),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  data: (SongReaderResult result) {
-                    final projection = SongReaderProjection(
-                      song: result.song,
-                      state: readerState,
-                    );
-                    final recoverableWarningCount = result.song.diagnostics
-                        .where(
-                          (diagnostic) =>
-                              diagnostic.severity ==
-                              ParseDiagnosticSeverity.warning,
-                        )
-                        .length;
-
-                    final currentTitle = _resolveCurrentTitle(
-                      scopedContext: resolvedScopedContext,
-                      projection: projection,
-                    );
-                    final previousTitle = _resolveNeighborTitle(
-                      resolvedScopedContext?.previousItem?.title,
-                    );
-                    final nextTitle = _resolveNeighborTitle(
-                      resolvedScopedContext?.nextItem?.title,
-                    );
-                    final showExpandedContextPanel =
-                        resolvedScopedContext != null;
-
-                    return LayoutBuilder(
-                      builder: (context, constraints) {
-                        final layout = resolveSongReaderLayout(
-                          viewportWidth: constraints.maxWidth,
-                          isAutoFitEnabled: readerState.isAutoFitEnabled,
-                        );
-                        final showCompactBottomContextBar =
-                            resolvedScopedContext != null;
-
-                        final readerSurface =
-                            layout.shell == SongReaderShell.expanded
-                            ? SongReaderExpandedSurface(
-                                projection: projection,
-                                showContextPanel: showExpandedContextPanel,
-                                previousTitle: previousTitle,
-                                nextTitle: nextTitle,
-                                contentColumnCount: layout.contentColumnCount,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: projection.effectiveCapo > 0
-                                    ? _capoDown
-                                    : null,
-                                onCapoUp: _capoUp,
-                                onDecreaseFontScale: () =>
-                                    _adjustSharedFontScale(-0.1),
-                                onIncreaseFontScale: () =>
-                                    _adjustSharedFontScale(0.1),
-                                onSetFontScale: _setSharedFontScale,
-                                onPersistFontScale: _persistFontScale,
-                                onPreviousTap:
-                                    _buildScopedNeighborNavigationTap(
-                                      context,
-                                      scopedContext: resolvedScopedContext,
-                                      neighbor:
-                                          resolvedScopedContext?.previousItem,
-                                    ),
-                                onNextTap: _buildScopedNeighborNavigationTap(
-                                  context,
-                                  scopedContext: resolvedScopedContext,
-                                  neighbor: resolvedScopedContext?.nextItem,
-                                ),
-                                contentPadding: _contentPadding,
-                              )
-                            : SongReaderCompactSurface(
-                                projection: projection,
-                                areControlsVisible:
-                                    readerState.areCompactControlsVisible,
-                                currentTitle: currentTitle,
-                                previousTitle: previousTitle,
-                                nextTitle: nextTitle,
-                                onSurfaceTap: _toggleCompactControls,
-                                hasRecoverableWarnings:
-                                    result.hasRecoverableWarnings,
-                                warningCount: recoverableWarningCount,
-                                contentColumnCount: layout.contentColumnCount,
-                                showBottomContextBar:
-                                    showCompactBottomContextBar,
-                                onTransposeDown: _transposeDown,
-                                onTransposeUp: _transposeUp,
-                                onCapoDown: projection.effectiveCapo > 0
-                                    ? _capoDown
-                                    : null,
-                                onCapoUp: _capoUp,
-                                onDecreaseFontScale: () =>
-                                    _adjustSharedFontScale(-0.1),
-                                onIncreaseFontScale: () =>
-                                    _adjustSharedFontScale(0.1),
-                                onSetFontScale: _setSharedFontScale,
-                                onPersistFontScale: _persistFontScale,
-                                onPreviousTap:
-                                    _buildScopedNeighborNavigationTap(
-                                      context,
-                                      scopedContext: resolvedScopedContext,
-                                      neighbor:
-                                          resolvedScopedContext?.previousItem,
-                                    ),
-                                onNextTap: _buildScopedNeighborNavigationTap(
-                                  context,
-                                  scopedContext: resolvedScopedContext,
-                                  neighbor: resolvedScopedContext?.nextItem,
-                                ),
-                                maxContentWidth: _contentWidth,
-                                contentPadding: _contentPadding,
-                              );
-
-                        // The surface itself is full-width; ConstrainedBox and
-                        // padding are applied inside the scroll view by each
-                        // surface widget so the scrollbar thumb sits at the
-                        // physical screen edge.
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [Expanded(child: readerSurface)],
-                        );
-                      },
-                    );
-                  },
-                ),
-        ),
+      ),
+      body: SongReaderBodyShell(
+        isResolvingCatalogContext: isResolvingCatalogContext,
+        readerAsync: readerAsync,
+        isScopedMode: _isScopedMode,
+        catalogState: catalogState,
+        mutationRecord: mutationRecord,
+        resolvedScopedContext: resolvedScopedContext,
+        readerState: readerState,
+        preservedScopedTitle: preservedScopedTitle,
+        onBack: _handleBack,
+        onRetry: () => ref.invalidate(songLibraryReaderProvider(widget.songId)),
+        onTransposeDown: _transposeDown,
+        onTransposeUp: _transposeUp,
+        onCapoDown: _capoDown,
+        onCapoUp: _capoUp,
+        onAdjustSharedFontScale: _adjustSharedFontScale,
+        onSetFontScale: _setSharedFontScale,
+        onPersistFontScale: _persistFontScale,
+        onToggleCompactControls: _toggleCompactControls,
+        resolveNeighborTap: (context, neighbor) =>
+            _scopedNavigation.buildScopedNeighborNavigationTap(
+              context,
+              scopedContext: resolvedScopedContext,
+              neighbor: neighbor,
+            ),
       ),
     );
   }

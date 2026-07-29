@@ -76,6 +76,43 @@ void main() {
     );
   });
 
+  test(
+    'sends explicit null for a cleared planEdit description and scheduledFor',
+    () async {
+      late Map<String, dynamic> rpcParams;
+      final repository = SupabasePlanningMutationRepository.testing(
+        rpc: (name, {params}) async {
+          rpcParams = params ?? const {};
+          return {'id': 'plan-1', 'organization_id': 'org-1', 'version': 2};
+        },
+      );
+
+      await repository.syncMutation(
+        organizationId: 'org-1',
+        record: PlanningMutationRecord(
+          aggregateId: 'plan-1',
+          organizationId: 'org-1',
+          name: 'Weekend Service',
+          description: null,
+          scheduledFor: null,
+          baseVersion: 1,
+          kind: PlanningMutationKind.planEdit,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+        ),
+      );
+
+      // A cleared field must reach the RPC as an explicit null key, not an
+      // omitted one -- an omitted key would read as "leave unchanged" on
+      // the server side and the clear would silently no-op there too.
+      expect(rpcParams.containsKey('p_description'), isTrue);
+      expect(rpcParams['p_description'], isNull);
+      expect(rpcParams.containsKey('p_scheduled_for'), isTrue);
+      expect(rpcParams['p_scheduled_for'], isNull);
+    },
+  );
+
   test('maps session reorder to the plan session reorder rpc', () async {
     late String rpcName;
     late Map<String, dynamic> rpcParams;

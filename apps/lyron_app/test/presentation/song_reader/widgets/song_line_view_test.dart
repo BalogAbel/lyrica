@@ -213,4 +213,48 @@ void main() {
     expect(find.byType(SongLineView), findsOneWidget);
     expect(tester.getSize(find.byType(SongLineView)).height, 0);
   });
+
+  testWidgets('does not split a chord-broken word across rows at 375px', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // Leading words fill the row almost exactly to the 375px wrap boundary
+    // right after "porcika", so "m," is forced onto the next row unless the
+    // renderer keeps the chord-split word ("porcika" + "m," -- no whitespace
+    // between the two segments) together as one unbreakable unit.
+    final line = SongReaderLyricLineProjection(
+      segments: const [
+        SongReaderSegmentProjection(displayChord: 'C', text: 'Minden '),
+        SongReaderSegmentProjection(displayChord: null, text: 'apro '),
+        SongReaderSegmentProjection(displayChord: 'C', text: 'porcikamban '),
+        SongReaderSegmentProjection(displayChord: null, text: 'el '),
+        SongReaderSegmentProjection(displayChord: 'G', text: 'porcika'),
+        SongReaderSegmentProjection(displayChord: 'D', text: 'm,'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 375,
+            child: SongLineView(
+              line: line,
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              sharedFontScale: 1.0,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getTopLeft(find.text('m,')).dy,
+      tester.getTopLeft(find.text('porcika')).dy,
+      reason: 'the word must not be split across rows',
+    );
+  });
 }

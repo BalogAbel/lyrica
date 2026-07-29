@@ -444,6 +444,81 @@ void main() {
     });
 
     test(
+      'clearing scheduled-for on a pending plan create removes it',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: PlanningPlanCreateMutationDraft(
+            planId: 'plan-local-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            description: 'Initial',
+            scheduledFor: DateTime.utc(2026, 4, 12, 9),
+          ),
+        );
+        await store.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-local-1',
+            name: 'Weekend Service',
+            description: 'Initial',
+            scheduledFor: null,
+          ),
+        );
+
+        final pending = await store.readPendingMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        expect(pending, hasLength(1));
+        expect(pending.single.kind, PlanningMutationKind.planCreate);
+        expect(pending.single.scheduledFor, isNull);
+      },
+    );
+
+    test('clearing description on a pending plan create removes it', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: PlanningPlanCreateMutationDraft(
+          planId: 'plan-local-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Initial',
+          scheduledFor: DateTime.utc(2026, 4, 12, 9),
+        ),
+      );
+      await store.recordPlanEdit(
+        context: context,
+        draft: PlanningPlanEditMutationDraft(
+          planId: 'plan-local-1',
+          name: 'Weekend Service',
+          description: null,
+          scheduledFor: DateTime.utc(2026, 4, 12, 9),
+        ),
+      );
+
+      final pending = await store.readPendingMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      expect(pending, hasLength(1));
+      expect(pending.single.kind, PlanningMutationKind.planCreate);
+      expect(pending.single.description, isNull);
+    });
+
+    test(
       'session mutations stay tied to the parent locally created plan and create then delete annihilates the local mutation',
       () async {
         const context = PlanningMutationContext(

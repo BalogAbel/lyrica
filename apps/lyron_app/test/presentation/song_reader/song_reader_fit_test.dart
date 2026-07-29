@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
@@ -1188,6 +1189,57 @@ void main() {
     );
   });
 
+  group('estimateSectionHeight — wrapped runs charge their own chord row', () {
+    // Two segments, each its own word group: the first segment's trailing
+    // space forces a group boundary before the second segment (mirrors
+    // groupSegmentsIntoWords). Each group carries its own chord.
+    //   group 1: 'Hello ' (6 chars)  -> width 60  (chord 'C')
+    //   group 2: 'World!!' (7 chars) -> width 70  (chord 'G')
+    // At maxWidth=120 (the estimator's width floor) the two groups (60+70=130)
+    // do not both fit in one 120-wide run, so they wrap into two runs, each
+    // carrying its own chord. At maxWidth=1000 both groups fit in a single run.
+    SongReaderSectionProjection twoWordSection() => SongReaderSectionProjection(
+      kind: SongSectionKind.verse,
+      label: 'Verse',
+      number: 1,
+      isUnknown: false,
+      lines: [
+        SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'C', text: 'Hello '),
+            SongReaderSegmentProjection(displayChord: 'G', text: 'World!!'),
+          ],
+        ),
+      ],
+    );
+
+    test('charges a chord row for every wrapped run that carries a chord', () {
+      final section = twoWordSection();
+
+      final oneRunHeight = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: 1000.0,
+        fontScale: fontScale,
+      );
+      final twoRunHeight = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: 120.0,
+        fontScale: fontScale,
+      );
+
+      final diff = twoRunHeight - oneRunHeight;
+      expect(
+        diff,
+        greaterThanOrEqualTo(chordRowHeight + lyricRowHeight + lineRunSpacing),
+        reason:
+            'The second wrapped run brings its own chord row, lyric row, '
+            'and run gap, exactly like the renderer draws it.',
+      );
+    });
+  });
+
   group('estimateSectionHeight', () {
     test('unlabeled section has no header height contribution', () {
       final labeled = SongReaderSectionProjection(
@@ -1267,6 +1319,394 @@ void main() {
       );
 
       expect(hTab, greaterThan(hOneLine));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bug fix: group width must account for chord width, not just lyric chars.
+  // ---------------------------------------------------------------------------
+
+  group('over-wide group packs its own segments into runs', () {
+    // Reviewer's repro: 12 segments in a single word group (no whitespace
+    // between them, so groupSegmentsIntoWords keeps them together), each
+    // with a wide chord ('C#m/G#', 6 chars -> 60px) over a one-character
+    // lyric ('a'). At columnWidth=120 (the estimator's clamp floor), each
+    // segment is 60px wide, so 2 fit per run (0 inter-segment spacing,
+    // mirroring song_line_view.dart's inner Wrap) -> 6 runs of 2 segments
+    // each, every run carrying a chord.
+    //
+    // The buggy code instead divides the group's total width
+    // (12*60=720px) by the effective line width (120px) to get
+    // runsNeeded=6, but only marks the FIRST of those 6 runs as carrying a
+    // chord. The renderer disagrees: every run that receives a chorded
+    // segment draws a chord row, because the over-wide group is laid out
+    // by its own inner Wrap where every segment carries its own chord
+    // column.
+    test('charges a chord row for every inner run of an over-wide group', () {
+      const chord = 'C#m/G#'; // 6 chars -> 60px at characterWidthEstimate
+      const segmentCount = 12;
+      const columnWidth = 120.0; // clamps to the estimator's floor
+      final line = SongReaderLyricLineProjection(
+        segments: List.generate(
+          segmentCount,
+          (_) =>
+              const SongReaderSegmentProjection(displayChord: chord, text: 'a'),
+        ),
+      );
+      final section = SongReaderSectionProjection(
+        kind: SongSectionKind.verse,
+        label: 'Unlabeled',
+        number: null,
+        isUnknown: false,
+        lines: [line],
+      );
+
+      // Widths imply: segment width = 60px, effectiveLineWidth = 120px,
+      // 0 spacing within the group -> 2 segments/run -> 6 runs, all
+      // chorded.
+      const runsImplied = 6;
+
+      final height = estimateSectionHeight(
+        section: section,
+        viewMode: viewMode,
+        maxWidth: columnWidth,
+        fontScale: fontScale,
+      );
+
+      final minExpected = runsImplied * (chordRowHeight + lyricRowHeight);
+
+      expect(
+        height,
+        greaterThanOrEqualTo(minExpected),
+        reason:
+            'every inner run of the over-wide group carries a chord, so '
+            'the estimate must be at least $runsImplied * '
+            '(chordRowHeight + lyricRowHeight) = $minExpected; got $height',
+      );
+    });
+  });
+
+  group('a single over-wide segment models its own lyric text wrap', () {
+    // The most common "over-wide group" shape is NOT several chorded
+    // segments stacked with no whitespace between them (the reviewer's
+    // repro above) -- it's a single, ordinary lyric segment whose own text
+    // is simply long (no chord splits it into multiple segments), e.g. a
+    // full sentence under one leading chord or no chord at all. The
+    // renderer's inner Wrap sees exactly one child in that case (one
+    // segment, no siblings to wrap between), but the segment's OWN lyric
+    // `Text` still soft-wraps internally within its ConstrainedBox
+    // (_SongLineSegmentView in song_line_view.dart), producing multiple
+    // VISUAL lines under one chord (drawn once, at the top of that
+    // segment's Column). The estimator must charge extra LYRIC-only height
+    // for those extra wrapped lines without adding extra chord rows --
+    // that's a different effect than the between-segment run-packing
+    // fixed above, and both must be modeled.
+    SongReaderSectionProjection singleSegmentUnlabeledSection(String text) =>
+        SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Unlabeled',
+          number: null,
+          isUnknown: false,
+          lines: [
+            SongReaderLyricLineProjection(
+              segments: [
+                SongReaderSegmentProjection(displayChord: null, text: text),
+              ],
+            ),
+          ],
+        );
+
+    test(
+      'estimate grows with the number of wrapped lines a long segment implies',
+      () {
+        const columnWidth = 120.0; // == the estimator's clamp floor
+        // shortText: 6 chars -> 60px -> fits in one 120px line -> 1 line.
+        // longText: 30 chars -> 300px -> ceil(300/120) = 3 lines.
+        const shortText = 'aaaaaa'; // 6 chars
+        const longText = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; // 30 chars
+        const shortLines = 1;
+        final longLines =
+            (longText.length * characterWidthEstimate / columnWidth).ceil();
+        expect(
+          longLines,
+          equals(3),
+          reason: 'sanity check on the fixture\'s own arithmetic',
+        );
+
+        final shortHeight = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(shortText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+        final longHeight = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(longText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+
+        final diff = longHeight - shortHeight;
+        final minExpectedDiff =
+            (longLines - shortLines) * lyricRowHeight * fontScale;
+
+        expect(
+          diff,
+          greaterThanOrEqualTo(minExpectedDiff),
+          reason:
+              'a lone over-wide segment with no chord siblings still wraps '
+              'its own lyric text into multiple visual lines; the estimate '
+              'must grow by at least ${longLines - shortLines} extra lyric '
+              'row(s) ($minExpectedDiff px), not stay flat at one lyric row '
+              'regardless of how wide the segment\'s text is '
+              '(short=$shortHeight, long=$longHeight, diff=$diff)',
+        );
+      },
+    );
+
+    test(
+      'does not charge an extra chord row for a wrapped lyric-only segment',
+      () {
+        // Same long segment, but WITH a chord. The chord must still be
+        // charged exactly once (drawn once above the wrapped lyric text),
+        // not once per implied wrapped line.
+        const columnWidth = 120.0;
+        const longText = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; // 30 chars, 3 lines
+        final section = SongReaderSectionProjection(
+          kind: SongSectionKind.verse,
+          label: 'Unlabeled',
+          number: null,
+          isUnknown: false,
+          lines: [
+            SongReaderLyricLineProjection(
+              segments: [
+                const SongReaderSegmentProjection(
+                  displayChord: 'C',
+                  text: longText,
+                ),
+              ],
+            ),
+          ],
+        );
+        final withChord = estimateSectionHeight(
+          section: section,
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+        final withoutChord = estimateSectionHeight(
+          section: singleSegmentUnlabeledSection(longText),
+          viewMode: viewMode,
+          maxWidth: columnWidth,
+          fontScale: fontScale,
+        );
+
+        final chordContribution = withChord - withoutChord;
+        expect(
+          chordContribution,
+          moreOrLessEquals(
+            chordRowHeight * fontScale + chordToLyricGap,
+            epsilon: 0.01,
+          ),
+          reason:
+              'the chord is drawn exactly once above the (internally '
+              'wrapped) lyric text, so it must add exactly one chord row, '
+              'never one per wrapped lyric line '
+              '(contribution=$chordContribution)',
+        );
+      },
+    );
+  });
+
+  group('_lineItemHeight accounts for chord width', () {
+    // Narrow enough that a single wide (8-char = 80px) chord segment already
+    // occupies most of the run, so two of them can never share a run.
+    const columnWidth = 130.0;
+
+    SongReaderSectionProjection unlabeledSection(
+      SongReaderLyricLineProjection line,
+    ) => SongReaderSectionProjection(
+      kind: SongSectionKind.verse,
+      label: 'Unlabeled',
+      number: null,
+      isUnknown: false,
+      lines: [line],
+    );
+
+    SongReaderLyricLineProjection chordOnlyLine(String chord, int count) =>
+        SongReaderLyricLineProjection(
+          segments: List.generate(
+            count,
+            (_) => SongReaderSegmentProjection(displayChord: chord, text: ''),
+          ),
+        );
+
+    test('accounts for chord width on a chord-only line', () {
+      // Six wide chord-only segments ("Cmaj7#11", 8 chars -> 80px each) vs a
+      // single one of the same chord. Lyric-only counting (the bug) sees
+      // every segment as 0px wide and packs all six into one run regardless
+      // of count, so the two heights would come out equal. A correct
+      // estimate must grow: 80px segments cannot pack two-per-run at a
+      // 130px column, so six of them span several runs.
+      final wideSection = unlabeledSection(chordOnlyLine('Cmaj7#11', 6));
+      final oneSection = unlabeledSection(chordOnlyLine('Cmaj7#11', 1));
+
+      final wideHeight = estimateSectionHeight(
+        section: wideSection,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+      final oneRowHeight = estimateSectionHeight(
+        section: oneSection,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+
+      expect(
+        wideHeight,
+        greaterThan(oneRowHeight + 100),
+        reason:
+            'a chord-only line of several wide chords must estimate as '
+            'several rows tall, not collapse to a single zero-width run '
+            '(wide=$wideHeight, oneRow=$oneRowHeight)',
+      );
+    });
+
+    test('accounts for a chord wider than the lyric under it', () {
+      // Identical lyric text ('a ' x5, one word-group per segment because of
+      // the trailing space) under two different chords. Lyric-only counting
+      // (the bug) sizes both lines identically since the chord never enters
+      // the width; the segment column is actually as wide as the wider of
+      // chord/lyric, so the long chord ("Cmaj7#11", 80px) must force more
+      // wraps than the short one ("C", 10px) at this narrow column width.
+      SongReaderLyricLineProjection line(String chord) =>
+          SongReaderLyricLineProjection(
+            segments: List.generate(
+              5,
+              (_) =>
+                  SongReaderSegmentProjection(displayChord: chord, text: 'a '),
+            ),
+          );
+
+      final shortChordHeight = estimateSectionHeight(
+        section: unlabeledSection(line('C')),
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+      final longChordHeight = estimateSectionHeight(
+        section: unlabeledSection(line('Cmaj7#11')),
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        maxWidth: columnWidth,
+        fontScale: 1.0,
+      );
+
+      expect(
+        longChordHeight,
+        greaterThan(shortChordHeight),
+        reason:
+            'a chord wider than its lyric must be reflected in the group '
+            'width, forcing more wraps than the lyric-only estimate would '
+            '(long=$longChordHeight, short=$shortChordHeight)',
+      );
+    });
+  });
+
+  group('mandatory line break: standalone \\r and U+0085 NEXT LINE (eighth '
+      'review round)', () {
+    // Pure unit tests on flowBlockHeight's forced-break line count -- no
+    // widget pump, no tester, host-runnable the same way every other test in
+    // this file is, so `flutter test` (what scripts/verify.sh actually runs)
+    // enforces them. The render-side claim (that Flutter WEB additionally
+    // treats a standalone `\r` and U+0085 as mandatory breaks, where the host
+    // text stack does not -- see the seventh round's doc comment on
+    // `_mandatoryLineBreak`, which measured a lone `\r` as NOT breaking on the
+    // host) is checked empirically in
+    // song_line_view_estimate_consistency_test.dart's Chrome run; this group
+    // only pins the ARITHMETIC consequence of adding both to the mandatory
+    // set, which every platform's `flutter test` enforces regardless of
+    // which text stack is underneath.
+    //
+    // Width 300, no chord, single short segment -- same shape as the
+    // seventh round's '\n'/U+000B fixtures in
+    // song_line_view_estimate_consistency_test.dart, chosen so the group
+    // width (well under 300px) never triggers width-driven wrapping: the
+    // only thing that can change the line count here is the mandatory-break
+    // split itself. lyricRowHeight=24, lineGap=10, lineWidgetBottomPadding=2,
+    // so a single-run lyric line's height is `lyricLines * 24 + 12`.
+    const wideWidth = 300.0;
+
+    double lineHeightFor(String text) {
+      final block = FlowBlock(
+        kind: FlowBlockKind.line,
+        sectionIndex: 0,
+        line: SongReaderLyricLineProjection(
+          segments: [
+            SongReaderSegmentProjection(displayChord: null, text: text),
+          ],
+        ),
+      );
+      return flowBlockHeight(
+        block: block,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        columnWidth: wideWidth,
+        fontScale: 1.0,
+      );
+    }
+
+    test('a standalone \\r (no following \\n) forces a break', () {
+      // PRE-FIX: a bare \r is neither in _mandatoryLineBreak nor
+      // _breakableWhitespace, so 'A\rB' is one unbreakable 3-char "word"
+      // that fits comfortably in 300px -- 1 line, height 1*24+12=36.
+      // POST-FIX: \r alone joins the mandatory set, splitting into ['A','B']
+      // -- 2 lines, height 2*24+12=60.
+      expect(
+        lineHeightFor('A\rB'),
+        equals(60.0),
+        reason:
+            'a standalone \\r must force a break the same as \\n (measured '
+            'on Flutter web, Chrome renders 52px where the pre-fix '
+            'estimator computes 36px) -- treating it as mandatory can only '
+            'ever add estimated lines, never remove them, so this is safe '
+            'even though the host text stack alone does not break here',
+      );
+    });
+
+    test('a standalone U+0085 NEXT LINE forces a break', () {
+      // Same shape and same arithmetic as the \\r case above: PRE-FIX
+      // 'AB' is one 3-char "word" (height 36.0); POST-FIX U+0085 joins
+      // the mandatory set (height 60.0).
+      expect(
+        lineHeightFor('AB'),
+        equals(60.0),
+        reason:
+            'U+0085 NEXT LINE must force a break the same as \\n (measured '
+            'on Flutter web, Chrome renders 52px where the pre-fix '
+            'estimator computes 36px)',
+      );
+    });
+
+    test('\\r\\n still counts as ONE break, not two, now that a lone \\r is '
+        'also mandatory', () {
+      // Guards the alternation order in _mandatoryLineBreak: \r\n must be
+      // tried before the lone \r alternative, or 'A\r\nB' would match \r
+      // first (consuming only the \r), leave the \n to match separately
+      // as its own mandatory break immediately after, and produce THREE
+      // chunks (['A', '', 'B']) instead of two -- an invisible-in-the-
+      // ratio bug (it only ever over-estimates, 3*24+12=84 instead of the
+      // correct 2*24+12=60) but still the wrong line count for a single
+      // CRLF pair.
+      expect(
+        lineHeightFor('A\r\nB'),
+        equals(60.0),
+        reason:
+            'a single \\r\\n pair must still produce exactly one break '
+            '(2 chunks, height 60.0), not two breaks (3 chunks, height '
+            '84.0) -- \\r\\n must be matched before the lone \\r '
+            'alternative in _mandatoryLineBreak',
+      );
     });
   });
 }

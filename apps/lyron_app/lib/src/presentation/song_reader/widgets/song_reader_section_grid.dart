@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -45,7 +46,15 @@ class SongReaderSectionGrid extends StatelessWidget {
         final blocks = buildFlowBlocks(
           sections: sections,
           hasLeadingDirective: hasLeadingDirective,
+          leadingDirectiveText: leadingDirectiveText,
         );
+
+        // Measure the real per-character advance of the lyric and chord text
+        // styles once per build (not once per line, not inside any binary
+        // search) and reuse it for every block below -- see
+        // measureSongReaderCharWidths for why a single flat character-width
+        // estimate undercounts both styles differently.
+        final charWidths = measureSongReaderCharWidths(context);
 
         // Use [resolveFlowLayoutForSections] so the grid's column decision uses
         // the same logic as [estimateRenderedLayout] / [resolveFitFontScale].
@@ -60,6 +69,11 @@ class SongReaderSectionGrid extends StatelessWidget {
           fontScale: sharedFontScale,
           allowTwoColumns: normalizedColumns > 1,
           hasLeadingDirective: hasLeadingDirective,
+          leadingDirectiveText: leadingDirectiveText,
+          lyricCharWidth: charWidths.lyricCharWidth,
+          chordCharWidth: charWidths.chordCharWidth,
+          headerCharWidth: charWidths.headerCharWidth,
+          textScale: charWidths.textScale,
         );
         final effectiveColumns = layout.columnCount;
 

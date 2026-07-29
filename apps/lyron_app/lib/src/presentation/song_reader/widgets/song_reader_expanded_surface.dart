@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -122,8 +123,12 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
     final availableHeight = constraints.maxHeight - _contentPaddingV;
 
     if (_preFitScale == null) {
-      // First double-tap: compute and apply fit scale.
+      // First double-tap: compute and apply fit scale. Measure the real
+      // lyric/chord character advances once here (a single-shot event
+      // handler, not a per-line or per-binary-search-iteration call) rather
+      // than let the fit calculator guess with a flat constant.
       _preFitScale = widget.projection.sharedFontScale;
+      final charWidths = measureSongReaderCharWidths(context);
       final fit = resolveFitFontScale(
         sections: widget.projection.sections,
         viewMode: widget.projection.viewMode,
@@ -135,6 +140,11 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
         leadingDirectiveHeight: widget.projection.capoDirectiveText != null
             ? directiveLineHeight + sectionGap
             : 0,
+        leadingDirectiveText: widget.projection.capoDirectiveText,
+        lyricCharWidth: charWidths.lyricCharWidth,
+        chordCharWidth: charWidths.chordCharWidth,
+        headerCharWidth: charWidths.headerCharWidth,
+        textScale: charWidths.textScale,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);

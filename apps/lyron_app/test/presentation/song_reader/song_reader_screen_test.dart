@@ -202,13 +202,24 @@ void main() {
       sessionStatus: CatalogSessionStatus.verified,
       hasCachedCatalog: true,
     ),
+    // Lets a test observe (and count) rebuilds of songLibraryListProvider
+    // instead of always using the fixed-value default below.
+    Override? songLibraryListOverride,
+    // Lets a test swap the '/' route for a lightweight placeholder so a
+    // post-delete navigate-home doesn't require the full SongListScreen's
+    // provider graph.
+    WidgetBuilder? homeBuilder,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
 
     final router = GoRouter(
       initialLocation: initialLocation,
       routes: [
-        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              (homeBuilder ?? (_) => const SongListScreen())(context),
+        ),
         GoRoute(
           path: '/songs/:songId',
           builder: (context, state) =>
@@ -230,9 +241,12 @@ void main() {
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
           songLibraryServiceProvider.overrideWithValue(songLibraryService),
-        songLibraryListProvider.overrideWith(
-          (ref) async => const [SongSummary(id: songId, title: 'Reader Song')],
-        ),
+        songLibraryListOverride ??
+            songLibraryListProvider.overrideWith(
+              (ref) async => const [
+                SongSummary(id: songId, title: 'Reader Song'),
+              ],
+            ),
         songLibraryReaderProvider.overrideWithProvider(
           (value) => FutureProvider.autoDispose((ref) async => result),
         ),
@@ -702,6 +716,63 @@ void main() {
 
     expect(find.text('Reader Song'), findsWidgets);
     expect(find.text('Edit song'), findsNothing);
+  });
+
+  testWidgets('delete action deletes the song and refreshes the library', (
+    tester,
+  ) async {
+    final service = _RecordingDeleteSongLibraryService();
+    var rebuilds = 0;
+
+    await tester.pumpWidget(
+      buildRoutedApp(
+        result: buildResult(),
+        songLibraryService: service,
+        catalogState: const CatalogSnapshotState(
+          context: ActiveCatalogContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+        // Counting override: incremented every time songLibraryListProvider
+        // actually recomputes, so we can prove the delete flow invalidated
+        // it rather than just asserting the delete call happened.
+        songLibraryListOverride: songLibraryListProvider.overrideWith((
+          ref,
+        ) async {
+          rebuilds += 1;
+          return const [SongSummary(id: songId, title: 'Reader Song')];
+        }),
+        // Delete navigates home (no back stack to pop to here); swap in a
+        // trivial placeholder so we don't drag in SongListScreen's whole
+        // provider graph just to prove the delete+invalidate happened.
+        homeBuilder: (context) => const Text('home'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Keep the family instance alive across the delete so invalidation forces
+    // an observable rebuild instead of just lazily resolving on next read.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SongReaderScreen)),
+    );
+    final subscription = container.listen(songLibraryListProvider, (_, _) {});
+    addTearDown(subscription.close);
+
+    expect(rebuilds, 1);
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songDeleteAction));
+    await tester.pumpAndSettle();
+
+    expect(service.deletedSongId, songId);
+    expect(find.text('home'), findsOneWidget);
+    expect(rebuilds, greaterThan(1));
   });
 
   testWidgets(
@@ -1783,6 +1854,73 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
+  testWidgets('immersive mode is not re-applied when the state is unchanged', (
+    tester,
+  ) async {
+    final modeCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemChrome.setEnabledSystemUIMode') {
+          modeCalls.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      buildRoutedApp(
+        result: buildResult(),
+        songLibraryService: SongLibraryService(
+          _ReaderFakeSongRepository(),
+          _ReaderFakeSongRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The reader opens with compact controls hidden (see 'compact reader
+    // uses immersive header and hides overlay by default'), so the initial
+    // post-frame sync applies edgeToEdge exactly once.
+    expect(modeCalls, ['SystemUiMode.edgeToEdge']);
+    final callCountAfterOpen = modeCalls.length;
+
+    // Open the editor without ever toggling the surface: controls visibility
+    // never changes, so _editSong's push-time _applyImmersiveMode(false) call
+    // asks for the SAME state that's already applied. The de-dup guard must
+    // swallow it — the call count must not grow.
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songEditAction));
+    await tester.pumpAndSettle();
+    expect(find.byType(SongReaderScreen), findsNothing);
+    expect(modeCalls.length, callCountAfterOpen);
+
+    // Return from the editor: _editSong restores the same (still unchanged)
+    // visibility, so this must also be swallowed by the guard.
+    await tester.tap(find.byKey(const ValueKey('song-editor-back-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SongReaderScreen), findsOneWidget);
+    expect(modeCalls.length, callCountAfterOpen);
+
+    // Now make a real change: toggling the surface actually flips controls
+    // visibility, so this proves the counter is wired to something real —
+    // it must grow by exactly one.
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    await tester.pump();
+    expect(modeCalls.length, callCountAfterOpen + 1);
+    expect(modeCalls.last, 'SystemUiMode.immersiveSticky');
+
+    // Drain any persist-zoom debounce.
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
   testWidgets('restores system UI mode when the reader is disposed', (
     tester,
   ) async {
@@ -2128,6 +2266,38 @@ class _BlockingSongLibraryService extends SongLibraryService {
     required String songId,
   }) async {
     return const SongSource(id: 'reader_song', source: '{title: Reader Song}');
+  }
+}
+
+/// Records the arguments of a successful `deleteSong` call instead of hitting
+/// the base implementation's mutation-store bookkeeping (the fake repository
+/// underneath has no real row for [_ReaderFakeSongRepository.readById] to
+/// return, so the base logic would throw a StateError before recording
+/// anything).
+class _RecordingDeleteSongLibraryService extends SongLibraryService {
+  _RecordingDeleteSongLibraryService()
+    : super(_ReaderFakeSongRepository(), _ReaderFakeSongRepository());
+
+  String? deletedSongId;
+  ActiveCatalogContext? deletedContext;
+
+  @override
+  Future<SongMutationRecord> deleteSong({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async {
+    deletedSongId = songId;
+    deletedContext = context;
+    return SongMutationRecord(
+      id: songId,
+      organizationId: context.organizationId,
+      slug: 'reader-song',
+      title: 'Reader Song',
+      chordproSource: '{title: Reader Song}',
+      version: 1,
+      baseVersion: 1,
+      syncStatus: SongSyncStatus.pendingDelete,
+    );
   }
 }
 

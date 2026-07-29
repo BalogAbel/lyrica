@@ -137,9 +137,10 @@ class AppStrings {
   static const planSaveAction = 'Save';
   static const planNameLabel = 'Plan name';
   static const planDescriptionLabel = 'Description';
-  static const planScheduledForLabel = 'Scheduled for (UTC ISO-8601)';
-  static const planScheduledForInvalidMessage =
-      'Enter a valid UTC ISO-8601 timestamp or leave the field empty.';
+  static const planScheduledForLabel = 'Scheduled for';
+  static const planScheduledForPickAction = 'Pick date & time';
+  static const planScheduledForClearAction = 'Clear scheduled date';
+  static const planScheduledForEmptyLabel = 'Not scheduled';
   static const planEditorTitleCreate = 'Create plan';
   static const planEditorTitleEdit = 'Edit plan';
   static const planListLoadingMessage = 'Loading plans...';
@@ -160,6 +161,8 @@ class AppStrings {
   static const sessionEditAction = 'Edit session';
   static const sessionCreateAction = 'Add session';
   static const sessionReorderAction = 'Reorder session';
+  static const planningReorderFailedMessage =
+      'Could not save the new order. The previous order was restored.';
   static const sessionMoveUpAction = 'Move session up';
   static const sessionMoveDownAction = 'Move session down';
   static const sessionRenameAction = 'Rename session';

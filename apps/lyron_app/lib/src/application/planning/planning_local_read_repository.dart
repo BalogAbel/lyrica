@@ -137,12 +137,16 @@ class PlanningLocalReadRepository implements PlanningRepository {
           if (existing == null) {
             continue;
           }
+          // A planEdit's description/scheduledFor are taken as-is: the edit
+          // draft always carries the complete form state, so a null value
+          // here means the user explicitly cleared the field rather than
+          // "unchanged". Falling back to `existing` would mask the clear.
           plansById[mutation.aggregateId] = PlanSummary(
             id: existing.id,
             slug: existing.slug,
             name: mutation.name ?? existing.name,
-            description: mutation.description ?? existing.description,
-            scheduledFor: mutation.scheduledFor ?? existing.scheduledFor,
+            description: mutation.description,
+            scheduledFor: mutation.scheduledFor,
             updatedAt: mutation.updatedAt,
             version: existing.version,
           );
@@ -205,12 +209,16 @@ class PlanningLocalReadRepository implements PlanningRepository {
       } else if (mutation.aggregateId == planId &&
           mutation.kind == PlanningMutationKind.planEdit &&
           plan != null) {
+        // Same reasoning as _mergePlanSummaries above: a planEdit's null
+        // description/scheduledFor is an explicit clear, not "unchanged", so
+        // take the mutation's value directly instead of falling back to
+        // the pre-edit plan.
         plan = PlanSummary(
           id: plan.id,
           slug: plan.slug,
           name: mutation.name ?? plan.name,
-          description: mutation.description ?? plan.description,
-          scheduledFor: mutation.scheduledFor ?? plan.scheduledFor,
+          description: mutation.description,
+          scheduledFor: mutation.scheduledFor,
           updatedAt: mutation.updatedAt,
           version: plan.version,
         );

@@ -144,7 +144,13 @@ void main() {
                 viewMode: SongReaderViewMode.chordsAndLyrics,
                 sharedFontScale: 1,
                 columnCount: 2,
-                availableHeight: 340,
+                // The estimator now charges a chord row + gap per wrapped
+                // run (not once per line) and adds the renderer's run
+                // spacing between runs, so the taller column estimates
+                // higher than before. 420 keeps single-column overflowing
+                // (so the 2-column path is tried) while staying above the
+                // 2-column tolerance threshold for this fixture's content.
+                availableHeight: 420,
               ),
             ),
           ),
