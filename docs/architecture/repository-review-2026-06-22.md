@@ -266,7 +266,17 @@ over-counted; note `has_capability` had it there too but **regressed** when rede
 without it in `202605250002_organization_read_only_role_constraints.sql`.
 **Fixed (arch-spine-phase0-1)**: `has_capability` and `get_my_capabilities`
 now pin `set search_path = public` (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
-guarded by `scripts/tests/capability-search-path-contract-test.sh`. All 3 helpers closed.
+guarded by `scripts/tests/capability-search-path-contract-test.sh`. **Correction (2026-07-29):**
+`202607080001` closed only the `search_path` half — the same `202605250002` redefinition
+also dropped `security definer` on `has_capability`, which broke the RLS recursion fix from
+`20260323220000` and was missed at the time. Consequence: the "memberships are manageable
+by capability" ALL policy calls `can_manage_membership` → `has_capability`, which reads
+`public.memberships` as invoker and re-enters the same policy, so any authenticated read of
+`memberships` — and the `get_my_capabilities` RPC, which reads `memberships` as invoker —
+failed with `stack depth limit exceeded`. Restored on 2026-07-29 in
+`supabase/migrations/202607290000_has_capability_security_definer_restore.sql`, now pinned
+by `scripts/tests/capability-search-path-contract-test.sh` asserting both `proconfig`
+(`search_path=public`) and `prosecdef` (security definer). All 3 helpers closed.
 
 ## 6. Local-First Review (the highest-risk subsystem)
 
