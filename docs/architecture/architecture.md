@@ -64,6 +64,23 @@ The authentication boundary is split into two concerns: provider-managed identit
 
 Redemption itself is fully backend-enforced and returns a `jsonb` status envelope (`{"status", "organization_id"}`) rather than raising for business outcomes. It is email-bound when the invitation carries an address — the caller's own confirmed account email must match, case- and whitespace-insensitively — and stays a bearer link when it does not; either way the caller is rate limited (suspicious outcomes only, keyed on `auth.uid()`), and every attempt, successful or not, is written to `public.invitation_redemption_attempts` with only a token digest retained, never the raw token. See [ADR-025](decisions/ADR-025-invitation-redemption-model.md).
 
+The read boundary stays on RLS-protected table reads: the Flutter
+repositories read `songs`, `plans`, and `sessions` directly through the
+Supabase table API, with RLS enforcing tenant visibility on every row. There
+are zero direct table writes — every mutation goes through a `security
+definer` RPC, with RLS denying direct DML as a second layer. See
+[ADR-026](decisions/ADR-026-rls-protected-read-boundary.md).
+
+Song writes derive their shadow metadata (`title`, `artist`,
+`key_signature`, `tempo_bpm`, `tags`) from canonical `chordpro_source` inside
+the `create_song` / `song_write_update_common` `security definer` bodies,
+using a small SQL reproduction of the ChordPro directive grammar
+(`public.chordpro_scan_directives` and five per-field
+`public.chordpro_derive_*` functions). Client-supplied values for those
+fields are not accepted as RPC parameters at all; `p_title` is retained only
+as a fallback for sources with no title directive. See
+[ADR-027](decisions/ADR-027-backend-derived-song-metadata.md).
+
 Backend policy helpers are responsible for:
 
 - deriving organization membership scope from `auth.uid()`
