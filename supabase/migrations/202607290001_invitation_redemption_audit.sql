@@ -75,3 +75,14 @@ create policy invitation_redemption_attempts_no_direct_delete
 
 revoke all on table public.invitation_redemption_attempts from anon, authenticated;
 grant select on table public.invitation_redemption_attempts to authenticated;
+
+-- pg_cron is created by 202605160006_pg_cron_orphan_cleanup.sql, which runs
+-- earlier; this only adds the retention job alongside the existing cleanup.
+select cron.schedule(
+  'cleanup-invitation-redemption-attempts',
+  '30 3 * * *',
+  $cron$
+    delete from public.invitation_redemption_attempts
+    where created_at < now() - interval '90 days'
+  $cron$
+);

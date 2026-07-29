@@ -411,6 +411,18 @@ check(
     f"benign retries must not lock a real user out, got: {payload!r}",
 )
 
+# --- Case 16: audit rows have a scheduled retention job. ---------------------
+retention = run_sql(dedent("""
+    select coalesce(string_agg(jobname || '|' || schedule, ','), '')
+    from cron.job
+    where jobname = 'cleanup-invitation-redemption-attempts';
+"""))
+check(
+    "case 16 retention job",
+    retention.startswith("cleanup-invitation-redemption-attempts|"),
+    f"expected a scheduled retention job for the audit table, got: {retention!r}",
+)
+
 if failures:
     raise SystemExit(
         "SEC-1 invitation redemption contract failed:\n  " + "\n  ".join(failures)
