@@ -284,6 +284,73 @@ check(
     f"helper executable by neither, got: {grants!r}",
 )
 
+# --- Case 11: an email-bound invitation redeems for the invited address. ------
+make_user(BOUND_USER, "bound@lyron.local")
+bound_token = make_invitation(email="BOUND@Lyron.local  ")
+payload = redeem_payload(BOUND_USER, bound_token)
+check(
+    "case 11 bound redemption",
+    payload.get("status") == "redeemed" and payload.get("organization_id") == ORG_ID,
+    f"invited address must redeem, case-and-whitespace-insensitively, got: {payload!r}",
+)
+
+# --- Case 12: a different caller cannot redeem an email-bound invitation. -----
+MISMATCH_USER = "aaaaaaa1-0000-0000-0000-000000000006"
+make_user(MISMATCH_USER, "someone.else@lyron.local")
+mismatch_token = make_invitation(email="invited@lyron.local")
+payload = redeem_payload(MISMATCH_USER, mismatch_token)
+check(
+    "case 12 email_mismatch",
+    payload.get("status") == "email_mismatch",
+    f"a non-invited caller must be refused, got: {payload!r}",
+)
+still_open = run_sql(
+    "select redeemed_at is null from public.invitations "
+    f"where token = {sql_quote(mismatch_token)};"
+)
+check(
+    "case 12 invitation untouched",
+    still_open == "t",
+    "a refused redemption must leave the invitation unredeemed",
+)
+membership_count = run_sql(
+    "select count(*) from public.memberships "
+    f"where user_id = {sql_quote(MISMATCH_USER)} and status = 'active';"
+)
+check(
+    "case 12 no membership",
+    membership_count == "0",
+    f"email mismatch must not create a membership, got {membership_count}",
+)
+rows = attempt_rows(MISMATCH_USER)
+check(
+    "case 12 mismatch audited",
+    len(rows) == 1 and rows[0][0] == "email_mismatch" and rows[0][1] != ""
+    and rows[0][2] == ORG_ID,
+    f"expected one audited email_mismatch attempt against the org, got: {rows!r}",
+)
+
+# --- Case 13: unconfirmed and address-less callers are refused too. -----------
+UNCONFIRMED_USER = "aaaaaaa1-0000-0000-0000-000000000007"
+make_user(UNCONFIRMED_USER, "unconfirmed@lyron.local", confirmed=False)
+unconfirmed_token = make_invitation(email="unconfirmed@lyron.local")
+payload = redeem_payload(UNCONFIRMED_USER, unconfirmed_token)
+check(
+    "case 13 unconfirmed refused",
+    payload.get("status") == "email_mismatch",
+    f"an unconfirmed address must not satisfy the binding, got: {payload!r}",
+)
+
+NO_EMAIL_USER = "aaaaaaa1-0000-0000-0000-000000000008"
+make_user(NO_EMAIL_USER, None)
+no_email_token = make_invitation(email="anybody@lyron.local")
+payload = redeem_payload(NO_EMAIL_USER, no_email_token)
+check(
+    "case 13 address-less refused",
+    payload.get("status") == "email_mismatch",
+    f"a caller with no address must be refused, got: {payload!r}",
+)
+
 if failures:
     raise SystemExit(
         "SEC-1 invitation redemption contract failed:\n  " + "\n  ".join(failures)

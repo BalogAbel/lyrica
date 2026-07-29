@@ -49,6 +49,7 @@ declare
   v_caller uuid := auth.uid();
   v_inv public.invitations%rowtype;
   v_token_sha256 bytea := sha256(convert_to(p_token, 'UTF8'));
+  v_caller_email text;
 begin
   -- The only remaining raise: with no caller there is nothing to audit or to
   -- key a rate-limit bucket to, and execute is granted to authenticated only.
@@ -79,6 +80,26 @@ begin
     return public.record_invitation_redemption_attempt(
       v_inv.id, v_token_sha256, v_caller, 'expired', v_inv.organization_id
     );
+  end if;
+
+  -- Hybrid binding: an invitation carrying an email is redeemable only by the
+  -- account holding that confirmed address; a null email stays a bearer link.
+  -- The account record is read rather than the JWT email claim: the function is
+  -- already security definer, and the record is current where a claim can be
+  -- stale after an address change.
+  if v_inv.email is not null then
+    select u.email into v_caller_email
+    from auth.users u
+    where u.id = v_caller
+      and u.email_confirmed_at is not null;
+
+    if v_caller_email is null
+      or lower(btrim(v_caller_email)) is distinct from lower(btrim(v_inv.email))
+    then
+      return public.record_invitation_redemption_attempt(
+        v_inv.id, v_token_sha256, v_caller, 'email_mismatch', v_inv.organization_id
+      );
+    end if;
   end if;
 
   if exists (
