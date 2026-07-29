@@ -351,6 +351,66 @@ check(
     f"a caller with no address must be refused, got: {payload!r}",
 )
 
+# --- Case 14: ten suspicious attempts trip the limit for a valid token. ------
+PROBER_USER = "aaaaaaa1-0000-0000-0000-000000000009"
+make_user(PROBER_USER, "prober@lyron.local")
+valid_token = make_invitation(email=None)
+
+for i in range(10):
+    payload = redeem_payload(PROBER_USER, f"guess-{i}")
+    check(
+        f"case 14 probe {i} not_found",
+        payload.get("status") == "not_found",
+        f"probe {i} should report not_found, got: {payload!r}",
+    )
+
+payload = redeem_payload(PROBER_USER, valid_token)
+check(
+    "case 14 rate limited",
+    payload.get("status") == "rate_limited",
+    f"the 11th attempt must be rate limited even with a valid token, got: {payload!r}",
+)
+membership_count = run_sql(
+    "select count(*) from public.memberships "
+    f"where user_id = {sql_quote(PROBER_USER)} and status = 'active';"
+)
+check(
+    "case 14 no membership while limited",
+    membership_count == "0",
+    f"a rate-limited call must not create a membership, got {membership_count}",
+)
+check(
+    "case 14 token still redeemable",
+    run_sql("select redeemed_at is null from public.invitations "
+            f"where token = {sql_quote(valid_token)};") == "t",
+    "a rate-limited call must leave the invitation unredeemed",
+)
+
+# --- Case 15: benign outcomes do not accumulate toward the limit. ------------
+PATIENT_USER = "aaaaaaa1-0000-0000-0000-00000000000a"
+make_user(PATIENT_USER, "patient@lyron.local")
+spent_token = make_invitation(email=None)
+run_sql(dedent(f"""
+    update public.invitations
+    set redeemed_at = now(), redeemed_by = {sql_quote(BEARER_USER)}
+    where token = {sql_quote(spent_token)};
+"""))
+for i in range(12):
+    payload = redeem_payload(PATIENT_USER, spent_token)
+    check(
+        f"case 15 benign attempt {i}",
+        payload.get("status") == "already_redeemed",
+        f"benign retry {i} must stay already_redeemed, got: {payload!r}",
+    )
+
+patient_token = make_invitation(email=None)
+payload = redeem_payload(PATIENT_USER, patient_token)
+check(
+    "case 15 not locked out",
+    payload.get("status") == "redeemed",
+    f"benign retries must not lock a real user out, got: {payload!r}",
+)
+
 if failures:
     raise SystemExit(
         "SEC-1 invitation redemption contract failed:\n  " + "\n  ".join(failures)

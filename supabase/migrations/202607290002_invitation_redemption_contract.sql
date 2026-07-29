@@ -50,6 +50,7 @@ declare
   v_inv public.invitations%rowtype;
   v_token_sha256 bytea := sha256(convert_to(p_token, 'UTF8'));
   v_caller_email text;
+  v_suspicious_attempts integer;
 begin
   -- The only remaining raise: with no caller there is nothing to audit or to
   -- key a rate-limit bucket to, and execute is granted to authenticated only.
@@ -57,6 +58,21 @@ begin
     raise exception using
       errcode = '42501',
       message = 'invitation_redeem_requires_auth';
+  end if;
+
+  -- Only outcomes that look like token probing count. Benign retries (expired,
+  -- already redeemed, already a member) are excluded so a real user retrying a
+  -- stale link cannot lock themselves out. The window expires on its own.
+  select count(*) into v_suspicious_attempts
+  from public.invitation_redemption_attempts a
+  where a.actor_user_id = v_caller
+    and a.outcome in ('not_found', 'email_mismatch')
+    and a.created_at > now() - interval '15 minutes';
+
+  if v_suspicious_attempts >= 10 then
+    return public.record_invitation_redemption_attempt(
+      null, v_token_sha256, v_caller, 'rate_limited', null
+    );
   end if;
 
   select * into v_inv
