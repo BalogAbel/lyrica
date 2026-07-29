@@ -176,13 +176,36 @@ Evaluation order, with an audit row written on every branch and the existing
 2. Rate limit — count `not_found` + `email_mismatch` attempts by this caller in
    the last 15 minutes; at 10 or more, record `rate_limited` and return.
 3. Token lookup — miss records `not_found` (null `invitation_id`) and returns.
-4. Expiry — `expires_at <= now()` records `expired` and returns.
-5. Prior redemption — non-null `redeemed_at` records `already_redeemed` and
+4. Prior redemption — non-null `redeemed_at` records `already_redeemed` and
    returns.
+5. Expiry — `expires_at <= now()` records `expired` and returns.
+
+Steps 4 and 5 keep the current function's precedence: an invitation that was
+redeemed and has since expired still reports `already_redeemed`, which is the
+more useful answer. This slice changes the transport, not the precedence.
 6. Email binding — if `invitations.email` is not null, compare
-   `lower(btrim(invitations.email))` against `lower(btrim(auth.jwt() ->> 'email'))`.
-   A mismatch, or a missing email claim, records `email_mismatch` and returns.
-   A null `invitations.email` skips this check (bearer invitation).
+   `lower(btrim(invitations.email))` against the caller's account email. A
+   mismatch, or a caller with no email on record, records `email_mismatch` and
+   returns. A null `invitations.email` skips this check (bearer invitation).
+
+   **Email source.** The comparison reads `auth.users.email` for `auth.uid()`,
+   not the JWT `email` claim. The function is already `security definer`, so the
+   read is available, and the account record is authoritative and current where a
+   claim can be stale after an email change. Supabase's own `auth.email()` helper
+   is deprecated in favour of `auth.jwt() ->> 'email'`, but that claim carries the
+   same staleness caveat, and reading it would make the contract tests depend on
+   the exact JWT-claim GUC shape rather than on data.
+
+   **Binding strength depends on email ownership verification.** The check proves
+   the caller's account carries the invited address; it proves that address was
+   verified only if the project requires it. `supabase/config.toml` sets
+   `[auth.email] enable_confirmations = false` for local development, which would
+   let a locally-signed-up account claim an arbitrary address. Redemption
+   therefore also requires `auth.users.email_confirmed_at is not null`, and the
+   ADR records that the hosted project must keep signup confirmations enabled for
+   the binding to mean anything. `double_confirm_changes = true` already prevents
+   moving an existing account onto an invited address without controlling the
+   inbox.
 7. Existing membership — an active organization-scope membership records
    `already_member` and returns.
 8. Success — insert the membership, set `redeemed_at` / `redeemed_by`, record
@@ -225,8 +248,8 @@ Backend cases:
 3. Email match is case- and whitespace-insensitive.
 4. Email mismatch returns `email_mismatch`, creates **no** membership row, and
    writes an audit row.
-5. Missing JWT email claim on an email-bound invitation returns
-   `email_mismatch`.
+5. A caller with no account email, and a caller whose email is not confirmed,
+   both return `email_mismatch` on an email-bound invitation.
 6. Expired invitation returns `expired` with an audit row.
 7. Already-redeemed invitation returns `already_redeemed` with an audit row.
 8. Caller who is already an active member returns `already_member`.
@@ -271,10 +294,16 @@ slice.
   casts the jsonb response to `String` and fails. Acceptable: the app is not yet
   distributed to external users, and redemption failure is visible and
   recoverable rather than silent. Noted in the ADR.
-- **Email claim availability.** If a provider issues a session with no `email`
-  claim, every email-bound invitation fails for that user. Test case 5 pins the
-  behavior as an explicit `email_mismatch` rather than an unexplained error, and
-  the bearer path remains available to the issuing admin as the escape hatch.
+- **Callers without a confirmed email.** A phone-only account, or any account
+  whose address is unconfirmed, fails every email-bound invitation. Test case 5
+  pins this as an explicit `email_mismatch` rather than an unexplained error, and
+  the bearer path (null `invitations.email`) remains available to the issuing
+  admin as the escape hatch.
+- **Binding depends on project auth configuration.** If the hosted project ever
+  disables signup email confirmation, an account can be created claiming an
+  address it does not own. The `email_confirmed_at` requirement is the in-database
+  half of the guarantee; the configuration is the other half, and the ADR records
+  it as a standing constraint rather than a one-time setting.
 - **Rate limit locking out a legitimate user.** Bounded by counting only
   `not_found` and `email_mismatch`, and by the 15-minute window expiring on its
   own with no admin action.
