@@ -356,6 +356,78 @@ check(
     str(derive_artist("{artist: Someone}\n{artist}")),
 )
 
+# --- Section D: chordpro_derive_key_signature (Task 6) -----------------------
+
+def derive_key(source: str):
+    raw = run_psql(
+        f"select coalesce(public.chordpro_derive_key_signature({sql_quote(source)}), '<null>');"
+    )
+    return None if raw == "<null>" else raw
+
+
+check(
+    "key: last valid occurrence wins",
+    derive_key("{key: C}\n{key: G}") == "G",
+    str(derive_key("{key: C}\n{key: G}")),
+)
+check(
+    "key: no directive -> null",
+    derive_key("[C] no key directive") is None,
+    str(derive_key("[C] no key directive")),
+)
+
+# Item 16: an invalid (empty) occurrence inside the window does not clear an
+# earlier valid one.
+check(
+    "key: an invalid (empty) later occurrence does not overwrite an earlier valid one",
+    derive_key("{key: C}\n{key:}") == "C",
+    str(derive_key("{key: C}\n{key:}")),
+)
+check(
+    "key: all-invalid occurrences -> null",
+    derive_key("{key:}\n{key:   }") is None,
+    str(derive_key("{key:}\n{key:   }")),
+)
+
+# Item 15: the key window -- honoured before any song content, ignored after
+# a lyric line, after a start_of_*, and after an end_of_*.
+check(
+    "key window: honoured before any lyric line or section directive",
+    derive_key("{key: G}\n[C] Amazing grace") == "G",
+    str(derive_key("{key: G}\n[C] Amazing grace")),
+)
+check(
+    "key window: ignored once a lyric line has been seen",
+    derive_key("[C] Amazing grace\n{key: G}") is None,
+    str(derive_key("[C] Amazing grace\n{key: G}")),
+)
+check(
+    "key window: ignored once a start_of_* directive has been seen",
+    derive_key("{start_of_verse}\n{key: G}") is None,
+    str(derive_key("{start_of_verse}\n{key: G}")),
+)
+check(
+    "key window: ignored once an end_of_* directive has been seen",
+    derive_key("{end_of_verse}\n{key: G}") is None,
+    str(derive_key("{end_of_verse}\n{key: G}")),
+)
+
+# Item 17: the one accepted divergence, pinned explicitly. The Dart parser
+# treats {c: Verse} as a section-start comment (_parseCommentSection matches
+# a bare word like "Verse"), which would close the key window, so the real
+# parser would leave the key null here. chordpro_scan_directives does not
+# implement comment-as-section recognition, so this SAME source derives a
+# key in SQL. This asserts the SQL's actual behaviour and names the
+# divergence, so a future change on either side (SQL growing comment
+# support, or the Dart parser's rule changing) fails this assertion loudly
+# instead of the two silently drifting further apart.
+check(
+    "key window: accepted divergence -- a comment Dart reads as a section "
+    "start does not close the window in SQL (see ADR-027)",
+    derive_key("{c: Verse}\n{key: G}") == "G",
+    str(derive_key("{c: Verse}\n{key: G}")),
+)
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)

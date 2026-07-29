@@ -160,3 +160,29 @@ $$;
 
 revoke all on function public.chordpro_derive_artist(text)
 from public, anon, authenticated;
+
+-- key_signature | key | honoured only while the key window is open
+-- (chordpro_scan_directives' key_window_open, tracking has_seen_song_content
+-- the way chordpro_parser.dart:62 does -- closed by a lyric line or any
+-- start_of_*/end_of_* directive); last valid occurrence among those wins;
+-- invalid (empty-after-trim) occurrences are skipped, not assigned, so
+-- they do not overwrite a previously valid value. Does NOT close the
+-- window on a comment recognised as a section start
+-- (chordpro_parser.dart:138) -- the one accepted, documented divergence;
+-- see ADR-027.
+create or replace function public.chordpro_derive_key_signature(source text)
+returns text
+language sql
+immutable
+as $$
+  select nullif(trim(directive_value), '')
+  from public.chordpro_scan_directives(source)
+  where directive_name = 'key'
+    and key_window_open
+    and nullif(trim(directive_value), '') is not null
+  order by line_number desc
+  limit 1;
+$$;
+
+revoke all on function public.chordpro_derive_key_signature(text)
+from public, anon, authenticated;
