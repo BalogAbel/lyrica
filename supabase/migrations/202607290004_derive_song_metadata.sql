@@ -23,10 +23,48 @@
 -- machine, but a `for` loop with two booleans is far easier to verify
 -- line-by-line against the Dart source above.
 --
--- Uses btrim(x, E' \t\n\r\v\f') rather than bare trim(), because SQL's
--- trim() strips only the ASCII space by default, while Dart's String.trim()
--- strips all whitespace -- a ChordPro line indented with a tab, vertical
--- tab, or form feed would otherwise fail to match what Dart parses.
+-- Trimming goes through public.chordpro_trim rather than SQL's trim(), which
+-- strips only the ASCII space by default. See that function for the exact
+-- character set and why it has to match Dart's String.trim() bit for bit.
+create or replace function public.chordpro_trim(p_value text)
+returns text
+language sql
+immutable
+parallel safe
+as $$
+  -- Dart's String.trim() strips every character with the Unicode White_Space
+  -- property, plus U+FEFF (BOM), and the SQL scanner has to agree with it
+  -- exactly: a directive padded with a non-breaking space is a directive to the
+  -- Dart parser, and would be a lyric line to an ASCII-only trim. That
+  -- disagreement would put a different title or artist in the database than the
+  -- offline client shows for the same source, which is the drift this whole
+  -- slice exists to remove.
+  --
+  -- Spelled with chr() rather than literal characters so the set stays visible
+  -- and greppable in the migration source: most of these are invisible, and
+  -- several are indistinguishable from a plain space in an editor.
+  select btrim(
+    p_value,
+    -- U+0009 TAB, U+000A LF, U+000B VT, U+000C FF, U+000D CR, U+0020 SPACE
+    chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32)
+    -- U+0085 NEL, U+00A0 NBSP, U+1680 OGHAM SPACE MARK
+    || chr(133) || chr(160) || chr(5760)
+    -- U+2000..U+200A, the quad/thin/hair space run
+    || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196)
+    || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201)
+    || chr(8202)
+    -- U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR
+    || chr(8232) || chr(8233)
+    -- U+202F NARROW NBSP, U+205F MEDIUM MATHEMATICAL SPACE, U+3000 IDEOGRAPHIC
+    || chr(8239) || chr(8287) || chr(12288)
+    -- U+FEFF ZERO WIDTH NO-BREAK SPACE (BOM)
+    || chr(65279)
+  );
+$$;
+
+revoke all on function public.chordpro_trim(text)
+from public, anon, authenticated;
+
 create or replace function public.chordpro_scan_directives(source text)
 returns table(
   line_number integer,
@@ -52,7 +90,7 @@ begin
   foreach v_line in array string_to_array(v_normalized_source, chr(10))
   loop
     v_line_number := v_line_number + 1;
-    v_trimmed_line := btrim(v_line, E' \t\n\r\v\f');
+    v_trimmed_line := public.chordpro_trim(v_line);
 
     if v_trimmed_line = '' then
       -- Empty line: no effect on any state, matching ChordproLineKind.empty.
@@ -60,9 +98,8 @@ begin
     end if;
 
     if v_trimmed_line like '{%}' and length(v_trimmed_line) >= 2 then
-      v_body := btrim(
-        substring(v_trimmed_line from 2 for length(v_trimmed_line) - 2),
-        E' \t\n\r\v\f'
+      v_body := public.chordpro_trim(
+        substring(v_trimmed_line from 2 for length(v_trimmed_line) - 2)
       );
 
       if v_body = '' then
@@ -79,8 +116,8 @@ begin
         v_name := lower(v_body);
         v_value := null;
       else
-        v_name := lower(btrim(substring(v_body from 1 for v_colon_pos - 1), E' \t\n\r\v\f'));
-        v_value := btrim(substring(v_body from v_colon_pos + 1), E' \t\n\r\v\f');
+        v_name := lower(public.chordpro_trim(substring(v_body from 1 for v_colon_pos - 1)));
+        v_value := public.chordpro_trim(substring(v_body from v_colon_pos + 1));
       end if;
 
       if v_in_tab and v_name not like 'end_of_%' then

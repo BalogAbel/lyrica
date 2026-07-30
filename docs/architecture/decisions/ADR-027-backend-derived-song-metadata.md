@@ -85,6 +85,35 @@ are each a boolean carried across an ordered line walk. This is parity that
 can be pinned by tests, not approximated — with one named, tested exception,
 recorded next.
 
+## The shared whitespace rule
+
+Both implementations trim the **same** character set, and it is not SQL's
+default. Dart's `String.trim()` strips every character carrying the Unicode
+`White_Space` property plus `U+FEFF`; PostgreSQL's bare `trim()` strips only the
+ASCII space. `public.chordpro_trim` therefore spells the set out explicitly:
+
+`U+0009`–`U+000D`, `U+0020`, `U+0085`, `U+00A0`, `U+1680`, `U+2000`–`U+200A`,
+`U+2028`, `U+2029`, `U+202F`, `U+205F`, `U+3000`, `U+FEFF`.
+
+It is written with `chr()` calls rather than literal characters so the set stays
+visible and greppable in the migration source — most of these are invisible, and
+several are indistinguishable from a plain space in an editor.
+
+The rule applies at every point the Dart scanner trims, not only the outer line:
+the line itself, the directive body inside the braces, and the directive name and
+value on either side of the colon. Trimming fewer of them would reintroduce the
+divergence at a different position.
+
+This matters beyond tidiness. An ASCII-only trim reads `{title: X}` padded with a
+non-breaking space as a **lyric line** rather than a directive, so the backend
+would derive a different title from the same source than the offline client
+displays — precisely the drift SEC-4 exists to remove — and, because a lyric line
+sets `has_seen_song_content`, it would also close the key window early. Pinned by
+the Unicode parity cases in
+`scripts/tests/song-derived-metadata-contract-test.sh`, covering `U+00A0`,
+`U+2003` and `U+FEFF` around the directive, around the name and around the value,
+plus a whitespace-only line and an ordinary lyric line.
+
 ## Known divergence
 
 `chordpro_parser.dart:62` honours the `key` directive only while

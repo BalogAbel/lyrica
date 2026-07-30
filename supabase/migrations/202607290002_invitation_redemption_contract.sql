@@ -40,6 +40,34 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  -- already_redeemed, expired and already_member are terminal for a given token
+  -- and are deliberately excluded from the rate-limit count, so that a real user
+  -- retrying a stale link cannot lock themselves out. Without deduplication that
+  -- exclusion is also an unbounded write: a caller holding one spent or expired
+  -- token could loop the RPC and grow this table indefinitely, with the 90-day
+  -- retention bounding only the age of the rows and not their number.
+  --
+  -- The key includes the token digest, so a genuinely different invitation with
+  -- the same outcome is still audited, and the first event in each window always
+  -- is. not_found and email_mismatch are NOT deduplicated: the rate limit counts
+  -- them, and collapsing them would defeat it.
+  --
+  -- Concurrency: redeem_invitation takes a caller-keyed advisory lock before any
+  -- of this, and every key here is scoped to that same caller, so the
+  -- check-then-insert cannot interleave with itself.
+  if p_outcome in ('already_redeemed', 'expired', 'already_member') then
+    if exists (
+      select 1
+      from public.invitation_redemption_attempts a
+      where a.actor_user_id = p_actor
+        and a.token_sha256 = p_token_sha256
+        and a.outcome = p_outcome
+        and a.created_at > now() - interval '15 minutes'
+    ) then
+      return public.invitation_redemption_envelope(p_outcome, p_organization_id);
+    end if;
+  end if;
+
   insert into public.invitation_redemption_attempts (
     invitation_id, token_sha256, actor_user_id, outcome, organization_id
   ) values (

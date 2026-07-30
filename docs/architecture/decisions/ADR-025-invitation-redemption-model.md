@@ -113,6 +113,29 @@ afterwards, and the two branches share one envelope-building function
 (`public.invitation_redemption_envelope`) so the client cannot observe which
 branch ran.
 
+## The same cap applies to the terminal non-suspicious outcomes
+
+`already_redeemed`, `expired` and `already_member` are excluded from the
+suspicious-attempt count for the reason above — a real user retrying a stale link
+must not lock themselves out. That exclusion carries the same unbounded-write
+consequence as `rate_limited` did: a caller holding one spent or expired token
+could loop the RPC and grow `invitation_redemption_attempts` indefinitely, with
+the 90-day retention bounding the *age* of the rows and not their number.
+
+`record_invitation_redemption_attempt` therefore deduplicates those three
+outcomes within the same 15-minute window. The key is
+`(actor_user_id, token_sha256, outcome)` rather than `(actor, outcome)`: a
+genuinely different invitation producing the same outcome is a different event
+and is still recorded, and the first event in each window always is.
+
+`not_found` and `email_mismatch` are deliberately **not** deduplicated. The rate
+limit counts them, so collapsing repeats would defeat it. The resulting bound per
+caller per window is therefore ten counted suspicious rows, one `rate_limited`
+marker, and one row per distinct token they actually hold.
+
+The check-then-insert is safe because the caller-keyed advisory lock described
+next is taken first, and every dedup key is scoped to that same caller.
+
 ## Concurrency guarantee: a caller-keyed advisory lock
 
 `redeem_invitation` takes `pg_advisory_xact_lock(hashtext(v_caller::text)::bigint)`

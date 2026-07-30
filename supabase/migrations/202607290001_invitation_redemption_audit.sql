@@ -35,6 +35,21 @@ create index invitation_redemption_attempts_rate_limit_idx
   on public.invitation_redemption_attempts (actor_user_id, created_at desc)
   where outcome in ('not_found', 'email_mismatch');
 
+-- Shaped for the "has this caller already been marked rate limited in the
+-- window?" probe. The index above cannot serve it: its predicate excludes
+-- rate_limited rows entirely.
+create index invitation_redemption_attempts_rate_limited_marker_idx
+  on public.invitation_redemption_attempts (actor_user_id, created_at desc)
+  where outcome = 'rate_limited';
+
+-- Shaped for the terminal-outcome audit deduplication, which is keyed on the
+-- token digest as well as the caller so a genuinely different invitation is
+-- still recorded.
+create index invitation_redemption_attempts_terminal_dedup_idx
+  on public.invitation_redemption_attempts
+    (actor_user_id, token_sha256, outcome, created_at desc)
+  where outcome in ('already_redeemed', 'expired', 'already_member');
+
 alter table public.invitation_redemption_attempts enable row level security;
 
 -- Organization admins can review attempts against their own organization.

@@ -916,6 +916,85 @@ check(
     new_signature_grants,
 )
 
+# --- Unicode whitespace parity with Dart's String.trim(). --------------------
+# Dart trims every Unicode White_Space character plus U+FEFF. An ASCII-only trim
+# would read a directive padded with NBSP as a lyric line, so the backend and the
+# offline client would derive different metadata from the same source. Each
+# fixture below is built with chr() so the test source stays readable.
+NBSP = "chr(160)"
+EMSP = "chr(8195)"
+BOM = "chr(65279)"
+
+parity_cases = [
+    (
+        "NBSP around the directive",
+        f"{NBSP} || '{{title: Padded Song}}' || {NBSP}",
+        "Padded Song",
+    ),
+    (
+        "EM SPACE around the directive",
+        f"{EMSP} || '{{title: Em Padded}}' || {EMSP}",
+        "Em Padded",
+    ),
+    (
+        "BOM before the directive",
+        f"{BOM} || '{{title: Bom Song}}'",
+        "Bom Song",
+    ),
+    (
+        "NBSP inside the directive body around name and value",
+        f"'{{' || {NBSP} || 'title' || {NBSP} || ':' || {NBSP} || "
+        f"'Inner Padded' || {NBSP} || '}}'",
+        "Inner Padded",
+    ),
+    (
+        "mixed Unicode whitespace around the value",
+        f"'{{title:' || {EMSP} || {BOM} || 'Mixed' || {NBSP} || '}}'",
+        "Mixed",
+    ),
+]
+
+for label, expr, expected in parity_cases:
+    got = run_psql(f"select public.chordpro_derive_title({expr});")
+    check(
+        f"unicode parity title: {label}",
+        got == expected,
+        f"expected {expected!r}, got {got!r}",
+    )
+
+# A line that is nothing but Unicode whitespace is empty to Dart, so it must not
+# count as song content and must not close the key window.
+got = run_psql(
+    f"select coalesce(public.chordpro_derive_key_signature("
+    f"{NBSP} || chr(10) || '{{key: G}}'), '<null>');"
+)
+check(
+    "unicode parity: a whitespace-only line is not song content",
+    got == "G",
+    f"a line of only NBSP must not close the key window, got {got!r}",
+)
+
+# Ordinary lyric lines keep their meaning: a real lyric before {key:} still
+# closes the window.
+got = run_psql(
+    "select coalesce(public.chordpro_derive_key_signature("
+    "'plain lyric line' || chr(10) || '{key: G}'), '<null>');"
+)
+check(
+    "unicode parity: a real lyric line still closes the key window",
+    got == "<null>",
+    f"a lyric line must still close the key window, got {got!r}",
+)
+
+# Unicode whitespace must not leak into a derived artist value either.
+got = run_psql(f"select public.chordpro_derive_artist({NBSP} || '{{artist:' || {EMSP} || 'Padded Artist' || {BOM} || '}}');")
+check(
+    "unicode parity artist trimming",
+    got == "Padded Artist",
+    f"expected 'Padded Artist', got {got!r}",
+)
+
+
 if failures:
     raise SystemExit(
         "song derived metadata contract failed:\n  " + "\n  ".join(failures)

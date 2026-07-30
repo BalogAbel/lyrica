@@ -619,6 +619,106 @@ finally:
     except Exception:
         pass
 
+# --- Case 18: terminal non-suspicious outcomes are audited once per window. --
+# already_redeemed, expired and already_member deliberately do NOT feed the rate
+# limit, so without deduplication a caller holding one spent or expired token
+# could loop the RPC and grow the audit table without bound. Deduplication is
+# keyed on the token digest as well as the actor, so a genuinely different
+# invitation is still recorded.
+DEDUP_USER = "aaaaaaa1-0000-0000-0000-00000000000b"
+make_user(DEDUP_USER, "dedup@lyron.local")
+
+
+def spend(token):
+    run_sql(dedent(f"""
+        update public.invitations
+        set redeemed_at = now(), redeemed_by = {sql_quote(BEARER_USER)}
+        where token = {sql_quote(token)};
+    """))
+
+
+spent_first = make_invitation(email=None)
+spend(spent_first)
+for i in range(6):
+    payload = redeem_payload(DEDUP_USER, spent_first)
+    check(
+        f"case 18 already_redeemed stays stable {i}",
+        payload.get("status") == "already_redeemed",
+        f"repeat {i} must still report already_redeemed, got: {payload!r}",
+    )
+
+expired_repeat = make_invitation(email=None)
+run_sql(
+    "update public.invitations set expires_at = now() - interval '1 day' "
+    f"where token = {sql_quote(expired_repeat)};"
+)
+for i in range(6):
+    payload = redeem_payload(DEDUP_USER, expired_repeat)
+    check(
+        f"case 18 expired stays stable {i}",
+        payload.get("status") == "expired",
+        f"repeat {i} must still report expired, got: {payload!r}",
+    )
+
+outcomes = [row[0] for row in attempt_rows(DEDUP_USER)]
+check(
+    "case 18 audit writes are bounded",
+    outcomes.count("already_redeemed") == 1 and outcomes.count("expired") == 1,
+    "twelve calls across two tokens must leave exactly one audit row each, "
+    f"got: {outcomes!r}",
+)
+
+# A different invitation with the same outcome is still a distinct event.
+spent_second = make_invitation(email=None)
+spend(spent_second)
+redeem_payload(DEDUP_USER, spent_second)
+outcomes = [row[0] for row in attempt_rows(DEDUP_USER)]
+check(
+    "case 18 a distinct token is still audited",
+    outcomes.count("already_redeemed") == 2,
+    f"a different spent token must produce its own audit row, got: {outcomes!r}",
+)
+
+# already_member behaves the same way.
+member_token = make_invitation(email=None)
+for i in range(5):
+    payload = redeem_payload(BEARER_USER, member_token)
+    check(
+        f"case 18 already_member stays stable {i}",
+        payload.get("status") == "already_member",
+        f"repeat {i} must still report already_member, got: {payload!r}",
+    )
+member_outcomes = [row[0] for row in attempt_rows(BEARER_USER)]
+check(
+    "case 18 already_member audit bounded",
+    member_outcomes.count("already_member") <= 2,
+    "repeated already_member calls on one token must not accumulate audit rows, "
+    f"got: {member_outcomes!r}",
+)
+
+# --- Case 19: the rate-limit and dedup lookups are index-supported. ----------
+# The planner prefers a sequential scan on a tiny table regardless of indexes, so
+# seqscan is disabled for the probe: what this proves is that a usable index
+# exists for the predicate, not that the current row count needs one.
+for label, predicate in (
+    ("rate_limited", "outcome = 'rate_limited'"),
+    ("terminal dedup", "outcome = 'already_redeemed' and a.token_sha256 = sha256('x'::bytea)"),
+):
+    plan = run_sql(dedent(f"""
+        set local enable_seqscan = off;
+        explain (format text)
+        select 1
+        from public.invitation_redemption_attempts a
+        where a.actor_user_id = {sql_quote(DEDUP_USER)}
+          and a.{predicate}
+          and a.created_at > now() - interval '15 minutes';
+    """))
+    check(
+        f"case 19 {label} lookup uses an index",
+        "Index" in plan or "Bitmap" in plan,
+        f"expected an index scan for the {label} lookup, plan was:\n{plan}",
+    )
+
 if failures:
     raise SystemExit(
         "SEC-1 invitation redemption contract failed:\n  " + "\n  ".join(failures)
