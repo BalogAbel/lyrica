@@ -82,17 +82,31 @@ void main() {
 
     test('refuses a new write once the mutation budget is exhausted, without '
         'evicting anything', () async {
-      final store = storeWithBudget(
+      // Seed one mutation under a permissive budget so the store has a real
+      // footprint. A budget refusal means "the store is ALREADY at or past
+      // budget" -- against an empty store there is nothing to refuse.
+      await storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      ).recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      final exhausted = storeWithBudget(
         const LocalStorageBudget(mutationRefuseBytes: 1),
       );
 
       await expectLater(
-        () => store.recordPlanCreate(
+        () => exhausted.recordPlanCreate(
           context: context,
           draft: const PlanningPlanCreateMutationDraft(
-            planId: 'plan-1',
-            slug: 'weekend-service',
-            name: 'Weekend Service',
+            planId: 'plan-2',
+            slug: 'midweek-service',
+            name: 'Midweek Service',
           ),
         ),
         throwsA(isA<PlanningMutationBudgetExceededException>()),
@@ -155,6 +169,49 @@ void main() {
         ),
         isEmpty,
       );
+    });
+
+    test('a refused fold leaves the pending aggregate it would have folded '
+        'into completely intact', () async {
+      await storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      ).recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      await expectLater(
+        () => exhausted.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Renamed',
+          ),
+        ),
+        throwsA(isA<PlanningMutationBudgetExceededException>()),
+      );
+
+      // Enforcing the budget must never destroy unsynced intent. An edit
+      // that folds into a still-pending create must leave that create
+      // exactly as it was -- not partially applied, and above all not
+      // deleted as a side effect of refusing the edit.
+      final pending = await exhausted.readPendingMutations(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+      expect(pending, hasLength(1));
+      expect(pending.single.kind, PlanningMutationKind.planCreate);
+      expect(pending.single.name, 'Weekend Service');
+      expect(pending.single.description, 'Original description');
     });
 
     test(

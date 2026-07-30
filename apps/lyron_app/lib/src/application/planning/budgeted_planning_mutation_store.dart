@@ -8,29 +8,26 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// [PlanningMutationStore] delegate.
 ///
 /// Writes that can introduce or grow a pending aggregate are guarded by the
-/// mutation budget: after the write reaches the delegate, the local mutation
-/// store's byte footprint is measured, and if it is now at or past
-/// [LocalStorageBudget.mutationRefuseBytes], the write is undone -- via the
-/// delegate's own `clearMutation` -- and a
-/// [PlanningMutationBudgetExceededException] is thrown. The check runs
-/// AFTER the write rather than before, because the decorator only has the
-/// delegate's public surface to work with (no access to the underlying
-/// storage transaction), so the only reliable way to know the true resulting
-/// size of a write -- including a budget as small as one byte, which no
-/// pre-write estimate could ever trip -- is to let it land and then measure.
-/// Catalog eviction cannot relieve this refusal, because pending mutations
-/// are never evictable -- attempting eviction here would only destroy cached
-/// data for no benefit. The remedy is to sync or discard.
+/// mutation budget: BEFORE the write reaches the delegate, the local
+/// mutation store's current byte footprint is measured, and if it is
+/// already at or past [LocalStorageBudget.mutationRefuseBytes], the write is
+/// refused with a [PlanningMutationBudgetExceededException] and never
+/// touches the delegate at all. A refusal therefore means "the store was
+/// already over budget", not "this write would push it over" -- so the
+/// store can overshoot the budget by at most one mutation. That is accepted:
+/// the budget exists to bound growth, not to cap it to the byte, and the
+/// accountant's byte count is an explicit proxy rather than a true size.
 ///
-/// Known limitation: the undo is a full `clearMutation` on the aggregate.
-/// For a brand-new aggregate (a `*Create` write) that is exactly right. For
-/// a write that folds into an aggregate with mutation still pending from an
-/// earlier, already-accepted write (for example a `recordPlanEdit` on a
-/// plan whose create is still unsynced), the undo removes the whole pending
-/// aggregate rather than just reverting this edit, because the delegate
-/// exposes no "revert to previous version" primitive. This is not exercised
-/// by the current tests, which only push a bare `recordPlanCreate` over
-/// budget in an empty store.
+/// Nothing is ever undone, deleted, or rewritten to enforce this budget.
+/// Pending mutations are unsynced user intent with no other copy, so a
+/// refusal must never destroy one -- including, critically, a write that
+/// folds into an aggregate with mutation still pending from an earlier
+/// write (for example a `recordPlanEdit` on a plan whose create is still
+/// unsynced): refusing the fold must leave that earlier pending mutation
+/// completely intact. Catalog eviction cannot relieve a budget refusal
+/// either, because pending mutations are never evictable -- attempting it
+/// here would only destroy cached data for no benefit. The remedy is to
+/// sync or discard.
 ///
 /// Reads, slug allocation, sync bookkeeping, retry and discard
 /// (`readPendingMutations`, `readActionableMutations`, `readAllMutations`,
@@ -65,19 +62,25 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   final LocalStorageBudget _budget;
 
   Future<void> _guardedWrite(
-    PlanningMutationContext context, {
-    required String aggregateType,
-    required String aggregateId,
-    required Future<void> Function() write,
-  }) async {
+    PlanningMutationContext context,
+    Future<void> Function() write,
+  ) async {
+    final mutationBytes = await _accountant.measureMutationBytes(
+      userId: context.userId,
+      organizationId: context.organizationId,
+    );
+    if (_budget.refusesNewMutation(mutationBytes)) {
+      throw PlanningMutationBudgetExceededException(
+        mutationBytes: mutationBytes,
+        refuseBytes: _budget.mutationRefuseBytes,
+      );
+    }
+
     try {
       await write();
     } on LocalPlanningSlugConflictException {
       // A domain rejection, not storage pressure. Retrying it would fail
-      // identically and evicting would destroy cached data for nothing. It
-      // also never reaches storage (the delegate validates before it
-      // upserts anything), so there is nothing to undo and no budget check
-      // to run.
+      // identically and evicting would destroy cached data for nothing.
       rethrow;
     } catch (_) {
       // Storage failure. Give up droppable catalog sources, then retry once.
@@ -93,23 +96,6 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
         );
       }
     }
-
-    final mutationBytes = await _accountant.measureMutationBytes(
-      userId: context.userId,
-      organizationId: context.organizationId,
-    );
-    if (_budget.refusesNewMutation(mutationBytes)) {
-      await _delegate.clearMutation(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        aggregateType: aggregateType,
-        aggregateId: aggregateId,
-      );
-      throw PlanningMutationBudgetExceededException(
-        mutationBytes: mutationBytes,
-        refuseBytes: _budget.mutationRefuseBytes,
-      );
-    }
   }
 
   @override
@@ -118,9 +104,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningPlanCreateMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'plan',
-    aggregateId: draft.planId,
-    write: () => _delegate.recordPlanCreate(context: context, draft: draft),
+    () => _delegate.recordPlanCreate(context: context, draft: draft),
   );
 
   @override
@@ -129,9 +113,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningPlanEditMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'plan',
-    aggregateId: draft.planId,
-    write: () => _delegate.recordPlanEdit(context: context, draft: draft),
+    () => _delegate.recordPlanEdit(context: context, draft: draft),
   );
 
   @override
@@ -140,9 +122,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionCreateMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session',
-    aggregateId: draft.sessionId,
-    write: () => _delegate.recordSessionCreate(context: context, draft: draft),
+    () => _delegate.recordSessionCreate(context: context, draft: draft),
   );
 
   @override
@@ -151,9 +131,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionRenameMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session',
-    aggregateId: draft.sessionId,
-    write: () => _delegate.recordSessionRename(context: context, draft: draft),
+    () => _delegate.recordSessionRename(context: context, draft: draft),
   );
 
   @override
@@ -162,9 +140,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionDeleteMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session',
-    aggregateId: draft.sessionId,
-    write: () => _delegate.recordSessionDelete(context: context, draft: draft),
+    () => _delegate.recordSessionDelete(context: context, draft: draft),
   );
 
   @override
@@ -173,9 +149,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionReorderMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session_order',
-    aggregateId: draft.planId,
-    write: () => _delegate.recordSessionReorder(context: context, draft: draft),
+    () => _delegate.recordSessionReorder(context: context, draft: draft),
   );
 
   @override
@@ -184,10 +158,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionItemCreateSongMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session_item',
-    aggregateId: draft.sessionItemId,
-    write: () =>
-        _delegate.recordSessionItemCreateSong(context: context, draft: draft),
+    () => _delegate.recordSessionItemCreateSong(context: context, draft: draft),
   );
 
   @override
@@ -196,10 +167,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionItemDeleteMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session_item',
-    aggregateId: draft.sessionItemId,
-    write: () =>
-        _delegate.recordSessionItemDelete(context: context, draft: draft),
+    () => _delegate.recordSessionItemDelete(context: context, draft: draft),
   );
 
   @override
@@ -208,10 +176,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningSessionItemReorderMutationDraft draft,
   }) => _guardedWrite(
     context,
-    aggregateType: 'session_item_order',
-    aggregateId: draft.sessionId,
-    write: () =>
-        _delegate.recordSessionItemReorder(context: context, draft: draft),
+    () => _delegate.recordSessionItemReorder(context: context, draft: draft),
   );
 
   @override
