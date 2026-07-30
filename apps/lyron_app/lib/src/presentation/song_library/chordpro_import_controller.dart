@@ -69,7 +69,9 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
 
     FilePickerResult? picked;
     try {
-      picked = await FilePicker.platform.pickFiles(
+      // file_picker 11 moved these to static methods; there is no
+      // FilePicker.platform instance any more.
+      picked = await FilePicker.pickFiles(
         allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: kSupportedChordProExtensions.toList(),
