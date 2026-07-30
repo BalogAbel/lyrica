@@ -2,46 +2,66 @@ import 'package:drift/backends.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 import '../../support/drift_test_setup.dart';
 
-/// LF-T4 (characterization probe): when persisting a mutation FAILS at the
-/// storage layer (simulated here with a [QueryExecutor] decorator that
-/// throws on every INSERT statement, standing in for a quota/IO failure),
-/// the failure must be OBSERVABLE to the caller, not silently swallowed. A
-/// swallowed failure would lose the user's offline edit without any signal
-/// that it never reached local storage.
+/// LF-T4 contract: when persisting a mutation FAILS at the storage layer
+/// (simulated with a [QueryExecutor] decorator that throws on every INSERT,
+/// standing in for a quota/IO failure), the app must give up droppable
+/// catalog sources, retry once, and then surface a typed
+/// [LocalStorageWriteFailure] to the caller. A swallowed failure would lose
+/// the user's offline edit with no signal that it never reached storage.
 ///
-/// This probe documents CURRENT behaviour: [DriftPlanningMutationStore]
-/// does not catch-and-ignore around its inserts, so a storage failure
-/// propagates as a thrown exception out of the public write method. The
-/// broader storage-eviction / quota-management policy (what the app does
-/// in response to such a failure) is OUT OF SCOPE and deferred.
-///
-/// Note: closing the in-memory Drift connection before writing was tried
-/// first and rejected as a fault injector -- drift transparently re-opens
-/// a fresh (empty) in-memory database on the next statement, so the write
-/// "succeeds" against a different database instead of failing. The
-/// throwing-executor decorator below fails the actual INSERT statement
-/// deterministically, which is what this probe needs.
+/// This was a characterization probe until the mutation budget and eviction
+/// policy landed; it now enforces the policy rather than observing behaviour.
 void main() {
   suppressDriftMultipleDatabaseWarnings();
 
-  group('DriftPlanningMutationStore (LF-T4 storage-pressure probe)', () {
-    test('recordPlanCreate throws when the storage layer write fails '
-        'instead of silently dropping the mutation', () async {
+  group('BudgetedPlanningMutationStore (LF-T4 storage pressure)', () {
+    test('a failed write evicts droppable catalog sources, retries once, and '
+        'surfaces a typed failure', () async {
       final failingExecutor = _InsertFailingExecutor(NativeDatabase.memory());
       final database = PlanningLocalDatabase.connect(failingExecutor);
       final localStore = DriftPlanningLocalStore(database);
-      final store = DriftPlanningMutationStore(
-        database: database,
-        localStore: localStore,
-      );
+      final catalogDatabase = SongCatalogDatabase.inMemory();
       addTearDown(database.close);
+      addTearDown(catalogDatabase.close);
+
+      await catalogDatabase
+          .into(catalogDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'song-1',
+              source: 'body ' * 200,
+            ),
+          );
+
+      final store = BudgetedPlanningMutationStore(
+        delegate: DriftPlanningMutationStore(
+          database: database,
+          localStore: localStore,
+        ),
+        accountant: PlanningStorageAccountant(database),
+        evictor: SongCatalogEvictor(
+          database: catalogDatabase,
+          accountant: CatalogStorageAccountant(catalogDatabase),
+        ),
+        budget: const LocalStorageBudget(),
+      );
 
       const context = PlanningMutationContext(
         userId: 'user-1',
@@ -57,8 +77,20 @@ void main() {
             name: 'Weekend Service',
           ),
         ),
-        throwsA(isA<StorageQuotaSimulatedException>()),
+        throwsA(
+          isA<LocalStorageWriteFailure>().having(
+            (failure) => failure.cause,
+            'cause',
+            isA<StorageQuotaSimulatedException>(),
+          ),
+        ),
       );
+
+      // Eviction actually ran: the droppable source is gone.
+      final remainingSources = await catalogDatabase
+          .select(catalogDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, isEmpty);
 
       // The failed mutation must not be visible later either: it never
       // reached storage, so there is nothing to read back. This guards
