@@ -81,10 +81,42 @@ specific finding:
   declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
   pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
   just a validation.
-- `storage_pressure_probe_test.dart` — `LF-T4` probe. Confirms a storage write failure
-  propagates as an exception instead of being silently swallowed. Characterizes current
-  behavior; the full size-monitor/eviction policy remains deferred
-  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`).
+- `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
+  (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
+  and eviction policy have landed (ADR-028). Drives the full chain against a
+  `QueryExecutor` decorator that fails every INSERT: storage failure → droppable catalog
+  sources evicted → one retry → a typed `LocalStorageWriteFailure` propagates; the failed
+  mutation is confirmed absent from a subsequent read, ruling out a partial commit.
+- `planning_squash_contract_test.dart` — `LF-T3`. Pins that folding repeated intent into
+  one row per aggregate preserves exactly-once sync (ADR-019) and OCC base-version
+  semantics: a squashed record keeps the base version and origin snapshot captured by the
+  *first* local edit, not a later one (fixing a prior inconsistency where the reorder paths
+  already did this but `planEdit`/`sessionRename`/`sessionDelete`/`sessionItemDelete` let a
+  later draft rebase the stored base version, which would have silently suppressed a real
+  conflict). Also pins that collapsing a still-pending `sessionCreate` deletes that
+  session's pending `session_item` and `session_item_order` mutations in the same
+  transaction, so nothing is left behind that could only ever fail `dependencyBlocked`.
+- `test/application/storage/local_storage_budget_test.dart`,
+  `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
+  content-derived footprint and pressure-classification contracts behind ADR-028: bytes
+  grow with mutation/projection content and shrink on `clearMutation`, pressure classifies
+  `ok`/`warning`/`critical` at the mutation and total thresholds independently, and
+  measurement is scoped per `(userId, organizationId)`.
+- `test/application/storage/song_catalog_evictor_test.dart` — the eviction protection
+  contracts: droppable sources (no pending song mutation) are freed and the freed byte
+  estimate matches the before/after delta; a source backing a pending song mutation is
+  never dropped; summaries and pending song mutations are never dropped; eviction is
+  idempotent (a second pass frees nothing); and the multi-tenant case — a different
+  `(userId, organizationId)` owner's droppable source is evicted independently of another
+  owner's protected one, so eviction cannot cross tenant boundaries.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart` — the enforcement
+  decorator: writes below the refuse threshold succeed; a write at or above it is refused
+  with `PlanningMutationBudgetExceededException` and triggers no eviction (catalog eviction
+  cannot relieve the mutation budget); a refusal leaves existing pending mutations untouched
+  and `clearMutation` still drains a full store; a refused **fold** — an edit that would
+  have merged into an already-pending aggregate — leaves that pending aggregate completely
+  intact rather than partially applying or destroying it; a domain rejection
+  (`LocalPlanningSlugConflictException`) propagates without eviction or retry.
 - `clock_skew_probe_test.dart` — `LF-T6` probe. Adds an injectable clock seam to
   `PlanningMutationReconciler` (default wall-clock behavior unchanged) and confirms an
   injected skewed clock flows straight through into reconciled timestamps uncorrected. A

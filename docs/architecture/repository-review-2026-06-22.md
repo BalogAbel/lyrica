@@ -70,8 +70,8 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | LF-6 | Local-first | Optimistic merge can show a duplicate song in a session | Medium |
 | LF-7 | Local-first | `discard`/`retry` require connectivity (can't drop a stuck mutation offline) | Medium |
 | LF-8 | Local-first | Reconcile silent null-coercion (`?? ''`×11, `?? 0`×2) into the projection | Medium |
-| LF-T3 | Local-first | Mutation store grows unbounded over long offline | High |
-| LF-T4 | Local-first | No storage quota / eviction policy (web IndexedDB silent eviction risk) | High |
+| ~~LF-T3~~ | Local-first | ~~Mutation store grows unbounded over long offline~~ **Done (offline-durability-phase4).** | High |
+| ~~LF-T4~~ | Local-first | ~~No storage quota / eviction policy (web IndexedDB silent eviction risk)~~ **Done (offline-durability-phase4), native-only verification.** | High |
 | ARCH-2 | Architecture | `planningDataRevisionProvider` coarse global invalidation → over-rebuild | Medium |
 | ~~ARCH-3~~ | Architecture | ~~UI god-components: plan_detail 1240, song_editor 1088, song_reader 998~~ **Done (ui-decomposition-phase2).** | Medium |
 | UX-3 | UI/UX | New-song default body is a copyrighted song's full lyrics, hardcoded | Medium |
@@ -158,12 +158,28 @@ carry the detail; this is the digest.
   client-authoritative and drifting. ADR-027. Pinned by
   `scripts/tests/song-derived-metadata-contract-test.sh`.
 
+- **LF-T3, LF-T4** (offline-durability-phase4 slice) — the local mutation store now
+  carries an explicit content-derived byte budget (`BudgetedPlanningMutationStore`)
+  that refuses new writes past a hard threshold, and a stated eviction protection
+  order (pending mutations, the planning projection, and cached catalog summaries are
+  never evicted; only cached catalog sources for songs with no pending mutation are
+  droppable) enforced on an actual storage write failure. Two correctness gaps in the
+  underlying mutation fold were fixed in the same slice: base-version rebasing now
+  agrees across all fold paths, and collapsing a still-pending `sessionCreate` no
+  longer orphans that session's pending item mutations. See
+  [ADR-028](decisions/ADR-028-local-storage-budget-and-eviction-policy.md), pinned by
+  `test/offline/adversarial/planning_squash_contract_test.dart`,
+  `test/offline/adversarial/storage_pressure_contract_test.dart` (promoted from the
+  prior probe), and the `test/application/storage/` and
+  `test/application/planning/budgeted_planning_mutation_store_test.dart` suites.
+  Every threshold is verified against native Drift/sqlite3 only; the web/IndexedDB
+  assumptions remain unverified (`docs/deferred/2026-06-29-web-offline-e2e.md`).
+
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
 
 **Characterized + still deferred** (probes added, real fix outstanding)
-- **LF-T4** (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`),
-  **LF-T6** (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
+- **LF-T6** (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
 
 **Partial / corrected**
 - **LF-T2** — the "decouple local access from live session validity" half is delivered
@@ -172,7 +188,7 @@ carry the detail; this is the digest.
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, all
+**Still open** (unchanged): LF-7, LF-9, LF-T5, LF-T8, SEC-2, all
 ARCH-*, all UX-*, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
@@ -332,8 +348,8 @@ lifecycle**.
 |----|---------|----------|----------------|-------------------------|
 | **LF-T1** | Session expiry **wipes** authenticated local data (catalog + planning), even with no sign-out and possibly still offline | `application/auth/app_auth_controller.dart:75-78`; `application/planning/planning_sync_controller.dart:255-276`; `application/song_library/song_catalog_controller.dart:322`; cleanup `providers.dart:85,104` | Expiry == data wipe | Make expiry **non-destructive**: durable local "last-known membership proof"; on expiry show a re-auth banner + gate writes, keep data. Distinguish two cases: **unknown / connectivity-failed** session (offline or transient) stays non-destructive, while **authoritative revocation** (verified-empty membership, already handled by `verifiedEmptyMembershipCleanup`) and **explicit sign-out** delete local data **immediately** — do not quarantine or soft-delete revoked data, to avoid hidden-read rules, unblock semantics, and extra mutation-state handling. |
 | **LF-T2** | No offline token refresh; gotrue emits null session when refresh token can't renew → triggers LF-T1 | `infrastructure/auth/supabase_auth_repository.dart:20` (`onAuthStateChange`) | Refresh-token TTL is the hard wall | Longer/rotating refresh token + decouple local access from live session validity (covered by LF-T1) |
-| **LF-T3** | Mutation store grows unbounded over long offline; compaction only helps collection edits | `application/planning/drift_planning_mutation_store.dart` (compaction); no size cap | Not time-keyed, but unbounded growth | Mutation size budget + squash + threshold warning |
-| **LF-T4** | No storage quota / eviction; full catalog snapshot + projection + mutations can exceed web IndexedDB quota → **silent browser eviction** | `architecture.md` Offline Strategy ("one active snapshot") | Finite storage | Size monitor + eviction policy (mutations protected, snapshot pieces droppable) |
+| ~~**LF-T3**~~ | ~~Mutation store grows unbounded over long offline; compaction only helps collection edits~~ **Done (offline-durability-phase4).** | `application/planning/drift_planning_mutation_store.dart` (compaction); no size cap | Not time-keyed, but unbounded growth | Mutation size budget + squash + threshold warning |
+| ~~**LF-T4**~~ | ~~No storage quota / eviction; full catalog snapshot + projection + mutations can exceed web IndexedDB quota → **silent browser eviction**~~ **Done (offline-durability-phase4), native-only verification.** | `architecture.md` Offline Strategy ("one active snapshot") | Finite storage | Size monitor + eviction policy (mutations protected, snapshot pieces droppable) |
 | LF-T5 | OCC divergence grows with offline duration → larger conflict surface on reconnect | base_version capture in write contracts | Conflict probability ∝ offline time | Incremental/partial sync, finer merge |
 | LF-T6 | Freshness/ordering use device clock (`DateTime.now().toUtc()` in reconcile) | `providers.dart` reconcile | Skew accumulates offline | Server-clock anchor on reconnect |
 | LF-T7 | Long offline spans app upgrades; planning migration is additive (good) but no structural-change strategy; catalog DB has `schemaVersion 2` with **no** MigrationStrategy | `offline/planning/planning_local_database.dart:33-64`; `offline/song_catalog/song_catalog_database.dart:32` | More versions crossed over time | Structural-migration playbook + migration test with pending mutations present |
@@ -341,7 +357,8 @@ lifecycle**.
 
 **Headline**: the key to "indefinite" was **LF-T1** — convert session expiry from
 destructive to non-destructive. **LF-T1 is now done** (offline-session-resilience slice,
-PR #55). LF-T3/LF-T4 are the remaining real blockers.
+PR #55). **LF-T3/LF-T4 are now done too** (offline-durability-phase4 slice, native-only
+verification — see below). The remaining time-bound findings are LF-T5, LF-T6 and LF-T8.
 
 **Status (2026-06-29, offline-session-resilience slice, PR #55)**:
 - `LF-T1` — **fixed**. Session expiry no longer wipes authenticated local data. Offline
@@ -356,10 +373,10 @@ PR #55). LF-T3/LF-T4 are the remaining real blockers.
   wall itself (longer/rotating refresh token) is unchanged.
 
 **Status (2026-06-29, local-first-validation slice)**:
-- `LF-T4` — **characterized (probe) + deferred**. `storage_pressure_probe_test.dart` confirms
-  a storage write failure propagates rather than being silently swallowed; the size-monitor
-  and eviction policy itself remain deferred
-  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`).
+- `LF-T4` — **characterized (probe) + deferred at the time**. `storage_pressure_probe_test.dart`
+  confirmed a storage write failure propagates rather than being silently swallowed; the
+  size-monitor and eviction policy itself were deferred
+  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`). Superseded below.
 - `LF-T6` — **characterized (probe) + deferred**. `clock_skew_probe_test.dart` plus an
   injectable clock seam on `PlanningMutationReconciler` confirm device-clock skew flows
   through uncorrected; the server-clock anchor remains deferred
@@ -368,6 +385,39 @@ PR #55). LF-T3/LF-T4 are the remaining real blockers.
   added an explicit `MigrationStrategy` to `SongCatalogDatabase` (previously `schemaVersion 2`
   with none) and confirmed reopen survival; `planning_migration_test.dart` validated existing
   reopen survival for pending planning mutations.
+
+**Status (2026-07-30, offline-durability-phase4 slice)**:
+- `LF-T3` — **fixed**. `BudgetedPlanningMutationStore` measures the mutation store's
+  content-derived byte footprint before every write that can grow it and refuses new
+  writes at or past a hard threshold (`PlanningMutationBudgetExceededException`); a
+  refused write, including a refused **fold** into an already-pending aggregate, never
+  destroys or partially applies anything, and `clearMutation`/`retryMutation` stay
+  unguarded so a full store can always be drained. Pinned by
+  `test/application/planning/budgeted_planning_mutation_store_test.dart` and
+  `test/application/storage/`. ADR-028.
+- `LF-T4` — **fixed, native-only verification**. A stated eviction protection order
+  (pending planning and song mutations, the planning projection, and cached catalog
+  summaries are never evicted; only cached catalog sources for songs with no pending
+  mutation are droppable) is enforced by `SongCatalogEvictor` when a local write fails
+  at the storage layer: evict once, retry once, else surface a typed
+  `LocalStorageWriteFailure`. `storage_pressure_probe_test.dart` is promoted from
+  characterization probe to the enforced contract
+  `test/offline/adversarial/storage_pressure_contract_test.dart`.
+  `docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md` is resolved and removed.
+  Accounting is content-derived (SQL `length(...)` over row content), so the logic is
+  platform-independent, but every threshold and the eviction trigger are verified
+  against native Drift/sqlite3 only — whether the browser evicts underneath this policy
+  regardless, and whether the byte estimate tracks real IndexedDB usage, remain
+  unverified. `docs/deferred/2026-06-29-web-offline-e2e.md` stays open as the
+  prerequisite for relying on IndexedDB capacity assumptions. ADR-028.
+- Two correctness gaps in the mutation fold, found while specifying the budget, were
+  fixed in the same slice: base-version rebasing on a fold now agrees across all fold
+  paths (previously the reorder paths kept the first-captured base version while
+  `planEdit`/`sessionRename`/`sessionDelete`/`sessionItemDelete` let a later draft
+  overwrite it, which could silently suppress a real OCC conflict), and collapsing a
+  still-pending `sessionCreate` now deletes that session's pending `session_item` and
+  `session_item_order` mutations in the same transaction instead of orphaning them.
+  Pinned by `test/offline/adversarial/planning_squash_contract_test.dart`.
 
 ### 6.2 Correctness / robustness
 
@@ -512,11 +562,11 @@ tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
    `apps/lyron_app/test/offline/adversarial/` and the two skip-gated integration suites
    under `apps/lyron_app/test/integration/`, recorded in
    `docs/testing/testing-strategy.md` ("Adversarial offline/sync validation"). The web
-   harness half is deferred (`docs/deferred/2026-06-29-web-offline-e2e.md`), LF-T4/LF-T6
-   were characterized via probes and remain deferred for the full fix
-   (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`,
-   `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`), and the two new integration
-   suites have since been verified against a live Supabase stack (see
+   harness half is deferred (`docs/deferred/2026-06-29-web-offline-e2e.md`). LF-T4 and
+   LF-T6 were characterized via probes at the time; LF-T4 has since been fixed
+   (offline-durability-phase4 slice, ADR-028, see §6.1), while LF-T6 remains deferred
+   for the full fix (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`). The two
+   new integration suites have since been verified against a live Supabase stack (see
    `docs/testing/testing-strategy.md`).
 2. **Schema-vs-app gap**: DB has `groups`, group roles, `attachments`, and session-item
    `note`/`attachment` types; the app only exercises org-level membership and song items.
@@ -593,7 +643,9 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 - ~~DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.~~ **Done (security-read-boundary-phase3); riverpod 3 deferred.**
 
 **Strategic (1+ month)**
-- LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
+- ~~LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.~~
+  **Done (offline-durability-phase4).** Native-only verification; web/IndexedDB
+  assumptions remain unverified (`docs/deferred/2026-06-29-web-offline-e2e.md`).
 - ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ~~ARCH-3: decompose plan_detail / song_editor.~~ **Done (ui-decomposition-phase2).**
 - ~~SEC-4: backend-derived shadow metadata.~~ **Done (read-boundary-and-derived-song-metadata).**
