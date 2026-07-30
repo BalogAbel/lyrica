@@ -185,6 +185,26 @@ class PlanningMutationSyncController {
       aggregateId: aggregateId,
     );
     await syncPendingMutations(context);
+
+    // syncPendingMutations swallows a connectivity failure so that ordinary
+    // background syncing -- which finds no network all the time -- stays
+    // quiet. An explicit, user-initiated retry needs the opposite: it must
+    // tell the caller the attempt never left the device rather than return
+    // as if it had run. Inspect the record's post-sync error code instead of
+    // catching, since the failure was already recorded there by _run.
+    final record = await _mutationStore().readMutation(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    );
+    if (record?.errorCode ==
+        PlanningMutationSyncErrorCode.connectivityFailure) {
+      throw PlanningMutationSyncException(
+        PlanningMutationSyncErrorCode.connectivityFailure,
+        message: record?.errorMessage,
+      );
+    }
   }
 
   Future<void> discardMutation(
