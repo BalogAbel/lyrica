@@ -108,6 +108,26 @@ class LocalPlanningSlugConflictException implements Exception {
   String toString() => 'LocalPlanningSlugConflictException()';
 }
 
+/// Thrown when a new planning mutation would push the local mutation store
+/// past its byte budget (LF-T3).
+///
+/// The remedy is to sync or discard pending work: catalog eviction cannot
+/// free mutation budget, because pending mutations are never evictable.
+class PlanningMutationBudgetExceededException implements Exception {
+  const PlanningMutationBudgetExceededException({
+    required this.mutationBytes,
+    required this.refuseBytes,
+  });
+
+  final int mutationBytes;
+  final int refuseBytes;
+
+  @override
+  String toString() =>
+      'PlanningMutationBudgetExceededException('
+      'mutationBytes: $mutationBytes, refuseBytes: $refuseBytes)';
+}
+
 class PlanningMutationSyncException implements Exception {
   const PlanningMutationSyncException(this.code, {this.message});
 
