@@ -73,8 +73,10 @@ exception aborts the enclosing transaction, so an audit row inserted before a
 business outcomes by raising, a failed attempt could never be persisted —
 which rules out both a real audit trail and a count-based rate limit at once,
 since the limit is itself a count over persisted audit rows. Returning a
-status instead of raising lets the transaction commit on every path, so the
-audit row and the rate-limit counter it feeds both survive.
+status instead of raising lets the transaction commit on every path, so an
+audit row written on that path — and the rate-limit counter it feeds — both
+survive. Whether a given call writes a row is a separate question, settled by
+the deduplication caps below.
 
 ## Rejected alternatives
 

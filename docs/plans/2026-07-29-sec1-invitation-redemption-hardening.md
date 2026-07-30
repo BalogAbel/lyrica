@@ -4,11 +4,38 @@
 
 **Goal:** Close SEC-1 by making invitation redemption email-bound when the invitation carries an email, rate-limited per caller, and fully audited — all enforced in PostgreSQL.
 
-**Architecture:** `public.redeem_invitation` stops raising for business outcomes and returns `jsonb` instead, so the transaction commits and an audit row survives on every path. A new `public.invitation_redemption_attempts` table records each attempt; a caller-keyed count over that table implements the rate limit. The Flutter client is updated to the status-based contract and remains UX-only.
+**Architecture:** `public.redeem_invitation` stops raising for business outcomes and returns `jsonb` instead, so the transaction commits and the audit row written on that path survives. (Superseded in part — see the amendment below.) A new `public.invitation_redemption_attempts` table records each attempt; a caller-keyed count over that table implements the rate limit. The Flutter client is updated to the status-based contract and remains UX-only.
 
 **Tech Stack:** PostgreSQL 15 (Supabase), plpgsql security-definer functions, RLS, `pg_cron`, bash + python3 contract test scripts, Flutter/Dart with `supabase_flutter`.
 
 **Spec:** `docs/specs/2026-07-29-sec1-invitation-redemption-hardening.md`
+
+---
+
+## Post-implementation amendment (2026-07-30)
+
+**The one-row-per-call audit model described below was superseded during review
+follow-up.** Task bodies in this document are kept as the historical record of
+what was executed, so several of them still say an audit row is written on every
+path. That was true when they ran; it is no longer the shipped behaviour.
+
+What ships instead: repeated **terminal** outcomes — `already_redeemed`,
+`expired`, `already_member` — are deduplicated per `(actor_user_id,
+token_sha256, outcome)` within a 15-minute window, and `rate_limited` is capped
+to one marker row per caller per window. The first occurrence in a window always
+persists, and a different token producing the same outcome is a distinct event.
+
+`not_found` and `email_mismatch` are **not** deduplicated: the rate limit counts
+them, so collapsing repeats would defeat it.
+
+The reason is resource exhaustion, not tidiness: those four outcomes are
+excluded from the rate-limit count on purpose, so without a cap an authenticated
+caller holding one spent or expired token could loop the RPC and grow
+`invitation_redemption_attempts` without bound, with the 90-day retention
+bounding only row age.
+
+Authoritative description:
+`docs/architecture/decisions/ADR-025-invitation-redemption-model.md`.
 
 ---
 

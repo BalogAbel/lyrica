@@ -45,8 +45,9 @@ real audit trail nor a count-based rate limit is possible. Any fix to gaps 2 and
 - New audit table `public.invitation_redemption_attempts` with an outcome enum,
   RLS, a rate-limit-shaped index, and a `pg_cron` retention job.
 - `public.redeem_invitation` rewritten: `returns jsonb` instead of
-  `returns uuid`, hybrid email binding, caller-keyed rate limit, audit write on
-  every path.
+  `returns uuid`, hybrid email binding, caller-keyed rate limit, and an audit
+  write on every path that is not a deduplicated repeat (see the audit caps
+  added in follow-up hardening).
 - Flutter client updated to the new status-based contract
   (`SupabaseInvitationRepository`, `InvitationError`, `app_strings`, redeem UI).
 - Backend contract test script covering the full outcome matrix, wired into

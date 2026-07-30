@@ -1,6 +1,12 @@
 -- SEC-1: redemption reports business outcomes as a returned status instead of
 -- raising. Raising aborts the transaction, which would roll back the audit row
--- written alongside it; returning lets every attempt persist.
+-- written alongside it; returning lets the transaction, and whichever audit row
+-- the deduplication policy selects, persist.
+--
+-- Distinct attempts are retained; repeated terminal outcomes
+-- (already_redeemed, expired, already_member) and rate_limited calls are capped
+-- to one marker row per caller per deduplication window. not_found and
+-- email_mismatch are never deduplicated, because the rate limit counts them.
 
 -- Builds the jsonb envelope redeem_invitation returns. Factored out so the
 -- two callers that need it -- the audit-writing path below and the

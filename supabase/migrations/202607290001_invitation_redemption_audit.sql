@@ -1,6 +1,11 @@
--- SEC-1: persisted audit trail for every invitation redemption attempt.
+-- SEC-1: persisted audit trail for invitation redemption activity.
 -- Redemption outcomes are returned, not raised, so these rows survive the
 -- transaction and can also back a count-based rate limit.
+--
+-- Distinct attempts are retained; repeated terminal outcomes
+-- (already_redeemed, expired, already_member) and rate_limited calls are capped
+-- to one marker row per caller per deduplication window. not_found and
+-- email_mismatch are never deduplicated, because the rate limit counts them.
 
 create type public.invitation_redemption_outcome as enum (
   'redeemed',
