@@ -169,6 +169,11 @@ class SongMutationSyncController {
       await refreshCatalog(context);
     } on SongMutationSyncException {
       // Offline or the backend refused: the local discard still stands.
+      // The concrete refresh wired in production
+      // (SongCatalogController.refreshCatalog, via song_library_providers.dart)
+      // folds every failure into CatalogSnapshotState and never throws, so
+      // this catch guards the SongCatalogRefresh interface contract rather
+      // than anything actually observed today.
     }
   }
 

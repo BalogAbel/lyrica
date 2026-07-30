@@ -303,6 +303,127 @@ void main() {
       );
     });
 
+    test('retryMutation must not report success when it coalesces onto a '
+        'background sync that already snapshotted its candidates before the '
+        'reset', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: 'org-1',
+            name: 'Plan Two',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: 'org-1',
+            name: 'Plan Two',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final syncCompleter = Completer<void>();
+      // Every remote call fails offline -- both the background run's
+      // attempt at plan-2 and (once fixed) the retry's own attempt at
+      // plan-1 should end up with connectivityFailure.
+      final repository = _FakePlanningMutationRemoteRepository(
+        error: const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        ),
+        slowCompleter: syncCompleter,
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final context = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      // A background trigger starts syncing first. Calling
+      // syncPendingMutations synchronously reads and snapshots its
+      // candidate list (plan-2 only -- plan-1 is a conflict, not
+      // pending/accepted, so it is excluded) before suspending on the
+      // (uncompleted) repository call below.
+      final backgroundSync = controller.syncPendingMutations(context);
+
+      // The user retries plan-1 while that background run is still in
+      // flight. This resets plan-1 to pending with no error in the
+      // store. Pre-fix, retryMutation's own call to syncPendingMutations
+      // coalesces onto the SAME background run above -- which already
+      // snapshotted its candidates without plan-1 in them and can never
+      // pick it up.
+      final retryFuture = controller.retryMutation(
+        context,
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+
+      // Drain every microtask that can run without the repository call
+      // completing. The background run cannot progress past it until the
+      // completer below is completed, so this deterministically captures
+      // the moment retryMutation commits to coalescing (or, fixed, to
+      // waiting) -- there is no race to lose either way.
+      await Future<void>.delayed(Duration.zero);
+
+      syncCompleter.complete();
+
+      // Fixed behaviour: retryMutation must surface the connectivity
+      // failure, exactly like the "surfaces a connectivity failure" test
+      // above -- a retry that never left the device must not look like it
+      // succeeded. Against the pre-fix controller this expectation fails:
+      // retryFuture completes normally because it rode the background
+      // run's future to completion, and that run never touched plan-1.
+      await expectLater(
+        retryFuture,
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            PlanningMutationSyncErrorCode.connectivityFailure,
+          ),
+        ),
+      );
+
+      await backgroundSync;
+
+      final record = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+      expect(record, isNotNull);
+      expect(
+        record!.errorCode,
+        PlanningMutationSyncErrorCode.connectivityFailure,
+      );
+    });
+
     test(
       'discarding a conflicted mutation syncs the remaining queue',
       () async {

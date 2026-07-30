@@ -184,6 +184,21 @@ class PlanningMutationSyncController {
       aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
+
+    // A background sync may already be running for this context. If it is,
+    // it snapshotted its candidate list *before* the reset above and will
+    // never pick up this record. syncPendingMutations coalesces onto that
+    // same in-flight run rather than starting a new one, so calling it
+    // directly here would let the retry ride along on a sync that can never
+    // see the reset record -- the cleared errorCode would then look like
+    // success even though nothing was resent. Wait out any such run first,
+    // so the sync this retry triggers is guaranteed to start its own
+    // candidate snapshot *after* the reset and therefore include it.
+    final key = '${context.userId}_${context.organizationId}';
+    final inFlight = _inFlight[key];
+    if (inFlight != null) {
+      await inFlight;
+    }
     await syncPendingMutations(context);
 
     // syncPendingMutations swallows a connectivity failure so that ordinary
