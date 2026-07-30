@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -327,4 +329,419 @@ void main() {
       expect(detail.plan.description, isNull);
     });
   });
+
+  group('PlanningLocalReadRepository slug resolution', () {
+    // These use recording fakes instead of the Drift-backed stores above so
+    // the store/mutation-store call counts can be asserted directly (LF-9).
+
+    test('getPlanDetailBySlug reads the mutation set once and never lists '
+        'every plan', () async {
+      final store = _RecordingPlanningLocalStore(
+        summaries: [
+          PlanSummary(
+            id: 'plan-1',
+            slug: 'team-rehearsal',
+            name: 'Team Rehearsal',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 4, 11, 10),
+          ),
+        ],
+        details: {
+          'plan-1': PlanDetail(
+            plan: PlanSummary(
+              id: 'plan-1',
+              slug: 'team-rehearsal',
+              name: 'Team Rehearsal',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 11, 10),
+            ),
+            sessions: const [],
+          ),
+        },
+      );
+      final mutationStore = _RecordingPlanningMutationStore(
+        actionable: const [],
+      );
+      final repository = PlanningLocalReadRepository(
+        store: store,
+        mutationStore: mutationStore,
+        contextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+
+      final detail = await repository.getPlanDetailBySlug('team-rehearsal');
+
+      expect(detail?.plan.id, 'plan-1');
+      expect(
+        mutationStore.readActionableMutationsCalls,
+        1,
+        reason: 'exactly one actionable-mutation read per slug open',
+      );
+      expect(
+        store.readPlanSummariesCalls,
+        0,
+        reason: 'must not fall back to a full plan-summary listing',
+      );
+    });
+
+    test('a plan that exists only as a pending planCreate mutation is still '
+        'found by slug', () async {
+      final store = _RecordingPlanningLocalStore(summaries: [], details: {});
+      final pendingCreate = PlanningMutationRecord(
+        aggregateId: 'plan-offline-1',
+        organizationId: 'org-1',
+        slug: 'offline-only-plan',
+        name: 'Offline Only Plan',
+        kind: PlanningMutationKind.planCreate,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026, 4, 11, 10),
+      );
+      final mutationStore = _RecordingPlanningMutationStore(
+        actionable: [pendingCreate],
+      );
+      final repository = PlanningLocalReadRepository(
+        store: store,
+        mutationStore: mutationStore,
+        contextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+
+      final summary = await repository.getPlanSummaryBySlug(
+        'offline-only-plan',
+      );
+      final detail = await repository.getPlanDetailBySlug('offline-only-plan');
+
+      expect(summary?.id, 'plan-offline-1');
+      expect(detail?.plan.id, 'plan-offline-1');
+      expect(
+        store.readPlanSummaryBySlugCalls,
+        0,
+        reason: 'a pending create resolves without touching the store',
+      );
+    });
+  });
+}
+
+class _RecordingPlanningLocalStore implements PlanningLocalStore {
+  _RecordingPlanningLocalStore({
+    required List<PlanSummary> summaries,
+    required Map<String, PlanDetail> details,
+  }) : _summaries = summaries,
+       _details = details;
+
+  final List<PlanSummary> _summaries;
+  final Map<String, PlanDetail> _details;
+
+  int readPlanSummariesCalls = 0;
+  int readPlanSummaryBySlugCalls = 0;
+  int readPlanDetailCalls = 0;
+  int readPlanDetailBySlugCalls = 0;
+
+  @override
+  Future<List<PlanSummary>> readPlanSummaries({
+    required String userId,
+    required String organizationId,
+  }) async {
+    readPlanSummariesCalls += 1;
+    return _summaries;
+  }
+
+  @override
+  Future<PlanSummary?> readPlanSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    readPlanSummaryBySlugCalls += 1;
+    for (final summary in _summaries) {
+      if (summary.slug == planSlug) {
+        return summary;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetail({
+    required String userId,
+    required String organizationId,
+    required String planId,
+  }) async {
+    readPlanDetailCalls += 1;
+    return _details[planId];
+  }
+
+  @override
+  Future<PlanDetail?> readPlanDetailBySlug({
+    required String userId,
+    required String organizationId,
+    required String planSlug,
+  }) async {
+    readPlanDetailBySlugCalls += 1;
+    for (final detail in _details.values) {
+      if (detail.plan.slug == planSlug) {
+        return detail;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) async {}
+
+  @override
+  Future<bool> hasProjection({
+    required String userId,
+    required String organizationId,
+  }) async => _details.isNotEmpty;
+
+  @override
+  Future<int> countSongReferences({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) async => 0;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({
+    required String userId,
+  }) async => null;
+
+  @override
+  Future<void> deletePlanningData({
+    required String userId,
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {}
+
+  @override
+  Future<void> deletePlanningDataForUser({
+    required String userId,
+    bool Function()? shouldContinue,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> deleteSyncedSession({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> replaceSyncedSessionOrder({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required List<String> orderedSessionIds,
+    List<int>? orderedSessionPositions,
+    required int planVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> deleteSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required String sessionItemId,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
+  Future<void> replaceSyncedSessionItemOrder({
+    required String userId,
+    required String organizationId,
+    required String sessionId,
+    required List<String> orderedSessionItemIds,
+    List<int>? orderedSessionItemPositions,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) async {}
+}
+
+class _RecordingPlanningMutationStore implements PlanningMutationStore {
+  _RecordingPlanningMutationStore({
+    required List<PlanningMutationRecord> actionable,
+  }) : _actionable = actionable;
+
+  final List<PlanningMutationRecord> _actionable;
+  int readActionableMutationsCalls = 0;
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) async {
+    readActionableMutationsCalls += 1;
+    return _actionable;
+  }
+
+  @override
+  Future<String> allocatePlanSlug({
+    required String userId,
+    required String organizationId,
+    required String name,
+  }) async => 'unused';
+
+  @override
+  Future<String> allocateSessionSlug({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required String name,
+  }) async => 'unused';
+
+  @override
+  Future<void> clearMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {}
+
+  @override
+  Future<bool> hasUnsyncedMutations({required String userId}) async => false;
+
+  @override
+  Future<List<PlanningMutationRecord>> readAllMutations({
+    required String userId,
+    required String organizationId,
+  }) async => _actionable;
+
+  @override
+  Future<PlanningMutationRecord?> readMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    for (final entry in _actionable) {
+      if (entry.kind.aggregateType == aggregateType &&
+          entry.aggregateId == aggregateId) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) async => _actionable;
+
+  @override
+  Future<void> retryMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {}
+
+  @override
+  Future<void> recordPlanCreate({
+    required PlanningMutationContext context,
+    required PlanningPlanCreateMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordPlanEdit({
+    required PlanningMutationContext context,
+    required PlanningPlanEditMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionCreate({
+    required PlanningMutationContext context,
+    required PlanningSessionCreateMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionRename({
+    required PlanningMutationContext context,
+    required PlanningSessionRenameMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required PlanningMutationSyncStatus syncStatus,
+    PlanningMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) async {}
 }

@@ -57,13 +57,60 @@ class PlanningLocalReadRepository implements PlanningRepository {
   @override
   Future<PlanDetail> getPlanDetail(String planId) async {
     final context = await _requireContext();
+    final actionableMutations = await _readActionableMutations(context);
+    return _getPlanDetailWithMutations(context, planId, actionableMutations);
+  }
+
+  @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
+    final context = await _requireContext();
+    final actionableMutations = await _readActionableMutations(context);
+    final planId = await _resolvePlanIdBySlug(
+      context,
+      planSlug,
+      actionableMutations,
+    );
+    if (planId == null) {
+      return null;
+    }
+    final detail = await _getPlanDetailWithMutations(
+      context,
+      planId,
+      actionableMutations,
+    );
+    return detail.plan;
+  }
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
+    final context = await _requireContext();
+    final actionableMutations = await _readActionableMutations(context);
+    final planId = await _resolvePlanIdBySlug(
+      context,
+      planSlug,
+      actionableMutations,
+    );
+    if (planId == null) {
+      return null;
+    }
+    return _getPlanDetailWithMutations(context, planId, actionableMutations);
+  }
+
+  // Holds the previous body of getPlanDetail. Reads the projection row for
+  // planId and merges the already-read mutation set over it, so a slug
+  // lookup (which must resolve the id first) and a direct id lookup both
+  // read and merge the mutation set exactly once.
+  Future<PlanDetail> _getPlanDetailWithMutations(
+    ActivePlanningReadContext context,
+    String planId,
+    List<PlanningMutationRecord> mutations,
+  ) async {
     final detail = await _store.readPlanDetail(
       userId: context.userId,
       organizationId: context.organizationId,
       planId: planId,
     );
-    final actionableMutations = await _readActionableMutations(context);
-    final merged = _mergePlanDetail(detail, planId, actionableMutations);
+    final merged = _mergePlanDetail(detail, planId, mutations);
     if (merged == null) {
       throw StateError('Plan not found in local planning projection: $planId');
     }
@@ -71,24 +118,34 @@ class PlanningLocalReadRepository implements PlanningRepository {
     return merged;
   }
 
-  @override
-  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
-    final plans = await listPlans();
-    for (final plan in plans) {
-      if (plan.slug == planSlug) {
-        return plan;
+  // Resolves a slug to a plan id using the already-read mutation set plus
+  // the store's indexed slug lookup -- never a full plan listing.
+  //
+  // Pending planCreate mutations are checked first because a plan created
+  // offline exists only in its own mutation record (its slug included) until
+  // the create syncs and lands in the projection; the store's index cannot
+  // find it yet. A pending planEdit is not considered because its draft
+  // carries no slug field -- a plan's slug cannot change after creation --
+  // so the projection (via the store) and pending creates are the only two
+  // places a slug can live.
+  Future<String?> _resolvePlanIdBySlug(
+    ActivePlanningReadContext context,
+    String planSlug,
+    List<PlanningMutationRecord> mutations,
+  ) async {
+    for (final mutation in mutations) {
+      if (mutation.kind == PlanningMutationKind.planCreate &&
+          mutation.slug == planSlug) {
+        return mutation.aggregateId;
       }
     }
-    return null;
-  }
 
-  @override
-  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
-    final summary = await getPlanSummaryBySlug(planSlug);
-    if (summary == null) {
-      return null;
-    }
-    return getPlanDetail(summary.id);
+    final summary = await _store.readPlanSummaryBySlug(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      planSlug: planSlug,
+    );
+    return summary?.id;
   }
 
   Future<ActivePlanningReadContext> _requireContext() async {
