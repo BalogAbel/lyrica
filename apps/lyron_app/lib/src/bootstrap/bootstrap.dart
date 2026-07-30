@@ -10,7 +10,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = SupabaseConfig.fromEnvironment();
-  await Supabase.initialize(url: config.url, anonKey: config.anonKey);
+  // supabase_flutter 2.16 deprecated anonKey in favour of publishableKey; both
+  // feed the same effective key, so the legacy anon JWT keeps working. The
+  // SUPABASE_ANON_KEY dart-define keeps its name — that is an environment
+  // contract shared with the scripts and CI, not something to rename inside a
+  // dependency bump.
+  await Supabase.initialize(url: config.url, publishableKey: config.anonKey);
   runApp(const _BootstrapScope(child: LyronApp()));
 }
 

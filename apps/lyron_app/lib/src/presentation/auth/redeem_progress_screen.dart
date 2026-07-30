@@ -63,12 +63,16 @@ class _RedeemProgressScreenState extends ConsumerState<RedeemProgressScreen> {
     InvitationError.expired => AppStrings.inviteErrorExpired,
     InvitationError.alreadyRedeemed => AppStrings.inviteErrorAlreadyRedeemed,
     InvitationError.alreadyMember => AppStrings.inviteErrorAlreadyMember,
+    InvitationError.emailMismatch => AppStrings.inviteErrorEmailMismatch,
+    InvitationError.rateLimited => AppStrings.inviteErrorRateLimited,
     InvitationError.network ||
     InvitationError.unknown => AppStrings.inviteErrorNetwork,
   };
 
   bool _isRetryableError(InvitationError error) => switch (error) {
     InvitationError.network || InvitationError.unknown => true,
+    // Rate limiting clears on its own, so retrying is the correct affordance.
+    InvitationError.rateLimited => true,
     _ => false,
   };
 }

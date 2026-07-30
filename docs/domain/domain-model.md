@@ -121,9 +121,10 @@ Slug rule:
 
 ChordPro-first rule:
 
-- `title`, `artist`, `key_signature`, `tempo_bpm`, `tags`, and `metadata_json` are treated as derived shadow fields refreshed from canonical ChordPro source after create, import, or save.
-- These fields remain queryable and sortable, but they are not the source of truth for song content.
-- The repository may keep them in sync for performance and search, but user edits should flow through ChordPro source.
+- `title`, `artist`, `key_signature`, `tempo_bpm`, and `tags` are shadow fields **derived server-side, at write acceptance**, from canonical `chordpro_source` — not accepted as client-supplied write parameters. `create_song` and `song_write_update_common` (`security definer`) re-derive all five on every write, including a write that carries no new source, so a legacy row converges onto its own stored source on its next unrelated edit. See [ADR-027](../architecture/decisions/ADR-027-backend-derived-song-metadata.md).
+- `metadata_json` remains client-writable in principle but is not written by the application today; it defaults to `'{}'::jsonb` on create and is left untouched on update.
+- These fields remain queryable and sortable, but they are not the source of truth for song content — `chordpro_source` is.
+- The Flutter reader still re-parses `chordpro_source` locally for display; the server-derived columns exist for fast lookup, filtering, and import/export mapping, not as the client's parsing engine.
 
 Deletion rule:
 

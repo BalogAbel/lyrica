@@ -11,9 +11,12 @@ end$$;
 -- Task 2: create_invitation + redeem_invitation
 
 -- Seed users and org
-insert into auth.users (id, email) values
-  ('00000000-0000-0000-0000-000000000001', 'admin@test.local'),
-  ('00000000-0000-0000-0000-000000000002', 'invitee@test.local');
+-- email_confirmed_at matters: an email-bound invitation is redeemable only by an
+-- account whose address is confirmed (ADR-025), so an unconfirmed seed user would
+-- now get email_mismatch rather than redeemed.
+insert into auth.users (id, email, email_confirmed_at) values
+  ('00000000-0000-0000-0000-000000000001', 'admin@test.local', now()),
+  ('00000000-0000-0000-0000-000000000002', 'invitee@test.local', now());
 
 insert into public.organizations (id, name, slug)
 values ('00000000-0000-0000-0000-0000000000aa', 'Test Org', 'test-org');
@@ -41,35 +44,112 @@ begin
   end if;
 end$$;
 
+-- Extra invitations for the expired and email-bound cases are issued HERE, while
+-- auth.uid() is still null (service-role path). Once request.jwt.claims below
+-- names the invitee, create_invitation would reject them as a non-admin.
+create temp table snippet_tokens (label text primary key, token text not null);
+
+do $$
+declare
+  v_token text;
+begin
+  v_token := public.create_invitation(
+    '00000000-0000-0000-0000-0000000000aa',
+    'organization_member'::public.role_code,
+    null
+  );
+  update public.invitations set expires_at = now() - interval '1 day'
+  where token = v_token;
+  insert into snippet_tokens values ('expired', v_token);
+
+  v_token := public.create_invitation(
+    '00000000-0000-0000-0000-0000000000aa',
+    'organization_member'::public.role_code,
+    'someone.else@example.test'
+  );
+  insert into snippet_tokens values ('email_mismatch', v_token);
+end$$;
+
 -- Redeem path: simulate auth.uid via local config
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-000000000002"}';
 
+-- redeem_invitation returns a jsonb status envelope, {"status", "organization_id"},
+-- and no longer raises for business outcomes. See ADR-025: a raised exception
+-- aborts the transaction and would roll back the audit row written with it.
 do $$
 declare
   v_token text;
-  v_org uuid;
+  v_result jsonb;
 begin
-  select token into v_token from public.invitations limit 1;
-  v_org := public.redeem_invitation(v_token);
-  if v_org is null then
-    raise exception 'redeem returned null';
+  -- Selected by its invited address rather than `limit 1`: several
+  -- invitations exist by now, and an unordered limit picked an arbitrary one.
+  select token into v_token
+  from public.invitations
+  where email = 'invitee@test.local'
+    and organization_id = '00000000-0000-0000-0000-0000000000aa';
+  v_result := public.redeem_invitation(v_token);
+  if v_result ->> 'status' <> 'redeemed' then
+    raise exception 'expected status redeemed, got %', v_result;
+  end if;
+  if v_result ->> 'organization_id' is null then
+    raise exception 'redeemed status must carry an organization id, got %', v_result;
   end if;
 end$$;
 
--- Second redeem must fail with invitation_already_redeemed
+-- Second redeem returns already_redeemed as a status rather than raising.
 do $$
 declare
   v_token text;
+  v_result jsonb;
 begin
-  select token into v_token from public.invitations limit 1;
-  begin
-    perform public.redeem_invitation(v_token);
-    raise exception 'expected already_redeemed';
-  exception when others then
-    if sqlerrm not like '%invitation_already_redeemed%' then
-      raise;
-    end if;
-  end;
+  -- Selected by its invited address rather than `limit 1`: several
+  -- invitations exist by now, and an unordered limit picked an arbitrary one.
+  select token into v_token
+  from public.invitations
+  where email = 'invitee@test.local'
+    and organization_id = '00000000-0000-0000-0000-0000000000aa';
+  v_result := public.redeem_invitation(v_token);
+  if v_result ->> 'status' <> 'already_redeemed' then
+    raise exception 'expected status already_redeemed, got %', v_result;
+  end if;
+  if v_result ->> 'organization_id' is not null then
+    raise exception 'a non-redeemed status must not carry an organization id, got %', v_result;
+  end if;
+end$$;
+
+-- An unknown token is not_found, again as a status.
+do $$
+declare
+  v_result jsonb;
+begin
+  v_result := public.redeem_invitation('definitely-not-a-real-token');
+  if v_result ->> 'status' <> 'not_found' then
+    raise exception 'expected status not_found, got %', v_result;
+  end if;
+end$$;
+
+-- An expired invitation reports expired.
+do $$
+declare
+  v_result jsonb;
+begin
+  select public.redeem_invitation(token) into v_result
+  from snippet_tokens where label = 'expired';
+  if v_result ->> 'status' <> 'expired' then
+    raise exception 'expected status expired, got %', v_result;
+  end if;
+end$$;
+
+-- An email-bound invitation refuses a caller whose account email differs.
+do $$
+declare
+  v_result jsonb;
+begin
+  select public.redeem_invitation(token) into v_result
+  from snippet_tokens where label = 'email_mismatch';
+  if v_result ->> 'status' <> 'email_mismatch' then
+    raise exception 'expected status email_mismatch, got %', v_result;
+  end if;
 end$$;
 
 -- Task 3 RLS: A non-admin authenticated user cannot select an invitation they did not issue

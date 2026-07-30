@@ -3,20 +3,30 @@ enum InvitationError {
   expired,
   alreadyRedeemed,
   alreadyMember,
+  emailMismatch,
+  rateLimited,
   network,
   unknown,
 }
 
-InvitationError invitationErrorFromMessage(String? message) {
-  switch (message) {
-    case 'invitation_not_found':
+/// Maps the `status` field of the `redeem_invitation` RPC response.
+///
+/// The backend reports business outcomes as returned statuses rather than
+/// raised errors so that each attempt can be audited; see ADR-025.
+InvitationError invitationErrorFromStatus(String? status) {
+  switch (status) {
+    case 'not_found':
       return InvitationError.notFound;
-    case 'invitation_expired':
+    case 'expired':
       return InvitationError.expired;
-    case 'invitation_already_redeemed':
+    case 'already_redeemed':
       return InvitationError.alreadyRedeemed;
     case 'already_member':
       return InvitationError.alreadyMember;
+    case 'email_mismatch':
+      return InvitationError.emailMismatch;
+    case 'rate_limited':
+      return InvitationError.rateLimited;
     default:
       return InvitationError.unknown;
   }

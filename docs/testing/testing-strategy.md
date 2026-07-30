@@ -159,13 +159,28 @@ Cover:
 - Overflow-safe slug-suffix numbering for plan/session names: a name ending in a number at or above 2^31 still creates successfully and keeps its full text slug, with collision numbering falling back to the slug root (e.g. `set-2`), verified in `scripts/tests/planning-write-contract-test.sh`
 - Unique-song-per-session enforcement (SEC-5) at the database layer through the partial index `session_items_unique_song_per_session`: a direct duplicate insert is rejected with SQLSTATE 23505, and the `create_song_session_item` RPC re-raises it as `duplicate_song_in_session_blocked` (P0001)
 - Pinned RPC error-code contracts for planning edits: editing a remotely-deleted plan raises `plan_not_found` (P0002, mapped to remoteMissing on the client), and `update_plan_fields` performs a full overwrite rather than a field-level merge, so a name-only edit also clears `description` and `scheduled_for`
+- Invitation redemption outcome matrix (SEC-1): hybrid email binding, caller-keyed rate limiting on suspicious outcomes, and an audit trail (`public.invitation_redemption_attempts`) whose repeated
+  terminal outcomes collapse to one row per caller, token and window for `redeem_invitation`'s full `redeemed | not_found | expired | already_redeemed | already_member | email_mismatch | rate_limited` status contract, verified in `scripts/tests/invitation-redemption-contract-test.sh`
+- `public.slugify` output parity across accented characters, punctuation runs, leading/trailing separators, and the empty result, pinned before and unchanged after the `unaccent` extension's relocation out of `public`, verified in `scripts/tests/slug-parity-contract-test.sh`
+- Backend-derived song shadow metadata: the ChordPro directive-scanner grammar including its two structural gates (tab-block inertness, affecting every field, and the key window governing `key_signature`), each of the five per-field extractors (`title`/`t`, `artist`, `key`, `tempo`, `tags`/`tag`) including last-occurrence-wins, invalid-value handling, and Unicode-whitespace trimming, the one accepted divergence in the key window (a comment the Dart parser reads as a section start does not close it in SQL) pinned as a named boundary rather than left to drift, `create_song`'s and `song_write_update_common`'s title-fallback chain, re-derivation on an update that carries no new source, and the `create_song`/`update_song`/`overwrite_song_update`/`song_write_update_common` signature and grant contract after parameter removal, verified in `scripts/tests/song-derived-metadata-contract-test.sh`
 
 ## Pre-Merge Quality Gates
 
 - `dart format --set-exit-if-changed`
 - `flutter analyze`
-- `flutter test`
+- `flutter test --coverage`
+- `./scripts/coverage-gate.sh` — line-coverage ratchet. The threshold is the value
+  measured when the gate landed (72%); raise it as coverage improves, never lower
+  it to make a red build green. It evaluates the report the test run already
+  produced, so the suite is not executed twice.
+- `./scripts/dependency-audit.sh` — fails on a published advisory, a retracted or
+  discontinued package (transitive included), or a declared dependency whose
+  locked version is behind its own constraint. Deliberately silent about majors
+  the constraints do not allow, since those need a migration rather than a gate.
 - `./scripts/check-migrations.sh`
+- `flutter build web --release` in CI (`web_build` job). Compile gate only; the
+  web offline/IndexedDB e2e suite remains deferred in
+  `docs/deferred/2026-06-29-web-offline-e2e.md`.
 - local Supabase reset and demo auth provisioning when backend-backed slices change
 - authenticated backend integration coverage for real Supabase song reads
 - authenticated backend integration coverage for real Supabase planning reads when the planning slice changes

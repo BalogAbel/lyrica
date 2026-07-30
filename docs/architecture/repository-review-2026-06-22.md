@@ -59,12 +59,12 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | LF-2 | Local-first | Per-mutation full refresh inside the sync loop (N refreshes for N mutations) | High |
 | LF-3 | Local-first | No internal single-flight guard on mutation sync | High |
 | LF-4 | Local-first | Failed/conflicted local edits silently revert in the main UI | High |
-| SEC-1 | Security | `redeem_invitation` token is bearer-only, no email binding, no rate limit | High |
+| ~~SEC-1~~ | Security | ~~`redeem_invitation` token is bearer-only, no email binding, no rate limit~~ **Done (security-read-boundary-phase3).** | High |
 | ~~UX-1~~ | UI/UX | ~~Mobile reader wraps lyric lines mid-word, breaking chord alignment~~ **Done (ui-decomposition-phase2).** | High |
 | ~~UX-2~~ | UI/UX | ~~Plan date edited as raw ISO-8601 text field (no picker)~~ **Done (ui-decomposition-phase2).** | High |
 | UX-8 | UI/UX | Failed local edits silently revert in the main UI (same mechanism as LF-4) | High |
 | ARCH-1 | Architecture | `providers.dart` god-file (762 lines) incl. 110-line inline reconcile switch | High |
-| SEC-4 | Security | Song shadow fields client-authoritative, not backend-derived from ChordPro | Medium |
+| ~~SEC-4~~ | Security | ~~Song shadow fields client-authoritative, not backend-derived from ChordPro~~ **Done (read-boundary-and-derived-song-metadata).** | Medium |
 | SEC-5 | Security | No DB `unique(session_id, song_id)`; "song once per session" only RPC-enforced | Medium |
 | LF-5 | Local-first | `planEdit` merge blanks `description`/`scheduledFor` (asymmetric vs `name`) | Medium |
 | LF-6 | Local-first | Optimistic merge can show a duplicate song in a session | Medium |
@@ -88,8 +88,8 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-9 | UI/UX | Inconsistent content-width caps (sign-in 420, song-list 720, invite none) | Low |
 | UX-10 | UI/UX | i18n leak: inline English in discard-all message vs centralized `AppStrings` | Low |
 | UX-11 | UI/UX | Forms silently no-op on empty/invalid input (sign-in, invite) | Low–Med |
-| DX-1 | Tooling | `file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor | Medium |
-| DX-2 | Tooling | No dependency-audit / coverage gate in CI | Medium |
+| ~~DX-1~~ | Tooling | ~~`file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor~~ **Done (security-read-boundary-phase3), riverpod deferred.** | Medium |
+| ~~DX-2~~ | Tooling | ~~No dependency-audit / coverage gate in CI~~ **Done (security-read-boundary-phase3).** | Medium |
 
 ### Resolution status (updated 2026-06-29)
 
@@ -138,6 +138,25 @@ carry the detail; this is the digest.
   trade-off is documented in `architecture.md`.
 - **LF-3** (song path), **LF-6**, **LF-8**, **LF-T7** (local-first-validation slice, PR #56)
   — see §6 status blocks.
+- **SEC-1** (security-read-boundary-phase3 slice) — `redeem_invitation` is now
+  hybrid email-bound (email-bound when the invitation carries an address, bearer
+  otherwise), rate limited per caller on `not_found`/`email_mismatch` outcomes, and
+  attempts are audited in `public.invitation_redemption_attempts`, with repeated
+  terminal outcomes collapsed to one row per caller, token and window
+  (`supabase/migrations/202607290001_invitation_redemption_audit.sql`,
+  `supabase/migrations/202607290002_invitation_redemption_contract.sql`). The RPC
+  returns a `jsonb` status envelope instead of raising for business outcomes, which
+  is what makes both the audit trail and the rate limit possible. ADR-025 records
+  the model and the rejected alternatives; pinned by
+  `scripts/tests/invitation-redemption-contract-test.sh`.
+- **SEC-4** (read-boundary-and-derived-song-metadata slice) — `create_song`
+  and `song_write_update_common` now derive `title`, `artist`,
+  `key_signature`, `tempo_bpm`, and `tags` from canonical ChordPro at the
+  write-acceptance boundary instead of accepting them from the client; the
+  original finding's severity was also corrected, since five of the six
+  named fields were never written by the client at all rather than
+  client-authoritative and drifting. ADR-027. Pinned by
+  `scripts/tests/song-derived-metadata-contract-test.sh`.
 
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
@@ -153,8 +172,8 @@ carry the detail; this is the digest.
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-1, SEC-2, SEC-4, all
-ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
+**Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, all
+ARCH-*, all UX-*, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
 
@@ -230,17 +249,34 @@ packages or drop the overhead.
 stores `p_email` but never checks it against the caller; any authenticated user holding
 a valid token joins the org. No rate limiting on redemption. Token entropy makes
 brute force impractical, but a **leaked invite link = unintended org membership**.
-**Recommendation**: bind redemption to the invited email (or explicitly document and
+~~**Recommendation**: bind redemption to the invited email (or explicitly document and
 accept the "link == entry ticket" model), add rate limiting + an audit trail, and write
-an ADR.
+an ADR.~~
+**Status (2026-07-29, security read-boundary phase 3, SEC-1): fixed.** Redemption is
+email-bound when the invitation carries an address
+(`supabase/migrations/202607290002_invitation_redemption_contract.sql`), rate limited
+per caller, and audited in `public.invitation_redemption_attempts`
+(`supabase/migrations/202607290001_invitation_redemption_audit.sql`). Model and
+rejected alternatives recorded in ADR-025; pinned by
+`scripts/tests/invitation-redemption-contract-test.sh`.
 
-**SEC-4 [verified, team-known] — client-authoritative shadow metadata.** `title`,
-`artist`, `key_signature`, `tempo_bpm`, `tags`, `metadata_json` are derived client-side
-from canonical ChordPro and written as shadow fields, **not enforced from source at the
-write-acceptance boundary**. Client/server parser drift can desync metadata from the
-canonical source. Documented in `docs/deferred/2026-05-09-song-write-derived-fields.md`.
-**Recommendation**: derive shadow metadata at the backend/write-acceptance boundary;
-treat client shadow fields as provisional only.
+**SEC-4 [verified] — corrected and fixed.** The original finding overstated
+the problem for five of the six named fields. Verified against the code:
+`SongMutationRecord` and the sync payload never carried `artist`,
+`key_signature`, `tempo_bpm`, `tags`, or `metadata_json` at all — those four
+shadow fields were simply never written by the application (they stayed null
+or empty for every app-created song), not "client-authoritative and
+drifting." Only `title` was genuinely client-supplied and could drift from
+its source. `metadata_json` has no ChordPro origin to derive from and
+remains out of scope.
+**Status (2026-07-29, read-boundary-and-derived-song-metadata slice):
+fixed.** `create_song` and `song_write_update_common`
+(`supabase/migrations/202607290004_derive_song_metadata.sql`) now derive
+`title`, `artist`, `key_signature`, `tempo_bpm`, and `tags` from canonical
+ChordPro inside the `security definer` write boundary; the corresponding
+client-supplied RPC parameters (plus `p_metadata_json`) are removed. See
+[ADR-027](decisions/ADR-027-backend-derived-song-metadata.md), pinned by
+`scripts/tests/song-derived-metadata-contract-test.sh`.
 
 **SEC-5 [verified] — missing DB invariant.** `session_items` has only
 `unique(session_id, position)` — there is **no** `unique(session_id, song_id)`. The
@@ -266,7 +302,17 @@ over-counted; note `has_capability` had it there too but **regressed** when rede
 without it in `202605250002_organization_read_only_role_constraints.sql`.
 **Fixed (arch-spine-phase0-1)**: `has_capability` and `get_my_capabilities`
 now pin `set search_path = public` (`supabase/migrations/202607080001_capability_search_path_hardening.sql`),
-guarded by `scripts/tests/capability-search-path-contract-test.sh`. All 3 helpers closed.
+guarded by `scripts/tests/capability-search-path-contract-test.sh`. **Correction (2026-07-29):**
+`202607080001` closed only the `search_path` half — the same `202605250002` redefinition
+also dropped `security definer` on `has_capability`, which broke the RLS recursion fix from
+`20260323220000` and was missed at the time. Consequence: the "memberships are manageable
+by capability" ALL policy calls `can_manage_membership` → `has_capability`, which reads
+`public.memberships` as invoker and re-enters the same policy, so any authenticated read of
+`memberships` — and the `get_my_capabilities` RPC, which reads `memberships` as invoker —
+failed with `stack depth limit exceeded`. Restored on 2026-07-29 in
+`supabase/migrations/202607290000_has_capability_security_definer_restore.sql`, now pinned
+by `scripts/tests/capability-search-path-contract-test.sh` asserting both `proconfig`
+(`search_path=public`) and `prosecdef` (security definer). All 3 helpers closed.
 
 ## 6. Local-First Review (the highest-risk subsystem)
 
@@ -487,10 +533,10 @@ tracked in `docs/deferred/2026-06-29-web-offline-e2e.md`.
 **Team-known deferred items** (`docs/deferred/`): popup-row recovery `WidgetRef` lifetime
 (stale UI if popup closed mid-op — fix by delegating recovery actions to a long-lived
 controller with `ProviderRef` so invalidations/refreshes fire regardless of popup mount
-state, rather than relying on the transient `WidgetRef`/`context.mounted`), planning
-reorder optimistic-overlay cleanup, and
-SEC-4 (song shadow fields). Per `docs/deferred/README.md`, these become priority work
-when a slice re-enters their area.
+state, rather than relying on the transient `WidgetRef`/`context.mounted`), and planning
+reorder optimistic-overlay cleanup. Per `docs/deferred/README.md`, these become priority
+work when a slice re-enters their area. ~~SEC-4 (song shadow fields)~~ **Done
+(read-boundary-and-derived-song-metadata)** — see ADR-027.
 
 ## 12. Dependencies (DX-1)
 
@@ -499,6 +545,32 @@ Direct deps behind latest: `file_picker` 8.3.7 → 11.0.2 (**3 majors**),
 `go_router` 16.3.0 → 17.3.0 (1 major), `supabase_flutter`/`gotrue`/`supabase`
 2.12/2.18/2.10 → 2.15/2.22/2.13 (minor — **auth, security-relevant**). No known CVEs in
 the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage gate in CI.
+
+**Status (2026-07-30, security read-boundary phase 3, DX-1 and DX-2): fixed, with
+one item deferred.** The figures above were measured on 2026-06-22 and were stale
+by the time the work ran; they were re-measured rather than trusted.
+
+DX-1, in priority order rather than by version distance: `supabase_flutter`
+2.12.0 → 2.16.0, which carries `gotrue` 2.18.0 → 2.26.0, `postgrest` 2.6.0 →
+2.8.0, `realtime_client` 2.7.0 → 2.11.0 and `functions_client` 2.5.0 → 2.6.4;
+`app_links` 6.3.2 → 7.0.0, which the review did not list at all and which carries
+the invite deep-link path; `go_router` 16.3.0 → 17.3.0; `file_picker` 8.3.7 →
+11.0.2; and a lockfile refresh of thirty-five in-constraint packages including
+`drift` 2.32.0 → 2.34.3. `app_links` is pinned to `^7.0.0` rather than 7.2.1
+because 7.1.1 requires Dart SDK 3.12 and this toolchain is on 3.11.3.
+
+`flutter_riverpod`/`riverpod` 3.x is **deferred** —
+`docs/deferred/2026-07-30-riverpod-3-migration.md`. The mechanical migration was
+completed and then reverted: Riverpod 3 wraps provider errors, which breaks nine
+tests on the song reader's error paths, one of them a production-visible symptom.
+That is the surface ADR-023/024 stabilised, so it needs its own slice.
+
+DX-2: `./scripts/coverage-gate.sh` ratchets line coverage from the measured 72%,
+`./scripts/dependency-audit.sh` fails on published advisories, retracted or
+discontinued packages and on a lockfile behind its own constraints, and both run
+from `./scripts/verify.sh`. A `web_build` job was also added to
+`.github/workflows/ci.yml`: no job built the web target before, which is how the
+`Platform.environment` break in `276a052` reached `main`.
 
 ## 13. Prioritized Roadmap
 
@@ -517,14 +589,14 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
-- SEC-1: invite email-binding + rate limit + audit + ADR.
-- DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
+- ~~SEC-1: invite email-binding + rate limit + audit + ADR.~~ **Done (security-read-boundary-phase3).**
+- ~~DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.~~ **Done (security-read-boundary-phase3); riverpod 3 deferred.**
 
 **Strategic (1+ month)**
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.
 - ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ~~ARCH-3: decompose plan_detail / song_editor.~~ **Done (ui-decomposition-phase2).**
-- SEC-4: backend-derived shadow metadata.
+- ~~SEC-4: backend-derived shadow metadata.~~ **Done (read-boundary-and-derived-song-metadata).**
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;
   dark mode (UX-7).
 

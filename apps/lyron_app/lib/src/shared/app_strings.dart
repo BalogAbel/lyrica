@@ -277,6 +277,10 @@ class AppStrings {
   static const inviteErrorExpired = 'Invite expired. Ask for a new one.';
   static const inviteErrorAlreadyRedeemed = 'Invite already used.';
   static const inviteErrorAlreadyMember = 'You are already a member.';
+  static const inviteErrorEmailMismatch =
+      'This invite was issued to a different email address.';
+  static const inviteErrorRateLimited =
+      'Too many attempts. Wait a few minutes and try again.';
   static const inviteErrorNetwork =
       'Connection error. Check your network and try again.';
   static const accountTitle = 'Account';

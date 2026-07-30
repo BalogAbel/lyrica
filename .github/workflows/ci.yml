@@ -34,6 +34,33 @@ jobs:
       - name: Verify repository gate
         run: ./scripts/verify.sh --skip-backend-write-contracts
 
+  # Compile gate only. A web-only break reached main during the arch-spine
+  # slice (276a052, Platform.environment needing a kIsWeb guard) and was caught
+  # by review rather than CI, because no job built the web target. The web
+  # offline/IndexedDB e2e suite stays deferred; see
+  # docs/deferred/2026-06-29-web-offline-e2e.md.
+  web_build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.38.5
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: apps/lyron_app
+
+      - name: Build web
+        run: flutter build web --release
+        working-directory: apps/lyron_app
+
   backend_write_contracts:
     runs-on: ubuntu-latest
 
