@@ -106,7 +106,15 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           name: draft.name,
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          // OCC: keep the base version captured by the FIRST local edit.
+          // draft.baseVersion comes from the locally merged read, which
+          // shows the user their own pending overlay rather than a
+          // refreshed remote state -- so a later local edit did not
+          // actually observe a newer remote version. Rebasing to it here
+          // would assert a base the user never saw and silently suppress a
+          // real conflict. Explicit, user-initiated rebasing happens in
+          // retryMutation via _currentBaseVersionFor.
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
@@ -183,7 +191,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           organizationId: context.organizationId,
           planId: draft.planId,
           name: draft.name,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionRename,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
@@ -235,7 +243,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           aggregateId: draft.sessionId,
           organizationId: context.organizationId,
           planId: draft.planId,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
@@ -360,7 +368,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           organizationId: context.organizationId,
           planId: draft.planId,
           sessionId: draft.sessionId,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionItemDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
