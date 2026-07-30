@@ -8,8 +8,9 @@ Close SEC-1 from `docs/architecture/repository-review-2026-06-22.md`: invitation
 redemption is currently a pure bearer credential with no email binding, no rate
 limiting, and no audit trail of attempts. This spec pins a hybrid redemption
 model (email-bound when the invitation carries an email, bearer otherwise), a
-caller-keyed rate limit, and a persisted audit trail of every redemption
-attempt — all enforced in the database, not the Flutter client.
+caller-keyed rate limit, and a persisted audit trail of redemption activity —
+with repeated terminal outcomes and rate-limited calls capped as described
+below — all enforced in the database, not the Flutter client.
 
 ## Problem
 
