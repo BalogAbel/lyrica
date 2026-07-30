@@ -16,6 +16,7 @@ provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scrip
 manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
 backend_write_contracts_script="${BACKEND_WRITE_CONTRACTS_SCRIPT:-./scripts/backend-write-contracts.sh}"
 coverage_gate_script="${COVERAGE_GATE_SCRIPT:-./scripts/coverage-gate.sh}"
+dependency_audit_script="${DEPENDENCY_AUDIT_SCRIPT:-./scripts/dependency-audit.sh}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -36,6 +37,7 @@ done
 (cd apps/lyron_app && "$flutter_bin" analyze)
 (cd apps/lyron_app && "$flutter_bin" test --coverage)
 "$coverage_gate_script"
+"$dependency_audit_script"
 
 if [[ "$skip_migrations" -eq 1 ]]; then
   exit 0
