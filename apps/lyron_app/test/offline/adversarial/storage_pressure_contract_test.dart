@@ -101,6 +101,76 @@ void main() {
       );
       expect(pending, isEmpty);
     });
+
+    test('a write that fails once and succeeds on retry lands the '
+        'mutation, after evicting droppable catalog sources', () async {
+      final budget = _InsertFailureBudget(failuresRemaining: 1);
+      final failingExecutor = _InsertFailingExecutor(
+        NativeDatabase.memory(),
+        budget,
+      );
+      final database = PlanningLocalDatabase.connect(failingExecutor);
+      final localStore = DriftPlanningLocalStore(database);
+      final catalogDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(database.close);
+      addTearDown(catalogDatabase.close);
+
+      await catalogDatabase
+          .into(catalogDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'song-1',
+              source: 'body ' * 200,
+            ),
+          );
+
+      final store = BudgetedPlanningMutationStore(
+        delegate: DriftPlanningMutationStore(
+          database: database,
+          localStore: localStore,
+        ),
+        accountant: PlanningStorageAccountant(database),
+        evictor: SongCatalogEvictor(
+          database: catalogDatabase,
+          accountant: CatalogStorageAccountant(catalogDatabase),
+        ),
+        budget: const LocalStorageBudget(),
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      // Does NOT throw: the first attempt fails (simulated storage
+      // pressure), eviction runs, and the retry succeeds.
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-local-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      // Eviction actually ran: the droppable source is gone.
+      final remainingSources = await catalogDatabase
+          .select(catalogDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, isEmpty);
+
+      // The mutation really landed on the retry -- it must be readable
+      // afterwards, not silently lost.
+      final pending = await store.readPendingMutations(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+      expect(pending, hasLength(1));
+      expect(pending.single.aggregateId, 'plan-local-1');
+    });
   });
 }
 
@@ -111,14 +181,48 @@ class StorageQuotaSimulatedException implements Exception {
       'StorageQuotaSimulatedException: simulated INSERT failure';
 }
 
+/// Shared mutable failure budget for [_InsertFailingExecutor] and
+/// [_InsertFailingTransactionExecutor]. `null` means "unlimited": every
+/// insert fails, forever, which is what the original "fails forever"
+/// contract test needs. A finite budget fails only the next N inserts and
+/// then lets the rest through, which is what the retry-succeeds contract
+/// test needs. It is shared by reference across every executor spawned
+/// from the same root (`beginTransaction`/`beginExclusive`), since Drift
+/// issues the actual `INSERT` through a fresh [TransactionExecutor], not
+/// the top-level [QueryExecutor].
+class _InsertFailureBudget {
+  _InsertFailureBudget({int? failuresRemaining})
+    : _failuresRemaining = failuresRemaining;
+
+  int? _failuresRemaining;
+
+  bool shouldFail() {
+    final remaining = _failuresRemaining;
+    if (remaining == null) {
+      return true;
+    }
+    if (remaining <= 0) {
+      return false;
+    }
+    _failuresRemaining = remaining - 1;
+    return true;
+  }
+}
+
 /// A [QueryExecutor] decorator that delegates everything to [_delegate]
-/// except `runInsert`, which always throws. This deterministically
-/// reproduces "the storage layer failed this write" (e.g. disk full,
-/// quota exceeded) without depending on platform-specific IO failures.
+/// except `runInsert`, which throws for as long as [_budget] says to. By
+/// default the budget is unlimited, so every INSERT fails -- this
+/// deterministically reproduces "the storage layer failed this write"
+/// (e.g. disk full, quota exceeded) without depending on platform-specific
+/// IO failures. A finite budget instead reproduces "the storage layer
+/// failed this write, but recovered" -- the shape LF-T4's retry exists to
+/// handle.
 class _InsertFailingExecutor implements QueryExecutor {
-  _InsertFailingExecutor(this._delegate);
+  _InsertFailingExecutor(this._delegate, [_InsertFailureBudget? budget])
+    : _budget = budget ?? _InsertFailureBudget();
 
   final QueryExecutor _delegate;
+  final _InsertFailureBudget _budget;
 
   @override
   SqlDialect get dialect => _delegate.dialect;
@@ -134,7 +238,10 @@ class _InsertFailingExecutor implements QueryExecutor {
 
   @override
   Future<int> runInsert(String statement, List<Object?> args) {
-    throw StorageQuotaSimulatedException();
+    if (_budget.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runInsert(statement, args);
   }
 
   @override
@@ -155,11 +262,11 @@ class _InsertFailingExecutor implements QueryExecutor {
 
   @override
   TransactionExecutor beginTransaction() =>
-      _InsertFailingTransactionExecutor(_delegate.beginTransaction());
+      _InsertFailingTransactionExecutor(_delegate.beginTransaction(), _budget);
 
   @override
   QueryExecutor beginExclusive() =>
-      _InsertFailingExecutor(_delegate.beginExclusive());
+      _InsertFailingExecutor(_delegate.beginExclusive(), _budget);
 
   @override
   Future<void> close() => _delegate.close();
@@ -168,11 +275,13 @@ class _InsertFailingExecutor implements QueryExecutor {
 /// Transaction-scoped counterpart of [_InsertFailingExecutor]. Drift runs
 /// `into(...).insertOnConflictUpdate(...)` inside a `database.transaction`
 /// block via a [TransactionExecutor], not the top-level [QueryExecutor], so
-/// the insert-failing behaviour must be mirrored here too.
+/// the insert-failing behaviour must be mirrored here too, sharing the same
+/// [_budget] instance so a finite budget is honoured across attempts.
 class _InsertFailingTransactionExecutor implements TransactionExecutor {
-  _InsertFailingTransactionExecutor(this._delegate);
+  _InsertFailingTransactionExecutor(this._delegate, this._budget);
 
   final TransactionExecutor _delegate;
+  final _InsertFailureBudget _budget;
 
   @override
   bool get supportsNestedTransactions => _delegate.supportsNestedTransactions;
@@ -191,7 +300,10 @@ class _InsertFailingTransactionExecutor implements TransactionExecutor {
 
   @override
   Future<int> runInsert(String statement, List<Object?> args) {
-    throw StorageQuotaSimulatedException();
+    if (_budget.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runInsert(statement, args);
   }
 
   @override
@@ -212,11 +324,11 @@ class _InsertFailingTransactionExecutor implements TransactionExecutor {
 
   @override
   TransactionExecutor beginTransaction() =>
-      _InsertFailingTransactionExecutor(_delegate.beginTransaction());
+      _InsertFailingTransactionExecutor(_delegate.beginTransaction(), _budget);
 
   @override
   QueryExecutor beginExclusive() =>
-      _InsertFailingExecutor(_delegate.beginExclusive());
+      _InsertFailingExecutor(_delegate.beginExclusive(), _budget);
 
   @override
   Future<void> send() => _delegate.send();

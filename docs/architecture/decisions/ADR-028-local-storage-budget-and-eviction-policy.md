@@ -137,6 +137,24 @@ the retry is idempotent — a partially applied first attempt cannot
 duplicate. If the retry still fails, the failure is wrapped as a typed
 `LocalStorageWriteFailure` and propagated; it is never swallowed.
 
+Two narrowings of that branch, both learned in review:
+
+The branch catches `Exception`, not everything. By Dart convention an
+`Error` subclass — `ArgumentError` from decoding a corrupted
+`mutation_kind`, a `StateError`, a `TypeError` — signals a programming
+defect, never storage pressure. Catching it here would run a pointless
+eviction, retry the write into the identical failure, and bury the real
+bug inside a generic `LocalStorageWriteFailure`. Errors now propagate as
+themselves.
+
+The eviction step is itself guarded. The condition that broke the write —
+a full disk, an exceeded quota — can equally break the eviction `DELETE`.
+If eviction throws, the write is not retried and the **original** write
+error is surfaced as the `LocalStorageWriteFailure` cause: that is what
+the caller needs to act on, and the eviction failure is a secondary
+symptom. Without this, an untyped exception escaped and contradicted the
+guarantee stated above.
+
 ### D4 — Protection order
 
 **Never evicted:**

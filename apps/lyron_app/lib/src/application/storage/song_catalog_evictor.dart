@@ -24,6 +24,17 @@ class SongCatalogEvictor {
   final CatalogStorageAccountant _accountant;
 
   /// Returns the estimated bytes freed.
+  ///
+  /// `measureDroppableBytes()` and the `DELETE` below are two separate,
+  /// un-transacted statements, so a write landing between them can make the
+  /// returned figure diverge from what was actually deleted -- it is a
+  /// best-effort estimate for diagnostics only (it currently only ever ends
+  /// up inside [LocalStorageWriteFailure.toString]). This does NOT affect
+  /// correctness of the deletion itself: the `DELETE`'s own `NOT EXISTS`
+  /// re-evaluates at delete time, so protected rows (songs with a pending
+  /// mutation) are never removed regardless of what ran in between. If this
+  /// figure is ever used for something user-facing rather than diagnostics,
+  /// both statements would need to run inside one transaction first.
   Future<int> evictDroppable() async {
     final droppableBytes = await _accountant.measureDroppableBytes();
     if (droppableBytes == 0) {

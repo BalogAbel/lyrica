@@ -82,11 +82,30 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       // A domain rejection, not storage pressure. Retrying it would fail
       // identically and evicting would destroy cached data for nothing.
       rethrow;
-    } catch (_) {
+    } on Exception catch (error) {
+      // Catch Exception, not Object: by Dart convention Error subclasses
+      // (ArgumentError, StateError, TypeError, ...) mean a programming
+      // defect, never storage pressure. If a corrupted `mutation_kind` made
+      // `planningMutationKindFromValue` throw an ArgumentError, or any other
+      // real bug threw from inside write(), it must propagate as itself --
+      // not get misreported as storage pressure, trigger a pointless
+      // eviction, and get retried into the same failure.
+      //
       // Storage failure. Give up droppable catalog sources, then retry once.
       // Every record* write is an upsert keyed by aggregate, so the retry is
       // idempotent: a partially applied first attempt cannot duplicate.
-      final freed = await _evictor.evictDroppable();
+      final int freed;
+      try {
+        freed = await _evictor.evictDroppable();
+      } on Exception {
+        // Eviction itself failed -- plausibly the same condition (disk
+        // full, quota) that broke the original write. Don't retry the
+        // write into a store we couldn't even evict from; surface the
+        // ORIGINAL write error, since that's what the caller actually
+        // needs to see. The eviction failure is a secondary symptom, not
+        // reported bytes freed since none were freed.
+        throw LocalStorageWriteFailure(cause: error, bytesFreedByEviction: 0);
+      }
       try {
         await write();
       } catch (retryError) {
