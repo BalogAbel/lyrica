@@ -68,7 +68,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | SEC-5 | Security | No DB `unique(session_id, song_id)`; "song once per session" only RPC-enforced | Medium |
 | LF-5 | Local-first | `planEdit` merge blanks `description`/`scheduledFor` (asymmetric vs `name`) | Medium |
 | LF-6 | Local-first | Optimistic merge can show a duplicate song in a session | Medium |
-| LF-7 | Local-first | `discard`/`retry` require connectivity (can't drop a stuck mutation offline) | Medium |
+| ~~LF-7~~ | Local-first | ~~`discard`/`retry` require connectivity (can't drop a stuck mutation offline)~~ **Done (offline-durability-phase4).** | Medium |
 | LF-8 | Local-first | Reconcile silent null-coercion (`?? ''`×11, `?? 0`×2) into the projection | Medium |
 | ~~LF-T3~~ | Local-first | ~~Mutation store grows unbounded over long offline~~ **Done (offline-durability-phase4).** | High |
 | ~~LF-T4~~ | Local-first | ~~No storage quota / eviction policy (web IndexedDB silent eviction risk)~~ **Done (offline-durability-phase4), native-only verification.** | High |
@@ -80,7 +80,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-7 | UI/UX | No dark theme (only `theme:`); relevant for dim-stage use | Medium |
 | SEC-2 | Security | `create_invitation` null-caller admin gate relies on grant scope only | Low |
 | SEC-3 | Security | `has_capability`/`current_organization_ids`/`get_my_capabilities` lack `set search_path` | Low |
-| LF-9 | Local-first | Slug-by-slug lookup re-merges all mutations (N+1 reads) | Low |
+| ~~LF-9~~ | Local-first | ~~Slug-by-slug lookup re-merges all mutations (N+1 reads)~~ **Done (offline-durability-phase4).** | Low |
 | LF-T5..T8 | Local-first | OCC divergence grows with offline time; clock skew; schema drift; server TTL cleanup | Low–Med |
 | ARCH-4 | Architecture | Melos monorepo overhead for a single package | Low |
 | ARCH-5 | Architecture | Active-organization resolution spread across providers (high implicit coupling) | Medium |
@@ -175,6 +175,12 @@ carry the detail; this is the digest.
   Every threshold is verified against native Drift/sqlite3 only; the web/IndexedDB
   assumptions remain unverified (`docs/deferred/2026-06-29-web-offline-e2e.md`).
 
+- **LF-7, LF-9** (offline-durability-phase4 slice) — see §6.2 status block. LF-7's live
+  violation was on the **song** side (`SongMutationSyncController.discardMine`), not the
+  planning file the original finding cited; the planning half was already local-first as
+  a side effect of PR #62/#63. LF-9's fix is a correctness fix to an interface method
+  with **no live caller** today, not a measured performance win.
+
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
 
@@ -188,7 +194,7 @@ carry the detail; this is the digest.
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-7, LF-9, LF-T5, LF-T8, SEC-2, all
+**Still open** (unchanged): LF-T5, LF-T8, SEC-2, all
 ARCH-*, all UX-*, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
@@ -450,6 +456,49 @@ verification — see below). The remaining time-bound findings are LF-T5, LF-T6 
   silently coercing a null required-on-create field to `''`/`0`. Guarded by
   `apps/lyron_app/test/offline/adversarial/planning_reconcile_nullfield_test.dart`.
 - `LF-7`, `LF-9` — unchanged by this slice.
+
+**Status (2026-07-30, offline-durability-phase4 slice)**:
+- `LF-7` — **fixed on the song side; the finding's file pointer was stale.** The finding
+  as recorded pointed at `planning_mutation_sync_controller.dart:92,109`. By the time
+  this slice started that pointer was already wrong: the planning-side refactors in
+  PR #62 and PR #63 had made `PlanningMutationSyncController.discardMutation` clear the
+  mutation before attempting any sync, so the planning half of LF-7 was resolved as a
+  side effect of unrelated work, not by this slice. The live violation was on the
+  **song** side, and it was worse than the original finding described:
+  `SongMutationSyncController.discardMine` fetched the server record before touching
+  local storage, so an offline discard did not merely fail — the connectivity error fell
+  through to the generic handler and wrote `SongSyncStatus.conflict` onto the record the
+  user asked to throw away, and `UnifiedDiscardController.discardAll` swallowed that
+  per entry, so nothing reached the user at all. `discardMine` is now local-first: a
+  pending create or a remote-deleted conflict deletes the local song, and any other
+  state (pending update, pending delete, conflict) clears the mutation so the read falls
+  back to the cached catalog snapshot — the last known server copy — with no network
+  call required either way, and a discard never writes `SongSyncStatus.conflict`. A
+  best-effort catalog refresh follows the local discard to pick up server freshness; its
+  failure is swallowed and never undoes the completed discard. Accepted trade-off:
+  discarding a **pending delete** now clears the mutation without confirming the song is
+  still live on the server, so if it really was deleted remotely and the cached snapshot
+  is stale, the song can reappear locally until the next successful refresh removes it
+  again — a bounded, self-healing window. Retry stays online-only, since it genuinely
+  needs the backend, but now reports rather than failing silently:
+  `PlanningMutationSyncController.retryMutation` re-reads the record after syncing and
+  throws `PlanningMutationSyncException` when the sync left a `connectivityFailure`
+  error code, so a user-initiated retry no longer returns as if it had worked;
+  background `syncPendingMutations` keeps swallowing connectivity failures, since
+  finding no network in the background is routine, not an error worth surfacing. Guarded
+  by `apps/lyron_app/test/application/song_library/song_mutation_sync_controller_test.dart`
+  and `apps/lyron_app/test/application/planning/planning_mutation_sync_controller_test.dart`.
+- `LF-9` — **fixed; no live caller today.** `getPlanDetailBySlug` and
+  `getPlanSummaryBySlug` now read the actionable mutation set once per call, resolve the
+  slug against pending `planCreate` mutations first (so a plan created offline, whose
+  slug exists only in its pending mutation, stays findable) and otherwise via
+  `PlanningLocalStore.readPlanSummaryBySlug`, and never fall back to a full plan
+  listing. This is a correctness fix to an interface method, not a measured performance
+  win: nothing in `lib/` watches `planningPlanBySlugProvider` or
+  `planningPlanDetailBySlugProvider` today — the slug routes resolve through
+  `planningPlanListProvider` and fetch detail by id — so the path being fixed has no
+  live caller. Guarded by
+  `apps/lyron_app/test/application/planning/planning_local_read_repository_test.dart`.
 
 **Two root patterns**: (1) **missing exactly-once / idempotency** (LF-1, LF-3) — sync is
 at-least-once with no dedup or single-flight; (2) **merge assumes mutation-record
