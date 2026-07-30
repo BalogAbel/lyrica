@@ -5,9 +5,6 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
 slug_parity_test_script="${SLUG_PARITY_TEST_SCRIPT:-./scripts/tests/slug-parity-contract-test.sh}"
-BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
-  bash "$slug_parity_test_script"
-
 planning_write_contract_test_script="${PLANNING_WRITE_CONTRACT_TEST_SCRIPT:-./scripts/tests/planning-write-contract-test.sh}"
 song_crud_write_contract_test_script="${SONG_CRUD_WRITE_CONTRACT_TEST_SCRIPT:-./scripts/tests/song-crud-write-contract-test.sh}"
 supabase_script="${SUPABASE_SCRIPT:-./scripts/supabase.sh}"
@@ -34,6 +31,8 @@ done
 
 "$provision_demo_user_script" >/dev/null
 
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$slug_parity_test_script"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$planning_write_contract_test_script"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \

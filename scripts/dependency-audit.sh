@@ -24,7 +24,10 @@ app_dir="${DEPENDENCY_AUDIT_APP_DIR:-apps/lyron_app}"
 report_path="${DEPENDENCY_AUDIT_REPORT_PATH:-}"
 
 if [[ -z "$report_path" ]]; then
-  report_path="$(mktemp -t dependency-audit)"
+  # Explicit template with trailing X's rather than `mktemp -t prefix`: GNU
+  # mktemp requires at least three X's, while BSD accepts a bare prefix, so the
+  # bare form works on macOS and fails on Linux CI.
+  report_path="$(mktemp "${TMPDIR:-/tmp}/dependency-audit.XXXXXX")"
   trap 'rm -f "$report_path"' EXIT
   (cd "$app_dir" && "$flutter_bin" pub outdated --json) >"$report_path"
 fi
