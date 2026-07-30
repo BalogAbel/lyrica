@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
+import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 
@@ -267,6 +268,100 @@ final unifiedDiscardControllerProvider =
             ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanListProvider);
+          } finally {
+            link.close();
+          }
+        },
+      );
+    });
+
+/// The `ref` half of the popup's per-row keep/discard/apply-to-group
+/// actions -- see UnifiedRowRecoveryController's doc comment. Each step
+/// takes `ref.keepAlive()` before its first `await` and releases it in a
+/// `finally`, exactly like unifiedDiscardControllerProvider above, so the
+/// mutation, the revision bump and the invalidations all still happen even
+/// if the popup that started them has since closed.
+final unifiedRowRecoveryControllerProvider =
+    Provider.autoDispose<UnifiedRowRecoveryController>((ref) {
+      return UnifiedRowRecoveryController(
+        keepMineStep: (songId) async {
+          final link = ref.keepAlive();
+          try {
+            final activeContext = ref.read(activeCatalogContextProvider);
+            if (activeContext == null) return false;
+            final songContext = SongMutationContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            );
+            var hadFailure = false;
+            try {
+              await ref
+                  .read(songMutationSyncControllerProvider)
+                  .keepMine(songContext, songId: songId);
+            } catch (_) {
+              hadFailure = true;
+            }
+            ref.invalidate(songMutationEntriesProvider);
+            ref.invalidate(songLibraryListProvider);
+            return hadFailure;
+          } finally {
+            link.close();
+          }
+        },
+        discardMineStep: (songId) async {
+          final link = ref.keepAlive();
+          try {
+            final activeContext = ref.read(activeCatalogContextProvider);
+            if (activeContext == null) return false;
+            final songContext = SongMutationContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            );
+            var hadFailure = false;
+            try {
+              await ref
+                  .read(songMutationSyncControllerProvider)
+                  .discardMine(songContext, songId: songId);
+            } catch (_) {
+              hadFailure = true;
+            }
+            ref.invalidate(songMutationEntriesProvider);
+            ref.invalidate(songLibraryListProvider);
+            return hadFailure;
+          } finally {
+            link.close();
+          }
+        },
+        applyToGroupStep: (refs, {required retry}) async {
+          final link = ref.keepAlive();
+          try {
+            final planningContext = ref.read(activePlanningContextProvider);
+            if (planningContext == null) return false;
+            final controller = ref.read(planningMutationSyncControllerProvider);
+            var hadFailure = false;
+            for (final mref in refs) {
+              try {
+                if (retry) {
+                  await controller.retryMutation(
+                    planningContext,
+                    aggregateType: mref.aggregateType,
+                    aggregateId: mref.aggregateId,
+                  );
+                } else {
+                  await controller.discardMutation(
+                    planningContext,
+                    aggregateType: mref.aggregateType,
+                    aggregateId: mref.aggregateId,
+                  );
+                }
+              } catch (_) {
+                hadFailure = true;
+              }
+            }
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanListProvider);
+            return hadFailure;
           } finally {
             link.close();
           }
