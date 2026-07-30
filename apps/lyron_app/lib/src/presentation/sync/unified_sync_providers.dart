@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
@@ -29,6 +30,26 @@ T _safeWatch<T>(T Function() read, T fallback) {
     return fallback;
   }
 }
+
+/// Local storage footprint (LF-T4) for the active planning context.
+///
+/// A [FutureProvider] because measuring runs real queries against the
+/// planning and catalog databases; the aggregator below reads it through
+/// `.valueOrNull`, the same pattern already used for [planningPlanListProvider]
+/// via [planningPlanTitlesProvider].
+final localStorageFootprintProvider =
+    FutureProvider.autoDispose<LocalStorageFootprint>((ref) async {
+      final context = ref.watch(activePlanningContextProvider);
+      if (context == null) {
+        return const LocalStorageFootprint.empty();
+      }
+      return ref
+          .watch(localStorageMonitorProvider)
+          .measure(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          );
+    });
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,
@@ -61,6 +82,16 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     () => ref.watch(unifiedManualSyncControllerProvider).isRunning,
     false,
   );
+  final storageFootprint = _safeWatch(
+    () =>
+        ref.watch(localStorageFootprintProvider).valueOrNull ??
+        const LocalStorageFootprint.empty(),
+    const LocalStorageFootprint.empty(),
+  );
+  final storagePressure = _safeWatch(
+    () => ref.watch(localStorageBudgetProvider).classify(storageFootprint),
+    LocalStoragePressure.ok,
+  );
 
   // Drive the offline-to-online detector from changes seen by the overview
   // itself. This keeps the trigger wiring on the same active-organization
@@ -77,7 +108,7 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     // trigger plumbing; widget rendering must not depend on it.
   }
 
-  return computeUnifiedSyncOverview(
+  final base = computeUnifiedSyncOverview(
     UnifiedSyncOverviewInputs(
       catalog: catalog,
       songEntries: songEntries,
@@ -87,6 +118,18 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
       songSyncing: isRunning,
       planningSyncing: isRunning,
     ),
+  );
+
+  return UnifiedSyncOverview(
+    headerStatus: base.headerStatus,
+    activity: base.activity,
+    connectivity: base.connectivity,
+    freshness: base.freshness,
+    songRows: base.songRows,
+    planRows: base.planRows,
+    hasUnsyncedWork: base.hasUnsyncedWork,
+    storagePressure: storagePressure,
+    pendingMutationCount: storageFootprint.mutationCount,
   );
 });
 

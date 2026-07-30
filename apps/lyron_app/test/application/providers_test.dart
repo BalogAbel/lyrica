@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
-import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
+import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -110,7 +110,7 @@ void main() {
       isA<PlanningMutationStore>().having(
         (store) => store,
         'runtime type',
-        isA<DriftPlanningMutationStore>(),
+        isA<BudgetedPlanningMutationStore>(),
       ),
     );
     expect(

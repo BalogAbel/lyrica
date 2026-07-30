@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
+import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
@@ -108,9 +109,14 @@ final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
 });
 
 final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
-  return DriftPlanningMutationStore(
-    database: ref.watch(planningLocalDatabaseProvider),
-    localStore: ref.watch(planningLocalStoreProvider),
+  return BudgetedPlanningMutationStore(
+    delegate: DriftPlanningMutationStore(
+      database: ref.watch(planningLocalDatabaseProvider),
+      localStore: ref.watch(planningLocalStoreProvider),
+    ),
+    accountant: ref.watch(planningStorageAccountantProvider),
+    evictor: ref.watch(songCatalogEvictorProvider),
+    budget: ref.watch(localStorageBudgetProvider),
   );
 });
 

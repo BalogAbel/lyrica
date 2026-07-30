@@ -1,6 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
+import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/application/sync/sync_overview.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -45,6 +50,37 @@ final planningLocalDatabaseProvider = Provider<PlanningLocalDatabase>((ref) {
   // Match the song catalog lifecycle so provider/container churn does not
   // create overlapping Drift database instances in tests.
   return _sharedPlanningLocalDatabase ??= PlanningLocalDatabase.local();
+});
+
+final localStorageBudgetProvider = Provider<LocalStorageBudget>((ref) {
+  return const LocalStorageBudget();
+});
+
+final planningStorageAccountantProvider = Provider<PlanningStorageAccountant>((
+  ref,
+) {
+  return PlanningStorageAccountant(ref.watch(planningLocalDatabaseProvider));
+});
+
+final catalogStorageAccountantProvider = Provider<CatalogStorageAccountant>((
+  ref,
+) {
+  return CatalogStorageAccountant(ref.watch(songCatalogDatabaseProvider));
+});
+
+final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
+  return SongCatalogEvictor(
+    database: ref.watch(songCatalogDatabaseProvider),
+    accountant: ref.watch(catalogStorageAccountantProvider),
+  );
+});
+
+final localStorageMonitorProvider = Provider<LocalStorageMonitor>((ref) {
+  return LocalStorageMonitor(
+    planningAccountant: ref.watch(planningStorageAccountantProvider),
+    catalogAccountant: ref.watch(catalogStorageAccountantProvider),
+    budget: ref.watch(localStorageBudgetProvider),
+  );
 });
 
 /// Monotonic epoch used to invalidate stale last-known-identity persistence

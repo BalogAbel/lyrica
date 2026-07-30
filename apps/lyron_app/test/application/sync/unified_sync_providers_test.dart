@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
@@ -59,6 +60,52 @@ void main() {
       final overview = container.read(unifiedSyncOverviewProvider);
       expect(overview.headerStatus, UnifiedSyncHeaderStatus.unsynced);
       expect(overview.songRows.single.title, 'Song');
+    },
+  );
+
+  test(
+    'unifiedSyncOverviewProvider carries storage pressure and pending mutation count',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(userId: 'u', organizationId: 'o'),
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          planningSyncStateProvider.overrideWithValue(
+            const PlanningSyncState.initial(),
+          ),
+          songMutationEntriesProvider.overrideWith(
+            (ref) async => const <SongMutationRecord>[],
+          ),
+          planningMutationEntriesProvider.overrideWith((ref) async => const []),
+          planningPlanListProvider.overrideWith((ref) async => const []),
+          localStorageFootprintProvider.overrideWith(
+            (ref) async => const LocalStorageFootprint(
+              mutationBytes: 2 * 1024 * 1024,
+              mutationCount: 3,
+              projectionBytes: 0,
+              catalogBytes: 0,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Resolve FutureProviders before reading the synchronous overview.
+      await container.read(songMutationEntriesProvider.future);
+      await container.read(planningMutationEntriesProvider.future);
+      await container.read(planningPlanListProvider.future);
+      await container.read(localStorageFootprintProvider.future);
+
+      final overview = container.read(unifiedSyncOverviewProvider);
+      expect(overview.storagePressure, LocalStoragePressure.warning);
+      expect(overview.pendingMutationCount, 3);
     },
   );
 
