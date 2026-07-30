@@ -1,10 +1,11 @@
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 
-/// Fixed per-row allowance covering the columns that are not measured
-/// directly — integer keys, versions, positions and timestamps — plus a
-/// nominal share of sqlite row overhead. Deliberately coarse: the accountant
-/// is a comparable estimate, not a true on-disk size.
+/// Fixed per-row allowance covering the non-text columns of a measured
+/// table — integer keys, versions, positions and timestamps — plus a
+/// nominal share of sqlite row overhead. Every text column is summed
+/// explicitly rather than folded into this allowance. Deliberately coarse:
+/// the accountant is a comparable estimate, not a true on-disk size.
 const int kLocalStorageRowOverheadBytes = 64;
 
 /// Measures the planning database's footprint from row content.
@@ -26,6 +27,7 @@ class PlanningStorageAccountant {
           'SELECT COALESCE(SUM('
           'length(aggregate_type) + length(aggregate_id) + '
           'length(mutation_kind) + length(sync_status) + '
+          'length(user_id) + length(organization_id) + '
           "length(COALESCE(plan_id, '')) + "
           "length(COALESCE(session_id, '')) + "
           "length(COALESCE(slug, '')) + "
@@ -78,14 +80,17 @@ class PlanningStorageAccountant {
           '(SELECT COALESCE(SUM(length(user_id) + length(organization_id) + '
           '$kLocalStorageRowOverheadBytes), 0) '
           'FROM planning_projection_owners) + '
-          '(SELECT COALESCE(SUM(length(plan_id) + length(slug) + '
-          "length(name) + length(COALESCE(description, '')) + "
+          '(SELECT COALESCE(SUM(length(user_id) + length(organization_id) + '
+          'length(plan_id) + length(slug) + length(name) + '
+          "length(COALESCE(description, '')) + "
           '$kLocalStorageRowOverheadBytes), 0) '
           'FROM cached_planning_plans) + '
-          '(SELECT COALESCE(SUM(length(session_id) + length(plan_id) + '
+          '(SELECT COALESCE(SUM(length(user_id) + length(organization_id) + '
+          'length(session_id) + length(plan_id) + '
           'length(slug) + length(name) + $kLocalStorageRowOverheadBytes), 0) '
           'FROM cached_planning_sessions) + '
-          '(SELECT COALESCE(SUM(length(session_item_id) + length(plan_id) + '
+          '(SELECT COALESCE(SUM(length(user_id) + length(organization_id) + '
+          'length(session_item_id) + length(plan_id) + '
           'length(session_id) + length(song_id) + length(song_title) + '
           '$kLocalStorageRowOverheadBytes), 0) '
           'FROM cached_planning_session_items)'

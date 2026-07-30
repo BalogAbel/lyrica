@@ -133,14 +133,40 @@ void main() {
       await localStore.replaceActiveProjection(
         userId: context.userId,
         organizationId: context.organizationId,
-        plans: const [],
-        sessions: const [],
-        items: const [],
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'Weekend Service',
+            description: 'x' * 3000,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 7, 30),
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 1,
+            name: 'Morning Session',
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 1,
+            songId: 'song-1',
+            songTitle: 'Amazing Grace',
+          ),
+        ],
         refreshedAt: DateTime.utc(2026, 7, 30),
       );
 
-      // An owner row alone is still measurable footprint.
-      expect(await accountant.measureProjectionBytes(), greaterThan(0));
+      // A 3000-character plan description must actually register: this is
+      // only true if the payload-bearing columns of every measured table
+      // are summed, not just the owner row.
+      expect(await accountant.measureProjectionBytes(), greaterThan(3000));
     });
   });
 }
