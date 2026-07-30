@@ -167,8 +167,19 @@ Cover:
 
 - `dart format --set-exit-if-changed`
 - `flutter analyze`
-- `flutter test`
+- `flutter test --coverage`
+- `./scripts/coverage-gate.sh` — line-coverage ratchet. The threshold is the value
+  measured when the gate landed (72%); raise it as coverage improves, never lower
+  it to make a red build green. It evaluates the report the test run already
+  produced, so the suite is not executed twice.
+- `./scripts/dependency-audit.sh` — fails on a published advisory, a retracted or
+  discontinued package (transitive included), or a declared dependency whose
+  locked version is behind its own constraint. Deliberately silent about majors
+  the constraints do not allow, since those need a migration rather than a gate.
 - `./scripts/check-migrations.sh`
+- `flutter build web --release` in CI (`web_build` job). Compile gate only; the
+  web offline/IndexedDB e2e suite remains deferred in
+  `docs/deferred/2026-06-29-web-offline-e2e.md`.
 - local Supabase reset and demo auth provisioning when backend-backed slices change
 - authenticated backend integration coverage for real Supabase song reads
 - authenticated backend integration coverage for real Supabase planning reads when the planning slice changes

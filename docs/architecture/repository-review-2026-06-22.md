@@ -88,8 +88,8 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-9 | UI/UX | Inconsistent content-width caps (sign-in 420, song-list 720, invite none) | Low |
 | UX-10 | UI/UX | i18n leak: inline English in discard-all message vs centralized `AppStrings` | Low |
 | UX-11 | UI/UX | Forms silently no-op on empty/invalid input (sign-in, invite) | Low–Med |
-| DX-1 | Tooling | `file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor | Medium |
-| DX-2 | Tooling | No dependency-audit / coverage gate in CI | Medium |
+| ~~DX-1~~ | Tooling | ~~`file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor~~ **Done (security-read-boundary-phase3), riverpod deferred.** | Medium |
+| ~~DX-2~~ | Tooling | ~~No dependency-audit / coverage gate in CI~~ **Done (security-read-boundary-phase3).** | Medium |
 
 ### Resolution status (updated 2026-06-29)
 
@@ -172,7 +172,7 @@ carry the detail; this is the digest.
   over-count correction; now fully closed (see **Fixed** above).
 
 **Still open** (unchanged): LF-7, LF-9, LF-T3, LF-T5, LF-T8, SEC-2, all
-ARCH-*, all UX-*, DX-1, DX-2, and the deferred items in `docs/deferred/`.
+ARCH-*, all UX-*, and the deferred items in `docs/deferred/`.
 
 ## 4. Architecture Review
 
@@ -545,6 +545,32 @@ Direct deps behind latest: `file_picker` 8.3.7 → 11.0.2 (**3 majors**),
 2.12/2.18/2.10 → 2.15/2.22/2.13 (minor — **auth, security-relevant**). No known CVEs in
 the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage gate in CI.
 
+**Status (2026-07-30, security read-boundary phase 3, DX-1 and DX-2): fixed, with
+one item deferred.** The figures above were measured on 2026-06-22 and were stale
+by the time the work ran; they were re-measured rather than trusted.
+
+DX-1, in priority order rather than by version distance: `supabase_flutter`
+2.12.0 → 2.16.0, which carries `gotrue` 2.18.0 → 2.26.0, `postgrest` 2.6.0 →
+2.8.0, `realtime_client` 2.7.0 → 2.11.0 and `functions_client` 2.5.0 → 2.6.4;
+`app_links` 6.3.2 → 7.0.0, which the review did not list at all and which carries
+the invite deep-link path; `go_router` 16.3.0 → 17.3.0; `file_picker` 8.3.7 →
+11.0.2; and a lockfile refresh of thirty-five in-constraint packages including
+`drift` 2.32.0 → 2.34.3. `app_links` is pinned to `^7.0.0` rather than 7.2.1
+because 7.1.1 requires Dart SDK 3.12 and this toolchain is on 3.11.3.
+
+`flutter_riverpod`/`riverpod` 3.x is **deferred** —
+`docs/deferred/2026-07-30-riverpod-3-migration.md`. The mechanical migration was
+completed and then reverted: Riverpod 3 wraps provider errors, which breaks nine
+tests on the song reader's error paths, one of them a production-visible symptom.
+That is the surface ADR-023/024 stabilised, so it needs its own slice.
+
+DX-2: `./scripts/coverage-gate.sh` ratchets line coverage from the measured 72%,
+`./scripts/dependency-audit.sh` fails on published advisories, retracted or
+discontinued packages and on a lockfile behind its own constraints, and both run
+from `./scripts/verify.sh`. A `web_build` job was also added to
+`.github/workflows/ci.yml`: no job built the web target before, which is how the
+`Platform.environment` break in `276a052` reached `main`.
+
 ## 13. Prioritized Roadmap
 
 **Quick wins (1-2 days)**
@@ -563,7 +589,7 @@ the audit output; the risk is staleness. **DX-2**: no `pub`-audit or coverage ga
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
 - ~~SEC-1: invite email-binding + rate limit + audit + ADR.~~ **Done (security-read-boundary-phase3).**
-- DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.
+- ~~DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.~~ **Done (security-read-boundary-phase3); riverpod 3 deferred.**
 
 **Strategic (1+ month)**
 - LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.

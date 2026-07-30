@@ -32,6 +32,15 @@ Drift migration/catalog suites (`planning_migration_test.dart`,
 confidence in the local-first **logic**; they do not exercise the **browser storage
 substrate**.
 
+**Update (2026-07-30, security read-boundary phase 3, DX-2).** CI now has a
+`web_build` job (`.github/workflows/ci.yml`) that runs `flutter build web
+--release`. This does **not** narrow the gap described above: it proves the web
+target compiles and nothing about IndexedDB behaviour, offline semantics or
+storage pressure. It is recorded here so a future slice does not add a second web
+job — the existing one is the place to attach a `chromedriver` lane. It has
+already earned its keep: the `file_picker` 11 bump in the same slice broke the web
+build, and the compile gate is what surfaced it.
+
 ## Trigger Condition
 
 Address before committing to web as a supported production target for offline/rehearsal
