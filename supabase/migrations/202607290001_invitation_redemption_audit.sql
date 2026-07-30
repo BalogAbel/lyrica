@@ -45,10 +45,26 @@ create index invitation_redemption_attempts_rate_limited_marker_idx
 -- Shaped for the terminal-outcome audit deduplication, which is keyed on the
 -- token digest as well as the caller so a genuinely different invitation is
 -- still recorded.
-create index invitation_redemption_attempts_terminal_dedup_idx
+--
+-- Deliberately NOT a partial index, unlike the two above. PostgreSQL can only
+-- use a partial index when it can prove at plan time that the query predicate
+-- implies the index predicate. The two above are provable because the function
+-- compares outcome against literals; this dedup check compares it against the
+-- p_outcome parameter, which a generic plan cannot resolve, so a partial index
+-- here is silently unusable and degrades to a sequential scan.
+--
+-- Its leading actor_user_id column also serves the outcome-agnostic lookup that
+-- the auth.users foreign key performs on delete: that scan has no outcome
+-- filter at all, so none of the partial indexes can serve it, including for
+-- 'redeemed' rows which no partial index covers.
+create index invitation_redemption_attempts_actor_token_outcome_idx
   on public.invitation_redemption_attempts
-    (actor_user_id, token_sha256, outcome, created_at desc)
-  where outcome in ('already_redeemed', 'expired', 'already_member');
+    (actor_user_id, token_sha256, outcome, created_at desc);
+
+-- Shaped for the daily retention delete, which filters on age alone. Every
+-- other index here leads with actor_user_id and cannot serve it.
+create index invitation_redemption_attempts_created_at_idx
+  on public.invitation_redemption_attempts (created_at);
 
 alter table public.invitation_redemption_attempts enable row level security;
 

@@ -22,7 +22,8 @@ organization membership.
 ## Decision
 
 `public.redeem_invitation(p_token text)` now enforces a hybrid binding, a
-caller-keyed rate limit, and a per-attempt audit trail, all in the database.
+caller-keyed rate limit, and an audit trail of redemption attempts, all in
+the database.
 
 **Hybrid email binding.** When `invitations.email` is not null, redemption
 requires the caller's own account to hold that address, confirmed, compared
@@ -34,12 +35,22 @@ admin.
 `email_mismatch` outcomes by the same caller within 15 minutes trip
 `rate_limited` for the remainder of the window.
 
-**Per-attempt audit.** Every call — successful or not — writes a row to
+**Audit trail.** Redemption attempts are recorded in
 `public.invitation_redemption_attempts`
-(`supabase/migrations/202607290001_invitation_redemption_audit.sql`), storing
-a `sha256` digest of the token, never the raw token. RLS denies all direct
-writes to `authenticated`; the only writer is the security-definer redemption
-path. Select is scoped to organization admins of the row's `organization_id`;
+(`supabase/migrations/202607290001_invitation_redemption_audit.sql`), storing a
+`sha256` digest of the token, never the raw token.
+
+An attempt and a persisted row are deliberately not one-to-one. Every *distinct*
+attempt produces a row — the first occurrence of an outcome for a given caller
+and token always persists — but repeats are collapsed rather than accumulated. A
+caller hammering one spent token, or continuing to call after tripping the rate
+limit, leaves one marker row per 15-minute window instead of one row per call.
+The two sections on the audit caps below give the exact keys and why the caps
+exist; `not_found` and `email_mismatch` are exempt, because the rate limit counts
+them.
+
+RLS denies all direct writes to `authenticated`; the only writer is the
+security-definer redemption path. Select is scoped to organization admins of the row's `organization_id`;
 rows with no organization (unresolved tokens) are `service_role`-only. A daily
 `pg_cron` job deletes attempts older than 90 days.
 
@@ -101,8 +112,8 @@ lock a legitimate user out of their own redemption attempt.
 otherwise a caller who trips the limit would push themselves straight back
 below it by continuing to call the RPC. That exclusion has a side effect,
 though: nothing else bounds how many `rate_limited` rows an already-limited
-caller can write. Since redemption records an audit row on every path, a
-client looping on the RPC after hitting the limit would grow
+caller can write. Because redemption originally recorded an audit row on every
+path unconditionally, a client looping on the RPC after hitting the limit grew
 `invitation_redemption_attempts` without limit — the rate limit throttles
 redemption, not the audit write it causes. `redeem_invitation` now records
 `rate_limited` at most once per caller per 15-minute window: if a
@@ -199,7 +210,7 @@ confirmation.
   the audit trail: the per-caller-per-window cap above means those retries
   write no additional rows.
 - **Model and rejected alternatives are pinned by test, not just by this
-  document.** `scripts/tests/invitation-redemption-contract-test.sh` (17
+  document.** `scripts/tests/invitation-redemption-contract-test.sh` (19
   cases, chained from `./scripts/backend-write-contracts.sh`) covers the full
   outcome matrix, including grant survival across the function's
   drop-and-recreate.

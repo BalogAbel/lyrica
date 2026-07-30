@@ -141,7 +141,8 @@ carry the detail; this is the digest.
 - **SEC-1** (security-read-boundary-phase3 slice) — `redeem_invitation` is now
   hybrid email-bound (email-bound when the invitation carries an address, bearer
   otherwise), rate limited per caller on `not_found`/`email_mismatch` outcomes, and
-  every attempt is audited in `public.invitation_redemption_attempts`
+  attempts are audited in `public.invitation_redemption_attempts`, with repeated
+  terminal outcomes collapsed to one row per caller, token and window
   (`supabase/migrations/202607290001_invitation_redemption_audit.sql`,
   `supabase/migrations/202607290002_invitation_redemption_contract.sql`). The RPC
   returns a `jsonb` status envelope instead of raising for business outcomes, which

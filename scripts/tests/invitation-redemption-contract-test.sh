@@ -215,7 +215,8 @@ run_sql(dedent(f"""
     values (
       {sql_quote(ORG_ADMIN_USER)}::uuid, {sql_quote(ORG_ID)}::uuid,
       'organization_admin', 'organization', 'active'
-    );
+    )
+    on conflict do nothing;
 """))
 admin_visible = run_sql(dedent(f"""
     begin;
@@ -696,27 +697,71 @@ check(
     f"got: {member_outcomes!r}",
 )
 
-# --- Case 19: the rate-limit and dedup lookups are index-supported. ----------
-# The planner prefers a sequential scan on a tiny table regardless of indexes, so
-# seqscan is disabled for the probe: what this proves is that a usable index
-# exists for the predicate, not that the current row count needs one.
-for label, predicate in (
-    ("rate_limited", "outcome = 'rate_limited'"),
-    ("terminal dedup", "outcome = 'already_redeemed' and a.token_sha256 = sha256('x'::bytea)"),
-):
+# --- Case 19: every audit access path is index-supported. --------------------
+# These probe the query SHAPE the production code actually issues, not a
+# hand-written literal equivalent. The dedup check inside
+# record_invitation_redemption_attempt compares outcome against a parameter, and
+# PostgreSQL can only use a partial index when it can prove at plan time that the
+# query predicate implies the index predicate -- which a generic plan cannot do
+# for a parameter. A literal-outcome probe would pass against an index the real
+# function can never use, so each case below runs under
+# `plan_cache_mode = force_generic_plan` with seqscan disabled: what that proves
+# is that a usable index exists for the shape, not that the current row count
+# needs one.
+index_probes = [
+    (
+        "terminal dedup (parameterised outcome, as record_invitation_redemption_attempt issues it)",
+        "prepare probe_dedup(uuid, bytea, public.invitation_redemption_outcome) as "
+        "select 1 from public.invitation_redemption_attempts a "
+        "where a.actor_user_id = $1 and a.token_sha256 = $2 and a.outcome = $3 "
+        "and a.created_at > now() - interval '15 minutes';",
+        "execute probe_dedup("
+        f"{sql_quote(DEDUP_USER)}, sha256('x'::bytea), 'already_redeemed');",
+    ),
+    (
+        "rate-limit count (literal outcome list, as redeem_invitation issues it)",
+        "prepare probe_ratecount(uuid) as "
+        "select count(*) from public.invitation_redemption_attempts a "
+        "where a.actor_user_id = $1 "
+        "and a.outcome in ('not_found', 'email_mismatch') "
+        "and a.created_at > now() - interval '15 minutes';",
+        f"execute probe_ratecount({sql_quote(DEDUP_USER)});",
+    ),
+    (
+        "rate_limited marker (literal outcome, as redeem_invitation issues it)",
+        "prepare probe_marker(uuid) as "
+        "select 1 from public.invitation_redemption_attempts a "
+        "where a.actor_user_id = $1 and a.outcome = 'rate_limited' "
+        "and a.created_at > now() - interval '15 minutes';",
+        f"execute probe_marker({sql_quote(DEDUP_USER)});",
+    ),
+    (
+        "auth.users foreign key lookup (no outcome filter at all)",
+        "prepare probe_fk(uuid) as "
+        "select 1 from public.invitation_redemption_attempts "
+        "where actor_user_id = $1;",
+        f"execute probe_fk({sql_quote(DEDUP_USER)});",
+    ),
+    (
+        "retention delete (age only)",
+        "prepare probe_retention as "
+        "select 1 from public.invitation_redemption_attempts "
+        "where created_at < now() - interval '90 days';",
+        "execute probe_retention;",
+    ),
+]
+
+for label, prepare_sql, execute_sql in index_probes:
     plan = run_sql(dedent(f"""
-        set local enable_seqscan = off;
-        explain (format text)
-        select 1
-        from public.invitation_redemption_attempts a
-        where a.actor_user_id = {sql_quote(DEDUP_USER)}
-          and a.{predicate}
-          and a.created_at > now() - interval '15 minutes';
+        {prepare_sql}
+        set plan_cache_mode = force_generic_plan;
+        set enable_seqscan = off;
+        explain (costs off) {execute_sql}
     """))
     check(
-        f"case 19 {label} lookup uses an index",
-        "Index" in plan or "Bitmap" in plan,
-        f"expected an index scan for the {label} lookup, plan was:\n{plan}",
+        f"case 19 {label}",
+        "Seq Scan" not in plan,
+        f"expected an index scan under a generic plan, got:\n{plan}",
     )
 
 if failures:
