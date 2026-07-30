@@ -228,6 +228,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   table.aggregateId.equals(draft.sessionId),
             ))
             .go();
+        // The session never reached the backend, so its pending item
+        // mutations can never sync: they would fail dependencyBlocked
+        // forever while consuming the mutation budget. Drop them with the
+        // session, inside the same transaction.
+        await _deletePendingMutationsForSession(
+          context: context,
+          sessionId: draft.sessionId,
+        );
         await _removeSessionFromPendingReorder(
           context: context,
           planId: draft.planId,
@@ -889,6 +897,28 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return null;
     }
     return decoded.map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  Future<void> _deletePendingMutationsForSession({
+    required PlanningMutationContext context,
+    required String sessionId,
+  }) async {
+    await (_database.delete(_database.cachedPlanningMutations)..where(
+          (table) =>
+              table.userId.equals(context.userId) &
+              table.organizationId.equals(context.organizationId) &
+              table.aggregateType.equals('session_item') &
+              table.sessionId.equals(sessionId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedPlanningMutations)..where(
+          (table) =>
+              table.userId.equals(context.userId) &
+              table.organizationId.equals(context.organizationId) &
+              table.aggregateType.equals('session_item_order') &
+              table.aggregateId.equals(sessionId),
+        ))
+        .go();
   }
 
   Future<void> _removeSessionFromPendingReorder({

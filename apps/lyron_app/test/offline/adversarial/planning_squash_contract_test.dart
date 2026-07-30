@@ -133,5 +133,56 @@ void main() {
       // not be sent for it.
       expect(pending, isEmpty);
     });
+
+    test('sessionDelete of a pending sessionCreate also removes that '
+        "session's pending item mutations", () async {
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-4',
+          slug: 'second-set',
+          name: 'Second Set',
+          position: 1,
+        ),
+      );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-2',
+          planId: 'plan-4',
+          songId: 'song-1',
+          songTitle: 'Song One',
+          position: 0,
+        ),
+      );
+      await store.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-4',
+          orderedSessionItemIds: ['item-1'],
+        ),
+      );
+
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-4',
+        ),
+      );
+
+      final remaining = await store.readAllMutations(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+
+      // Nothing may survive that references a session which never existed
+      // remotely: those rows can only ever fail dependencyBlocked, and they
+      // would consume the mutation budget forever.
+      expect(remaining, isEmpty);
+    });
   });
 }
