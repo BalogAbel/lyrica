@@ -134,59 +134,41 @@ class SongMutationSyncController {
       songId: songId,
       includeConflicts: true,
     );
-    if (record.isRemoteDeletedConflict) {
+
+    // Discarding is dropping local intent, so it must never need the network
+    // (LF-7). The song's pending edit lives in its own table, which means the
+    // cached snapshot still holds the last known server copy: dropping the
+    // mutation row IS the restore. Fetching the server record only buys
+    // freshness, and freshness is the refresh path's job.
+    if (record.isRemoteDeletedConflict ||
+        record.effectiveSyncStatus == SongSyncStatus.pendingCreate) {
+      // Never existed remotely (or is already gone there): remove it locally.
       await _store.deleteSong(
         userId: context.userId,
         organizationId: context.organizationId,
         songId: songId,
       );
+    } else {
+      await _store.clearSongMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        songId: songId,
+      );
+    }
+
+    // Best effort only: pick up the freshest server copy when there is a
+    // connection. The discard has already happened and is never undone by a
+    // failure here -- and a discard must never leave a conflict status
+    // behind, because being conflicted is a sync outcome, not something the
+    // user asked for by throwing their edit away.
+    final refreshCatalog = _refreshCatalog;
+    if (refreshCatalog == null) {
       return;
     }
     try {
-      final serverRecord = await _remoteRepository.fetchSong(
-        organizationId: context.organizationId,
-        songId: songId,
-      );
-      await _store.reconcileSyncedSong(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        record: serverRecord.copyWith(
-          syncStatus: SongSyncStatus.synced,
-          clearErrorCode: true,
-          clearErrorMessage: true,
-          clearConflictSourceSyncStatus: true,
-        ),
-      );
-    } on SongMutationSyncException catch (error) {
-      if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
-          (record.effectiveSyncStatus == SongSyncStatus.pendingDelete ||
-              record.effectiveSyncStatus == SongSyncStatus.pendingCreate)) {
-        final refreshCatalog = _refreshCatalog;
-        if (refreshCatalog != null) {
-          await refreshCatalog(context);
-          await _store.clearSongMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            songId: songId,
-          );
-        } else {
-          await _store.deleteSong(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            songId: songId,
-          );
-        }
-        return;
-      }
-      await _store.saveSyncAttemptResult(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        songId: songId,
-        syncStatus: SongSyncStatus.conflict,
-        errorCode: error.code,
-        errorMessage: error.message,
-      );
-      rethrow;
+      await refreshCatalog(context);
+    } on SongMutationSyncException {
+      // Offline or the backend refused: the local discard still stands.
     }
   }
 

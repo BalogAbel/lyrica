@@ -195,46 +195,41 @@ void main() {
       expect(store.deletedSongId, 'song-1');
     });
 
-    test('discard mine restores the latest server row', () async {
-      final store = _FakeSongMutationStore(
-        conflictSongs: const [
-          SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'alpha-local',
-            title: 'Alpha local',
-            chordproSource: '{title: Alpha local}',
-            version: 3,
-            baseVersion: 3,
-            syncStatus: SongSyncStatus.conflict,
-          ),
-        ],
-      );
-      final repository = _FakeSongMutationRemoteRepository(
-        fetchHandler: (songId) async => const SongMutationRecord(
-          id: 'song-1',
-          organizationId: 'org-1',
-          slug: 'alpha',
-          title: 'Alpha',
-          chordproSource: '{title: Alpha}',
-          version: 8,
-          baseVersion: 8,
-          syncStatus: SongSyncStatus.synced,
-        ),
-      );
-      final controller = SongMutationSyncController(
-        store: store,
-        remoteRepository: repository,
-      );
+    test(
+      'discard mine clears the mutation for an ordinary conflict row '
+      'without touching the network, and the cached snapshot restores it',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha-local',
+              title: 'Alpha local',
+              chordproSource: '{title: Alpha local}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+            ),
+          ],
+        );
+        // No fetchHandler configured: discardMine must never call fetchSong
+        // (LF-7), so leaving it unimplemented proves the point if it is.
+        final repository = _FakeSongMutationRemoteRepository();
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
 
-      await controller.discardMine(
-        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
-        songId: 'song-1',
-      );
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
 
-      expect(store.lastUpsertedRecord?.slug, 'alpha');
-      expect(store.lastUpsertedRecord?.syncStatus, SongSyncStatus.synced);
-    });
+        expect(store.clearedSongMutationId, 'song-1');
+        expect(repository.fetchCalls, 0);
+      },
+    );
 
     test(
       'discard mine accepts remote deletion for update-sourced remote-delete conflicts',
@@ -441,57 +436,6 @@ void main() {
       },
     );
 
-    test(
-      'discard mine persists the failure on the conflict row before rethrowing',
-      () async {
-        final store = _FakeSongMutationStore(
-          conflictSongs: const [
-            SongMutationRecord(
-              id: 'song-1',
-              organizationId: 'org-1',
-              slug: 'alpha',
-              title: 'Alpha',
-              chordproSource: '{title: Alpha}',
-              version: 3,
-              baseVersion: 3,
-              syncStatus: SongSyncStatus.conflict,
-              conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
-            ),
-          ],
-        );
-        final repository = _FakeSongMutationRemoteRepository(
-          fetchHandler: (songId) async => throw const SongMutationSyncException(
-            SongMutationSyncErrorCode.authorizationDenied,
-          ),
-        );
-        final controller = SongMutationSyncController(
-          store: store,
-          remoteRepository: repository,
-        );
-
-        await expectLater(
-          () => controller.discardMine(
-            const SongMutationContext(
-              userId: 'user-1',
-              organizationId: 'org-1',
-            ),
-            songId: 'song-1',
-          ),
-          throwsA(isA<SongMutationSyncException>()),
-        );
-
-        expect(store.lastSavedStatus, SongSyncStatus.conflict);
-        expect(
-          store.lastSavedErrorCode,
-          SongMutationSyncErrorCode.authorizationDenied,
-        );
-        expect(
-          store.lastUpsertedRecord?.conflictSourceSyncStatus,
-          SongSyncStatus.pendingUpdate,
-        );
-      },
-    );
-
     test('stops syncing later records after a connectivity failure', () async {
       final store = _FakeSongMutationStore(
         pendingSongs: const [
@@ -579,6 +523,179 @@ void main() {
         expect(store.lastSavedStatus, isNull);
       },
     );
+
+    // LF-7: discardMine must never require the network. These pin the
+    // fetch-first bug where an offline discard both fails AND corrupts the
+    // record it was asked to throw away.
+    test('discard mine on an offline pending update completes without throwing '
+        'and drops the mutation', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha-local',
+            title: 'Alpha local',
+            chordproSource: '{title: Alpha local}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        fetchHandler: (songId) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.discardMine(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        songId: 'song-1',
+      );
+
+      final remaining = await store.readById(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(remaining, isNull);
+    });
+
+    test('discard mine on an offline pending update never marks the record as '
+        'conflict', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha-local',
+            title: 'Alpha local',
+            chordproSource: '{title: Alpha local}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        fetchHandler: (songId) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+      );
+
+      try {
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+      } on SongMutationSyncException {
+        // This test only cares what happened to the persisted record, not
+        // whether the call also threw -- that is covered separately above.
+      }
+
+      // saveSyncAttemptResult is the only path that can write
+      // SongSyncStatus.conflict. Discarding must never take it.
+      expect(store.lastSavedStatus, isNot(SongSyncStatus.conflict));
+      final remaining = await store.readById(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(remaining?.syncStatus, isNot(SongSyncStatus.conflict));
+    });
+
+    test(
+      'discard mine on an offline pending create deletes the song locally',
+      () async {
+        final store = _FakeSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 1,
+              baseVersion: null,
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          fetchHandler: (songId) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.connectivityFailure,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await controller.discardMine(
+          const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+          songId: 'song-1',
+        );
+
+        expect(store.deletedSongId, 'song-1');
+        final remaining = await store.readById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(remaining, isNull);
+      },
+    );
+
+    test('discard mine survives a best-effort refresh that throws while '
+        'offline', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha-local',
+            title: 'Alpha local',
+            chordproSource: '{title: Alpha local}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        fetchHandler: (songId) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+        refreshCatalog: (_) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+
+      await controller.discardMine(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+        songId: 'song-1',
+      );
+
+      final remaining = await store.readById(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(remaining, isNull);
+    });
   });
 }
 
