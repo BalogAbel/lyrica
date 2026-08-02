@@ -1,6 +1,12 @@
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 
+typedef PlanningPendingWorkCountReader =
+    Future<int> Function({required String userId});
+
+typedef SongPendingWorkCountReader =
+    Future<int> Function({required String userId});
+
 /// Matches [PlanningMutationStore.readPendingMutations]'s signature, taken as
 /// an injected reader so this counter is testable without Drift.
 typedef PlanningPendingMutationsReader =
@@ -34,32 +40,53 @@ typedef SongConflictSongsReader =
 /// is not.
 class PendingLocalWorkCounter {
   PendingLocalWorkCounter({
-    required PlanningPendingMutationsReader readPlanningPendingMutations,
-    required SongPendingSongsReader readPendingSongs,
-    required SongConflictSongsReader readConflictSongs,
-  }) : _readPlanningPendingMutations = readPlanningPendingMutations,
+    PlanningPendingWorkCountReader? readPlanningPendingWorkCount,
+    SongPendingWorkCountReader? readSongPendingWorkCount,
+    PlanningPendingMutationsReader? readPlanningPendingMutations,
+    SongPendingSongsReader? readPendingSongs,
+    SongConflictSongsReader? readConflictSongs,
+  }) : _readPlanningPendingWorkCount = readPlanningPendingWorkCount,
+       _readSongPendingWorkCount = readSongPendingWorkCount,
+       _readPlanningPendingMutations = readPlanningPendingMutations,
        _readPendingSongs = readPendingSongs,
        _readConflictSongs = readConflictSongs;
 
-  final PlanningPendingMutationsReader _readPlanningPendingMutations;
-  final SongPendingSongsReader _readPendingSongs;
-  final SongConflictSongsReader _readConflictSongs;
+  final PlanningPendingWorkCountReader? _readPlanningPendingWorkCount;
+  final SongPendingWorkCountReader? _readSongPendingWorkCount;
+  final PlanningPendingMutationsReader? _readPlanningPendingMutations;
+  final SongPendingSongsReader? _readPendingSongs;
+  final SongConflictSongsReader? _readConflictSongs;
 
-  Future<int> count({
-    required String userId,
-    required String organizationId,
-  }) async {
-    final planningPending = await _readPlanningPendingMutations(
+  Future<int> count({required String userId, String? organizationId}) async {
+    final planningCountReader = _readPlanningPendingWorkCount;
+    final songCountReader = _readSongPendingWorkCount;
+    if (planningCountReader != null && songCountReader != null) {
+      final planningCount = await planningCountReader(userId: userId);
+      final songCount = await songCountReader(userId: userId);
+      return planningCount + songCount;
+    }
+
+    final scopedOrganizationId = organizationId;
+    final planningReader = _readPlanningPendingMutations;
+    final pendingSongsReader = _readPendingSongs;
+    final conflictSongsReader = _readConflictSongs;
+    if (scopedOrganizationId == null ||
+        planningReader == null ||
+        pendingSongsReader == null ||
+        conflictSongsReader == null) {
+      throw StateError('Pending-local-work readers are not configured.');
+    }
+    final planningPending = await planningReader(
       userId: userId,
-      organizationId: organizationId,
+      organizationId: scopedOrganizationId,
     );
-    final pendingSongs = await _readPendingSongs(
+    final pendingSongs = await pendingSongsReader(
       userId: userId,
-      organizationId: organizationId,
+      organizationId: scopedOrganizationId,
     );
-    final conflictSongs = await _readConflictSongs(
+    final conflictSongs = await conflictSongsReader(
       userId: userId,
-      organizationId: organizationId,
+      organizationId: scopedOrganizationId,
     );
     return planningPending.length + pendingSongs.length + conflictSongs.length;
   }

@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
@@ -336,6 +337,119 @@ void main() {
       );
       return songs.isNotEmpty || hasProjection;
     }
+
+    Future<void> expectUserWideWorkRequiresConfirmation(
+      Future<void> Function() seedWork,
+    ) async {
+      await seedPriorUserData();
+      await seedWork();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      expect(
+        identityStore.clearCount,
+        0,
+        reason: 'user-wide local work must not be wiped before confirmation',
+      );
+      expect(await priorUserDataStillPresent(), isTrue);
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect(prompt.pending, isNotNull);
+      expect(prompt.pending!.email, 'user1@example.com');
+
+      prompt.answer(false);
+      await pump();
+    }
+
+    test(
+      'non-pending planning work prevents silent wipe before confirmation',
+      () async {
+        await expectUserWideWorkRequiresConfirmation(() {
+          return planningDatabase
+              .into(planningDatabase.cachedPlanningMutations)
+              .insert(
+                CachedPlanningMutationsCompanion.insert(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                  aggregateType: 'plan',
+                  aggregateId: 'accepted-plan',
+                  mutationKind: PlanningMutationKind.planEdit.value,
+                  syncStatus: PlanningMutationSyncStatus.accepted.value,
+                  orderKey: 1,
+                  updatedAt: DateTime.utc(2026, 8, 2),
+                ),
+              );
+        });
+      },
+    );
+
+    test(
+      'planning work in a second organization prevents silent wipe before confirmation',
+      () async {
+        await expectUserWideWorkRequiresConfirmation(() {
+          return planningDatabase
+              .into(planningDatabase.cachedPlanningMutations)
+              .insert(
+                CachedPlanningMutationsCompanion.insert(
+                  userId: 'user-1',
+                  organizationId: 'org-2',
+                  aggregateType: 'plan',
+                  aggregateId: 'second-org-plan',
+                  mutationKind: PlanningMutationKind.planEdit.value,
+                  syncStatus: PlanningMutationSyncStatus.pending.value,
+                  orderKey: 1,
+                  updatedAt: DateTime.utc(2026, 8, 2),
+                ),
+              );
+        });
+      },
+    );
+
+    test(
+      'song work in a second organization prevents silent wipe before confirmation',
+      () async {
+        await expectUserWideWorkRequiresConfirmation(() {
+          return songDatabase
+              .into(songDatabase.cachedCatalogSongMutations)
+              .insert(
+                CachedCatalogSongMutationsCompanion.insert(
+                  userId: 'user-1',
+                  organizationId: 'org-2',
+                  songId: 'second-org-song',
+                  slug: 'second-org-song',
+                  title: 'Second org song',
+                  source: '{title: Second org song}',
+                  version: 2,
+                  syncStatus: SongSyncStatus.pendingUpdate.value,
+                ),
+              );
+        });
+      },
+    );
 
     test('outcome 1: same user flushes -- nothing wiped, no dialog', () async {
       identityStore.seed(
