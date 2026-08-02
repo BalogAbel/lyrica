@@ -15,6 +15,7 @@ import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
@@ -159,6 +160,14 @@ final redeemControllerProvider = ChangeNotifierProvider<RedeemController>((
 ) {
   return RedeemController(ref.read(invitationRepositoryProvider));
 });
+
+/// App-scoped and NOT autoDispose: a pending different-user reauth prompt
+/// must survive whatever screen is on top when it is requested. See
+/// `ReauthPromptController` and `ReauthPromptHost`, and ADR-029.
+final reauthPromptControllerProvider =
+    ChangeNotifierProvider<ReauthPromptController>((_) {
+      return ReauthPromptController();
+    });
 
 final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
   final pending = ref.read(pendingInviteTokenControllerProvider);
