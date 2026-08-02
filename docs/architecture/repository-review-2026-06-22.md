@@ -54,7 +54,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | ID | Area | Finding | Sev |
 |----|------|---------|-----|
 | LF-T1 | Local-first | Session expiry is **destructive**: wipes local catalog + planning data | Critical |
-| LF-T2 | Local-first | No offline token refresh → refresh-token TTL is the real "1 week" ceiling | Critical |
+| LF-T2 | Local-first | No offline token refresh → refresh-token TTL is the real "1 week" ceiling. **Deferred with trigger condition (offline-durability-phase4, S15)** — see `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. | Critical |
 | LF-1 | Local-first | At-least-once delivery, no dedup: crash between accept↔clear re-sends | High |
 | LF-2 | Local-first | Per-mutation full refresh inside the sync loop (N refreshes for N mutations) | High |
 | LF-3 | Local-first | No internal single-flight guard on mutation sync | High |
@@ -209,21 +209,26 @@ carry the detail; this is the digest.
   monitor now bound and surface the divergence this finding describes, and the S12
   squash contract fixed a real base-version-fold defect found in the same slice.
   See §6.1 status block.
+- **LF-T2** (`docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`, offline-
+  durability-phase4, S15) — this finding also had no deferred doc before this
+  phase, and was the last LF-* id this review could not place cleanly into a
+  closed state. The "decouple local access from live session validity" half is
+  delivered by LF-T1/ADR-020; the refresh-token TTL hard wall itself is unchanged
+  and cannot be fixed client-side, since it is a property of the auth provider's
+  token lifetime/session policy. Established while writing the deferred doc: the
+  loss when the TTL is exhausted offline is to **sync only**, not to local read or
+  write access — cached data stays fully readable and new edits keep queuing
+  locally regardless of live session validity, per ADR-020's non-destructive
+  policy. See §6.1 status block.
 
-**Partial / corrected**
-- **LF-T2** — the "decouple local access from live session validity" half is delivered
-  by LF-T1; the refresh-token TTL ceiling itself is unchanged. Not fixed, not
-  validated by a test, and has no deferred doc with a trigger condition — flagged
-  explicitly here as the one LF-T* finding this review cannot place cleanly into one
-  of the three closed states, rather than being left silently as "open".
-
+**Corrected**
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
 **Still open** (unchanged): SEC-2, all ARCH-*, all UX-*, and the deferred items in
-`docs/deferred/` other than LF-T5 and LF-T6, which are deferred-with-trigger rather
-than open. Every LF-* and LF-T* id is now fixed, validated, or deferred with a
-trigger condition, except LF-T2 (see **Partial / corrected** above).
+`docs/deferred/` other than LF-T5, LF-T6, and LF-T2, which are deferred-with-trigger
+rather than open. Every LF-* and LF-T* id is now fixed, validated, or deferred with a
+trigger condition; none remain open or partial.
 
 ## 4. Architecture Review
 
@@ -392,10 +397,10 @@ lifecycle**.
 **Headline**: the key to "indefinite" was **LF-T1** — convert session expiry from
 destructive to non-destructive. **LF-T1 is now done** (offline-session-resilience slice,
 PR #55). **LF-T3/LF-T4 are now done too** (offline-durability-phase4 slice, native-only
-verification — see below). **LF-T5, LF-T6 and LF-T8 were resolved to a closed state in
-S15** (LF-T5 and LF-T6 deferred with a stated trigger condition, LF-T8 validated) — see
-the S15 status block below. Every LF-T* finding is now fixed, validated, or deferred
-with a trigger condition; none remain merely open.
+verification — see below). **LF-T5, LF-T6, LF-T8 and LF-T2 were resolved to a closed
+state in S15** (LF-T5, LF-T6 and LF-T2 deferred with a stated trigger condition, LF-T8
+validated) — see the S15 status block below. Every LF-T* finding is now fixed,
+validated, or deferred with a trigger condition; none remain merely open.
 
 **Status (2026-06-29, offline-session-resilience slice, PR #55)**:
 - `LF-T1` — **fixed**. Session expiry no longer wipes authenticated local data. Offline
@@ -405,9 +410,11 @@ with a trigger condition; none remain merely open.
   e2e-covered by `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`.
   ~~Residual deferred: different-user re-auth **live dialog wiring**.~~
   **Done (offline-durability-phase4, S14).** See ADR-029.
-- `LF-T2` — **partial**. The "decouple local access from live session validity" half is
+- `LF-T2` — ~~**partial**. The "decouple local access from live session validity" half is
   delivered by LF-T1 (offline cold-start = `sessionExpired`). The refresh-token TTL hard
-  wall itself (longer/rotating refresh token) is unchanged.
+  wall itself (longer/rotating refresh token) is unchanged.~~ **Deferred with a stated
+  trigger condition (offline-durability-phase4, S15).** See the S15 status block below
+  and `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`.
 
 **Status (2026-06-29, local-first-validation slice)**:
 - `LF-T4` — **characterized (probe) + deferred at the time**. `storage_pressure_probe_test.dart`
@@ -511,14 +518,37 @@ with a trigger condition; none remain merely open.
   `docs/deferred/2026-07-31-occ-divergence-lf-t5.md` for the full analysis and the
   trigger condition (the S12 mutation warn threshold firing for real users, or a
   future slice introducing field-level merge for an independent reason).
+- `LF-T2` — **deferred with a stated trigger condition (new deferred doc; this
+  finding had none before).** The finding's own text splits into two halves: the
+  "decouple local access from live session validity" half was already delivered by
+  LF-T1/ADR-020; the refresh-token TTL hard wall itself is unchanged and is not
+  fixable client-side, since it is a property of the auth provider's token
+  lifetime/session policy configured on the hosted Supabase project, not a value
+  this repository controls. Writing the deferred doc required establishing what a
+  user actually loses once that TTL is exhausted while offline, rather than
+  trusting the original "1 week ceiling" framing: `AppAuthController` maps the
+  resulting `null` session to `sessionExpired`, not `signedOut`
+  (`app_auth_controller.dart:168-206`), and both
+  `PlanningSyncController.handleSessionExpired` and
+  `SongCatalogController.handleSessionExpired` reset only transient sync state,
+  leaving the projection and cache untouched
+  (`planning_sync_controller.dart:255-263`,
+  `song_catalog_controller.dart:322-325`) — no read or write path in the app gates
+  on live session validity. The loss is to **sync only**: cached data stays fully
+  readable and new edits keep queuing locally, but pushing pending mutations and
+  pulling remote changes stays blocked until the user completes an interactive
+  re-auth, which itself requires connectivity. See
+  `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md` for the full analysis and
+  the trigger condition (a product commitment to a continuous offline span longer
+  than the configured refresh-token TTL, or a decision to extend/restructure that
+  TTL on the Supabase side).
 
 Every LF-T* finding is now **fixed** (LF-T1, LF-T3, LF-T4, LF-T7), **validated**
-(LF-T8), or **deferred with a stated trigger condition** (LF-T5, LF-T6); LF-T2
-remains **partial** (see the resolution-status digest in §3) — its non-destructive-
-expiry half is fixed via LF-T1, but the refresh-token TTL hard wall itself has
-neither a fix, a validating test, nor a deferred doc with a trigger condition, and
-is called out explicitly rather than folded into one of the three closed states it
-does not actually occupy.
+(LF-T8), or **deferred with a stated trigger condition** (LF-T5, LF-T6, LF-T2) —
+none remain open or partial. LF-T2's non-destructive-expiry half was fixed via
+LF-T1; its residual, the refresh-token TTL hard wall, now has a deferred doc with
+a stated trigger condition rather than being called out as the one id this review
+could not place cleanly into a closed state.
 
 ### 6.2 Correctness / robustness
 
@@ -771,7 +801,9 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 **Quick wins (1-2 days)**
 - ~~SEC-5: add `unique(session_id, song_id) where item_type='song'`.~~ **Done (PR #57).**
 - ~~SEC-3: `set search_path = public` on the two remaining invoker-rights helpers (`has_capability`, `get_my_capabilities`); `current_organization_ids` already has it.~~ **Done (arch-spine-phase0-1).**
-- LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.
+- ~~LF-8: replace silent `?? ''`/`?? 0` with invariant asserts / explicit rejection + tests.~~
+  **Done (local-first-validation, PR #56).** The reconciler now throws a typed
+  `ReconcileFieldError` instead of coercing; see §6.2 status block.
 - ~~UX-3: replace the copyrighted default song body with a non-copyrighted placeholder/hint.~~ **Done (arch-spine-phase0-1).**
 - A11y: add the missing `semanticLabel`/`Semantics` on the few non-tooltip surfaces.
 
@@ -779,9 +811,16 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 - ~~LF-T1: make session expiry non-destructive (the "indefinite offline" keystone).~~
   **Done (PR #55).** ~~Residual: different-user re-auth live dialog wiring (deferred).~~
   **Done (offline-durability-phase4, S14, ADR-029).**
-- LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.
-- LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
-- LF-4: surface failed local edits in the main UI instead of silently reverting.
+- ~~LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.~~
+  **LF-1 validated, already shipped under ADR-019 (local-first-validation, PR #56).
+  LF-3 fixed for the song path** (planning side was already guarded by ADR-019);
+  see §6.2 status block.
+- ~~LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).~~
+  **Validated, already shipped under ADR-019 (local-first-validation, PR #56).** See
+  §6.2 status block.
+- ~~LF-4: surface failed local edits in the main UI instead of silently reverting.~~
+  **Validated, already shipped under ADR-019 (local-first-validation, PR #56).** See
+  §6.2 status block.
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
 - ~~SEC-1: invite email-binding + rate limit + audit + ADR.~~ **Done (security-read-boundary-phase3).**
