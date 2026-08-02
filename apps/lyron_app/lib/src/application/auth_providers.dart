@@ -22,13 +22,13 @@ import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
-import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/drift_pending_local_work_reader.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
@@ -178,25 +178,21 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           }
         }
 
-        // Returns null when the count cannot be determined (a storage
-        // failure, or a prior identity with no cached organization id to
-        // scope the query by). Uncertainty must never authorise a silent
-        // wipe (ADR-020 / D5): resolveReauth treats a null count the same
-        // as a nonzero one and still requires confirmation. Unlike the
-        // rejected planning-only count (D4), this is not a guess dressed
-        // up as a number -- "unknown" stays representable all the way to
-        // the dialog instead of being encoded as a fabricated count.
+        // Returns null when a storage failure prevents determining the count.
+        // Uncertainty must never authorise a silent wipe (ADR-020 / D5):
+        // resolveReauth treats a null count the same as a nonzero one and
+        // still requires confirmation. Unlike the rejected planning-only
+        // count (D4), this is not a guess dressed up as a number -- "unknown"
+        // stays representable all the way to the dialog instead of being
+        // encoded as a fabricated count.
         Future<int?> countPriorPendingWork() async {
-          final organizationId = priorIdentity!.organizationId;
-          if (organizationId == null) {
-            return null;
-          }
+          final identity = priorIdentity!;
           try {
             return await ref
                 .read(pendingLocalWorkCounterProvider)
                 .count(
-                  userId: priorIdentity.userId,
-                  organizationId: organizationId,
+                  userId: identity.userId,
+                  organizationId: identity.organizationId,
                 );
           } catch (_) {
             return null;
@@ -286,15 +282,13 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
 final pendingLocalWorkCounterProvider = Provider<PendingLocalWorkCounter>((
   ref,
 ) {
-  final songMutationStore = DriftSongMutationStore(
-    songCatalogStore: ref.watch(songCatalogStoreProvider),
-    planningLocalStore: ref.watch(planningLocalStoreProvider),
+  final reader = DriftPendingLocalWorkReader(
+    planningDatabase: ref.watch(planningLocalDatabaseProvider),
+    songDatabase: ref.watch(songCatalogDatabaseProvider),
   );
-  final planningMutationStore = ref.watch(planningMutationStoreProvider);
   return PendingLocalWorkCounter(
-    readPlanningPendingMutations: planningMutationStore.readPendingMutations,
-    readPendingSongs: songMutationStore.readPendingSongs,
-    readConflictSongs: songMutationStore.readConflictSongs,
+    readPlanningPendingWorkCount: reader.countPlanningPendingWork,
+    readSongPendingWorkCount: reader.countSongPendingWork,
   );
 });
 

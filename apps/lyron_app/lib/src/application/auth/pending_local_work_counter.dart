@@ -29,10 +29,10 @@ typedef SongConflictSongsReader =
       required String organizationId,
     });
 
-/// Combined count of local work a different-user sign-in wipe would destroy:
-/// planning pending mutations + pending songs + conflict songs. The wipe
-/// deletes both subsystems, so leaving either source out of the count would
-/// understate what is at stake -- a specific wrong number, worse than none.
+/// Combined count of local work a different-user sign-in wipe would destroy.
+/// The wipe deletes both subsystems across every organization owned by the
+/// prior user, so leaving either source out of the count would understate what
+/// is at stake -- a specific wrong number, worse than none.
 ///
 /// Each source is read in full and none is caught here: if a source throws,
 /// the failure propagates rather than being silently counted as zero. An
@@ -61,7 +61,9 @@ class PendingLocalWorkCounter {
     final planningCountReader = _readPlanningPendingWorkCount;
     final songCountReader = _readSongPendingWorkCount;
     if (planningCountReader != null && songCountReader != null) {
-      return 0;
+      final planningCount = await planningCountReader(userId: userId);
+      final songCount = await songCountReader(userId: userId);
+      return planningCount + songCount;
     }
 
     final scopedOrganizationId = organizationId;
