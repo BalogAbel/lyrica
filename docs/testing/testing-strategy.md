@@ -46,12 +46,25 @@ Unified sync coverage includes:
 - Header sync control widget tests for green/yellow/red label and color, and popup widget tests for empty state, song row + plan conflict row rendering, `Sync now` button, and specific reason chips for `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, and `sync_failed`.
 - Sign-out warning routing through `unifiedSyncOverviewProvider.hasUnsyncedWork` instead of the legacy per-domain providers.
 - Refresh-failure preservation test confirming a failed catalog refresh keeps the header green and surfaces `stale` freshness without changing the primary header color.
+- `UnifiedRowRecoveryController` unit tests driving the controller directly through its provider, with no widget in the picture: `keepMine` and `discardMine` complete their mutation and their `songMutationEntriesProvider`/`songLibraryListProvider` invalidations even when the caller that started them is gone, and `applyToGroup` performs all of its post-work — the `planningDataRevisionProvider` bump (asserted explicitly, since it is the only thing that reaches the three planning slug/detail *family* providers, which are never invalidated directly) plus the `planningMutationEntriesProvider`/`planningPlanListProvider` invalidations. These fail against the prior `context.mounted`-guarded popup code.
 
 Active local-first regression coverage includes:
 
 - Song session-expiry cache policy regression coverage for active catalog context clearing, cached read blocking, persisted cache row retention, and re-sign-in restoration.
 - Provider/local-store accepted-write fallback regression coverage for planning mutations when remote refresh fails.
 - Song pending mutation persistence across Drift reopen for pending create, pending update, pending delete, and overlay replay behavior.
+
+Reauth prompt and different-user resolution coverage (ADR-029) includes:
+
+- `PendingLocalWorkCounter` unit tests: zero when planning pending mutations, pending songs, and conflict songs are all empty; the sum of all three when each contributes; and a throw from either the planning-pending or the conflict-songs reader propagating rather than being silently counted as zero, since an undercount would understate what a wipe destroys.
+- `ReauthPromptController` unit tests: `requestConfirmation` publishes a pending prompt carrying the prior email and the pending count (including a `null`/unknown count) and completes its returned future with the answer once `answer` is called; a second `requestConfirmation` while one is already pending throws and leaves the first prompt untouched; listeners are notified on both request and answer.
+- `ReauthPromptHost` widget tests: renders its child unchanged with no prompt pending; a published prompt shows `showReauthDifferentUserDialog` and feeds a confirm back to the controller; feeds a cancel back; a barrier dismissal reaches the controller as `false`, matching the dialog's own pinned dismissal contract rather than being reinterpreted as a confirm.
+- `resolveReauth` unit tests for all four outcomes as a pure, UI-agnostic coordinator, including that a `null` (unknown) pending count is treated the same as a nonzero one — never as zero — and that `wipePriorAndProceed` is never called before `confirmDifferentUser` resolves `true`.
+- `showReauthDifferentUserDialog` widget tests for confirm, cancel, and barrier-dismissal-returns-`false`, the known-count message, and the unknown-count message shown when `pendingCount` is `null` (cancel still returns `false` in the unknown case).
+- `identity_persistence_wiring_test.dart` covers all four outcomes wired to the live `signedIn` edge, confirm and cancel both included: same user flushes with nothing wiped and no dialog; a different user with zero pending work is wiped and proceeds without a dialog; a different user with pending or unreadable-count work is confirmed first, and on confirm the prior user's catalog, planning data, and identity are wiped while the new session proceeds; and cancel signs the new session out, deletes nothing, and leaves the app offline-authenticated as the prior user with the identity store still holding the prior user's row.
+- The ordering-hazard regression test: the prior identity's read is the first call the resolution's store call log records on the `signedIn` edge, and that read is proven to have actually driven a real different-user wipe rather than merely having happened before some unrelated write — this fails if `lastKnownIdentityPersistenceProvider`'s prior overwrite-first behavior ever regresses.
+- The uncertain-count hazard regression test: a pending-work count that fails to read takes the confirm path, never the wipe path.
+- `AppAuthController.cancelReauthToPriorSession` unit tests: it returns `sessionExpired` carrying the *prior* user's session (not `signedOut`, not the cancelled new user), and it converges on that same state even when the auth stream also emits `null` as a side effect of the sign-out call, so the outcome does not depend on which of the two arrives first.
 
 ### Adversarial Offline/Sync Validation
 

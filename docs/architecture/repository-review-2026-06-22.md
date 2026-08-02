@@ -100,8 +100,10 @@ carry the detail; this is the digest.
 - **LF-T1** (offline-session-resilience slice, PR #55) — session expiry is now
   **non-destructive**: offline cold-start maps to `sessionExpired` (not `signedOut`),
   offline-authenticated users stay in the app behind a re-auth banner, local data is
-  retained. ADR + architecture recorded. Residual: different-user re-auth **live dialog
-  wiring** is deferred (`docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`).
+  retained. ADR + architecture recorded. ~~Residual: different-user re-auth **live dialog
+  wiring** is deferred.~~ **Done (offline-durability-phase4, S14).** `resolveReauth` and
+  `showReauthDifferentUserDialog` are now wired to the live `signedIn` edge behind a
+  `ReauthPromptController`/`ReauthPromptHost` seam. ADR-029.
 - **SEC-5** (planning write-contract hardening slice, PR #57) — partial unique index
   `unique(session_id, song_id) where item_type='song'` added
   (`supabase/migrations/202606290002_session_item_unique_song_index.sql`), DB-pinned by a
@@ -128,8 +130,8 @@ carry the detail; this is the digest.
   consolidated into a single `ActiveOrganizationResolver` (application layer)
   that owns the raw / cached-fallback / organization-id flavors; the three
   resolution providers delegate to it with identical seams. ADR-022 (extends
-  ADR-016; completes the identity seam ADR-020 began). The deferred different-user
-  re-auth wiring intersection is noted, not closed.
+  ADR-016; completes the identity seam ADR-020 began). The different-user
+  re-auth wiring intersection noted here is now closed (S14, ADR-029).
 - **ARCH-2** (arch-spine-phase0-1 slice) — planning invalidation is split into an
   aggregate signal (`planningDataRevisionProvider`) and a mutation signal
   (`planningMutationRevisionProvider`) watched only by the mutation-facing
@@ -372,8 +374,8 @@ verification — see below). The remaining time-bound findings are LF-T5, LF-T6 
   in the app behind a re-auth banner with writes gated; explicit sign-out and authoritative
   verified-empty-membership revocation still delete immediately. ADR + architecture recorded;
   e2e-covered by `apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart`.
-  Residual deferred: different-user re-auth **live dialog wiring**
-  (`docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`).
+  ~~Residual deferred: different-user re-auth **live dialog wiring**.~~
+  **Done (offline-durability-phase4, S14).** See ADR-029.
 - `LF-T2` — **partial**. The "decouple local access from live session validity" half is
   delivered by LF-T1 (offline cold-start = `sessionExpired`). The refresh-token TTL hard
   wall itself (longer/rotating refresh token) is unchanged.
@@ -682,7 +684,8 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 
 **Medium (1-2 weeks)**
 - ~~LF-T1: make session expiry non-destructive (the "indefinite offline" keystone).~~
-  **Done (PR #55).** Residual: different-user re-auth live dialog wiring (deferred).
+  **Done (PR #55).** ~~Residual: different-user re-auth live dialog wiring (deferred).~~
+  **Done (offline-durability-phase4, S14, ADR-029).**
 - LF-1 + LF-3: idempotency key / accepted-but-uncleared marker + single-flight guard.
 - LF-2: hoist refresh out of the per-mutation loop (sync all, then refresh once).
 - LF-4: surface failed local edits in the main UI instead of silently reverting.
