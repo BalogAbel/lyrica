@@ -89,6 +89,24 @@ void main() {
     );
   }
 
+  test('sums all six qualifying planning rows across organizations', () async {
+    for (var index = 0; index < planningCases.length; index++) {
+      final testCase = planningCases[index];
+      await _insertPlanningMutation(
+        planningDatabase,
+        userId: 'user-1',
+        organizationId: testCase.organizationId,
+        aggregateId: 'target-plan-$index',
+        status: testCase.status,
+        orderKey: index + 1,
+      );
+    }
+
+    final count = await reader.countPlanningPendingWork(userId: 'user-1');
+
+    expect(count, 6);
+  });
+
   test(
     'adding another user planning row leaves the user count unchanged',
     () async {
@@ -163,6 +181,23 @@ void main() {
       },
     );
   }
+
+  test('sums all four qualifying song rows across organizations', () async {
+    for (var index = 0; index < songCases.length; index++) {
+      final testCase = songCases[index];
+      await _insertSongMutation(
+        songDatabase,
+        userId: 'user-1',
+        organizationId: testCase.organizationId,
+        songId: 'target-song-$index',
+        status: testCase.status,
+      );
+    }
+
+    final count = await reader.countSongPendingWork(userId: 'user-1');
+
+    expect(count, 4);
+  });
 
   test('adding a synced song leaves the user work count unchanged', () async {
     await _insertSongMutation(
