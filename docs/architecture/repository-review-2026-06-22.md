@@ -81,7 +81,10 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | SEC-2 | Security | `create_invitation` null-caller admin gate relies on grant scope only | Low |
 | SEC-3 | Security | `has_capability`/`current_organization_ids`/`get_my_capabilities` lack `set search_path` | Low |
 | ~~LF-9~~ | Local-first | ~~Slug-by-slug lookup re-merges all mutations (N+1 reads)~~ **Done (offline-durability-phase4).** | Low |
-| LF-T5..T8 | Local-first | OCC divergence grows with offline time; clock skew; schema drift; server TTL cleanup | Low–Med |
+| LF-T5 | Local-first | OCC divergence grows with offline duration → larger conflict surface on reconnect. **Deferred with trigger condition (offline-durability-phase4, S15)** — see `docs/deferred/2026-07-31-occ-divergence-lf-t5.md`. | Low |
+| LF-T6 | Local-first | Freshness/ordering use device clock (`DateTime.now().toUtc()` in reconcile). **Characterized + deferred; re-confirmed still deferred (offline-durability-phase4, S15)** — see `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`. | Low |
+| ~~LF-T7~~ | Local-first | ~~No structural-migration playbook~~ **Fixed (catalog) + validated (planning) (local-first-validation).** | Low–Med |
+| ~~LF-T8~~ | Local-first | ~~Server-side TTL cleanup (`pg_cron`) deletes unredeemed users >24h and expires invitations (30d)~~ **Validated — audited, no gap found (offline-durability-phase4, S15).** | Low |
 | ARCH-4 | Architecture | Melos monorepo overhead for a single package | Low |
 | ARCH-5 | Architecture | Active-organization resolution spread across providers (high implicit coupling) | Medium |
 | UX-5 | UI/UX | Internal gap positions ("10.", "20.") shown to user | Low |
@@ -91,7 +94,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | ~~DX-1~~ | Tooling | ~~`file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor~~ **Done (security-read-boundary-phase3), riverpod deferred.** | Medium |
 | ~~DX-2~~ | Tooling | ~~No dependency-audit / coverage gate in CI~~ **Done (security-read-boundary-phase3).** | Medium |
 
-### Resolution status (updated 2026-06-29)
+### Resolution status (updated 2026-08-02)
 
 Findings closed since the 2026-06-22 review, by slice. Per-section status blocks
 carry the detail; this is the digest.
@@ -186,18 +189,41 @@ carry the detail; this is the digest.
 **Validated (already shipped under ADR-019, now guarded by adversarial tests)**
 - **LF-1, LF-2, LF-4, LF-5** — see §6.2 status block.
 
-**Characterized + still deferred** (probes added, real fix outstanding)
-- **LF-T6** (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`).
+**Validated (audited, no gap found)**
+- **LF-T8** (offline-durability-phase4 slice, S15) — the server-side `pg_cron` TTL
+  cleanup was audited against the actual migrations and code: no membership status
+  other than `active` is ever written, no authorship foreign key cascades from
+  `auth.users` (all are `on delete set null`), and invitation expiry is a read-time
+  check, not a sweep. Pinned by
+  `scripts/tests/pg-cron-orphan-cleanup-contract-test.sh`. See §6.1 status block.
+  This was never a live defect; do not read it as a fix.
+
+**Deferred (trigger condition stated)**
+- **LF-T6** (`docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`) —
+  characterized via probe (local-first-validation slice); re-confirmed still
+  deferred in offline-durability-phase4, S15, since its trigger condition (a
+  trusted server-time source) was not introduced by S12 or S13.
+- **LF-T5** (`docs/deferred/2026-07-31-occ-divergence-lf-t5.md`, offline-durability-
+  phase4, S15) — this finding had no deferred doc before this phase. Finer merge
+  granularity remains out of scope, but the S12 mutation budget and footprint
+  monitor now bound and surface the divergence this finding describes, and the S12
+  squash contract fixed a real base-version-fold defect found in the same slice.
+  See §6.1 status block.
 
 **Partial / corrected**
 - **LF-T2** — the "decouple local access from live session validity" half is delivered
-  by LF-T1; the refresh-token TTL ceiling itself is unchanged.
+  by LF-T1; the refresh-token TTL ceiling itself is unchanged. Not fixed, not
+  validated by a test, and has no deferred doc with a trigger condition — flagged
+  explicitly here as the one LF-T* finding this review cannot place cleanly into one
+  of the three closed states, rather than being left silently as "open".
 
 - **SEC-3** — previously tracked here as "2 of 3 open" after the 2026-06-29
   over-count correction; now fully closed (see **Fixed** above).
 
-**Still open** (unchanged): LF-T5, LF-T8, SEC-2, all
-ARCH-*, all UX-*, and the deferred items in `docs/deferred/`.
+**Still open** (unchanged): SEC-2, all ARCH-*, all UX-*, and the deferred items in
+`docs/deferred/` other than LF-T5 and LF-T6, which are deferred-with-trigger rather
+than open. Every LF-* and LF-T* id is now fixed, validated, or deferred with a
+trigger condition, except LF-T2 (see **Partial / corrected** above).
 
 ## 4. Architecture Review
 
@@ -358,15 +384,18 @@ lifecycle**.
 | **LF-T2** | No offline token refresh; gotrue emits null session when refresh token can't renew → triggers LF-T1 | `infrastructure/auth/supabase_auth_repository.dart:20` (`onAuthStateChange`) | Refresh-token TTL is the hard wall | Longer/rotating refresh token + decouple local access from live session validity (covered by LF-T1) |
 | ~~**LF-T3**~~ | ~~Mutation store grows unbounded over long offline; compaction only helps collection edits~~ **Done (offline-durability-phase4).** | `application/planning/drift_planning_mutation_store.dart` (compaction); no size cap | Not time-keyed, but unbounded growth | Mutation size budget + squash + threshold warning |
 | ~~**LF-T4**~~ | ~~No storage quota / eviction; full catalog snapshot + projection + mutations can exceed web IndexedDB quota → **silent browser eviction**~~ **Done (offline-durability-phase4), native-only verification.** | `architecture.md` Offline Strategy ("one active snapshot") | Finite storage | Size monitor + eviction policy (mutations protected, snapshot pieces droppable) |
-| LF-T5 | OCC divergence grows with offline duration → larger conflict surface on reconnect | base_version capture in write contracts | Conflict probability ∝ offline time | Incremental/partial sync, finer merge |
-| LF-T6 | Freshness/ordering use device clock (`DateTime.now().toUtc()` in reconcile) | `providers.dart` reconcile | Skew accumulates offline | Server-clock anchor on reconnect |
+| LF-T5 | OCC divergence grows with offline duration → larger conflict surface on reconnect. **Deferred with trigger condition (offline-durability-phase4, S15)** — see below. | base_version capture in write contracts | Conflict probability ∝ offline time | Incremental/partial sync, finer merge |
+| LF-T6 | Freshness/ordering use device clock (`DateTime.now().toUtc()` in reconcile). **Characterized + deferred; re-confirmed still deferred (offline-durability-phase4, S15)** — see below. | `providers.dart` reconcile | Skew accumulates offline | Server-clock anchor on reconnect |
 | LF-T7 | Long offline spans app upgrades; planning migration is additive (good) but no structural-change strategy; catalog DB has `schemaVersion 2` with **no** MigrationStrategy | `offline/planning/planning_local_database.dart:33-64`; `offline/song_catalog/song_catalog_database.dart:32` | More versions crossed over time | Structural-migration playbook + migration test with pending mutations present |
-| LF-T8 | Server-side TTL cleanup (`pg_cron`) deletes unredeemed users >24h and expires invitations (30d) | `supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql` | Server TTLs outside client horizon | Audit: active-member data must never be TTL-collected |
+| LF-T8 | Server-side TTL cleanup (`pg_cron`) deletes unredeemed users >24h and expires invitations (30d). **Validated — audited, no gap found (offline-durability-phase4, S15)** — see below. | `supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql` | Server TTLs outside client horizon | Audit: active-member data must never be TTL-collected |
 
 **Headline**: the key to "indefinite" was **LF-T1** — convert session expiry from
 destructive to non-destructive. **LF-T1 is now done** (offline-session-resilience slice,
 PR #55). **LF-T3/LF-T4 are now done too** (offline-durability-phase4 slice, native-only
-verification — see below). The remaining time-bound findings are LF-T5, LF-T6 and LF-T8.
+verification — see below). **LF-T5, LF-T6 and LF-T8 were resolved to a closed state in
+S15** (LF-T5 and LF-T6 deferred with a stated trigger condition, LF-T8 validated) — see
+the S15 status block below. Every LF-T* finding is now fixed, validated, or deferred
+with a trigger condition; none remain merely open.
 
 **Status (2026-06-29, offline-session-resilience slice, PR #55)**:
 - `LF-T1` — **fixed**. Session expiry no longer wipes authenticated local data. Offline
@@ -426,6 +455,70 @@ verification — see below). The remaining time-bound findings are LF-T5, LF-T6 
   still-pending `sessionCreate` now deletes that session's pending `session_item` and
   `session_item_order` mutations in the same transaction instead of orphaning them.
   Pinned by `test/offline/adversarial/planning_squash_contract_test.dart`.
+
+**Status (2026-08-02, offline-durability-phase4 slice, S15)**:
+- `LF-T8` — **validated**. Audited against the actual migrations and code rather than
+  assumed: `membership_status` is `active | invited | suspended`, but every membership
+  insert in the codebase — including both versions of `redeem_invitation`
+  (`supabase/migrations/202605160002_invitations_functions.sql`,
+  `supabase/migrations/202607290002_invitation_redemption_contract.sql`) — writes
+  `'active'` directly, so there is no transient membership state the cleanup's
+  `status = 'active'` predicate could wrongly treat as gone. The indirect risk (a
+  revoked member's `auth.users` row being TTL-collected and cascading into
+  organization content) does not exist: of every foreign key referencing
+  `auth.users`, only `memberships.user_id` is `on delete cascade`, and it removes
+  only that user's own membership row. Every authorship link — `songs`, `plans`,
+  `sessions`, `session_items`, `attachments` (`last_modified_by`, closed earlier by
+  `202605160004_last_modified_by_on_delete_set_null.sql`), plus
+  `invitations.issued_by`/`redeemed_by` and
+  `invitation_redemption_attempts.actor_user_id` — is `on delete set null`, so
+  organization content is keyed on `organization_id` and survives its author's
+  deletion. The 30-day invitation expiry is a read-time check inside
+  `redeem_invitation` (`expires_at <= now()`), not a sweep; no migration deletes
+  from `public.invitations`. Exactly two `cron.job` rows are registered — this job
+  and a 90-day retention sweep on the redemption-attempt audit log
+  (`202607290001_invitation_redemption_audit.sql`) — and the new
+  `scripts/tests/pg-cron-orphan-cleanup-contract-test.sh` (wired into
+  `scripts/backend-write-contracts.sh`) asserts the live `cron.job` set equals that
+  allowlist, drives the cleanup's exact delete statement against fixtures for every
+  membership status, and asserts the authorship survives with `last_modified_by`/
+  `issued_by` nulled. This was never a live defect; it is now audited and pinned
+  rather than merely asserted.
+- `LF-T6` — **re-confirmed still deferred; trigger condition not met.** S12 and S13
+  (this same phase) introduced no trusted server-time source: the mutation store
+  still stamps every write with `DateTime.now().toUtc()`
+  (`drift_planning_mutation_store.dart`), and the S12 storage accounting is
+  content-derived and time-independent, so neither slice moves the trigger
+  condition closer. The characterization probe
+  (`test/offline/adversarial/clock_skew_probe_test.dart`) and the injectable `now`
+  seam on `PlanningMutationReconciler` both still stand unchanged. Decision recorded
+  in `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md` (Update, 2026-08-02).
+- `LF-T5` — **deferred with a stated trigger condition (new deferred doc; this
+  finding had none before).** Finer merge granularity (incremental/partial sync) is
+  a sync-protocol change, out of Phase 4's remit of making offline durable and
+  bounded rather than reducing divergence. What Phase 4 did instead: the S12
+  mutation budget (`local_storage_budget.dart`) caps how much unsynced intent can
+  accumulate, so the conflict surface can no longer grow without limit; the S12
+  footprint monitor surfaces the pending mutation count and storage-pressure level
+  in the unified sync overview (`unified_sync_providers.dart`), making a long
+  offline span visible before reconnect turns it into a pile of conflicts; and the
+  S12 squash contract suite fixed a real defect found while specifying the budget —
+  four mutation fold paths (`sessionRename`, `sessionDelete`, `sessionItemDelete`,
+  one `planEdit` path) were letting a later local edit's base version overwrite the
+  first-captured one on fold, which could silently suppress a real OCC conflict.
+  Divergence itself is unchanged, but it is now correctly detected and bounded
+  where before this phase it was neither. See
+  `docs/deferred/2026-07-31-occ-divergence-lf-t5.md` for the full analysis and the
+  trigger condition (the S12 mutation warn threshold firing for real users, or a
+  future slice introducing field-level merge for an independent reason).
+
+Every LF-T* finding is now **fixed** (LF-T1, LF-T3, LF-T4, LF-T7), **validated**
+(LF-T8), or **deferred with a stated trigger condition** (LF-T5, LF-T6); LF-T2
+remains **partial** (see the resolution-status digest in §3) — its non-destructive-
+expiry half is fixed via LF-T1, but the refresh-token TTL hard wall itself has
+neither a fix, a validating test, nor a deferred doc with a trigger condition, and
+is called out explicitly rather than folded into one of the three closed states it
+does not actually occupy.
 
 ### 6.2 Correctness / robustness
 

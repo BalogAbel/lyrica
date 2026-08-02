@@ -39,3 +39,21 @@ Address when offline duration grows long enough that ordering/freshness bugs fro
 skew are observed in practice, or when any slice introduces a trusted server-time source
 (e.g. a heartbeat/ping RPC, or a timestamp already present in existing RPC responses) that
 the reconciler could anchor to.
+
+## Update (2026-08-02, offline-durability-phase4, S15)
+
+**Decision: still deferred.** This phase's trigger condition was checked and not met.
+Slices S12 and S13 (this same phase) introduced no trusted server-time source: the
+mutation store (`drift_planning_mutation_store.dart`) still stamps every write with
+`DateTime.now().toUtc()`, and the S12 storage accounting
+(`local_storage_budget.dart`/`local_storage_footprint.dart`) is content-derived
+(`length(...)` over row content) and time-independent, so it does nothing to bring a
+trusted clock closer either. Nothing in this phase changes the trigger condition stated
+above.
+
+The characterization probe (`apps/lyron_app/test/offline/adversarial/clock_skew_probe_test.dart`)
+and the injectable `now` clock seam on `PlanningMutationReconciler`
+(`_wallClockNow`, `planning_mutation_reconciler.dart:38`) both still stand unchanged:
+the probe still injects a skewed clock and asserts the skew flows straight through into
+reconciled timestamps uncorrected, and the seam remains ready for a real anchor to
+attach to whenever the trigger condition is met.
