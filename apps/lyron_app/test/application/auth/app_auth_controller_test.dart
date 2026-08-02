@@ -291,4 +291,38 @@ void main() {
     expect(controller.state.lastKnownSession?.userId, 'u1');
     expect(controller.state.session, isNull);
   });
+
+  test('cancelReauthToPriorSession stays offline-authenticated as the prior '
+      "user even when the auth stream's null side effect is delivered LATE "
+      '-- after the cancel call has already returned, not during its await '
+      '-- because _repository.signOut() resolving does not guarantee its '
+      'own stream side effect has been delivered yet', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+
+    // The stream's null event arrives only now -- well after
+    // cancelReauthToPriorSession has returned and its `finally` has already
+    // run. Falling through to the ordinary null-session mapping here would
+    // read _state.status as sessionExpired (not signedIn) and return
+    // signedOut, discarding lastKnownSession and the offline-authenticated
+    // state cancel exists to preserve.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.lastKnownSession?.email, 'u1@example.com');
+    expect(controller.state.session, isNull);
+  });
 }

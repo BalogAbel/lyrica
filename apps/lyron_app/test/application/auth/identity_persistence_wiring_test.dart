@@ -642,6 +642,96 @@ void main() {
         await pump();
       },
     );
+
+    test('two overlapping different-user signedIn edges serialize instead of '
+        'racing -- the second does not call requestConfirmation until the '
+        'first prompt has been answered, and no unhandled exception escapes '
+        'the auth-path listener', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-0',
+          email: 'user0@example.com',
+          organizationId: 'org-0',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user1@example.com',
+      );
+      // Always nonzero regardless of which user/org is asked about, so
+      // every different-user edge in this test takes the confirm path.
+      final alwaysPendingCounter = PendingLocalWorkCounter(
+        readPlanningPendingMutations:
+            ({required userId, required organizationId}) async => const [],
+        readPendingSongs: ({required userId, required organizationId}) async =>
+            const [],
+        readConflictSongs: ({required userId, required organizationId}) async =>
+            [_conflictSongRecord('song-x'), _conflictSongRecord('song-y')],
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          pendingLocalWorkCounterProvider.overrideWithValue(
+            alwaysPendingCounter,
+          ),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-1'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      // Edge 1: user-0 (prior) -> user-1. Reaches the confirm dialog and
+      // stops there -- nobody answers it yet.
+      await authController.restoreSession();
+      await pump();
+
+      final promptController = container.read(reauthPromptControllerProvider);
+      expect(promptController.pending, isNotNull);
+      expect(promptController.pending!.email, 'user0@example.com');
+
+      // Edge 2: user-1 -> user-2, arriving before edge 1's prompt is
+      // answered. Against the unserialized code this makes edge 2's
+      // resolution call requestConfirmation while edge 1's prompt is
+      // still pending, which throws a StateError out of an unawaited
+      // listener -- an uncaught exception on the auth path. That failure
+      // surfaces as this test failing even though every explicit
+      // `expect` below still passes; there is no legitimate way for a
+      // fixed implementation to let it through silently.
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-2', email: 'user2@example.com'),
+      );
+      await pump();
+
+      // Edge 2 must not have started its own confirmation yet -- the
+      // pending prompt is still edge 1's, untouched.
+      expect(promptController.pending, isNotNull);
+      expect(promptController.pending!.email, 'user0@example.com');
+
+      // Answer edge 1. Its wipe-and-proceed persists user-1 as the new
+      // identity.
+      promptController.answer(true);
+      await pump();
+
+      expect(identityStore.writes.last.userId, 'user-1');
+
+      // Edge 2's resolution, having waited its turn, now runs against the
+      // freshly-persisted user-1 identity and reaches its own prompt --
+      // proving it was queued and eventually serviced, not dropped.
+      expect(promptController.pending, isNotNull);
+      expect(promptController.pending!.email, 'user1@example.com');
+
+      promptController.answer(true);
+      await pump();
+
+      expect(identityStore.writes.last.userId, 'user-2');
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+    });
   });
 }
 

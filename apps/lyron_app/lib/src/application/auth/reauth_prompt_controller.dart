@@ -23,10 +23,16 @@ class ReauthPrompt {
 /// Only one prompt may be pending at a time. `resolveReauth` awaits a single
 /// `confirmDifferentUser` call per `signedIn` transition before doing
 /// anything else, so a second concurrent request would mean two
-/// different-user resolutions racing -- something this app never does by
-/// design. Rejecting the second request turns that into a loud bug instead
-/// of silently queueing or dropping a confirmation that guards data
-/// deletion.
+/// different-user resolutions racing. `lastKnownIdentityPersistenceProvider`
+/// (`auth_providers.dart`) enforces this structurally, not just by
+/// assertion: it serializes every signedIn-edge resolution through a single
+/// future chain, so a second resolution's `confirmDifferentUser` call can
+/// only ever start after the first has fully finished, including the wait
+/// for its own dialog answer. The `StateError` below is therefore a
+/// defence-in-depth invariant, not a path any caller in this codebase can
+/// currently reach -- rejecting the second request turns a would-be race
+/// into a loud bug instead of silently queueing or dropping a confirmation
+/// that guards data deletion.
 class ReauthPromptController extends ChangeNotifier {
   ReauthPrompt? _pending;
   Completer<bool>? _completer;

@@ -80,6 +80,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   final identityStore = ref.watch(lastKnownIdentityStoreProvider);
   final epoch = ref.watch(lastKnownIdentityPersistenceEpochProvider);
 
+  // Serializes signedIn-edge resolutions: only one persistIdentity call is
+  // ever in flight at a time (see scheduleIdentityResolution below). Two
+  // different-user signedIn edges arriving close together can therefore
+  // never both reach ReauthPromptController.requestConfirmation while the
+  // other's prompt is still unanswered -- the second is queued behind the
+  // first's full resolution, including the wait for whatever dialog answer
+  // it needed. See Finding 1 in the reauth review and the class doc on
+  // ReauthPromptController.
+  var resolutionChain = Future<void>.value();
+
   Future<void> persistIdentity(AppAuthState authState) async {
     final generation = epoch.invalidate();
 
@@ -98,15 +108,20 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         }
 
         // Read the prior identity BEFORE anything on this edge can
-        // overwrite it. This function is the only writer to
-        // LastKnownIdentityStore on the signedIn path (see the switch
-        // below and the signedOut case above), so capturing the prior
-        // value here -- ahead of the membership-resolution await and any
-        // write/clear that follows -- makes the different-user check
-        // correct by construction. It does not depend on this listener
-        // running before any other listener on the same auth-state
-        // transition; there is nothing else that could race it to the
-        // store. See ADR-020 and ADR-029.
+        // overwrite it. This function is the sole writer to
+        // LastKnownIdentityStore on the signedIn path itself (see the
+        // switch below and the signedOut case above), so capturing the
+        // prior value here -- ahead of the membership-resolution await and
+        // any write/clear that follows on THIS edge -- makes the
+        // different-user check correct by construction against races
+        // within this function. That is narrower than "nothing else could
+        // race it to the store": VerifiedEmptyMembershipCleanupCoordinator
+        // (planning_providers.dart) also clears and writes the same store,
+        // from its own independent listener, on a verified-empty-membership
+        // event. That writer bumps `epoch` first, which is why the
+        // terminal identity write below is re-checked against it
+        // immediately before it runs, not only once up front. See ADR-020,
+        // ADR-029, and Finding 3 in the reauth review.
         final priorIdentity = await identityStore.read();
 
         ActiveOrganizationResolution? resolution;
@@ -131,6 +146,14 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         }
 
         Future<void> persistNewIdentity() async {
+          if (!epoch.isCurrent(generation)) {
+            // A verified-empty membership cleanup (or another superseding
+            // resolution) advanced the epoch after this resolution passed
+            // its entry check above. Re-checking here, immediately before
+            // the terminal identity write, stops a superseded resolution
+            // from clobbering a newer write -- see Finding 3.
+            return;
+          }
           switch (resolution) {
             case ActiveOrganizationSelected(:final organizationId):
               await identityStore.write(
@@ -190,6 +213,13 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 .read(planningLocalStoreProvider)
                 .deletePlanningDataForUser(userId: priorUserId),
           ]);
+          if (!epoch.isCurrent(generation)) {
+            // Same reasoning as persistNewIdentity's check, but ahead of
+            // the clear that precedes it: don't let a superseded
+            // resolution's clear-and-write race a concurrently firing
+            // verified-empty cleanup for the same store -- see Finding 3.
+            return;
+          }
           await identityStore.clear();
           await persistNewIdentity();
         }
@@ -216,13 +246,37 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
     }
   }
 
+  void scheduleIdentityResolution(AppAuthState authState) {
+    final scheduled = resolutionChain.then((_) => persistIdentity(authState));
+    // Keep the chain itself always-succeeding: one resolution failing must
+    // not stall -- or, worse, silently poison -- every resolution queued
+    // behind it. Each invocation's own failure is still delivered below,
+    // via `scheduled`, not swallowed here.
+    resolutionChain = scheduled.catchError((_, _) {});
+    unawaited(
+      scheduled.catchError((Object error, StackTrace stackTrace) {
+        // An auth-path listener must never let an unhandled exception
+        // escape, whatever its cause. Serializing resolutions above should
+        // make ReauthPromptController's "already pending" StateError
+        // unreachable in practice now (see its class doc), but this is the
+        // backstop that guarantees it regardless.
+        if (kDebugMode) {
+          debugPrint(
+            'lastKnownIdentityPersistenceProvider: resolution failed: '
+            '$error\n$stackTrace',
+          );
+        }
+      }),
+    );
+  }
+
   void authListener() {
-    unawaited(persistIdentity(authController.state));
+    scheduleIdentityResolution(authController.state);
   }
 
   authController.addListener(authListener);
   ref.onDispose(() => authController.removeListener(authListener));
-  unawaited(persistIdentity(authController.state));
+  scheduleIdentityResolution(authController.state);
 });
 
 /// Combined song + planning pending-work counter used when resolving a
