@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// A pending different-user reauth prompt: the prior user's email and how
-/// much local work a wipe would destroy.
+/// much local work a wipe would destroy. `null` means the count could not
+/// be determined -- an honest "unknown", not a guess (see D4 in
+/// `docs/specs/2026-07-30-recovery-actions-that-outlive-their-widget.md`).
 class ReauthPrompt {
   const ReauthPrompt({required this.email, required this.pendingCount});
 
   final String email;
-  final int pendingCount;
+  final int? pendingCount;
 }
 
 /// Publishes a pending reauth confirmation and awaits its answer.
@@ -33,9 +35,10 @@ class ReauthPromptController extends ChangeNotifier {
 
   /// Publishes [email]/[pendingCount] as the pending prompt and returns a
   /// future that completes with the answer once [answer] is called.
+  /// [pendingCount] of `null` means the count could not be determined.
   Future<bool> requestConfirmation({
     required String email,
-    required int pendingCount,
+    required int? pendingCount,
   }) {
     if (_pending != null) {
       throw StateError(

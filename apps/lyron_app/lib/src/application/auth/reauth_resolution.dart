@@ -27,22 +27,24 @@ class ReauthCancelledKeptPriorUser extends ReauthOutcome {
 /// - different user:
 ///   - count = await priorPendingCount();
 ///   - if count == 0 → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded(). (nothing to lose, no prompt)
-///   - if count > 0 → confirmed = await confirmDifferentUser(email: priorEmail ?? '', pendingCount: count);
+///   - if count > 0 OR count == null (unknown) → confirmed = await confirmDifferentUser(email: priorEmail ?? '', pendingCount: count);
 ///      - confirmed true → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded();
 ///      - confirmed false → await cancelToPriorUser(); return ReauthCancelledKeptPriorUser();
 ///
 /// CRITICAL: wipePriorAndProceed MUST NOT be called before confirmDifferentUser
-/// resolves true when count>0 (tests assert ordering — no wipe until confirm).
+/// resolves true when count is nonzero or unknown (tests assert ordering —
+/// no wipe until confirm). Unknown is deliberately NOT treated as zero: only
+/// a count that was actually read as zero skips the prompt.
 Future<ReauthOutcome> resolveReauth({
   required String newUserId,
   required String? priorUserId,
   required String? priorEmail,
-  required Future<int> Function() priorPendingCount,
+  required Future<int?> Function() priorPendingCount,
   required Future<void> Function() flushSameUser,
   required Future<void> Function() wipePriorAndProceed,
   required Future<bool> Function({
     required String email,
-    required int pendingCount,
+    required int? pendingCount,
   })
   confirmDifferentUser,
   required Future<void> Function() cancelToPriorUser,
@@ -53,7 +55,8 @@ Future<ReauthOutcome> resolveReauth({
     return const ReauthProceededSameUser();
   }
 
-  // Different user: check pending count
+  // Different user: check pending count. null means "could not be
+  // determined" and must NOT be treated as zero.
   final count = await priorPendingCount();
 
   if (count == 0) {
@@ -62,7 +65,8 @@ Future<ReauthOutcome> resolveReauth({
     return const ReauthWipedPriorAndProceeded();
   }
 
-  // Pending data exists: require confirmation before wipe
+  // Pending data exists, or its amount is unknown: require confirmation
+  // before wipe either way -- uncertainty must never authorise a wipe.
   final confirmed = await confirmDifferentUser(
     email: priorEmail ?? '',
     pendingCount: count,

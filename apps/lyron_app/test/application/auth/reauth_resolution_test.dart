@@ -37,7 +37,7 @@ void main() {
           wipePriorAndProceedCalled = true;
         },
         confirmDifferentUser:
-            ({required String email, required int pendingCount}) async {
+            ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
               return true;
             },
@@ -66,7 +66,7 @@ void main() {
           wipePriorAndProceedCalled = true;
         },
         confirmDifferentUser:
-            ({required String email, required int pendingCount}) async {
+            ({required String email, required int? pendingCount}) async {
               return true;
             },
         cancelToPriorUser: () async {},
@@ -94,7 +94,7 @@ void main() {
             wipePriorCalled = true;
           },
           confirmDifferentUser:
-              ({required String email, required int pendingCount}) async {
+              ({required String email, required int? pendingCount}) async {
                 confirmCalled = true;
                 // Assert wipePriorAndProceed has NOT been called yet
                 wipePriorCalledBeforeConfirm = wipePriorCalled;
@@ -137,7 +137,7 @@ void main() {
           wipePriorAndProceedCalled = true;
         },
         confirmDifferentUser:
-            ({required String email, required int pendingCount}) async {
+            ({required String email, required int? pendingCount}) async {
               expect(email, 'u1@example.com');
               expect(pendingCount, 3);
               return false;
@@ -151,6 +151,57 @@ void main() {
       expect(cancelToPriorUserCalled, isTrue);
       expect(outcome, isA<ReauthCancelledKeptPriorUser>());
     });
+
+    test(
+      'different-user with an unknown pending count still requires '
+      'confirmation before wipe -- unknown must not behave like zero',
+      () async {
+        bool wipePriorCalled = false;
+        bool confirmCalled = false;
+        bool wipePriorCalledBeforeConfirm = false;
+        int? seenPendingCount = -1;
+
+        final outcome = await resolveReauth(
+          newUserId: 'u2',
+          priorUserId: 'u1',
+          priorEmail: 'u1@example.com',
+          priorPendingCount: () async => null,
+          flushSameUser: () async {},
+          wipePriorAndProceed: () async {
+            wipePriorCalled = true;
+          },
+          confirmDifferentUser:
+              ({required String email, required int? pendingCount}) async {
+                confirmCalled = true;
+                wipePriorCalledBeforeConfirm = wipePriorCalled;
+                seenPendingCount = pendingCount;
+                expect(
+                  wipePriorCalled,
+                  isFalse,
+                  reason:
+                      'wipePriorAndProceed must not be called before confirmDifferentUser resolves',
+                );
+                return true;
+              },
+          cancelToPriorUser: () async {},
+        );
+
+        expect(
+          confirmCalled,
+          isTrue,
+          reason: 'an unknown count must still trigger confirmation',
+        );
+        expect(wipePriorCalledBeforeConfirm, isFalse);
+        expect(seenPendingCount, isNull);
+        expect(
+          wipePriorCalled,
+          isTrue,
+          reason:
+              'wipePriorAndProceed must be called after confirm resolves true',
+        );
+        expect(outcome, isA<ReauthWipedPriorAndProceeded>());
+      },
+    );
 
     test('different-user with no pending proceeds without prompt', () async {
       var wipePriorAndProceedCalled = false;
@@ -166,7 +217,7 @@ void main() {
           wipePriorAndProceedCalled = true;
         },
         confirmDifferentUser:
-            ({required String email, required int pendingCount}) async {
+            ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
               return true;
             },

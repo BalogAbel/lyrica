@@ -19,6 +19,21 @@ void main() {
     expect(controller.pending?.pendingCount, 4);
   });
 
+  test('requesting a confirmation with an unknown (null) pending count '
+      'publishes it as unknown, not as a number', () {
+    final controller = ReauthPromptController();
+
+    unawaited(
+      controller.requestConfirmation(
+        email: 'prior@example.com',
+        pendingCount: null,
+      ),
+    );
+
+    expect(controller.pending?.email, 'prior@example.com');
+    expect(controller.pending?.pendingCount, isNull);
+  });
+
   test('answer completes the returned future and clears the prompt', () async {
     final controller = ReauthPromptController();
     final future = controller.requestConfirmation(

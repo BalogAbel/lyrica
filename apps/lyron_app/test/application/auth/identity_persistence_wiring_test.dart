@@ -632,6 +632,8 @@ void main() {
         final prompt = container.read(reauthPromptControllerProvider);
         // Uncertainty took the confirm path...
         expect(prompt.pending, isNotNull);
+        // ...as an honest unknown, never a fabricated number...
+        expect(prompt.pending!.pendingCount, isNull);
         // ...never the silent-wipe path.
         expect(identityStore.clearCount, 0);
         expect(identityStore.writes, isEmpty);

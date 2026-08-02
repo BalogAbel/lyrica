@@ -31,15 +31,6 @@ import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 
-/// Non-zero sentinel used when the prior user's pending-work count cannot be
-/// read (a storage failure, or a prior identity with no cached organization
-/// id to scope the query by). Uncertainty must never authorise a silent
-/// wipe (ADR-020 / D5): returning a positive count here forces
-/// [resolveReauth] onto the confirm path instead of the zero-pending wipe
-/// path. It is deliberately NOT a guess at the real count -- the real count
-/// is exactly what could not be determined.
-const _pendingCountUnknownFallback = 1;
-
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return SupabaseAuthRepository(ref.read(supabaseClientProvider));
 });
@@ -164,12 +155,18 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           }
         }
 
-        Future<int> countPriorPendingWork() async {
+        // Returns null when the count cannot be determined (a storage
+        // failure, or a prior identity with no cached organization id to
+        // scope the query by). Uncertainty must never authorise a silent
+        // wipe (ADR-020 / D5): resolveReauth treats a null count the same
+        // as a nonzero one and still requires confirmation. Unlike the
+        // rejected planning-only count (D4), this is not a guess dressed
+        // up as a number -- "unknown" stays representable all the way to
+        // the dialog instead of being encoded as a fabricated count.
+        Future<int?> countPriorPendingWork() async {
           final organizationId = priorIdentity!.organizationId;
           if (organizationId == null) {
-            // No cached organization for the prior identity: a scoped
-            // count cannot be read at all.
-            return _pendingCountUnknownFallback;
+            return null;
           }
           try {
             return await ref
@@ -179,7 +176,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                   organizationId: organizationId,
                 );
           } catch (_) {
-            return _pendingCountUnknownFallback;
+            return null;
           }
         }
 

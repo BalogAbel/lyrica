@@ -20,6 +20,10 @@ class AppStrings {
     required int count,
   }) =>
       'Másik fiók jelentkezett be. $email-nek $count mentetlen változtatása van. A folytatás törli ezeket.';
+  static String reauthDifferentUserUnknownPendingMessage({
+    required String email,
+  }) =>
+      'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
   static const reauthConfirmWipeAction = 'Folytatás';
   static const reauthCancelAction = 'Mégse';
   static const retryAction = 'Try again';

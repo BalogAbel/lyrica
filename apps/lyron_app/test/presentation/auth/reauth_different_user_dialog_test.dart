@@ -149,4 +149,128 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'unknown pending count renders an honest unknown-amount message, not a '
+    'fabricated number, and confirm still returns true',
+    (tester) async {
+      late bool? result;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    result = await showReauthDifferentUserDialog(
+                      context,
+                      email: 'user@example.com',
+                      pendingCount: null,
+                    );
+                  },
+                  child: const Text('Show Dialog'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Show Dialog'));
+      await tester.pumpAndSettle();
+
+      final expectedMessage =
+          AppStrings.reauthDifferentUserUnknownPendingMessage(
+            email: 'user@example.com',
+          );
+      expect(find.text(expectedMessage), findsOneWidget);
+      // No count is fabricated anywhere in the unknown-amount message.
+      for (var n = 0; n <= 9; n++) {
+        expect(expectedMessage.contains('$n'), isFalse);
+      }
+      expect(
+        find.byKey(const Key('reauth-different-user-confirm')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('reauth-different-user-cancel')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('reauth-different-user-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(result, isTrue);
+    },
+  );
+
+  testWidgets('unknown pending count: cancel returns false', (tester) async {
+    late bool? result;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () async {
+                  result = await showReauthDifferentUserDialog(
+                    context,
+                    email: 'user@example.com',
+                    pendingCount: null,
+                  );
+                },
+                child: const Text('Show Dialog'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Show Dialog'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('reauth-different-user-cancel')));
+    await tester.pumpAndSettle();
+
+    expect(result, isFalse);
+  });
+
+  testWidgets(
+    'unknown pending count: barrier dismiss still counts as cancel (false)',
+    (tester) async {
+      late bool? result;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    result = await showReauthDifferentUserDialog(
+                      context,
+                      email: 'user@example.com',
+                      pendingCount: null,
+                    );
+                  },
+                  child: const Text('Show Dialog'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Show Dialog'));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(result, isFalse);
+    },
+  );
 }
