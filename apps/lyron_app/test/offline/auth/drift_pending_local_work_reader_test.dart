@@ -29,66 +29,180 @@ void main() {
     await songDatabase.close();
   });
 
-  test(
-    'counts every actionable planning status for a user across organizations',
-    () async {
-      const statuses = <PlanningMutationSyncStatus>[
-        PlanningMutationSyncStatus.pending,
-        PlanningMutationSyncStatus.accepted,
-        PlanningMutationSyncStatus.failedAuthorization,
-        PlanningMutationSyncStatus.failedDependency,
-        PlanningMutationSyncStatus.failedRemoteDelete,
-        PlanningMutationSyncStatus.conflict,
+  const planningCases =
+      <
+        ({
+          String label,
+          PlanningMutationSyncStatus status,
+          String organizationId,
+        })
+      >[
+        (
+          label: 'pending',
+          status: PlanningMutationSyncStatus.pending,
+          organizationId: 'org-1',
+        ),
+        (
+          label: 'accepted',
+          status: PlanningMutationSyncStatus.accepted,
+          organizationId: 'org-2',
+        ),
+        (
+          label: 'failed authorization',
+          status: PlanningMutationSyncStatus.failedAuthorization,
+          organizationId: 'org-1',
+        ),
+        (
+          label: 'failed dependency',
+          status: PlanningMutationSyncStatus.failedDependency,
+          organizationId: 'org-2',
+        ),
+        (
+          label: 'failed remote delete',
+          status: PlanningMutationSyncStatus.failedRemoteDelete,
+          organizationId: 'org-1',
+        ),
+        (
+          label: 'conflict',
+          status: PlanningMutationSyncStatus.conflict,
+          organizationId: 'org-2',
+        ),
       ];
-      for (var index = 0; index < statuses.length; index++) {
+
+  for (final testCase in planningCases) {
+    test(
+      'counts ${testCase.label} planning work in ${testCase.organizationId}',
+      () async {
         await _insertPlanningMutation(
           planningDatabase,
           userId: 'user-1',
-          organizationId: index.isEven ? 'org-1' : 'org-2',
-          aggregateId: 'plan-$index',
-          status: statuses[index],
-          orderKey: index,
+          organizationId: testCase.organizationId,
+          aggregateId: 'target-plan',
+          status: testCase.status,
+          orderKey: 1,
         );
-      }
+
+        final count = await reader.countPlanningPendingWork(userId: 'user-1');
+
+        expect(count, 1);
+      },
+    );
+  }
+
+  test(
+    'adding another user planning row leaves the user count unchanged',
+    () async {
+      await _insertPlanningMutation(
+        planningDatabase,
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateId: 'target-plan',
+        status: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+      );
+      final beforeExcludedRow = await reader.countPlanningPendingWork(
+        userId: 'user-1',
+      );
       await _insertPlanningMutation(
         planningDatabase,
         userId: 'user-2',
         organizationId: 'org-1',
         aggregateId: 'other-user-plan',
         status: PlanningMutationSyncStatus.pending,
-        orderKey: 7,
+        orderKey: 2,
       );
 
-      final count = await reader.countPlanningPendingWork(userId: 'user-1');
+      final afterExcludedRow = await reader.countPlanningPendingWork(
+        userId: 'user-1',
+      );
 
-      expect(count, 6);
+      expect(afterExcludedRow, beforeExcludedRow);
+      expect(beforeExcludedRow, 1);
     },
   );
 
-  test(
-    'counts unsynced and conflict songs for a user across organizations',
-    () async {
-      const statuses = <SongSyncStatus>[
-        SongSyncStatus.pendingCreate,
-        SongSyncStatus.pendingUpdate,
-        SongSyncStatus.pendingDelete,
-        SongSyncStatus.conflict,
+  const songCases =
+      <({String label, SongSyncStatus status, String organizationId})>[
+        (
+          label: 'pending create',
+          status: SongSyncStatus.pendingCreate,
+          organizationId: 'org-1',
+        ),
+        (
+          label: 'pending update',
+          status: SongSyncStatus.pendingUpdate,
+          organizationId: 'org-2',
+        ),
+        (
+          label: 'pending delete',
+          status: SongSyncStatus.pendingDelete,
+          organizationId: 'org-1',
+        ),
+        (
+          label: 'conflict',
+          status: SongSyncStatus.conflict,
+          organizationId: 'org-2',
+        ),
       ];
-      for (var index = 0; index < statuses.length; index++) {
+
+  for (final testCase in songCases) {
+    test(
+      'counts ${testCase.label} song work in ${testCase.organizationId}',
+      () async {
         await _insertSongMutation(
           songDatabase,
           userId: 'user-1',
-          organizationId: index.isEven ? 'org-1' : 'org-2',
-          songId: 'song-$index',
-          status: statuses[index],
+          organizationId: testCase.organizationId,
+          songId: 'target-song',
+          status: testCase.status,
         );
-      }
+
+        final count = await reader.countSongPendingWork(userId: 'user-1');
+
+        expect(count, 1);
+      },
+    );
+  }
+
+  test('adding a synced song leaves the user work count unchanged', () async {
+    await _insertSongMutation(
+      songDatabase,
+      userId: 'user-1',
+      organizationId: 'org-1',
+      songId: 'target-song',
+      status: SongSyncStatus.pendingCreate,
+    );
+    final beforeExcludedRow = await reader.countSongPendingWork(
+      userId: 'user-1',
+    );
+    await _insertSongMutation(
+      songDatabase,
+      userId: 'user-1',
+      organizationId: 'org-2',
+      songId: 'synced-song',
+      status: SongSyncStatus.synced,
+    );
+
+    final afterExcludedRow = await reader.countSongPendingWork(
+      userId: 'user-1',
+    );
+
+    expect(afterExcludedRow, beforeExcludedRow);
+    expect(beforeExcludedRow, 1);
+  });
+
+  test(
+    'adding another user song leaves the user work count unchanged',
+    () async {
       await _insertSongMutation(
         songDatabase,
         userId: 'user-1',
-        organizationId: 'org-2',
-        songId: 'synced-song',
-        status: SongSyncStatus.synced,
+        organizationId: 'org-1',
+        songId: 'target-song',
+        status: SongSyncStatus.pendingCreate,
+      );
+      final beforeExcludedRow = await reader.countSongPendingWork(
+        userId: 'user-1',
       );
       await _insertSongMutation(
         songDatabase,
@@ -98,9 +212,12 @@ void main() {
         status: SongSyncStatus.pendingCreate,
       );
 
-      final count = await reader.countSongPendingWork(userId: 'user-1');
+      final afterExcludedRow = await reader.countSongPendingWork(
+        userId: 'user-1',
+      );
 
-      expect(count, 4);
+      expect(afterExcludedRow, beforeExcludedRow);
+      expect(beforeExcludedRow, 1);
     },
   );
 }

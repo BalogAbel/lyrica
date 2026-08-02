@@ -326,16 +326,19 @@ void main() {
       );
     }
 
-    Future<bool> priorUserDataStillPresent() async {
+    Future<bool> priorSongsStillPresent() async {
       final songs = await songStore.readActiveSummaries(
         userId: 'user-1',
         organizationId: 'org-1',
       );
-      final hasProjection = await planningStore.hasProjection(
+      return songs.isNotEmpty;
+    }
+
+    Future<bool> priorPlanningProjectionStillPresent() {
+      return planningStore.hasProjection(
         userId: 'user-1',
         organizationId: 'org-1',
       );
-      return songs.isNotEmpty || hasProjection;
     }
 
     Future<void> expectUserWideWorkRequiresConfirmation(
@@ -376,7 +379,8 @@ void main() {
         0,
         reason: 'user-wide local work must not be wiped before confirmation',
       );
-      expect(await priorUserDataStillPresent(), isTrue);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
       expect(prompt.pending!.email, 'user1@example.com');
@@ -524,7 +528,8 @@ void main() {
       expect(identityStore.clearCount, 1);
       expect(identityStore.writes, hasLength(1));
       expect(identityStore.writes.single.userId, 'user-2');
-      expect(await priorUserDataStillPresent(), isFalse);
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(await priorPlanningProjectionStillPresent(), isFalse);
       expect(authController.state.status, AppAuthStatus.signedIn);
       expect(authController.state.session?.userId, 'user-2');
     });
@@ -588,7 +593,8 @@ void main() {
       expect(seenOrganizationId, 'org-1');
       // Nothing destroyed yet -- confirmation has not resolved.
       expect(identityStore.clearCount, 0);
-      expect(await priorUserDataStillPresent(), isTrue);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
 
       prompt.answer(true);
       await pump();
@@ -596,7 +602,8 @@ void main() {
       expect(identityStore.clearCount, 1);
       expect(identityStore.writes, hasLength(1));
       expect(identityStore.writes.single.userId, 'user-2');
-      expect(await priorUserDataStillPresent(), isFalse);
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(await priorPlanningProjectionStillPresent(), isFalse);
       expect(authController.state.status, AppAuthStatus.signedIn);
       expect(authController.state.session?.userId, 'user-2');
     });
@@ -649,7 +656,8 @@ void main() {
 
       expect(identityStore.clearCount, 0);
       expect(identityStore.writes, isEmpty);
-      expect(await priorUserDataStillPresent(), isTrue);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
       expect(authController.state.status, AppAuthStatus.sessionExpired);
       expect(authController.state.lastKnownSession?.userId, 'user-1');
       expect(authController.state.session, isNull);

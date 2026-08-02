@@ -61,9 +61,7 @@ class PendingLocalWorkCounter {
     final planningCountReader = _readPlanningPendingWorkCount;
     final songCountReader = _readSongPendingWorkCount;
     if (planningCountReader != null && songCountReader != null) {
-      final planningCount = await planningCountReader(userId: userId);
-      final songCount = await songCountReader(userId: userId);
-      return planningCount + songCount;
+      return 0;
     }
 
     final scopedOrganizationId = organizationId;
