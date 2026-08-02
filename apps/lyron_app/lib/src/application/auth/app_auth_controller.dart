@@ -23,6 +23,7 @@ class AppAuthController extends ChangeNotifier {
   bool _isSigningOut = false;
   bool _isDisposed = false;
   int _authGeneration = 0;
+  AppAuthSession? _pendingReauthCancelSession;
 
   AppAuthState get state => _state;
 
@@ -74,8 +75,49 @@ class AppAuthController extends ChangeNotifier {
     }
   }
 
+  /// Cancels a different-user re-authentication: the new session is signed
+  /// out at the auth backend, but -- unlike [signOut] -- this is not an
+  /// explicit user sign-out. State returns to [AppAuthStatus.sessionExpired]
+  /// carrying [priorSession], so the app stays offline-authenticated as the
+  /// user who was signed in before the (cancelled) different-user sign-in.
+  ///
+  /// ADR-020 forbids destroying that prior offline-authenticated state on
+  /// cancel. [_pendingReauthCancelSession] makes this convergent rather than
+  /// racy: whether our own [_setState] below runs first, or the auth
+  /// stream's `null` event (a side effect [_repository.signOut] may trigger,
+  /// at a time this class does not control) reaches [_handleSessionUpdate]
+  /// first, both paths land on the identical target state. See
+  /// [_handleSessionUpdate].
+  Future<void> cancelReauthToPriorSession(AppAuthSession priorSession) async {
+    _authGeneration += 1;
+    _isSigningOut = true;
+    _pendingReauthCancelSession = priorSession;
+    try {
+      await _repository.signOut();
+      _setState(
+        AppAuthState(
+          status: AppAuthStatus.sessionExpired,
+          lastKnownSession: priorSession,
+        ),
+      );
+    } finally {
+      _isSigningOut = false;
+      _pendingReauthCancelSession = null;
+    }
+  }
+
   void _handleSessionUpdate(AppAuthSession? session) {
     _authGeneration += 1;
+    final pendingCancel = _pendingReauthCancelSession;
+    if (pendingCancel != null && session == null) {
+      _setState(
+        AppAuthState(
+          status: AppAuthStatus.sessionExpired,
+          lastKnownSession: pendingCancel,
+        ),
+      );
+      return;
+    }
     _setState(_stateForSession(session, fromStream: true));
   }
 

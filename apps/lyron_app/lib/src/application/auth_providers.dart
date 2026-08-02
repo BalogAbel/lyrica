@@ -15,16 +15,30 @@ import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_invite_token_controller.dart';
+import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
+import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
+import 'package:lyron_app/src/application/planning_providers.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
+import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
+
+/// Non-zero sentinel used when the prior user's pending-work count cannot be
+/// read (a storage failure, or a prior identity with no cached organization
+/// id to scope the query by). Uncertainty must never authorise a silent
+/// wipe (ADR-020 / D5): returning a positive count here forces
+/// [resolveReauth] onto the confirm path instead of the zero-pending wipe
+/// path. It is deliberately NOT a guess at the real count -- the real count
+/// is exactly what could not be determined.
+const _pendingCountUnknownFallback = 1;
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return SupabaseAuthRepository(ref.read(supabaseClientProvider));
@@ -91,6 +105,19 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         if (session == null) {
           return;
         }
+
+        // Read the prior identity BEFORE anything on this edge can
+        // overwrite it. This function is the only writer to
+        // LastKnownIdentityStore on the signedIn path (see the switch
+        // below and the signedOut case above), so capturing the prior
+        // value here -- ahead of the membership-resolution await and any
+        // write/clear that follows -- makes the different-user check
+        // correct by construction. It does not depend on this listener
+        // running before any other listener on the same auth-state
+        // transition; there is nothing else that could race it to the
+        // store. See ADR-020 and ADR-029.
+        final priorIdentity = await identityStore.read();
+
         ActiveOrganizationResolution? resolution;
         try {
           resolution = await ref.read(membershipResolutionProvider)();
@@ -111,28 +138,84 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             !epoch.isCurrent(generation)) {
           return;
         }
-        switch (resolution) {
-          case ActiveOrganizationSelected(:final organizationId):
-            await identityStore.write(
-              LastKnownIdentity(
-                userId: session.userId,
-                email: session.email,
-                organizationId: organizationId,
-              ),
-            );
-          case ActiveOrganizationVerifiedEmpty():
-            await identityStore.clear();
-          case ActiveOrganizationUnknownConnectivityFailure():
-          case ActiveOrganizationUnknownNonConnectivityFailure():
-          case null:
-            await identityStore.write(
-              LastKnownIdentity(
-                userId: session.userId,
-                email: session.email,
-                organizationId: null,
-              ),
-            );
+
+        Future<void> persistNewIdentity() async {
+          switch (resolution) {
+            case ActiveOrganizationSelected(:final organizationId):
+              await identityStore.write(
+                LastKnownIdentity(
+                  userId: session.userId,
+                  email: session.email,
+                  organizationId: organizationId,
+                ),
+              );
+            case ActiveOrganizationVerifiedEmpty():
+              await identityStore.clear();
+            case ActiveOrganizationUnknownConnectivityFailure():
+            case ActiveOrganizationUnknownNonConnectivityFailure():
+            case null:
+              await identityStore.write(
+                LastKnownIdentity(
+                  userId: session.userId,
+                  email: session.email,
+                  organizationId: null,
+                ),
+              );
+          }
         }
+
+        Future<int> countPriorPendingWork() async {
+          final organizationId = priorIdentity!.organizationId;
+          if (organizationId == null) {
+            // No cached organization for the prior identity: a scoped
+            // count cannot be read at all.
+            return _pendingCountUnknownFallback;
+          }
+          try {
+            return await ref
+                .read(pendingLocalWorkCounterProvider)
+                .count(
+                  userId: priorIdentity.userId,
+                  organizationId: organizationId,
+                );
+          } catch (_) {
+            return _pendingCountUnknownFallback;
+          }
+        }
+
+        Future<void> wipePriorAndProceed() async {
+          final priorUserId = priorIdentity!.userId;
+          await Future.wait([
+            ref
+                .read(songCatalogStoreProvider)
+                .deleteCatalogsForUser(userId: priorUserId),
+            ref
+                .read(planningLocalStoreProvider)
+                .deletePlanningDataForUser(userId: priorUserId),
+          ]);
+          await identityStore.clear();
+          await persistNewIdentity();
+        }
+
+        Future<void> cancelToPriorUser() async {
+          final identity = priorIdentity!;
+          await authController.cancelReauthToPriorSession(
+            AppAuthSession(userId: identity.userId, email: identity.email),
+          );
+        }
+
+        await resolveReauth(
+          newUserId: session.userId,
+          priorUserId: priorIdentity?.userId,
+          priorEmail: priorIdentity?.email,
+          priorPendingCount: countPriorPendingWork,
+          flushSameUser: persistNewIdentity,
+          wipePriorAndProceed: wipePriorAndProceed,
+          confirmDifferentUser: ref
+              .read(reauthPromptControllerProvider)
+              .requestConfirmation,
+          cancelToPriorUser: cancelToPriorUser,
+        );
     }
   }
 
@@ -143,6 +226,25 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   authController.addListener(authListener);
   ref.onDispose(() => authController.removeListener(authListener));
   unawaited(persistIdentity(authController.state));
+});
+
+/// Combined song + planning pending-work counter used when resolving a
+/// different-user sign-in (ADR-029): the wipe deletes both subsystems, so
+/// the confirmation prompt must state everything at stake, not just one
+/// side of it.
+final pendingLocalWorkCounterProvider = Provider<PendingLocalWorkCounter>((
+  ref,
+) {
+  final songMutationStore = DriftSongMutationStore(
+    songCatalogStore: ref.watch(songCatalogStoreProvider),
+    planningLocalStore: ref.watch(planningLocalStoreProvider),
+  );
+  final planningMutationStore = ref.watch(planningMutationStoreProvider);
+  return PendingLocalWorkCounter(
+    readPlanningPendingMutations: planningMutationStore.readPendingMutations,
+    readPendingSongs: songMutationStore.readPendingSongs,
+    readConflictSongs: songMutationStore.readConflictSongs,
+  );
 });
 
 final invitationRepositoryProvider = Provider<InvitationRepository>((ref) {

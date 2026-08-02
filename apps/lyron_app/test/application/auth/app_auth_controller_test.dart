@@ -15,6 +15,7 @@ class _FakeAuthRepository implements AuthRepository {
   bool magicLinkCalled = false;
   bool signOutCalled = false;
   bool deleteCalled = false;
+  bool emitNullOnSignOut = false;
 
   @override
   Future<AppAuthSession?> restoreSession() async => currentSession;
@@ -41,6 +42,12 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     signOutCalled = true;
+    // Models the real Supabase client: calling signOut() also drives the
+    // auth-state-change stream to emit null as a side effect, at a time
+    // relative to the caller's `await` that this fake does not pin down.
+    if (emitNullOnSignOut) {
+      _controller.add(null);
+    }
   }
 
   @override
@@ -238,5 +245,50 @@ void main() {
 
     expect(repo.deleteCalled, isTrue);
     expect(controller.state.status, AppAuthStatus.signedOut);
+  });
+
+  test('cancelReauthToPriorSession signs out the new session and returns to '
+      "sessionExpired carrying the PRIOR user's session -- not signedOut, and "
+      'not the cancelled new user', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+
+    expect(repo.signOutCalled, isTrue);
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.session, isNull);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.lastKnownSession?.email, 'u1@example.com');
+  });
+
+  test('cancelReauthToPriorSession converges on the prior session even when '
+      'the auth stream also emits null as a side effect of the sign-out call '
+      '-- this must not be lucky about which one wins', () async {
+    final repo = _FakeAuthRepository()..emitNullOnSignOut = true;
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+    // Let any additional microtask from the stream-driven path settle.
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.session, isNull);
   });
 }
