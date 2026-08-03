@@ -32,8 +32,13 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
 
   /// Whether this host currently has a dialog route pushed for
   /// [_activeRequestId]. Tracked explicitly rather than inferred from
-  /// Navigator state so a supersession can pop exactly the route this host
-  /// pushed -- never a route pushed by someone else.
+  /// Navigator state, so the host only ever pops while one of its own
+  /// dialogs is open.
+  ///
+  /// `showDialog` does not hand back the route it pushed, so the pop below
+  /// removes the top-most route rather than that specific one. The reauth
+  /// dialog is modal and blocks interaction beneath it, so in practice
+  /// nothing of the app's own is pushed above it while it is open.
   bool _dialogOpen = false;
 
   @override

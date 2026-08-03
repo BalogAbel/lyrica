@@ -240,6 +240,13 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               .read(planningLocalStoreProvider)
               .deletePlanningDataForUser(userId: priorUserId);
           await Future.wait([songDeletion, planningDeletion]);
+          // Being superseded from here on returns false even though the
+          // deletion above already happened, so the reported outcome
+          // understates what ran rather than overstating it. That is the
+          // safe direction and it self-heals: the identity store still
+          // holds the prior identity, so the superseding resolution reads
+          // the same prior user, counts zero remaining work, and completes
+          // the wipe-and-proceed path itself.
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             // Same reasoning as persistNewIdentity's check, but ahead of
             // the clear that precedes it: don't let a superseded
