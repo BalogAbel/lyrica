@@ -9,7 +9,6 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
@@ -550,22 +549,12 @@ void main() {
         email: 'user2@example.com',
       );
       String? seenUserId;
-      String? seenOrganizationId;
       final counter = PendingLocalWorkCounter(
-        readPlanningPendingMutations:
-            ({required userId, required organizationId}) async {
-              seenUserId = userId;
-              seenOrganizationId = organizationId;
-              return const [];
-            },
-        readPendingSongs: ({required userId, required organizationId}) async =>
-            const [],
-        readConflictSongs: ({required userId, required organizationId}) async =>
-            [
-              _conflictSongRecord('song-2'),
-              _conflictSongRecord('song-3'),
-              _conflictSongRecord('song-4'),
-            ],
+        readPlanningPendingWorkCount: ({required userId}) async {
+          seenUserId = userId;
+          return 0;
+        },
+        readSongPendingWorkCount: ({required userId}) async => 3,
       );
       final container = ProviderContainer(
         overrides: [
@@ -590,7 +579,6 @@ void main() {
       expect(prompt.pending!.email, 'user1@example.com');
       expect(prompt.pending!.pendingCount, 3);
       expect(seenUserId, 'user-1');
-      expect(seenOrganizationId, 'org-1');
       // Nothing destroyed yet -- confirmation has not resolved.
       expect(identityStore.clearCount, 0);
       expect(await priorSongsStillPresent(), isTrue);
@@ -623,12 +611,8 @@ void main() {
         email: 'user2@example.com',
       );
       final counter = PendingLocalWorkCounter(
-        readPlanningPendingMutations:
-            ({required userId, required organizationId}) async => const [],
-        readPendingSongs: ({required userId, required organizationId}) async =>
-            const [],
-        readConflictSongs: ({required userId, required organizationId}) async =>
-            [_conflictSongRecord('song-2')],
+        readPlanningPendingWorkCount: ({required userId}) async => 0,
+        readSongPendingWorkCount: ({required userId}) async => 1,
       );
       final container = ProviderContainer(
         overrides: [
@@ -725,13 +709,9 @@ void main() {
           email: 'user2@example.com',
         );
         final throwingCounter = PendingLocalWorkCounter(
-          readPlanningPendingMutations:
-              ({required userId, required organizationId}) async =>
-                  throw StateError('storage failure'),
-          readPendingSongs:
-              ({required userId, required organizationId}) async => const [],
-          readConflictSongs:
-              ({required userId, required organizationId}) async => const [],
+          readPlanningPendingWorkCount: ({required userId}) async =>
+              throw StateError('storage failure'),
+          readSongPendingWorkCount: ({required userId}) async => 0,
         );
         final container = ProviderContainer(
           overrides: [
@@ -780,15 +760,11 @@ void main() {
         userId: 'user-1',
         email: 'user1@example.com',
       );
-      // Always nonzero regardless of which user/org is asked about, so
+      // Always nonzero regardless of which user is asked about, so
       // every different-user edge in this test takes the confirm path.
       final alwaysPendingCounter = PendingLocalWorkCounter(
-        readPlanningPendingMutations:
-            ({required userId, required organizationId}) async => const [],
-        readPendingSongs: ({required userId, required organizationId}) async =>
-            const [],
-        readConflictSongs: ({required userId, required organizationId}) async =>
-            [_conflictSongRecord('song-x'), _conflictSongRecord('song-y')],
+        readPlanningPendingWorkCount: ({required userId}) async => 0,
+        readSongPendingWorkCount: ({required userId}) async => 2,
       );
       final container = ProviderContainer(
         overrides: [
@@ -855,19 +831,6 @@ void main() {
       expect(authController.state.session?.userId, 'user-2');
     });
   });
-}
-
-SongMutationRecord _conflictSongRecord(String id) {
-  return SongMutationRecord(
-    id: id,
-    organizationId: 'org-1',
-    slug: id,
-    title: id,
-    chordproSource: '',
-    version: 2,
-    baseVersion: 1,
-    syncStatus: SongSyncStatus.conflict,
-  );
 }
 
 class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {

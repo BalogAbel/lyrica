@@ -190,10 +190,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           try {
             return await ref
                 .read(pendingLocalWorkCounterProvider)
-                .count(
-                  userId: identity.userId,
-                  organizationId: identity.organizationId,
-                );
+                .count(userId: identity.userId);
           } catch (_) {
             return null;
           }
