@@ -5,8 +5,12 @@ set -euo pipefail
 # deletes auth.users rows older than 24h with no active membership. This
 # contract pins the guarantee the audit requires: active-member data must
 # never be TTL-collected, and organization content must survive the deletion
-# of a former member. It drives the exact delete statement the cron job runs
-# rather than waiting on pg_cron's schedule.
+# of a former member. It fetches the command actually registered under the
+# `cleanup-orphan-auth-users` pg_cron job from `cron.job` and executes that
+# fetched command against the fixtures below, rather than waiting on
+# pg_cron's schedule or checking a copy embedded in this test -- so the
+# migration's command can drift and this test still verifies what actually
+# runs.
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
@@ -27,6 +31,7 @@ if [[ -z "$db_container_name" ]]; then
 fi
 
 python3 - "$db_container_name" <<'PY'
+import json
 import subprocess
 import sys
 
@@ -45,19 +50,12 @@ SONG_ID = "ac000000-0000-0000-0000-0000000000b1"
 PLAN_ID = "ac000000-0000-0000-0000-0000000000b2"
 INVITATION_ID = "ac000000-0000-0000-0000-0000000000b3"
 
-# The exact statement supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql
-# schedules under pg_cron. Kept verbatim (module comments excluded) so this
-# test breaks the moment the migration's predicate drifts from what runs here.
-ORPHAN_CLEANUP_SQL = """
-    delete from auth.users u
-    where u.created_at < now() - interval '24 hours'
-      and not exists (
-        select 1
-        from public.memberships m
-        where m.user_id = u.id
-          and m.status = 'active'
-      )
-"""
+CLEANUP_JOB_NAME = "cleanup-orphan-auth-users"
+# The schedule supabase/migrations/202605160006_pg_cron_orphan_cleanup.sql
+# registers. This is a pinned expectation, not a copy of the command: if the
+# migration's schedule changes, this test should fail and force a deliberate
+# update here.
+EXPECTED_SCHEDULE = "0 * * * *"
 
 
 def run_psql(sql: str) -> str:
@@ -146,8 +144,49 @@ on conflict (id) do nothing;
 delete from public.memberships where user_id = '{REVOKED_MEMBER_ID}';
 """)
 
-# --- drive the cleanup job's exact statement -----------------------------
-run_psql(ORPHAN_CLEANUP_SQL)
+# --- bind to the actually registered job, not a copy ---------------------
+# Query exactly one row for the job by name -- row_to_json over a scalar
+# subquery raises if more than one row matches, and scalar() raises if none
+# does, so "exactly one" is enforced by construction, not just by intent.
+# JSON output (rather than the tab-separated default) round-trips the
+# command's embedded newlines safely instead of requiring manual unescaping.
+job_count = scalar(
+    f"select count(*) from cron.job where jobname = '{CLEANUP_JOB_NAME}';"
+)
+check(
+    "exactly one cleanup-orphan-auth-users job is registered",
+    job_count == "1",
+    f"expected exactly 1 registered job named {CLEANUP_JOB_NAME!r}, found {job_count}",
+)
+
+job_json = scalar(
+    "select row_to_json(j) from ("
+    "  select schedule, command, active from cron.job"
+    f"  where jobname = '{CLEANUP_JOB_NAME}'"
+    ") j;"
+)
+job = json.loads(job_json)
+
+check(
+    "registered job runs on the expected schedule",
+    job["schedule"] == EXPECTED_SCHEDULE,
+    f"expected schedule {EXPECTED_SCHEDULE!r}, found {job['schedule']!r}",
+)
+check(
+    "registered job is active",
+    job["active"] is True,
+    f"expected the job to be active, found active={job['active']!r}",
+)
+
+registered_command = job["command"]
+check(
+    "registered job has a non-empty command",
+    bool(registered_command.strip()),
+    "the registered job's command was empty",
+)
+
+# --- drive the cleanup job's actual registered command --------------------
+run_psql(registered_command)
 
 # --- Q1: active membership protects the user row -------------------------
 check(
