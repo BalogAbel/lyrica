@@ -39,6 +39,11 @@ class UnifiedDiscardController {
 
   Future<UnifiedDiscardResult> discardAll() async {
     final context = _activeContextReader();
+    // Intentional: no active context means there is nothing to discard, so
+    // `discarded` here means "no work was owed", not "work completed". The
+    // popup treats this result as success either way, which is correct only
+    // because a null context implies zero pending song/planning mutations
+    // for this caller in the first place.
     if (context == null) return UnifiedDiscardResult.discarded;
 
     final acquisition = await acquireSongDiscardLease(context);

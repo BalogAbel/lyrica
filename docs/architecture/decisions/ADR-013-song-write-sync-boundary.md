@@ -36,6 +36,7 @@ For that slice:
 - discard acquires context ownership before reading the mutation record or changing local storage, and holds ownership through its best-effort refresh; a waiting sync therefore cannot snapshot the discarded mutation between the local clear/delete and lease release
 - unified **Discard All** acquires the song-context discard lease before starting either the song or planning domain; if sync already owns that context, it returns typed `UnifiedDiscardResult.syncInProgress` before either domain changes. Once admitted, song and planning discards remain best-effort concurrent domain operations, not a cross-database transaction and not a promise of rollback across domains
 - discard success is the completed local clear or delete. It performs no compensating remote write and does not depend on a post-discard refresh succeeding; refresh is freshness-only and cannot undo the local outcome
+- context-wide ownership covers sync and discard only. "Keep mine" (the explicit overwrite path, above) is not admitted into the same context lease: it can run concurrently with an owned sync or discard on the same user-and-organization context. This is a pre-existing gap, not a guarantee the client makes; closing it is out of scope for the discard-ownership work that introduced the lease
 
 ## Consequences
 

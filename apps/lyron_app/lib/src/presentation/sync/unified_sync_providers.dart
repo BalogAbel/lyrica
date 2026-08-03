@@ -215,6 +215,11 @@ final unifiedDiscardControllerProvider =
       return UnifiedDiscardController(
         activeContextReader: () {
           final c = ref.read(activeCatalogContextProvider);
+          // A null catalog context here is what makes discardAll()'s
+          // null-context branch return `discarded` (see that method's
+          // doc): no active user/organization means nothing was pending
+          // for this caller, so reporting "no work owed" as success is
+          // intentional, not a swallowed failure.
           if (c == null) return null;
           return UnifiedDiscardContext(
             userId: c.userId,

@@ -153,6 +153,17 @@ class SongMutationSyncController {
     }
   }
 
+  /// Overwrites the remote record with the local one for a conflicted song.
+  ///
+  /// Unlike [syncPendingSongs] and the discard lease, `keepMine` does not
+  /// register itself in `_operations` and is not blocked by, or a blocker
+  /// for, an owned sync or discard on the same context: it can interleave
+  /// with either. This is pre-existing and intentionally out of scope for
+  /// the discard-ownership remediation (song sync and discard are
+  /// mutually exclusive per context; `keepMine` is not part of that
+  /// exclusion). See ADR-013 and architecture.md, which describe this
+  /// exclusion explicitly rather than claiming context-wide ownership
+  /// covers every song write.
   Future<void> keepMine(
     SongMutationContext context, {
     required String songId,
