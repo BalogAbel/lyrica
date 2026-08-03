@@ -239,6 +239,90 @@ void main() {
       },
     );
 
+    for (final unrelatedContext in const [
+      SongMutationContext(userId: 'user-2', organizationId: 'org-1'),
+      SongMutationContext(userId: 'user-1', organizationId: 'org-2'),
+    ]) {
+      test(
+        'held sync user-1/org-1 allows discard for '
+        '${unrelatedContext.userId}/${unrelatedContext.organizationId}',
+        () async {
+          const syncContext = SongMutationContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          );
+          const syncSong = SongMutationRecord(
+            id: 'sync-song',
+            organizationId: 'org-1',
+            slug: 'sync-song',
+            title: 'Sync Song',
+            chordproSource: '{title: Sync Song}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          );
+          final discardSong = SongMutationRecord(
+            id: 'discard-song',
+            organizationId: unrelatedContext.organizationId,
+            slug: 'discard-song',
+            title: 'Discard Song',
+            chordproSource: '{title: Discard Song}',
+            version: 2,
+            baseVersion: 2,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          );
+          final remoteEntered = Completer<void>();
+          final releaseRemote = Completer<void>();
+          final store = _GatedSongMutationStore(
+            pendingSongs: [syncSong, discardSong],
+            recordContexts: {
+              syncSong.id: (
+                userId: syncContext.userId,
+                organizationId: syncContext.organizationId,
+              ),
+              discardSong.id: (
+                userId: unrelatedContext.userId,
+                organizationId: unrelatedContext.organizationId,
+              ),
+            },
+          );
+          final repository = _GatedSongMutationRemoteRepository(
+            onSend: () async {
+              remoteEntered.complete();
+              await releaseRemote.future;
+            },
+          );
+          final controller = SongMutationSyncController(
+            store: store,
+            remoteRepository: repository,
+          );
+
+          final sync = controller.syncPendingSongs(syncContext);
+          await remoteEntered.future;
+
+          final result = await controller.discardMine(
+            unrelatedContext,
+            songId: discardSong.id,
+          );
+          final discardedRecord = await store.readById(
+            userId: unrelatedContext.userId,
+            organizationId: unrelatedContext.organizationId,
+            songId: discardSong.id,
+          );
+
+          releaseRemote.complete();
+          await sync;
+
+          expect(
+            (result: result, removed: discardedRecord == null),
+            (result: SongDiscardResult.discarded, removed: true),
+            reason:
+                'ownership must include both user and organization dimensions',
+          );
+        },
+      );
+    }
+
     test(
       'sync started after discard waits to snapshot and never sends the discarded mutation',
       () async {
@@ -303,26 +387,59 @@ class _GatedSongMutationStore implements SongMutationStore {
   _GatedSongMutationStore({
     List<SongMutationRecord> pendingSongs = const [],
     this.clearGate,
-  }) : _records = {for (final record in pendingSongs) record.id: record};
+    Map<String, ({String userId, String organizationId})> recordContexts =
+        const {},
+  }) : _records = {for (final record in pendingSongs) record.id: record},
+       _recordContexts = recordContexts;
 
   final Map<String, SongMutationRecord> _records;
+  final Map<String, ({String userId, String organizationId})> _recordContexts;
   final Completer<void>? clearGate;
   final Completer<void> clearEntered = Completer<void>();
   int pendingReadCount = 0;
+
+  bool _belongsToContext(
+    SongMutationRecord record, {
+    required String userId,
+    required String organizationId,
+  }) {
+    final context = _recordContexts[record.id];
+    return context == null ||
+        (context.userId == userId && context.organizationId == organizationId);
+  }
 
   @override
   Future<SongMutationRecord?> readById({
     required String userId,
     required String organizationId,
     required String songId,
-  }) async => _records[songId];
+  }) async {
+    final record = _records[songId];
+    if (record == null ||
+        !_belongsToContext(
+          record,
+          userId: userId,
+          organizationId: organizationId,
+        )) {
+      return null;
+    }
+    return record;
+  }
 
   @override
   Future<List<SongMutationRecord>> readConflictSongs({
     required String userId,
     required String organizationId,
   }) async => _records.values
-      .where((record) => record.syncStatus == SongSyncStatus.conflict)
+      .where(
+        (record) =>
+            _belongsToContext(
+              record,
+              userId: userId,
+              organizationId: organizationId,
+            ) &&
+            record.syncStatus == SongSyncStatus.conflict,
+      )
       .toList(growable: false);
 
   @override
@@ -333,12 +450,18 @@ class _GatedSongMutationStore implements SongMutationStore {
     pendingReadCount += 1;
     return _records.values
         .where(
-          (record) => switch (record.syncStatus) {
-            SongSyncStatus.pendingCreate ||
-            SongSyncStatus.pendingUpdate ||
-            SongSyncStatus.pendingDelete => true,
-            SongSyncStatus.conflict || SongSyncStatus.synced => false,
-          },
+          (record) =>
+              _belongsToContext(
+                record,
+                userId: userId,
+                organizationId: organizationId,
+              ) &&
+              switch (record.syncStatus) {
+                SongSyncStatus.pendingCreate ||
+                SongSyncStatus.pendingUpdate ||
+                SongSyncStatus.pendingDelete => true,
+                SongSyncStatus.conflict || SongSyncStatus.synced => false,
+              },
         )
         .toList(growable: false);
   }

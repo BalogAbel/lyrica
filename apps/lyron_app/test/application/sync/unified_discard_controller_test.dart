@@ -1,12 +1,17 @@
 import 'dart:async';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 
 void main() {
   test('discardAll runs both domain steps with active context', () async {
@@ -122,6 +127,107 @@ void main() {
           songMutationCount: 1,
           planningMutationCount: 1,
         ),
+      );
+    },
+  );
+
+  test(
+    'production unified discard provider wires song ownership before either domain changes',
+    () async {
+      const song = SongMutationRecord(
+        id: 'song-provider',
+        organizationId: 'o1',
+        slug: 'provider-song',
+        title: 'Provider Song',
+        chordproSource: '{title: Provider Song}',
+        version: 4,
+        baseVersion: 4,
+        syncStatus: SongSyncStatus.pendingUpdate,
+      );
+      final planningMutation = PlanningMutationRecord(
+        aggregateId: 'plan-provider',
+        organizationId: 'o1',
+        name: 'Provider Plan',
+        kind: PlanningMutationKind.planEdit,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026),
+      );
+      final songStore = _FakeSongStore(const [song]);
+      final planningStore = _FakePlanningStore([planningMutation]);
+      final remoteEntered = Completer<void>();
+      final releaseRemote = Completer<void>();
+      final songController = SongMutationSyncController(
+        store: songStore,
+        remoteRepository: _GatedSongRemote(
+          onSend: () async {
+            remoteEntered.complete();
+            await releaseRemote.future;
+          },
+        ),
+      );
+      final planningController = PlanningMutationSyncController(
+        mutationStore: () => planningStore,
+        remoteRepository: () => _OfflinePlanningRemote(),
+        refreshPlanning: () async => false,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+      const songContext = SongMutationContext(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+      final sync = songController.syncPendingSongs(songContext);
+      await remoteEntered.future;
+
+      final container = ProviderContainer(
+        overrides: [
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(userId: 'u1', organizationId: 'o1'),
+          ),
+          activePlanningContextProvider.overrideWithValue(
+            const ActivePlanningReadContext(userId: 'u1', organizationId: 'o1'),
+          ),
+          songMutationSyncControllerProvider.overrideWithValue(songController),
+          planningMutationSyncControllerProvider.overrideWithValue(
+            planningController,
+          ),
+          songMutationEntriesProvider.overrideWith((ref) async => const [song]),
+          planningMutationEntriesProvider.overrideWith(
+            (ref) async => [planningMutation],
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final result = await container
+          .read(unifiedDiscardControllerProvider)
+          .discardAll();
+      final songsDuringRemote = await songStore.readPendingSongs(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+      final planningDuringRemote = await planningStore.readAllMutations(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+
+      releaseRemote.complete();
+      await sync;
+
+      expect(
+        (
+          result: result,
+          songMutationCount: songsDuringRemote.length,
+          planningMutationCount: planningDuringRemote.length,
+        ),
+        (
+          result: UnifiedDiscardResult.syncInProgress,
+          songMutationCount: 1,
+          planningMutationCount: 1,
+        ),
+        reason:
+            'the real provider must acquire song ownership before invoking either domain step',
       );
     },
   );
