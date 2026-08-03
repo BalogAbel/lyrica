@@ -17,6 +17,7 @@ void main() {
 
     expect(controller.pending?.email, 'prior@example.com');
     expect(controller.pending?.pendingCount, 4);
+    expect(controller.pending?.requestId, isNotNull);
   });
 
   test('requesting a confirmation with an unknown (null) pending count '
@@ -41,22 +42,96 @@ void main() {
       pendingCount: 2,
     );
 
-    controller.answer(true);
+    final requestId = controller.pending!.requestId;
+    controller.answer(true, requestId: requestId);
 
-    expect(await future, isTrue);
+    expect(await future, ReauthPromptResult.confirmed);
     expect(controller.pending, isNull);
   });
 
-  test('answer(false) completes the future with false', () async {
+  test('answer(false) completes the future as cancelled', () async {
     final controller = ReauthPromptController();
     final future = controller.requestConfirmation(
       email: 'prior@example.com',
       pendingCount: 1,
     );
 
-    controller.answer(false);
+    controller.answer(false, requestId: controller.pending!.requestId);
 
-    expect(await future, isFalse);
+    expect(await future, ReauthPromptResult.cancelled);
+  });
+
+  test(
+    'successive prompts receive distinct stable request identities',
+    () async {
+      final controller = ReauthPromptController();
+      final first = controller.requestConfirmation(
+        email: 'first@example.com',
+        pendingCount: 1,
+      );
+      final firstId = controller.pending!.requestId;
+
+      expect(controller.pending!.requestId, firstId);
+      controller.answer(false, requestId: firstId);
+      expect(await first, ReauthPromptResult.cancelled);
+
+      final second = controller.requestConfirmation(
+        email: 'second@example.com',
+        pendingCount: 2,
+      );
+      final secondId = controller.pending!.requestId;
+
+      expect(secondId, isNot(firstId));
+      expect(controller.pending!.requestId, secondId);
+      controller.answer(true, requestId: secondId);
+      expect(await second, ReauthPromptResult.confirmed);
+    },
+  );
+
+  test('supersedePending synchronously clears the old request', () {
+    final controller = ReauthPromptController();
+    unawaited(
+      controller.requestConfirmation(email: 'old@example.com', pendingCount: 3),
+    );
+
+    controller.supersedePending();
+
+    expect(controller.pending, isNull);
+  });
+
+  test('supersedePending completes the old request as superseded', () async {
+    final controller = ReauthPromptController();
+    ReauthPromptResult? result;
+    controller
+        .requestConfirmation(email: 'old@example.com', pendingCount: 3)
+        .then((value) => result = value);
+
+    controller.supersedePending();
+
+    await Future<void>.delayed(Duration.zero);
+    expect(result, ReauthPromptResult.superseded);
+  });
+
+  test('an obsolete request identity cannot answer a newer prompt', () async {
+    final controller = ReauthPromptController();
+    final first = controller.requestConfirmation(
+      email: 'old@example.com',
+      pendingCount: 3,
+    );
+    final oldRequestId = controller.pending!.requestId;
+    controller.answer(false, requestId: oldRequestId);
+    await first;
+
+    ReauthPromptResult? newerResult;
+    controller
+        .requestConfirmation(email: 'new@example.com', pendingCount: 1)
+        .then((value) => newerResult = value);
+    final newRequestId = controller.pending!.requestId;
+
+    controller.answer(true, requestId: oldRequestId);
+
+    expect(controller.pending?.requestId, newRequestId);
+    expect(newerResult, isNull);
   });
 
   test(
@@ -87,8 +162,8 @@ void main() {
       expect(controller.pending?.email, 'prior@example.com');
       expect(controller.pending?.pendingCount, 3);
 
-      controller.answer(true);
-      expect(await first, isTrue);
+      controller.answer(true, requestId: controller.pending!.requestId);
+      expect(await first, ReauthPromptResult.confirmed);
     },
   );
 
@@ -102,7 +177,7 @@ void main() {
     );
     expect(notifications, 1);
 
-    controller.answer(true);
+    controller.answer(true, requestId: controller.pending!.requestId);
     expect(notifications, 2);
   });
 }

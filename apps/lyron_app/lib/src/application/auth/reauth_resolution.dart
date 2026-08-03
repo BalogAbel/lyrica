@@ -1,3 +1,5 @@
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
+
 sealed class ReauthOutcome {
   const ReauthOutcome();
 }
@@ -15,6 +17,11 @@ class ReauthWipedPriorAndProceeded extends ReauthOutcome {
 /// Different user sign-in was cancelled; prior user kept offline-authenticated.
 class ReauthCancelledKeptPriorUser extends ReauthOutcome {
   const ReauthCancelledKeptPriorUser();
+}
+
+/// A newer auth edge made this resolution obsolete before it acted.
+class ReauthSuperseded extends ReauthOutcome {
+  const ReauthSuperseded();
 }
 
 /// Pure, UI-agnostic coordinator for re-authentication resolution.
@@ -42,7 +49,7 @@ Future<ReauthOutcome> resolveReauth({
   required Future<int?> Function() priorPendingCount,
   required Future<void> Function() flushSameUser,
   required Future<void> Function() wipePriorAndProceed,
-  required Future<bool> Function({
+  required Future<ReauthPromptResult> Function({
     required String email,
     required int? pendingCount,
   })
@@ -67,16 +74,19 @@ Future<ReauthOutcome> resolveReauth({
 
   // Pending data exists, or its amount is unknown: require confirmation
   // before wipe either way -- uncertainty must never authorise a wipe.
-  final confirmed = await confirmDifferentUser(
+  final promptResult = await confirmDifferentUser(
     email: priorEmail ?? '',
     pendingCount: count,
   );
 
-  if (confirmed) {
+  if (promptResult == ReauthPromptResult.confirmed) {
     await wipePriorAndProceed();
     return const ReauthWipedPriorAndProceeded();
-  } else {
+  } else if (promptResult == ReauthPromptResult.cancelled) {
     await cancelToPriorUser();
     return const ReauthCancelledKeptPriorUser();
   }
+
+  // Typed seam only. Task 4 implements the superseded outcome behavior.
+  return const ReauthCancelledKeptPriorUser();
 }

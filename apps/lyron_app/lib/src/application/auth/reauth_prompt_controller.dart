@@ -7,11 +7,18 @@ import 'package:flutter/foundation.dart';
 /// be determined -- an honest "unknown", not a guess (see D4 in
 /// `docs/specs/2026-07-30-recovery-actions-that-outlive-their-widget.md`).
 class ReauthPrompt {
-  const ReauthPrompt({required this.email, required this.pendingCount});
+  const ReauthPrompt({
+    required this.requestId,
+    required this.email,
+    required this.pendingCount,
+  });
 
+  final int requestId;
   final String email;
   final int? pendingCount;
 }
+
+enum ReauthPromptResult { confirmed, cancelled, superseded }
 
 /// Publishes a pending reauth confirmation and awaits its answer.
 ///
@@ -34,15 +41,16 @@ class ReauthPrompt {
 /// into a loud bug instead of silently queueing or dropping a confirmation
 /// that guards data deletion.
 class ReauthPromptController extends ChangeNotifier {
+  int _nextRequestId = 0;
   ReauthPrompt? _pending;
-  Completer<bool>? _completer;
+  Completer<ReauthPromptResult>? _completer;
 
   ReauthPrompt? get pending => _pending;
 
   /// Publishes [email]/[pendingCount] as the pending prompt and returns a
   /// future that completes with the answer once [answer] is called.
   /// [pendingCount] of `null` means the count could not be determined.
-  Future<bool> requestConfirmation({
+  Future<ReauthPromptResult> requestConfirmation({
     required String email,
     required int? pendingCount,
   }) {
@@ -52,9 +60,13 @@ class ReauthPromptController extends ChangeNotifier {
         'before the first is answered.',
       );
     }
-    final completer = Completer<bool>();
+    final completer = Completer<ReauthPromptResult>();
     _completer = completer;
-    _pending = ReauthPrompt(email: email, pendingCount: pendingCount);
+    _pending = ReauthPrompt(
+      requestId: _nextRequestId++,
+      email: email,
+      pendingCount: pendingCount,
+    );
     notifyListeners();
     return completer.future;
   }
@@ -63,12 +75,19 @@ class ReauthPromptController extends ChangeNotifier {
   /// [requestConfirmation]. A barrier dismissal must reach here as `false`,
   /// exactly like `showReauthDifferentUserDialog` returns -- never translate
   /// a missing answer into a confirm.
-  void answer(bool confirmed) {
+  void answer(bool confirmed, {int? requestId}) {
     final completer = _completer;
     if (completer == null) return;
     _pending = null;
     _completer = null;
     notifyListeners();
-    completer.complete(confirmed);
+    completer.complete(
+      confirmed ? ReauthPromptResult.confirmed : ReauthPromptResult.cancelled,
+    );
   }
+
+  /// Invalidates any request belonging to an obsolete auth transition.
+  ///
+  /// The GREEN implementation is intentionally deferred to the next task.
+  void supersedePending() {}
 }

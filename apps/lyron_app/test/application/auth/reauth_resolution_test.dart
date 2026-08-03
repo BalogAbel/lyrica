@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 
 void main() {
@@ -15,6 +16,11 @@ void main() {
 
     test('ReauthCancelledKeptPriorUser is a sealed class outcome', () {
       const outcome = ReauthCancelledKeptPriorUser();
+      expect(outcome, isA<ReauthOutcome>());
+    });
+
+    test('ReauthSuperseded is a sealed class outcome', () {
+      const outcome = ReauthSuperseded();
       expect(outcome, isA<ReauthOutcome>());
     });
   });
@@ -39,7 +45,7 @@ void main() {
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
-              return true;
+              return ReauthPromptResult.confirmed;
             },
         cancelToPriorUser: () async {},
       );
@@ -67,7 +73,7 @@ void main() {
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
-              return true;
+              return ReauthPromptResult.confirmed;
             },
         cancelToPriorUser: () async {},
       );
@@ -106,7 +112,7 @@ void main() {
                 );
                 expect(email, 'u1@example.com');
                 expect(pendingCount, 2);
-                return true;
+                return ReauthPromptResult.confirmed;
               },
           cancelToPriorUser: () async {},
         );
@@ -140,7 +146,7 @@ void main() {
             ({required String email, required int? pendingCount}) async {
               expect(email, 'u1@example.com');
               expect(pendingCount, 3);
-              return false;
+              return ReauthPromptResult.cancelled;
             },
         cancelToPriorUser: () async {
           cancelToPriorUserCalled = true;
@@ -181,7 +187,7 @@ void main() {
                   reason:
                       'wipePriorAndProceed must not be called before confirmDifferentUser resolves',
                 );
-                return true;
+                return ReauthPromptResult.confirmed;
               },
           cancelToPriorUser: () async {},
         );
@@ -219,7 +225,7 @@ void main() {
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
-              return true;
+              return ReauthPromptResult.confirmed;
             },
         cancelToPriorUser: () async {},
       );
@@ -231,6 +237,33 @@ void main() {
         reason: 'confirm should not be called when pending count is 0',
       );
       expect(outcome, isA<ReauthWipedPriorAndProceeded>());
+    });
+
+    test('superseded prompt invokes neither wipe nor cancel', () async {
+      var wipePriorAndProceedCalled = false;
+      var cancelToPriorUserCalled = false;
+
+      final outcome = await resolveReauth(
+        newUserId: 'u2',
+        priorUserId: 'u1',
+        priorEmail: 'u1@example.com',
+        priorPendingCount: () async => 1,
+        flushSameUser: () async {},
+        wipePriorAndProceed: () async {
+          wipePriorAndProceedCalled = true;
+        },
+        confirmDifferentUser:
+            ({required String email, required int? pendingCount}) async {
+              return ReauthPromptResult.superseded;
+            },
+        cancelToPriorUser: () async {
+          cancelToPriorUserCalled = true;
+        },
+      );
+
+      expect(wipePriorAndProceedCalled, isFalse);
+      expect(cancelToPriorUserCalled, isFalse);
+      expect(outcome, isA<ReauthSuperseded>());
     });
   });
 }

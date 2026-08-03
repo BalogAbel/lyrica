@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
@@ -297,10 +298,13 @@ void main() {
       await planningDatabase.close();
     });
 
-    Future<void> seedPriorUserData() async {
+    Future<void> seedPriorUserData({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) async {
       await songStore.replaceActiveSnapshot(
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: userId,
+        organizationId: organizationId,
         summaries: const [SongSummary(id: 'song-1', title: "Prior's Song")],
         sources: const [
           SongSource(id: 'song-1', source: "{title: Prior's Song}"),
@@ -308,8 +312,8 @@ void main() {
         refreshedAt: DateTime.utc(2026, 7, 1),
       );
       await planningStore.replaceActiveProjection(
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: userId,
+        organizationId: organizationId,
         plans: [
           CachedPlanRecord(
             id: 'plan-1',
@@ -325,18 +329,24 @@ void main() {
       );
     }
 
-    Future<bool> priorSongsStillPresent() async {
+    Future<bool> priorSongsStillPresent({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) async {
       final songs = await songStore.readActiveSummaries(
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: userId,
+        organizationId: organizationId,
       );
       return songs.isNotEmpty;
     }
 
-    Future<bool> priorPlanningProjectionStillPresent() {
+    Future<bool> priorPlanningProjectionStillPresent({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) {
       return planningStore.hasProjection(
-        userId: 'user-1',
-        organizationId: 'org-1',
+        userId: userId,
+        organizationId: organizationId,
       );
     }
 
@@ -745,10 +755,9 @@ void main() {
       },
     );
 
-    test('two overlapping different-user signedIn edges serialize instead of '
-        'racing -- the second does not call requestConfirmation until the '
-        'first prompt has been answered, and no unhandled exception escapes '
-        'the auth-path listener', () async {
+    test('a newer signedIn edge supersedes the stale prompt without input and '
+        'resolves against the still-durable prior identity', () async {
+      await seedPriorUserData(userId: 'user-0', organizationId: 'org-0');
       identityStore.seed(
         const LastKnownIdentity(
           userId: 'user-0',
@@ -766,6 +775,7 @@ void main() {
         readPlanningPendingWorkCount: ({required userId}) async => 0,
         readSongPendingWorkCount: ({required userId}) async => 2,
       );
+      final promptController = _RecordingReauthPromptController();
       final container = ProviderContainer(
         overrides: [
           appAuthControllerProvider.overrideWith((_) => authController),
@@ -775,6 +785,7 @@ void main() {
           pendingLocalWorkCounterProvider.overrideWithValue(
             alwaysPendingCounter,
           ),
+          reauthPromptControllerProvider.overrideWith((_) => promptController),
           activeOrganizationResolutionProvider.overrideWithValue(
             () async => const ActiveOrganizationResolution.selected('org-1'),
           ),
@@ -783,53 +794,245 @@ void main() {
       addTearDown(container.dispose);
 
       container.read(appAuthListenableProvider);
-      // Edge 1: user-0 (prior) -> user-1. Reaches the confirm dialog and
-      // stops there -- nobody answers it yet.
       await authController.restoreSession();
       await pump();
 
-      final promptController = container.read(reauthPromptControllerProvider);
       expect(promptController.pending, isNotNull);
       expect(promptController.pending!.email, 'user0@example.com');
+      final staleRequestId = promptController.pending!.requestId;
 
-      // Edge 2: user-1 -> user-2, arriving before edge 1's prompt is
-      // answered. Against the unserialized code this makes edge 2's
-      // resolution call requestConfirmation while edge 1's prompt is
-      // still pending, which throws a StateError out of an unawaited
-      // listener -- an uncaught exception on the auth path. That failure
-      // surfaces as this test failing even though every explicit
-      // `expect` below still passes; there is no legitimate way for a
-      // fixed implementation to let it through silently.
       authRepository.emit(
         const AppAuthSession(userId: 'user-2', email: 'user2@example.com'),
       );
       await pump();
 
-      // Edge 2 must not have started its own confirmation yet -- the
-      // pending prompt is still edge 1's, untouched.
-      expect(promptController.pending, isNotNull);
-      expect(promptController.pending!.email, 'user0@example.com');
-
-      // Answer edge 1. Its wipe-and-proceed persists user-1 as the new
-      // identity.
-      promptController.answer(true);
-      await pump();
-
-      expect(identityStore.writes.last.userId, 'user-1');
-
-      // Edge 2's resolution, having waited its turn, now runs against the
-      // freshly-persisted user-1 identity and reaches its own prompt --
-      // proving it was queued and eventually serviced, not dropped.
-      expect(promptController.pending, isNotNull);
-      expect(promptController.pending!.email, 'user1@example.com');
-
-      promptController.answer(true);
-      await pump();
-
-      expect(identityStore.writes.last.userId, 'user-2');
-      expect(authController.state.status, AppAuthStatus.signedIn);
-      expect(authController.state.session?.userId, 'user-2');
+      expect(promptController.results, [ReauthPromptResult.superseded]);
+      expect(identityStore.clearCount, 0);
+      expect(
+        identityStore.writes.where((identity) => identity.userId == 'user-1'),
+        isEmpty,
+      );
+      expect(
+        await priorSongsStillPresent(userId: 'user-0', organizationId: 'org-0'),
+        isTrue,
+      );
+      expect(
+        await priorPlanningProjectionStillPresent(
+          userId: 'user-0',
+          organizationId: 'org-0',
+        ),
+        isTrue,
+      );
+      expect(promptController.pending?.requestId, isNot(staleRequestId));
+      expect(promptController.pending?.email, 'user0@example.com');
     });
+
+    test('supersession while the pending-work count is blocked prevents a '
+        'stale zero-count wipe', () async {
+      await seedPriorUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      final firstCount = Completer<int>();
+      final latestCount = Completer<int>();
+      var planningCalls = 0;
+      final counter = PendingLocalWorkCounter(
+        readPlanningPendingWorkCount: ({required userId}) {
+          planningCalls += 1;
+          return planningCalls == 1 ? firstCount.future : latestCount.future;
+        },
+        readSongPendingWorkCount: ({required userId}) async => 0,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          pendingLocalWorkCounterProvider.overrideWithValue(counter),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+      expect(planningCalls, 1);
+
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+      );
+      await pump(2);
+      firstCount.complete(0);
+      await pump();
+
+      expect(identityStore.clearCount, 0);
+      expect(identityStore.writes, isEmpty);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+    });
+
+    test(
+      'supersession immediately before cancel prevents backend sign-out',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        authRepository.currentSession = const AppAuthSession(
+          userId: 'user-2',
+          email: 'user2@example.com',
+        );
+        final counter = PendingLocalWorkCounter(
+          readPlanningPendingWorkCount: ({required userId}) async => 1,
+          readSongPendingWorkCount: ({required userId}) async => 0,
+        );
+        final container = ProviderContainer(
+          overrides: [
+            appAuthControllerProvider.overrideWith((_) => authController),
+            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+            pendingLocalWorkCounterProvider.overrideWithValue(counter),
+            activeOrganizationResolutionProvider.overrideWithValue(
+              () async => const ActiveOrganizationResolution.selected('org-2'),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(appAuthListenableProvider);
+        await authController.restoreSession();
+        await pump();
+        final prompt = container.read(reauthPromptControllerProvider);
+        final requestId = prompt.pending!.requestId;
+
+        authRepository.emit(
+          const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+        );
+        prompt.answer(false, requestId: requestId);
+        await pump();
+
+        expect(authRepository.signOutCalls, 0);
+      },
+    );
+
+    test(
+      'supersession while same-user membership is blocked prevents a stale write',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        authRepository.currentSession = const AppAuthSession(
+          userId: 'user-1',
+          email: 'user1@example.com',
+        );
+        final firstMembership = Completer<ActiveOrganizationResolution>();
+        final latestMembership = Completer<ActiveOrganizationResolution>();
+        var membershipCalls = 0;
+        final container = ProviderContainer(
+          overrides: [
+            appAuthControllerProvider.overrideWith((_) => authController),
+            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+            activeOrganizationResolutionProvider.overrideWithValue(() {
+              membershipCalls += 1;
+              return membershipCalls == 1
+                  ? firstMembership.future
+                  : latestMembership.future;
+            }),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(appAuthListenableProvider);
+        await authController.restoreSession();
+        await pump();
+        authRepository.emit(
+          const AppAuthSession(userId: 'user-2', email: 'user2@example.com'),
+        );
+        await pump(2);
+        firstMembership.complete(
+          const ActiveOrganizationResolution.selected('org-1'),
+        );
+        await pump();
+
+        expect(identityStore.writes, isEmpty);
+      },
+    );
+
+    test(
+      'supersession during the post-wipe clear prevents stale identity persistence',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        identityStore.blockNextClear();
+        authRepository.currentSession = const AppAuthSession(
+          userId: 'user-2',
+          email: 'user2@example.com',
+        );
+        final latestMembership = Completer<ActiveOrganizationResolution>();
+        var membershipCalls = 0;
+        final counter = PendingLocalWorkCounter(
+          readPlanningPendingWorkCount: ({required userId}) async => 0,
+          readSongPendingWorkCount: ({required userId}) async => 0,
+        );
+        final container = ProviderContainer(
+          overrides: [
+            appAuthControllerProvider.overrideWith((_) => authController),
+            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+            songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+            planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+            pendingLocalWorkCounterProvider.overrideWithValue(counter),
+            activeOrganizationResolutionProvider.overrideWithValue(() {
+              membershipCalls += 1;
+              return membershipCalls == 1
+                  ? Future.value(
+                      const ActiveOrganizationResolution.selected('org-2'),
+                    )
+                  : latestMembership.future;
+            }),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        container.read(appAuthListenableProvider);
+        await authController.restoreSession();
+        await identityStore.clearStarted;
+
+        authRepository.emit(
+          const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+        );
+        await pump(2);
+        identityStore.releaseClear();
+        await pump();
+
+        expect(
+          identityStore.writes.where((identity) => identity.userId == 'user-2'),
+          isEmpty,
+        );
+      },
+    );
   });
 }
 
@@ -837,6 +1040,17 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   LastKnownIdentity? _current;
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   int clearCount = 0;
+  Completer<void>? _clearStarted;
+  Completer<void>? _clearGate;
+
+  Future<void> get clearStarted => _clearStarted!.future;
+
+  void blockNextClear() {
+    _clearStarted = Completer<void>();
+    _clearGate = Completer<void>();
+  }
+
+  void releaseClear() => _clearGate!.complete();
 
   /// Log of every store call in the order it happened, e.g. `read:user-1`,
   /// `write:user-2`, `clear`. Used to prove the prior identity is read
@@ -868,6 +1082,14 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
 
   @override
   Future<void> clear() async {
+    final started = _clearStarted;
+    final gate = _clearGate;
+    if (started != null && gate != null) {
+      started.complete();
+      await gate.future;
+      _clearStarted = null;
+      _clearGate = null;
+    }
     callLog.add('clear');
     clearCount += 1;
     _current = null;
@@ -877,6 +1099,7 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
 class _FakeAuthRepository implements AuthRepository {
   final _controller = StreamController<AppAuthSession?>.broadcast();
   AppAuthSession? currentSession;
+  int signOutCalls = 0;
 
   void dispose() {
     _controller.close();
@@ -901,10 +1124,29 @@ class _FakeAuthRepository implements AuthRepository {
   }) async {}
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    signOutCalls += 1;
+  }
 
   @override
   Future<void> deleteAccount() async {}
 
   void emit(AppAuthSession? session) => _controller.add(session);
+}
+
+class _RecordingReauthPromptController extends ReauthPromptController {
+  final List<ReauthPromptResult> results = <ReauthPromptResult>[];
+
+  @override
+  Future<ReauthPromptResult> requestConfirmation({
+    required String email,
+    required int? pendingCount,
+  }) {
+    final future = super.requestConfirmation(
+      email: email,
+      pendingCount: pendingCount,
+    );
+    unawaited(future.then(results.add));
+    return future;
+  }
 }
