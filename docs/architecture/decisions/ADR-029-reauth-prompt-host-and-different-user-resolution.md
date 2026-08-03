@@ -50,31 +50,39 @@ Two ways to give the dialog somewhere to run were considered:
   different flavor of it.
 - **Chosen: `ReauthPromptController` plus `ReauthPromptHost`.**
   `ReauthPromptController` (`application/auth/reauth_prompt_controller.dart`)
-  is a `ChangeNotifier` holding at most one pending `ReauthPrompt { email,
-  pendingCount }` and a `Completer<bool>`; `requestConfirmation` publishes
-  the prompt and returns a future that resolves when `answer` is called.
+  is a `ChangeNotifier` holding at most one pending `ReauthPrompt { requestId,
+  email, pendingCount }` and a completer for a typed `ReauthPromptResult`;
+  `requestConfirmation` publishes the prompt and returns a future that resolves
+  as confirmed, cancelled, or superseded.
   `ReauthPromptHost` (`presentation/auth/reauth_prompt_host.dart`) is mounted
   in `MaterialApp.router`'s `builder:`
-  (`app/lyron_app.dart`), wrapping the routed child. It `ref.listen`s to the
+  (`app/lyron_app.dart`), wrapping the routed child. It listens to the
   controller's `pending` field — never `ref.watch`, so a new prompt never
   rebuilds the routed child or anything below it — and imperatively shows
   `showReauthDifferentUserDialog`, feeding the boolean result back into
-  `answer`. The decision logic (`resolveReauth`) stays testable with no UI
-  at all; the host is testable as an ordinary widget; no route needed
-  restructuring into a shell.
+  `answer`. The host is a `ConsumerStatefulWidget` that installs one Riverpod
+  2.6 `listenManual(..., fireImmediately: true)` subscription. It captures the
+  current prompt immediately, including one published before host attachment,
+  and schedules presentation post-frame exactly once for that request id. The
+  request id is carried back with the dialog result, so completion of an
+  obsolete dialog cannot answer a newer prompt. The decision logic
+  (`resolveReauth`) stays testable with no UI at all; the host is testable as
+  an ordinary widget; no route needed restructuring into a shell.
 
 The controller is registered on `reauthPromptControllerProvider` as a plain
 `ChangeNotifierProvider` — app-scoped, not `autoDispose` — because a pending
 prompt has to survive whatever screen happens to be on top when the
 different-user sign-in is detected, not get torn down along with it.
 
-Only one prompt may be pending at a time. `resolveReauth` awaits a single
-`confirmDifferentUser` call per `signedIn` transition before doing anything
-else, so a second concurrent request would mean two different-user
-resolutions racing — something this app never does by design.
-`requestConfirmation` throws a `StateError` on a second call while one is
-still pending, leaving the first prompt untouched, rather than silently
-queueing or dropping a confirmation that guards data deletion.
+Only one prompt may be pending at a time. Each `signedIn` notification claims
+a new persistence generation and synchronously calls `supersedePending`
+before its captured session is appended to the asynchronous work queue. This
+clears any open prompt and completes its future with the typed superseded
+result before the newer edge waits behind older work. The old resolution then
+returns `ReauthSuperseded` and invokes neither the destructive callback nor the
+cancel callback. `requestConfirmation` still rejects an uncoordinated second
+call while a prompt is pending; normal auth-edge overlap is handled by
+synchronously invalidating obsolete work before the newer edge is queued.
 
 A barrier dismissal of the dialog must reach `answer` as `false`, exactly
 like `showReauthDifferentUserDialog` already returns on dismissal — the host
@@ -97,9 +105,12 @@ of replacing it. All four outcomes run:
 
 `wipePriorAndProceed` runs `SongCatalogStore.deleteCatalogsForUser` and
 `PlanningLocalStore.deletePlanningDataForUser` for the **prior** user id,
-clears `LastKnownIdentityStore`, then persists the new identity. Two hazards
-were found and closed while wiring this in; both are the kind of bug that
-comes back silently if fixed by ordering luck instead of structure.
+clears `LastKnownIdentityStore`, then persists the new identity. The scope is
+user-wide, across every locally retained organization for that user. This is
+an ordered application workflow, not a claim of one atomic transaction across
+the separate local databases. Three hazards were found and closed while
+wiring and hardening this path; all are the kind of bug that comes back
+silently if fixed by ordering luck instead of structure.
 
 **Hazard 1 — the identity-overwrite race.** Before this slice,
 `lastKnownIdentityPersistenceProvider` overwrote the prior identity
@@ -140,17 +151,35 @@ two tests in `app_auth_controller_test.dart`, one of which forces the stream
 to also emit `null` as a side effect of the sign-out call, specifically so
 the outcome cannot be "correct by luck about which one wins."
 
+**Hazard 3 — stale queued work acting after a newer auth edge.** Serializing
+the asynchronous handlers does not make an older handler current. The auth
+listener therefore advances a generation and supersedes the open prompt
+synchronously for every `signedIn` notification, before queueing that edge.
+Queued work carries the captured generation and session. Its currentness
+predicate requires both the generation and the live signed-in session's exact
+`userId` and `email` to match. The predicate is rechecked after awaited
+identity, membership, count, prompt, deletion, and clear boundaries, and
+immediately before song/planning deletion, backend sign-out, identity clear,
+and every identity write. No `await` is inserted between a destructive
+currentness check and obtaining its deletion future. If a last-moment check
+prevents a callback from running, the callback reports that fact and
+`resolveReauth` returns the typed `ReauthSuperseded` outcome rather than
+claiming a wipe or cancellation that did not occur.
+
 ### D4 — The pending count is songs **and** plans
 
 The confirmation prompt has to state everything a wipe would destroy. The
 wipe deletes both subsystems, so a planning-only number would understate
 it — worse than no number, because it is a specific number that is wrong.
 `PendingLocalWorkCounter` (`application/auth/pending_local_work_counter.dart`)
-sums `readPendingMutations(...).length` (planning) with `readPendingSongs(...)`
-and `readConflictSongs(...)` (songs). It is a counting seam over injected
-readers, not a new subsystem, and none of the three sources is caught
-internally — a throw from any of them propagates rather than being folded
-into an undercount of zero.
+sums two injected integer readers: actionable planning work and unsynced or
+conflicted song work. Both readers are user-wide, filtering by prior `userId`
+across every organization because the destructive cleanup is also user-wide.
+Planning counts all actionable statuses (`pending`, `accepted`, failed
+authorization, failed dependency, failed remote delete, and conflict); songs
+count pending create/update/delete and conflict, but not synced rows. It is a
+counting seam over injected readers, not a new subsystem, and a throw from
+either source propagates rather than being folded into an undercount of zero.
 
 ### D5 — ADR-020's non-destructive boundary is not relaxed
 
@@ -198,17 +227,22 @@ read.
 ## Testing
 
 - `reauth_prompt_controller_test.dart` — publishing a prompt with a known or
-  `null` pending count, `answer` completing the returned future with the
-  supplied value, a second `requestConfirmation` while one is pending
-  throwing and leaving the first prompt untouched, and listener notification
-  on both request and answer.
+  `null` pending count, request-token-safe answers, synchronous supersession
+  completing the old future with a typed non-confirming result, a second
+  uncoordinated `requestConfirmation` while one is pending throwing and
+  leaving the first prompt untouched, and listener notification on request,
+  answer, and supersession.
 - `reauth_prompt_host_test.dart` — the host renders its child unchanged when
-  no prompt is pending, shows the dialog and feeds a confirm back, feeds a
-  cancel back, and a barrier dismissal reaches the controller as `false`.
+  no prompt is pending, immediately captures a prompt published before host
+  attachment and presents it post-frame exactly once across rebuilds, shows
+  and answers current prompts by request id, ignores an obsolete dialog's
+  answer, feeds a cancel back, and a barrier dismissal reaches the controller
+  as a non-confirming answer.
 - `identity_persistence_wiring_test.dart` — all four outcomes on the live
   `signedIn` edge (same user; different user with zero pending; different
-  user with pending, confirmed; cancel), plus the two hazard regression
-  tests described under D3.
+  user with pending, confirmed; cancel), user-wide work in any retained
+  organization preventing a silent wipe, plus generation/prompt supersession
+  and side-effect-currentness regressions described under D3.
 - `app_auth_controller_test.dart` — `cancelReauthToPriorSession` returns
   `sessionExpired` carrying the *prior* user's session (not `signedOut`, not
   the cancelled new user), and converges on that state even when the auth
@@ -221,10 +255,11 @@ read.
   dismissal returning `false`; the known-count message; and the
   unknown-count message shown when `pendingCount` is `null`, including that
   cancel still returns `false` in the unknown case.
-- `pending_local_work_counter_test.dart` — zero when all three sources are
-  empty, the sum when each contributes, and that a throw from either the
-  planning or the conflict-songs source propagates instead of being counted
-  as zero.
+- `pending_local_work_counter_test.dart` and
+  `drift_pending_local_work_reader_test.dart` — the sum of the two user-wide
+  readers, failure propagation, every destructive-work status, and
+  cross-organization rows for one user without crossing into another user's
+  rows.
 
 ## Consequences
 
@@ -237,11 +272,9 @@ read.
   deliberate reuse of "the one function that owns the write," not a
   layering violation — introducing a second listener on the same edge would
   have reintroduced exactly the ordering hazard this ADR closes.
-- A second concurrent different-user prompt is a thrown `StateError`, not a
-  queued or dropped request. If a future flow legitimately needs to queue
-  reauth confirmations, that is a new decision, not an extension of this
-  one.
-- The pending count can still be `null` in production whenever the prior
-  identity has no cached organization id or the count read throws; the UI
-  and the resolution both have to keep handling that case honestly rather
-  than it being a theoretical branch only tests exercise.
+- Auth edges may overlap in time, but a newer edge synchronously supersedes
+  the prior generation and prompt. The serial work queue remains an execution
+  mechanism, not permission for stale work to act.
+- The pending count can still be `null` in production when its user-wide read
+  throws; the UI and the resolution both have to keep handling that case
+  honestly rather than it being a theoretical branch only tests exercise.
