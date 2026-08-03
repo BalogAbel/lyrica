@@ -210,4 +210,138 @@ void main() {
     expect(controller.pending?.requestId, newerRequestId);
     expect(newerResult, isNull);
   });
+
+  testWidgets(
+    'supersedePending closes an open dialog, leaving none on screen',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+          ),
+        ),
+      );
+
+      final controller = container.read(reauthPromptControllerProvider);
+      ReauthPromptResult? result;
+      unawaited(
+        controller
+            .requestConfirmation(email: 'prior@example.com', pendingCount: 3)
+            .then((value) => result = value),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      controller.supersedePending();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(result, ReauthPromptResult.superseded);
+    },
+  );
+
+  testWidgets('a request after a superseded prompt shows exactly one dialog', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+        ),
+      ),
+    );
+
+    final controller = container.read(reauthPromptControllerProvider);
+    unawaited(
+      controller.requestConfirmation(
+        email: 'first@example.com',
+        pendingCount: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    controller.supersedePending();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+
+    ReauthPromptResult? secondResult;
+    unawaited(
+      controller
+          .requestConfirmation(email: 'second@example.com', pendingCount: 2)
+          .then((value) => secondResult = value),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.text(
+        AppStrings.reauthDifferentUserPendingMessage(
+          email: 'second@example.com',
+          count: 2,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('reauth-different-user-confirm')));
+    await tester.pumpAndSettle();
+    expect(secondResult, ReauthPromptResult.confirmed);
+  });
+
+  testWidgets(
+    'answering with a stale request id after supersession does not affect '
+    'the new prompt',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+          ),
+        ),
+      );
+
+      final controller = container.read(reauthPromptControllerProvider);
+      unawaited(
+        controller.requestConfirmation(
+          email: 'first@example.com',
+          pendingCount: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final staleRequestId = controller.pending!.requestId;
+
+      controller.supersedePending();
+      await tester.pumpAndSettle();
+
+      ReauthPromptResult? secondResult;
+      unawaited(
+        controller
+            .requestConfirmation(email: 'second@example.com', pendingCount: 2)
+            .then((value) => secondResult = value),
+      );
+      await tester.pumpAndSettle();
+      final freshRequestId = controller.pending!.requestId;
+
+      controller.answer(true, requestId: staleRequestId);
+      await tester.pumpAndSettle();
+
+      expect(secondResult, isNull);
+      expect(controller.pending?.requestId, freshRequestId);
+      expect(find.byType(AlertDialog), findsOneWidget);
+    },
+  );
 }
