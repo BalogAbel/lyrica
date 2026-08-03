@@ -139,6 +139,25 @@ void main() {
     },
   );
 
+  test('counts a planning row carrying a sync_status value that is not a '
+      'current enum member', () async {
+    // Migration artefact / corruption / future status: the delete path
+    // (deletePlanningDataForUser) removes this row with no status
+    // predicate at all, so the count must include it too.
+    await _insertPlanningMutationRawStatus(
+      planningDatabase,
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateId: 'target-plan',
+      rawStatus: 'legacy_migrated_status',
+      orderKey: 1,
+    );
+
+    final count = await reader.countPlanningPendingWork(userId: 'user-1');
+
+    expect(count, 1);
+  });
+
   const songCases =
       <({String label, SongSyncStatus status, String organizationId})>[
         (
@@ -226,6 +245,23 @@ void main() {
     expect(beforeExcludedRow, 1);
   });
 
+  test('counts a song row carrying a sync_status value that is not a current '
+      'enum member', () async {
+    // deleteCatalogsForUser also has no status predicate: a corrupt or
+    // future status string must still be counted, same as planning.
+    await _insertSongMutationRawStatus(
+      songDatabase,
+      userId: 'user-1',
+      organizationId: 'org-1',
+      songId: 'target-song',
+      rawStatus: 'legacy_migrated_status',
+    );
+
+    final count = await reader.countSongPendingWork(userId: 'user-1');
+
+    expect(count, 1);
+  });
+
   test(
     'adding another user song leaves the user work count unchanged',
     () async {
@@ -281,12 +317,52 @@ Future<void> _insertPlanningMutation(
       );
 }
 
+Future<void> _insertPlanningMutationRawStatus(
+  PlanningLocalDatabase database, {
+  required String userId,
+  required String organizationId,
+  required String aggregateId,
+  required String rawStatus,
+  required int orderKey,
+}) {
+  return database
+      .into(database.cachedPlanningMutations)
+      .insert(
+        CachedPlanningMutationsCompanion.insert(
+          userId: userId,
+          organizationId: organizationId,
+          aggregateType: 'plan',
+          aggregateId: aggregateId,
+          mutationKind: PlanningMutationKind.planEdit.value,
+          syncStatus: rawStatus,
+          orderKey: orderKey,
+          updatedAt: DateTime.utc(2026, 8, 2),
+        ),
+      );
+}
+
 Future<void> _insertSongMutation(
   SongCatalogDatabase database, {
   required String userId,
   required String organizationId,
   required String songId,
   required SongSyncStatus status,
+}) {
+  return _insertSongMutationRawStatus(
+    database,
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+    rawStatus: status.value,
+  );
+}
+
+Future<void> _insertSongMutationRawStatus(
+  SongCatalogDatabase database, {
+  required String userId,
+  required String organizationId,
+  required String songId,
+  required String rawStatus,
 }) {
   return database
       .into(database.cachedCatalogSongMutations)
@@ -299,7 +375,7 @@ Future<void> _insertSongMutation(
           title: songId,
           source: '{title: $songId}',
           version: 1,
-          syncStatus: status.value,
+          syncStatus: rawStatus,
         ),
       );
 }
