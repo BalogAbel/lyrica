@@ -918,14 +918,28 @@ void main() {
         await pump();
         final prompt = container.read(reauthPromptControllerProvider);
         final requestId = prompt.pending!.requestId;
+        final newerEdgeObserved = Completer<void>();
+        void observeNewerEdge() {
+          if (authController.state.session?.userId == 'user-3' &&
+              !newerEdgeObserved.isCompleted) {
+            newerEdgeObserved.complete();
+          }
+        }
+
+        authController.addListener(observeNewerEdge);
+        addTearDown(() => authController.removeListener(observeNewerEdge));
 
         authRepository.emit(
           const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
         );
+        await newerEdgeObserved.future;
+        expect(authController.state.session?.userId, 'user-3');
+
         prompt.answer(false, requestId: requestId);
         await pump();
 
         expect(authRepository.signOutCalls, 0);
+        expect(prompt.pending?.requestId, isNot(requestId));
       },
     );
 

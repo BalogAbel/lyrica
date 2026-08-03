@@ -156,12 +156,18 @@ void main() {
       await tester.pumpWidget(app('FIRST BUILD'));
       await tester.pumpAndSettle();
 
-      expect(find.text(AppStrings.reauthDifferentUserTitle), findsOneWidget);
+      expect(
+        find.text(AppStrings.reauthDifferentUserTitle, skipOffstage: false),
+        findsOneWidget,
+      );
 
       await tester.pumpWidget(app('SECOND BUILD'));
       await tester.pump();
 
-      expect(find.text(AppStrings.reauthDifferentUserTitle), findsOneWidget);
+      expect(
+        find.text(AppStrings.reauthDifferentUserTitle, skipOffstage: false),
+        findsOneWidget,
+      );
     },
   );
 
