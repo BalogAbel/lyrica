@@ -370,14 +370,39 @@ deleted with the session, inside the same transaction.
   callback fires exactly once for a commit that actually deleted rows and
   not for the following true no-op, and does not fire when measurement
   throws before any delete runs.
-- `test/offline/planning/planning_local_store_test.dart`,
-  `test/offline/song_catalog/song_catalog_store_test.dart`,
-  `test/offline/planning/planning_mutation_store_test.dart` — each concrete
-  commit path (record/retry/result/clear for planning mutations; projection
-  replace/upsert/delete/order/cleanup; catalog snapshot
-  replace/mutation-save/delete/reconcile/clear/cleanup) invokes the injected
-  callback after its commit and not before it, not after a throw, and not
-  for an identical-payload upsert that persists no change.
+- `test/offline/planning/planning_mutation_store_test.dart` — `recordPlanCreate`
+  invokes the injected callback after its commit and not before it, not after
+  a throw (a duplicate-slug rejection), and `clearMutation` does not invoke it
+  for a true no-op (clearing a nonexistent mutation). The other planning
+  mutation record paths (`recordPlanEdit`, `recordSessionCreate`,
+  `recordSessionRename`, `recordSessionDelete`, `recordSessionReorder`,
+  `recordSessionItemCreateSong`, `recordSessionItemDelete`,
+  `recordSessionItemReorder`), plus `saveSyncAttemptResult` and
+  `retryMutation`, are not covered by a callback assertion.
+- `test/offline/planning/planning_local_store_test.dart` — `upsertSyncedPlan`
+  invokes the callback after its commit, not for an identical-payload upsert
+  that persists no change; `replaceActiveProjection` invokes it for a
+  committed row even when a later operation in the same outer batch aborts,
+  and not for an aborted projection replacement itself; `deletePlanningData`
+  is confirmed not to fire for a true no-op (deleting a nonexistent user's
+  data) but its own positive-fire case is not separately asserted. The
+  session/session-item/order projection paths (`upsertSyncedSession`,
+  `deleteSyncedSession`, `replaceSyncedSessionOrder`,
+  `upsertSyncedSessionItem`, `deleteSyncedSessionItem`,
+  `replaceSyncedSessionItemOrder`) and `deletePlanningDataForUser` are not
+  covered by a callback assertion.
+- `test/offline/song_catalog/song_catalog_store_test.dart` — `saveSongMutation`
+  invokes the callback after its commit, not after a throw (a duplicate-slug
+  rejection), and not for an identical-payload upsert that persists no
+  change; `clearSongMutation` is confirmed not to fire for a true no-op
+  (clearing a nonexistent mutation). `replaceActiveSnapshot`, `deleteSong`,
+  `reconcileSyncedSong`, `deleteCatalog`, and `deleteCatalogsForUser` are not
+  covered by a callback assertion.
+
+Production wiring — that every one of these storage instances actually
+receives the shared callback, whether or not its individual commit path has
+a focused emission test — is guarded separately by
+`test/application/storage/footprint_production_wiring_test.dart`.
 
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
