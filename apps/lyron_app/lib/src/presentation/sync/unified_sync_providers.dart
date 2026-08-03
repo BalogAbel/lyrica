@@ -221,28 +221,6 @@ final unifiedDiscardControllerProvider =
             organizationId: c.organizationId,
           );
         },
-        discardSongs: (ctx) async {
-          final link = ref.keepAlive();
-          try {
-            final entries = await ref.read(songMutationEntriesProvider.future);
-            final controller = ref.read(songMutationSyncControllerProvider);
-            final songContext = SongMutationContext(
-              userId: ctx.userId,
-              organizationId: ctx.organizationId,
-            );
-            for (final entry in entries) {
-              try {
-                await controller.discardMine(songContext, songId: entry.id);
-              } catch (_) {
-                // best-effort: continue discarding remaining entries
-              }
-            }
-            ref.invalidate(songMutationEntriesProvider);
-            ref.invalidate(songLibraryListProvider);
-          } finally {
-            link.close();
-          }
-        },
         acquireSongDiscardLease: (ctx) => ref
             .read(songMutationSyncControllerProvider)
             .acquireDiscardLease(

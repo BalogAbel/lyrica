@@ -19,7 +19,12 @@ void main() {
     final controller = UnifiedDiscardController(
       activeContextReader: () =>
           const UnifiedDiscardContext(userId: 'u1', organizationId: 'o1'),
-      discardSongs: (ctx) async => calls.add('songs:${ctx.organizationId}'),
+      acquireSongDiscardLease: (ctx) async =>
+          SongDiscardLeaseAcquisition.acquired(
+            SongDiscardLease(discardSong: (_) async {}, release: () {}),
+          ),
+      discardSongsWhileOwned: (ctx, lease) async =>
+          calls.add('songs:${ctx.organizationId}'),
       discardPlanning: (ctx) async => calls.add('plans:${ctx.organizationId}'),
     );
     await controller.discardAll();
@@ -30,7 +35,13 @@ void main() {
     var ran = false;
     final controller = UnifiedDiscardController(
       activeContextReader: () => null,
-      discardSongs: (_) async => ran = true,
+      acquireSongDiscardLease: (ctx) async {
+        ran = true;
+        return SongDiscardLeaseAcquisition.acquired(
+          SongDiscardLease(discardSong: (_) async {}, release: () {}),
+        );
+      },
+      discardSongsWhileOwned: (ctx, lease) async => ran = true,
       discardPlanning: (_) async => ran = true,
     );
     await controller.discardAll();
@@ -91,9 +102,6 @@ void main() {
         ),
         discardSongsWhileOwned: (ctx, lease) async {
           await lease.discardMine(songId: song.id);
-        },
-        discardSongs: (ctx) async {
-          await songController.discardMine(songContext, songId: song.id);
         },
         discardPlanning: (ctx) => planningStore.clearMutation(
           userId: ctx.userId,
@@ -286,11 +294,13 @@ void main() {
       final controller = UnifiedDiscardController(
         activeContextReader: () =>
             const UnifiedDiscardContext(userId: 'u1', organizationId: 'o1'),
-        discardSongs: (ctx) async {
-          final songContext = SongMutationContext(
+        acquireSongDiscardLease: (ctx) => songController.acquireDiscardLease(
+          SongMutationContext(
             userId: ctx.userId,
             organizationId: ctx.organizationId,
-          );
+          ),
+        ),
+        discardSongsWhileOwned: (ctx, lease) async {
           final entries = [
             ...await songStore.readPendingSongs(
               userId: ctx.userId,
@@ -303,7 +313,7 @@ void main() {
           ];
           for (final entry in entries) {
             try {
-              await songController.discardMine(songContext, songId: entry.id);
+              await lease.discardMine(songId: entry.id);
             } catch (_) {
               // Best-effort, mirroring unified_sync_providers.dart's wiring:
               // one entry failing must not block the rest.

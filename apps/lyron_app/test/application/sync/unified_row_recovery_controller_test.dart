@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
@@ -148,11 +149,11 @@ void main() {
       await container.read(songLibraryListProvider.future);
 
       final controller = container.read(unifiedRowRecoveryControllerProvider);
-      final future = controller.discardMine('song-2');
+      final future = controller.discardMineResult('song-2');
       await Future<void>.delayed(Duration.zero);
-      final hadFailure = await future;
+      final result = await future;
 
-      expect(hadFailure, isFalse);
+      expect(result, UnifiedRowDiscardResult.discarded);
       expect(
         await songStore.readById(
           userId: 'u1',
@@ -185,14 +186,14 @@ void main() {
         );
         addTearDown(container.dispose);
 
-        final hadFailure = await container
+        final result = await container
             .read(unifiedRowRecoveryControllerProvider)
-            .discardMine('song-3');
+            .discardMineResult('song-3');
 
         expect(songController.discardMineCalls, ['song-3']);
         expect(
-          hadFailure,
-          isTrue,
+          result,
+          UnifiedRowDiscardResult.syncInProgress,
           reason:
               'typed sync ownership rejection must not be swallowed as success',
         );

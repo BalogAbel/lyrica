@@ -20,7 +20,11 @@ class _SpyDiscardController extends UnifiedDiscardController {
   _SpyDiscardController({this.result = UnifiedDiscardResult.discarded})
     : super(
         activeContextReader: () => null,
-        discardSongs: (_) async {},
+        acquireSongDiscardLease: (_) async =>
+            SongDiscardLeaseAcquisition.acquired(
+              SongDiscardLease(discardSong: (_) async {}, release: () {}),
+            ),
+        discardSongsWhileOwned: (_, _) async {},
         discardPlanning: (_) async {},
       );
   final UnifiedDiscardResult result;

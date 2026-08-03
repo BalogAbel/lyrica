@@ -45,9 +45,6 @@ class UnifiedRowRecoveryController {
 
   Future<bool> keepMine(String songId) => _keepMineStep(songId);
 
-  Future<bool> discardMine(String songId) async =>
-      await discardMineResult(songId) != UnifiedRowDiscardResult.discarded;
-
   Future<UnifiedRowDiscardResult> discardMineResult(String songId) =>
       _discardMineStep(songId);
 
