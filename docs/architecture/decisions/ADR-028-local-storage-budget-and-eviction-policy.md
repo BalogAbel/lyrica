@@ -41,15 +41,21 @@ mutation store. The policy is therefore two distinct ladders sharing one
 accounting seam (`LocalStorageFootprint`, `LocalStorageBudget`,
 `LocalStorageMonitor`):
 
-| pressure | warn | act | refuse |
-|---|---|---|---|
-| **mutation budget** (LF-T3) | soft threshold → warning surfaced | *(no eviction — nothing droppable applies)* | hard threshold → refuse **new** writes |
-| **storage pressure** (LF-T4) | soft threshold → warning surfaced | critical threshold or an actual write failure → evict droppable catalog, retry once | retry fails → typed failure propagates |
+| pressure | measured-pressure display | hard consequence |
+|---|---|---|
+| **mutation budget** (LF-T3) | soft threshold → warning surfaced; no higher display tier | refuse threshold reached → refuse **new** writes |
+| **storage pressure** (LF-T4) | soft and higher thresholds → warning display, more urgent as it climbs | *(measurement alone has no hard consequence — see below)* |
 
-The remedy for a full mutation budget is to sync or discard pending work; the
-error carries that message. Storage pressure, by contrast, has a real
-release valve — droppable catalog data — so it escalates through eviction
-before it ever needs to refuse anything.
+Measured pressure is a monitoring and user-facing display concern only;
+classification never triggers eviction by itself, at any level. The
+**only** production eviction trigger, for either ladder, is a write that
+actually fails at the storage layer: that failure evicts droppable catalog
+data once and retries the write once, independent of whatever the last
+measured display level was. The remedy for a full mutation budget is
+different: it is to sync or discard pending work, and the refusal error
+carries that message. See "On a storage write failure, evict once and
+retry once" below for the failure-triggered path, and "Rejected: proactive
+threshold eviction" for why a high measurement does not also evict.
 
 ### The budget is checked before the write, not after
 
@@ -213,13 +219,77 @@ against tiny budgets without waiting for real data volume:
 | mutation warn | 1 MiB | roughly a few thousand mutations; far past any normal offline span |
 | mutation refuse | 4 MiB | bounds pathological growth without ever biting normal use |
 | total warn | 128 MiB | native-informed heuristic |
-| total critical | 192 MiB | triggers automatic catalog eviction on the write path |
+| total critical | 192 MiB | raises the surfaced pressure classification from warning to critical; it does not itself trigger eviction (see D1) |
 
 These are deliberately sized to be unreachable in normal use. A budget that
 bites during ordinary rehearsal planning would be the wrong budget: the
 purpose is to make growth **bounded and observable**, and to give a signal
 before the storage substrate fails, not to ration everyday work. The total
 thresholds are heuristics on native and explicitly unverified on web (D5).
+
+**Rejected: proactive threshold eviction.** An earlier draft of this policy
+also had `LocalStorageMonitor` trigger `SongCatalogEvictor.evictDroppable()`
+whenever a measurement crossed `totalCriticalBytes`, on the theory that
+eviction should run before a write ever has the chance to fail. No production
+path implements that second trigger, and this ADR now describes the policy
+that actually ships: `LocalStorageMonitor.measure()` is read-only and never
+calls the evictor. `LocalStorageBudget.classify()` only classifies a
+footprint into `ok` / `warning` / `critical` for the sync overview to
+display; classification has no side effect. Eviction happens exactly once,
+from inside `BudgetedPlanningMutationStore._guardedWrite`'s failure branch,
+regardless of what the last measured pressure was. A store that is measured
+critical but whose writes keep succeeding is never evicted; a store that is
+measured `ok` but whose write throws (a real disk/quota failure can occur
+before the measured total looks large, since accounting is a proxy, not the
+platform's own quota signal) is evicted immediately. Proactive eviction
+remains a real option for a future slice, but adding it now would be a new
+behavior change, not a documentation correction.
+
+### D7 — Committed-storage revision seam
+
+`localStorageFootprintProvider` used to measure once per provider mount and
+never again, so a long-lived listener (the sync overview) could keep
+displaying a stale byte count and pressure classification after mutation
+writes, clears, sync reconciliation, or catalog-source eviction changed what
+was actually on disk.
+
+Every concrete storage boundary that can commit a change to the
+SQL-measured footprint now takes an optional `LocalStorageFootprintChanged`
+callback (`void Function()`, declared in
+`local_storage_footprint_revision.dart`) and invokes it once, after the
+concrete commit: `DriftPlanningMutationStore`'s record/retry/result/clear
+paths, the planning projection's replace/upsert/delete/order/cleanup paths in
+`planning_local_store.dart`, the catalog store's snapshot
+replace/mutation-save/delete/reconcile/clear/cleanup paths in
+`song_catalog_store.dart`, and `SongCatalogEvictor.evictDroppable()`. In
+production, `core_providers.dart` wires all of them to the same
+`localStorageFootprintChangedProvider`, whose callback increments a single
+monotonic `localStorageFootprintRevisionProvider` (a `StateProvider<int>`).
+`localStorageFootprintProvider` watches that revision before it measures, so
+each bump forces a remeasurement even while the provider stays mounted — no
+UI-level polling or manual invalidation call is needed.
+
+Two behaviors follow directly from "after the concrete commit, and only for
+an actual change":
+
+- **Delete and clear paths key off affected-row counts.** A `DELETE`/clear
+  that matched zero rows emits nothing — there was nothing to remeasure.
+- **Idempotent upserts compare the persisted payload before deciding to
+  emit.** A write whose incoming content is identical to what is already
+  stored is a true no-op and emits nothing, so re-saving unchanged data does
+  not thrash the revision or force a redundant measurement.
+
+The callback fires from inside the storage boundary itself, not from a
+controller or screen, so every caller gets the same guarantee without a
+mechanical per-call-site edit. This also means the revision still advances
+for a partially-successful operation: an eviction that freed rows but whose
+subsequent guarded write retry still failed emits its callback for the rows
+it actually deleted, and earlier rows committed by an outer batch that later
+returns an error still advance the revision for what was actually
+persisted before the failure. The revision is a pure invalidation seam over
+a monotonic counter — it carries no byte or count information itself; SQL
+accounting inside the accountants remains the only source of the measured
+values.
 
 ### Eviction and budgeting are local storage policy, not authorization
 
@@ -292,6 +362,22 @@ deleted with the session, inside the same transaction.
   storage write failure evicts droppable catalog sources, retries once, and
   surfaces a typed `LocalStorageWriteFailure`; the failed mutation is
   confirmed absent from a subsequent read, ruling out a partial commit.
+- `test/application/sync/unified_sync_providers_test.dart` — a mounted
+  `localStorageFootprintProvider` remeasures and its classification changes
+  after the revision provider advances, pinning D7's watch-before-measure
+  contract.
+- `test/application/storage/song_catalog_evictor_test.dart` — the eviction
+  callback fires exactly once for a commit that actually deleted rows and
+  not for the following true no-op, and does not fire when measurement
+  throws before any delete runs.
+- `test/offline/planning/planning_local_store_test.dart`,
+  `test/offline/song_catalog/song_catalog_store_test.dart`,
+  `test/offline/planning/planning_mutation_store_test.dart` — each concrete
+  commit path (record/retry/result/clear for planning mutations; projection
+  replace/upsert/delete/order/cleanup; catalog snapshot
+  replace/mutation-save/delete/reconcile/clear/cleanup) invokes the injected
+  callback after its commit and not before it, not after a throw, and not
+  for an identical-payload upsert that persists no change.
 
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
@@ -309,3 +395,8 @@ adversarial suite.
 - `architecture.md`'s Offline Strategy section is updated to carry the
   protection order and the accounting seam instead of the superseded "one
   active snapshot" framing.
+- A critical measured total is a monitoring/warning signal only; it does not
+  evict by itself (D1, D6). The single production eviction trigger remains a
+  storage write that actually fails.
+- The sync overview's storage figure now refreshes after real commits
+  instead of being measured once per provider mount (D7).

@@ -89,13 +89,17 @@ Catalog eviction cannot relieve the mutation budget: pending mutations are
 protected, so deleting cached songs does not shrink the mutation store. The
 policy is therefore two distinct ladders sharing one accounting seam:
 
-| pressure | warn | act | refuse |
-|---|---|---|---|
-| **mutation budget** (LF-T3) | soft threshold → warning surfaced | *(no eviction — nothing droppable applies)* | hard threshold → refuse **new** writes |
-| **storage pressure** (LF-T4) | soft threshold → warning surfaced | critical threshold or an actual write failure → evict droppable catalog, retry once | retry fails → typed failure propagates |
+| pressure | measured-pressure display | hard consequence |
+|---|---|---|
+| **mutation budget** (LF-T3) | soft threshold → warning surfaced; no higher display tier | refuse threshold reached → refuse **new** writes |
+| **storage pressure** (LF-T4) | soft and higher thresholds → warning display, more urgent as it climbs | *(measurement alone has no hard consequence — see below)* |
 
-The remedy for a full mutation budget is to sync or discard, and the error
-message says so.
+Measured pressure, at any level, only ever changes what the sync overview
+displays — it never triggers eviction by itself. The one production
+eviction trigger, for either ladder, is a write that actually fails at the
+storage layer, and that failure gets exactly one evict-and-retry attempt
+(see "Write path" below). The remedy for a full mutation budget is
+different: sync or discard, and the refusal error message says so.
 
 ### D2 — Content-derived byte accounting, no platform quota API
 
@@ -182,13 +186,20 @@ Injectable constants on `LocalStorageBudget`, so tests run against tiny budgets:
 | mutation warn | 1 MiB | ≈ a few thousand mutations; far past any normal offline span |
 | mutation refuse | 4 MiB | bounds pathological growth without ever biting normal use |
 | total warn | 128 MiB | native-informed heuristic |
-| total critical | 192 MiB | triggers automatic catalog eviction on the write path |
+| total critical | 192 MiB | raises the surfaced pressure classification; it does not itself trigger eviction |
 
 These are deliberately sized to be unreachable in normal use. A budget that
 bites during ordinary rehearsal planning would be the wrong budget: the purpose
 is to make growth **bounded and observable**, and to give a signal before the
 storage substrate fails, not to ration everyday work. The total thresholds are
 heuristics on native and explicitly unverified on web (D5).
+
+**Not implemented: proactive threshold eviction.** `LocalStorageMonitor` is
+read-only — it measures and classifies but never calls the evictor. The
+accepted contract is failure-driven only: `SongCatalogEvictor.evictDroppable()`
+runs exactly once, from inside `BudgetedPlanningMutationStore`'s write-failure
+branch, regardless of the last measured pressure. See "Write path" below and
+ADR-028's D1/D6 for the full reasoning.
 
 ## Design
 
@@ -226,6 +237,27 @@ swallowed.
 
 `LocalStorageMonitor` is exposed through a provider consumed by the existing
 unified sync status surface. No new UI concept: this phase is not UX work.
+
+### Committed-storage revision seam
+
+Added after the initial implementation to fix a staleness gap: the sync
+overview's `localStorageFootprintProvider` used to measure once per provider
+mount and never again, so a mounted listener kept showing a stale figure
+after later commits. Every concrete storage boundary that can change the
+measured footprint (planning mutation record/retry/result/clear, planning
+projection replace/upsert/delete/order/cleanup, catalog snapshot
+replace/mutation-save/delete/reconcile/clear/cleanup, and a
+droppable-source eviction that actually removed rows) now takes an optional
+`LocalStorageFootprintChanged` callback and invokes it once, after its own
+commit. In production all of them are wired to the same callback, which
+bumps one monotonic `localStorageFootprintRevisionProvider`;
+`localStorageFootprintProvider` watches that revision before it measures, so
+it remeasures on every real change while staying mounted. Delete/clear paths
+key off affected-row counts, and an idempotent upsert whose persisted
+payload is already identical emits nothing. See ADR-028 D7 for the full
+contract, including the partial-failure cases (eviction that freed rows but
+whose retry still failed; a batch that commits some rows before a later
+failure).
 
 ### Squash correctness fix
 
@@ -265,6 +297,31 @@ Contracts, written before the implementation:
    gone; no row remains that could fail `dependencyBlocked`.
 7. **Accounting is monotone and bounded.** Footprint grows with content and
    shrinks on `clearMutation`; a fixed corpus produces a stable estimate.
+
+Added for the committed-storage revision seam
+(`test/application/sync/unified_sync_providers_test.dart`,
+`test/application/storage/song_catalog_evictor_test.dart`,
+`test/offline/planning/planning_local_store_test.dart`,
+`test/offline/song_catalog/song_catalog_store_test.dart`,
+`test/offline/planning/planning_mutation_store_test.dart`,
+`test/offline/adversarial/storage_pressure_contract_test.dart`):
+
+8. **A mounted footprint provider remeasures.** With
+   `localStorageFootprintProvider` already subscribed, advancing
+   `localStorageFootprintRevisionProvider` and changing the underlying
+   measurement produces a second measurement and a changed pressure
+   classification.
+9. **Each concrete storage boundary calls its callback after its own commit,
+   not before it, and not for a throw or a true no-op.** Covered
+   independently for planning mutation record/retry/result/clear, planning
+   projection replace/upsert/delete/order/cleanup, catalog snapshot
+   replace/mutation-save/delete/reconcile/clear/cleanup, and eviction.
+10. **An idempotent upsert whose persisted payload is already identical does
+    not emit a revision.**
+11. **Eviction advances the revision even when the guarded write's retry
+    later fails**, and **earlier committed rows advance the revision when a
+    later outer batch operation fails** — the revision tracks what actually
+    committed, not a top-level action's final result.
 
 ## Documentation
 

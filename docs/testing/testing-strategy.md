@@ -133,7 +133,27 @@ specific finding:
   and `clearMutation` still drains a full store; a refused **fold** — an edit that would
   have merged into an already-pending aggregate — leaves that pending aggregate completely
   intact rather than partially applying or destroying it; a domain rejection
-  (`LocalPlanningSlugConflictException`) propagates without eviction or retry.
+  (`LocalPlanningSlugConflictException`) propagates without eviction or retry. Eviction is
+  triggered only from this write-failure branch: `LocalStorageMonitor` (exercised by
+  `local_storage_monitor_test.dart`) holds no reference to `SongCatalogEvictor` at all, so a
+  critical measured pressure cannot call the evictor even in principle — it can only change
+  the classification the sync overview displays (ADR-028 D1/D6).
+- Committed-storage revision coverage (ADR-028 D7), spread across
+  `test/application/sync/unified_sync_providers_test.dart`,
+  `test/application/storage/song_catalog_evictor_test.dart`,
+  `test/offline/planning/planning_local_store_test.dart`,
+  `test/offline/song_catalog/song_catalog_store_test.dart`,
+  `test/offline/planning/planning_mutation_store_test.dart`, and
+  `storage_pressure_contract_test.dart`: a mounted `localStorageFootprintProvider`
+  remeasures and its classification changes once the shared revision provider advances;
+  every concrete storage commit path (planning mutation record/retry/result/clear,
+  planning projection replace/upsert/delete/order/cleanup, catalog snapshot
+  replace/mutation-save/delete/reconcile/clear/cleanup, and a droppable-source eviction
+  that actually removed rows) invokes its injected callback after its own commit, never
+  before it, never after a throw, and never for a persisted-payload-identical upsert;
+  delete/clear paths key the callback off affected-row counts; eviction still advances the
+  revision when the guarded write's later retry fails, and rows an outer batch already
+  committed still advance the revision when a later operation in that batch fails.
 - `clock_skew_probe_test.dart` — `LF-T6` probe. Adds an injectable clock seam to
   `PlanningMutationReconciler` (default wall-clock behavior unchanged) and confirms an
   injected skewed clock flows straight through into reconciled timestamps uncorrected. A
