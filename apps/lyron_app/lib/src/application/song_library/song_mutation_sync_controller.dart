@@ -2,6 +2,37 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 
 typedef SongCatalogRefresh = Future<void> Function(SongMutationContext context);
 
+enum SongDiscardResult { discarded, syncInProgress }
+
+enum SongDiscardLeaseOutcome { acquired, syncInProgress }
+
+class SongDiscardLease {
+  SongDiscardLease({
+    required Future<void> Function(String songId) discardSong,
+    required void Function() release,
+  }) : _discardSong = discardSong,
+       _release = release;
+
+  final Future<void> Function(String songId) _discardSong;
+  final void Function() _release;
+
+  Future<void> discardMine({required String songId}) => _discardSong(songId);
+
+  void release() => _release();
+}
+
+class SongDiscardLeaseAcquisition {
+  const SongDiscardLeaseAcquisition.acquired(this.lease)
+    : outcome = SongDiscardLeaseOutcome.acquired;
+
+  const SongDiscardLeaseAcquisition.syncInProgress()
+    : outcome = SongDiscardLeaseOutcome.syncInProgress,
+      lease = null;
+
+  final SongDiscardLeaseOutcome outcome;
+  final SongDiscardLease? lease;
+}
+
 class SongMutationSyncController {
   SongMutationSyncController({
     required SongMutationStore store,
@@ -125,7 +156,35 @@ class SongMutationSyncController {
     }
   }
 
-  Future<void> discardMine(
+  Future<SongDiscardLeaseAcquisition> acquireDiscardLease(
+    SongMutationContext context,
+  ) async {
+    return SongDiscardLeaseAcquisition.acquired(
+      SongDiscardLease(
+        discardSong: (songId) => _discardMineOwned(context, songId: songId),
+        release: () {},
+      ),
+    );
+  }
+
+  Future<SongDiscardResult> discardMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    final acquisition = await acquireDiscardLease(context);
+    if (acquisition.outcome == SongDiscardLeaseOutcome.syncInProgress) {
+      return SongDiscardResult.syncInProgress;
+    }
+    final lease = acquisition.lease!;
+    try {
+      await lease.discardMine(songId: songId);
+      return SongDiscardResult.discarded;
+    } finally {
+      lease.release();
+    }
+  }
+
+  Future<void> _discardMineOwned(
     SongMutationContext context, {
     required String songId,
   }) async {

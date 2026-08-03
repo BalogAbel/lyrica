@@ -13,18 +13,23 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
+const _retryAfterSyncMessage =
+    'Sync is in progress. Try again after it finishes.';
+
 class _SpyDiscardController extends UnifiedDiscardController {
-  _SpyDiscardController()
+  _SpyDiscardController({this.result = UnifiedDiscardResult.discarded})
     : super(
         activeContextReader: () => null,
         discardSongs: (_) async {},
         discardPlanning: (_) async {},
       );
+  final UnifiedDiscardResult result;
   int discardAllCalls = 0;
 
   @override
-  Future<void> discardAll() async {
+  Future<UnifiedDiscardResult> discardAll() async {
     discardAllCalls += 1;
+    return result;
   }
 }
 
@@ -157,9 +162,10 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
 }
 
 class _SpySongSyncController extends SongMutationSyncController {
-  _SpySongSyncController()
+  _SpySongSyncController({this.discardResult = SongDiscardResult.discarded})
     : super(store: _FakeSongStore(), remoteRepository: _FakeSongRemote());
 
+  final SongDiscardResult discardResult;
   final List<String> keepMineCalls = [];
   final List<String> discardMineCalls = [];
 
@@ -172,11 +178,12 @@ class _SpySongSyncController extends SongMutationSyncController {
   }
 
   @override
-  Future<void> discardMine(
+  Future<SongDiscardResult> discardMine(
     SongMutationContext context, {
     required String songId,
   }) async {
     discardMineCalls.add(songId);
+    return discardResult;
   }
 }
 
@@ -403,6 +410,49 @@ void main() {
     await tester.pumpAndSettle();
     expect(spy.discardMineCalls, ['s1']);
   });
+
+  testWidgets(
+    'conflict song discard rejected by active sync shows retry-after-sync guidance',
+    (tester) async {
+      final spy = _SpySongSyncController(
+        discardResult: SongDiscardResult.syncInProgress,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                songs: const [
+                  UnifiedSyncSongRow(
+                    songId: 's1',
+                    title: 'Hymn',
+                    entityState: SongSyncStatus.conflict,
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.conflict,
+                  ),
+                ],
+              ),
+            ),
+            songMutationSyncControllerProvider.overrideWithValue(spy),
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(userId: 'u1', organizationId: 'org1'),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(_retryAfterSyncMessage), findsOneWidget);
+    },
+  );
 
   testWidgets('pending song row shows no action buttons', (tester) async {
     await tester.pumpWidget(
@@ -652,6 +702,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(spy.discardAllCalls, 1);
   });
+
+  testWidgets(
+    'Discard all rejected by active song sync shows retry-after-sync guidance',
+    (tester) async {
+      final spy = _SpyDiscardController(
+        result: UnifiedDiscardResult.syncInProgress,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.unsynced,
+                songs: const [
+                  UnifiedSyncSongRow(
+                    songId: 's1',
+                    title: 'Hymn',
+                    entityState: SongSyncStatus.pendingCreate,
+                    severity: UnifiedSyncRowSeverity.pending,
+                    reasonCode: UnifiedSyncReasonCode.pendingLocal,
+                  ),
+                ],
+              ),
+            ),
+            unifiedDiscardControllerProvider.overrideWithValue(spy),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-popup-discard-all')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text(AppStrings.unifiedSyncDiscardAllConfirmAction).last,
+      );
+      await tester.pumpAndSettle();
+
+      expect(spy.discardAllCalls, 1);
+      expect(find.text(_retryAfterSyncMessage), findsOneWidget);
+    },
+  );
 
   testWidgets('Discard all cancel does not call controller', (tester) async {
     final spy = _SpyDiscardController();

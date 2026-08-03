@@ -99,14 +99,216 @@ void main() {
         expect(identical(first, second), isFalse);
       },
     );
+
+    test(
+      'discard is rejected and leaves the mutation unchanged after same-context sync owns the remote send',
+      () async {
+        const pendingSong = SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 3,
+          baseVersion: 3,
+          syncStatus: SongSyncStatus.pendingUpdate,
+        );
+        final remoteEntered = Completer<void>();
+        final releaseRemote = Completer<void>();
+        final store = _GatedSongMutationStore(
+          pendingSongs: const [pendingSong],
+        );
+        final repository = _GatedSongMutationRemoteRepository(
+          onSend: () async {
+            remoteEntered.complete();
+            await releaseRemote.future;
+          },
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+        const context = SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        final sync = controller.syncPendingSongs(context);
+        await remoteEntered.future;
+
+        final result = await controller.discardMine(
+          context,
+          songId: pendingSong.id,
+        );
+        final mutationDuringRemote = await store.readById(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          songId: pendingSong.id,
+        );
+
+        releaseRemote.complete();
+        await sync;
+
+        expect(
+          (
+            result: result,
+            mutationUnchanged: identical(mutationDuringRemote, pendingSong),
+          ),
+          (result: SongDiscardResult.syncInProgress, mutationUnchanged: true),
+          reason: 'sync ownership must reject discard without changing data',
+        );
+      },
+    );
+
+    test(
+      'sync ownership rejects discard of a second song already captured by the same context snapshot',
+      () async {
+        const secondSong = SongMutationRecord(
+          id: 'song-2',
+          organizationId: 'org-1',
+          slug: 'beta',
+          title: 'Beta',
+          chordproSource: '{title: Beta}',
+          version: 2,
+          baseVersion: 2,
+          syncStatus: SongSyncStatus.pendingUpdate,
+        );
+        final remoteEntered = Completer<void>();
+        final releaseFirstSong = Completer<void>();
+        var sendCount = 0;
+        final store = _GatedSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+            secondSong,
+          ],
+        );
+        final repository = _GatedSongMutationRemoteRepository(
+          onSend: () async {
+            sendCount += 1;
+            if (sendCount == 1) {
+              remoteEntered.complete();
+              await releaseFirstSong.future;
+            }
+          },
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+        const context = SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        final sync = controller.syncPendingSongs(context);
+        await remoteEntered.future;
+
+        final result = await controller.discardMine(
+          context,
+          songId: secondSong.id,
+        );
+        final secondMutationDuringFirstSend = await store.readById(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          songId: secondSong.id,
+        );
+
+        releaseFirstSong.complete();
+        await sync;
+
+        expect(
+          (
+            result: result,
+            mutationUnchanged: identical(
+              secondMutationDuringFirstSend,
+              secondSong,
+            ),
+          ),
+          (result: SongDiscardResult.syncInProgress, mutationUnchanged: true),
+          reason: 'the lease is context-wide, not only for the active row',
+        );
+      },
+    );
+
+    test(
+      'sync started after discard waits to snapshot and never sends the discarded mutation',
+      () async {
+        final releaseDiscard = Completer<void>();
+        final store = _GatedSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+          clearGate: releaseDiscard,
+        );
+        final repository = _GatedSongMutationRemoteRepository(
+          onSend: () async {},
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+        const context = SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        final discard = controller.discardMine(context, songId: 'song-1');
+        await store.clearEntered.future;
+
+        final sync = controller.syncPendingSongs(context);
+        final pendingReadsBeforeDiscardCompleted = store.pendingReadCount;
+
+        releaseDiscard.complete();
+        final discardResult = await discard;
+        await sync;
+
+        expect(
+          (
+            discardResult: discardResult,
+            pendingReadsBeforeDiscardCompleted:
+                pendingReadsBeforeDiscardCompleted,
+            sentSongCount: repository.sentSongIds.length,
+          ),
+          (
+            discardResult: SongDiscardResult.discarded,
+            pendingReadsBeforeDiscardCompleted: 0,
+            sentSongCount: 0,
+          ),
+          reason: 'sync must not snapshot while discard owns the context',
+        );
+      },
+    );
   });
 }
 
 class _GatedSongMutationStore implements SongMutationStore {
-  _GatedSongMutationStore({List<SongMutationRecord> pendingSongs = const []})
-    : _records = {for (final record in pendingSongs) record.id: record};
+  _GatedSongMutationStore({
+    List<SongMutationRecord> pendingSongs = const [],
+    this.clearGate,
+  }) : _records = {for (final record in pendingSongs) record.id: record};
 
   final Map<String, SongMutationRecord> _records;
+  final Completer<void>? clearGate;
+  final Completer<void> clearEntered = Completer<void>();
+  int pendingReadCount = 0;
 
   @override
   Future<SongMutationRecord?> readById({
@@ -127,16 +329,19 @@ class _GatedSongMutationStore implements SongMutationStore {
   Future<List<SongMutationRecord>> readPendingSongs({
     required String userId,
     required String organizationId,
-  }) async => _records.values
-      .where(
-        (record) => switch (record.syncStatus) {
-          SongSyncStatus.pendingCreate ||
-          SongSyncStatus.pendingUpdate ||
-          SongSyncStatus.pendingDelete => true,
-          SongSyncStatus.conflict || SongSyncStatus.synced => false,
-        },
-      )
-      .toList(growable: false);
+  }) async {
+    pendingReadCount += 1;
+    return _records.values
+        .where(
+          (record) => switch (record.syncStatus) {
+            SongSyncStatus.pendingCreate ||
+            SongSyncStatus.pendingUpdate ||
+            SongSyncStatus.pendingDelete => true,
+            SongSyncStatus.conflict || SongSyncStatus.synced => false,
+          },
+        )
+        .toList(growable: false);
+  }
 
   @override
   Future<void> saveSyncAttemptResult({
@@ -180,6 +385,10 @@ class _GatedSongMutationStore implements SongMutationStore {
     required String organizationId,
     required String songId,
   }) async {
+    if (!clearEntered.isCompleted) {
+      clearEntered.complete();
+    }
+    await clearGate?.future;
     _records.remove(songId);
   }
 
@@ -206,6 +415,7 @@ class _GatedSongMutationRemoteRepository
   _GatedSongMutationRemoteRepository({required this.onSend});
 
   final Future<void> Function() onSend;
+  final List<String> sentSongIds = [];
 
   @override
   Future<SongMutationRecord> fetchSong({
@@ -228,6 +438,7 @@ class _GatedSongMutationRemoteRepository
     required String organizationId,
     required SongMutationRecord record,
   }) async {
+    sentSongIds.add(record.id);
     await onSend();
     return record.copyWith(syncStatus: SongSyncStatus.synced);
   }

@@ -169,6 +169,36 @@ void main() {
       expect(songLibraryBuildCount, 2);
     });
 
+    test(
+      'discardMine reports a sync-in-progress rejection so the row can show retry-after-sync guidance',
+      () async {
+        final songController = _SyncOwnedSongController();
+        final container = ProviderContainer(
+          overrides: [
+            activeCatalogContextProvider.overrideWithValue(
+              const ActiveCatalogContext(userId: 'u1', organizationId: 'o1'),
+            ),
+            songMutationSyncControllerProvider.overrideWithValue(
+              songController,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final hadFailure = await container
+            .read(unifiedRowRecoveryControllerProvider)
+            .discardMine('song-3');
+
+        expect(songController.discardMineCalls, ['song-3']);
+        expect(
+          hadFailure,
+          isTrue,
+          reason:
+              'typed sync ownership rejection must not be swallowed as success',
+        );
+      },
+    );
+
     test('applyToGroup performs all of its post-work: the '
         'planningDataRevisionProvider bump AND both invalidations', () async {
       var mutationEntriesBuildCount = 0;
@@ -456,6 +486,25 @@ class _OfflineSongRemote implements SongMutationRemoteRepository {
   }) async => throw const SongMutationSyncException(
     SongMutationSyncErrorCode.connectivityFailure,
   );
+}
+
+class _SyncOwnedSongController extends SongMutationSyncController {
+  _SyncOwnedSongController()
+    : super(
+        store: _FakeSongStore(const []),
+        remoteRepository: _OfflineSongRemote(),
+      );
+
+  final List<String> discardMineCalls = [];
+
+  @override
+  Future<SongDiscardResult> discardMine(
+    SongMutationContext context, {
+    required String songId,
+  }) async {
+    discardMineCalls.add(songId);
+    return SongDiscardResult.syncInProgress;
+  }
 }
 
 /// Minimal in-memory PlanningMutationStore, matching the shape used in

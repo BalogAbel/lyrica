@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -29,6 +31,100 @@ void main() {
     await controller.discardAll();
     expect(ran, isFalse);
   });
+
+  test(
+    'discardAll rejects atomically before song or planning removal when song sync owns the context',
+    () async {
+      const song = SongMutationRecord(
+        id: 'song-1',
+        organizationId: 'o1',
+        slug: 'alpha',
+        title: 'Alpha',
+        chordproSource: '{title: Alpha}',
+        version: 3,
+        baseVersion: 3,
+        syncStatus: SongSyncStatus.pendingUpdate,
+      );
+      final songStore = _FakeSongStore(const [song]);
+      final remoteEntered = Completer<void>();
+      final releaseRemote = Completer<void>();
+      final songController = SongMutationSyncController(
+        store: songStore,
+        remoteRepository: _GatedSongRemote(
+          onSend: () async {
+            remoteEntered.complete();
+            await releaseRemote.future;
+          },
+        ),
+      );
+      final planningStore = _FakePlanningStore([
+        PlanningMutationRecord(
+          aggregateId: 'plan-1',
+          organizationId: 'o1',
+          name: 'Weekend Service',
+          kind: PlanningMutationKind.planEdit,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+        ),
+      ]);
+      const songContext = SongMutationContext(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+      final sync = songController.syncPendingSongs(songContext);
+      await remoteEntered.future;
+
+      final controller = UnifiedDiscardController(
+        activeContextReader: () =>
+            const UnifiedDiscardContext(userId: 'u1', organizationId: 'o1'),
+        acquireSongDiscardLease: (ctx) => songController.acquireDiscardLease(
+          SongMutationContext(
+            userId: ctx.userId,
+            organizationId: ctx.organizationId,
+          ),
+        ),
+        discardSongsWhileOwned: (ctx, lease) async {
+          await lease.discardMine(songId: song.id);
+        },
+        discardSongs: (ctx) async {
+          await songController.discardMine(songContext, songId: song.id);
+        },
+        discardPlanning: (ctx) => planningStore.clearMutation(
+          userId: ctx.userId,
+          organizationId: ctx.organizationId,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        ),
+      );
+
+      final result = await controller.discardAll();
+      final songsDuringRemote = await songStore.readPendingSongs(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+      final planningDuringRemote = await planningStore.readAllMutations(
+        userId: 'u1',
+        organizationId: 'o1',
+      );
+
+      releaseRemote.complete();
+      await sync;
+
+      expect(
+        (
+          result: result,
+          songMutationCount: songsDuringRemote.length,
+          planningMutationCount: planningDuringRemote.length,
+        ),
+        (
+          result: UnifiedDiscardResult.syncInProgress,
+          songMutationCount: 1,
+          planningMutationCount: 1,
+        ),
+      );
+    },
+  );
 
   test(
     // Spec testing item 5 (LF-7): "Discard All offline reports rather than
@@ -293,6 +389,33 @@ class _OfflineSongRemote implements SongMutationRemoteRepository {
   }) async => throw const SongMutationSyncException(
     SongMutationSyncErrorCode.connectivityFailure,
   );
+}
+
+class _GatedSongRemote implements SongMutationRemoteRepository {
+  _GatedSongRemote({required this.onSend});
+
+  final Future<void> Function() onSend;
+
+  @override
+  Future<SongMutationRecord> fetchSong({
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> overwriteSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SongMutationRecord> syncSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) async {
+    await onSend();
+    return record.copyWith(syncStatus: SongSyncStatus.synced);
+  }
 }
 
 /// Minimal in-memory PlanningMutationStore, keyed the same way the real
