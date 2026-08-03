@@ -6,8 +6,11 @@ import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 /// eviction cannot relieve them, because pending mutations are protected, so
 /// the only remedies are syncing or discarding.
 ///
-/// The total thresholds describe overall storage pressure (LF-T4) and are the
-/// ones eviction responds to.
+/// The total thresholds describe overall storage pressure (LF-T4) and drive
+/// the surfaced pressure classification (`warning`/`critical`). Crossing a
+/// total threshold does not itself trigger eviction: the only production
+/// eviction trigger is a storage write that actually fails (see
+/// `SongCatalogEvictor`).
 ///
 /// Defaults are deliberately out of reach of normal use. A budget that bites
 /// during ordinary planning would be the wrong budget: the purpose is to make
