@@ -123,13 +123,17 @@ For the current song-reader slice, UI reads song summaries and raw ChordPro sour
 
 ## Offline Strategy
 
+Song mutation operations have a context-wide ownership boundary keyed by the complete `(userId, organizationId)` pair because a sync snapshots every pending song in that context. Song sync and discard are mutually exclusive inside one context, while different contexts remain independent. Concurrent sync requests share the owned run; sync requests arriving while discard owns the context share one queued run, wait for lease release, and only then snapshot pending work.
+
+Per-row song discard acquires ownership before reading or changing local state and holds it through the freshness-only refresh. If same-context sync already owns the boundary, discard immediately returns typed `SongDiscardResult.syncInProgress`, makes no local change, and the UI gives dedicated wait-for-sync guidance instead of treating expected contention as a generic exception. Unified **Discard All** first acquires the same song-context lease before starting either domain and returns typed `UnifiedDiscardResult.syncInProgress` with neither domain changed when acquisition is rejected. Once admitted, its song and planning work remains best-effort across separate stores; this is atomic admission rejection, not cross-domain transactional rollback.
+
 - Local-first reads by default
 - Active authenticated song-catalog snapshot cache in Drift for the current reader slice
 - Active-organization-scoped local planning projection in Drift for the current planning slice
 - Durable sync queue in Drift for later write slices
 - Manual conflict resolution in MVP
 - Explicit sync status on offline-managed records
-- Dropping local write intent (discard) never requires the network, for songs and plans alike, and a discard never leaves a conflict status behind — being conflicted is a sync outcome, not something a user asks for by throwing an edit away. Retry deliberately stays online-only and reports a connectivity failure to the caller when it cannot run, instead of returning as if it had succeeded
+- Dropping local write intent (discard) never requires the network, for songs and plans alike, and a discard never leaves a conflict status behind — being conflicted is a sync outcome, not something a user asks for by throwing an edit away. Song discard's success boundary is the durable local clear/delete: it issues no compensating remote write and does not depend on its freshness-only refresh succeeding. Retry deliberately stays online-only and reports a connectivity failure to the caller when it cannot run, instead of returning as if it had succeeded
 - Online freshness triggers refresh local projections instead of becoming direct UI data sources
 - Future realtime subscription events are invalidation signals only; missed events must be recoverable through reconnect, foreground refresh, periodic refresh, or manual sync
 - Web support uses the same domain/application contracts, with the current reader cache backed by Drift wasm and a versioned `sqlite3.wasm` runtime asset, but authenticated offline relaunch remains a native-first manual-validation acceptance path rather than a browser-hard requirement in this slice
@@ -141,6 +145,8 @@ Local data access is decoupled from live auth-session validity (ADR-020). `AppAu
 The song CRUD slice keeps authorization backend-enforced through Supabase capability helpers and RLS, hides `pending_delete` rows from normal local reads immediately, and requires explicit user action for conflict overwrites instead of silent last-write-wins retries. The convergence-hardening follow-up keeps the same queue model, but adds durable remote-deletion classification on top of it: update-sourced remote deletion persists as an explicit conflict recovery state, update-sourced `keep mine` recreates the canonical song through a same-id backend write, delete-sourced remote deletion auto-converges as accepted deletion, and planning/session-scoped reader flows preserve planning-owned titles through tombstone-style deleted-song surfaces instead of falling back to a generic not-found state. Discarding a song mutation is local-first, mirroring the planning side: a pending create or a remote-deleted conflict deletes the local song, and any other state (pending update, pending delete, conflict) clears the mutation row so reads fall back to the cached catalog snapshot, which still holds the last known server copy. Neither branch calls the backend, and neither ever writes `SongSyncStatus.conflict` — that status is a sync outcome, not a discard side effect. A best-effort catalog refresh follows the local discard to pick up server freshness; its failure is swallowed and never undoes the completed discard. The accepted trade-off is that discarding a pending **delete** clears the mutation without confirming the song is still live on the server, so if the server copy was in fact deleted and the cached snapshot is stale, the song can reappear locally until the next successful refresh removes it again — a bounded, self-healing window.
 
 ## Simplicity Rules
+
+The LF-9 by-slug planning repository methods have no live caller in the current application. Their single-mutation-read, indexed-lookup path is maintained as repository-interface correctness, not claimed as a measured performance improvement to a live route.
 
 - Do not expose the raw domain graph directly in basic UX flows.
 - Do not expose the raw ChordPro source directly in the reader UI.

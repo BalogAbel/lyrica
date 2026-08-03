@@ -102,6 +102,23 @@ After the local discard succeeds, the controller makes a **best-effort** catalog
 refresh to pick up the freshest server copy. A failure there is swallowed: the
 discard has already happened and is not undone by it.
 
+Discard and sync share context-wide ownership keyed by `(userId,
+organizationId)`, because sync snapshots all pending songs for that whole
+context. They are mutually exclusive within one context. Concurrent sync
+requests coalesce into the active sync; sync requests that arrive while a
+discard owns the context coalesce behind that discard and take their pending
+snapshot only after the discard lease is released. A per-row discard that
+arrives while sync owns the context returns the typed
+`SongDiscardResult.syncInProgress` outcome immediately and changes no local
+state. This is an expected result, not a generic exception path.
+
+The discard lease is acquired before the mutation record is read and is held
+through the best-effort refresh. This prevents sync from observing an
+intermediate point between the local clear/delete and completion of the discard
+operation. The LF-7 success boundary is the durable local clear or delete: no
+remote compensating write is issued, and success does not require the
+freshness-only refresh to succeed.
+
 **A discard never writes `SongSyncStatus.conflict`.** Marking a record as
 conflicted is a *sync* outcome; it must not be a side effect of the user asking
 to throw the record away.
@@ -137,8 +154,25 @@ slug without listing every plan:
 `getPlanSummaryBySlug` gets the same treatment: resolve against pending creates,
 then the store's indexed lookup, with no full listing.
 
-That the path has no live caller is recorded in the review doc and the PR body
-rather than being quietly fixed and overstated as a performance win.
+The path still has no live caller. This change is interface correctness for a
+repository method that may be called later; it is not a measured performance
+win and must not be presented as one.
+
+### D4 — Discard All has atomic admission, not cross-domain rollback
+
+Unified **Discard All** acquires the song discard lease for the active
+`(userId, organizationId)` before starting either song or planning work. If a
+song sync already owns that context, the operation returns typed
+`UnifiedDiscardResult.syncInProgress` immediately and neither domain changes.
+The UI tells the user that sync is in progress and to try again when it
+finishes; it does not route this expected contention through the generic
+discard-failure message.
+
+After admission, song and planning discards run as best-effort domain
+operations. This boundary guarantees atomic rejection before either domain
+starts, not a transaction across the separate domain stores and not
+compensating rollback if an unexpected per-entry failure occurs after work has
+started.
 
 ## Non-Goals
 
@@ -174,6 +208,17 @@ rather than being quietly fixed and overstated as a performance win.
    only in a pending `planCreate` mutation and not in the projection. This is
    the trap in the optimisation and must fail if the pending-create branch is
    removed.
+9. **Sync and discard are mutually exclusive per user and organization.** A
+   discard attempted during an owned sync returns `syncInProgress` immediately,
+   makes no local change, and does not invoke its refresh; another organization
+   remains independent.
+10. **Sync queued behind discard snapshots afterwards.** Concurrent sync calls
+    made during a discard share one queued future, start only after lease
+    release, and do not send the discarded mutation.
+11. **Discard All rejects before either domain.** When song sync owns the
+    active context, the typed unified result is `syncInProgress` and neither
+    song nor planning discard starts; the popup shows dedicated wait-for-sync
+    guidance rather than the generic failure message.
 
 ## Documentation
 
