@@ -102,10 +102,11 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
       _dialogOpen = false;
     }
     if (!mounted) return;
-    // Superseded requests are already cleared (and their dialog already
-    // popped) by the listener above, so this answer targets a stale
-    // requestId and the controller's own id check turns it into a no-op --
-    // it never reaches a newer prompt.
+    // For a live request this resolves the pending future with the user's
+    // answer. If [prompt] was superseded instead -- the listener above
+    // already cleared and popped it before this await returned -- the
+    // controller's own requestId check turns this into a no-op: it can
+    // never resolve or otherwise touch a newer prompt.
     ref
         .read(reauthPromptControllerProvider)
         .answer(confirmed, requestId: prompt.requestId);
