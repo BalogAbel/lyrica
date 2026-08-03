@@ -42,33 +42,51 @@ class ReauthSuperseded extends ReauthOutcome {
 /// resolves true when count is nonzero or unknown (tests assert ordering —
 /// no wipe until confirm). Unknown is deliberately NOT treated as zero: only
 /// a count that was actually read as zero skips the prompt.
-Future<ReauthOutcome> resolveReauth({
+///
+/// Side-effect callbacks may return `false` to report that a last-moment
+/// currentness guard prevented the action. A false report resolves as
+/// [ReauthSuperseded], so the outcome never claims a wipe or cancellation
+/// that did not actually run. Legacy void callbacks remain supported by the
+/// generic result types and are treated as having run.
+Future<ReauthOutcome> resolveReauth<FlushResult, WipeResult, CancelResult>({
   required String newUserId,
   required String? priorUserId,
   required String? priorEmail,
   required Future<int?> Function() priorPendingCount,
-  required Future<void> Function() flushSameUser,
-  required Future<void> Function() wipePriorAndProceed,
+  required Future<FlushResult> Function() flushSameUser,
+  required Future<WipeResult> Function() wipePriorAndProceed,
   required Future<ReauthPromptResult> Function({
     required String email,
     required int? pendingCount,
   })
   confirmDifferentUser,
-  required Future<void> Function() cancelToPriorUser,
+  required Future<CancelResult> Function() cancelToPriorUser,
+  bool Function()? isCurrent,
 }) async {
+  bool current() => isCurrent?.call() ?? true;
+
+  if (!current()) {
+    return const ReauthSuperseded();
+  }
+
   // Same user or no prior identity: proceed as same-user
   if (priorUserId == null || priorUserId == newUserId) {
-    await flushSameUser();
+    if (await flushSameUser() == false) {
+      return const ReauthSuperseded();
+    }
     return const ReauthProceededSameUser();
   }
 
   // Different user: check pending count. null means "could not be
   // determined" and must NOT be treated as zero.
   final count = await priorPendingCount();
+  if (!current()) return const ReauthSuperseded();
 
   if (count == 0) {
     // No pending data: safe to wipe without confirmation
-    await wipePriorAndProceed();
+    if (await wipePriorAndProceed() == false) {
+      return const ReauthSuperseded();
+    }
     return const ReauthWipedPriorAndProceeded();
   }
 
@@ -79,14 +97,21 @@ Future<ReauthOutcome> resolveReauth({
     pendingCount: count,
   );
 
+  if (promptResult == ReauthPromptResult.superseded || !current()) {
+    return const ReauthSuperseded();
+  }
+
   if (promptResult == ReauthPromptResult.confirmed) {
-    await wipePriorAndProceed();
+    if (await wipePriorAndProceed() == false) {
+      return const ReauthSuperseded();
+    }
     return const ReauthWipedPriorAndProceeded();
   } else if (promptResult == ReauthPromptResult.cancelled) {
-    await cancelToPriorUser();
+    if (await cancelToPriorUser() == false) {
+      return const ReauthSuperseded();
+    }
     return const ReauthCancelledKeptPriorUser();
   }
 
-  // Typed seam only. Task 4 implements the superseded outcome behavior.
-  return const ReauthCancelledKeptPriorUser();
+  return const ReauthSuperseded();
 }

@@ -76,8 +76,10 @@ class ReauthPromptController extends ChangeNotifier {
   /// exactly like `showReauthDifferentUserDialog` returns -- never translate
   /// a missing answer into a confirm.
   void answer(bool confirmed, {int? requestId}) {
+    final pending = _pending;
     final completer = _completer;
-    if (completer == null) return;
+    if (pending == null || completer == null) return;
+    if (requestId != null && requestId != pending.requestId) return;
     _pending = null;
     _completer = null;
     notifyListeners();
@@ -87,7 +89,12 @@ class ReauthPromptController extends ChangeNotifier {
   }
 
   /// Invalidates any request belonging to an obsolete auth transition.
-  ///
-  /// The GREEN implementation is intentionally deferred to the next task.
-  void supersedePending() {}
+  void supersedePending() {
+    final completer = _completer;
+    if (_pending == null || completer == null) return;
+    _pending = null;
+    _completer = null;
+    notifyListeners();
+    completer.complete(ReauthPromptResult.superseded);
+  }
 }

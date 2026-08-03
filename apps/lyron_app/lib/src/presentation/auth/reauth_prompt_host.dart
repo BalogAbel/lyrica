@@ -17,22 +17,48 @@ import 'package:lyron_app/src/presentation/auth/reauth_different_user_dialog.dar
 /// widget (and so never rebuilds [child] or anything below it) -- the
 /// listener callback shows the dialog imperatively and feeds the answer
 /// back, entirely outside the widget tree's rebuild cycle.
-class ReauthPromptHost extends ConsumerWidget {
+class ReauthPromptHost extends ConsumerStatefulWidget {
   const ReauthPromptHost({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen<ReauthPrompt?>(
+  ConsumerState<ReauthPromptHost> createState() => _ReauthPromptHostState();
+}
+
+class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
+  ProviderSubscription<ReauthPrompt?>? _subscription;
+  int? _activeRequestId;
+
+  @override
+  void initState() {
+    super.initState();
+    _subscription = ref.listenManual<ReauthPrompt?>(
       reauthPromptControllerProvider.select((controller) => controller.pending),
       (previous, next) {
-        if (next != null) {
-          unawaited(_showPrompt(context, ref, next));
+        if (next != null && next.requestId != _activeRequestId) {
+          _activeRequestId = next.requestId;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _activeRequestId != next.requestId) return;
+            final pending = ref.read(reauthPromptControllerProvider).pending;
+            if (pending?.requestId != next.requestId) return;
+            unawaited(_showPrompt(context, ref, next));
+          });
         }
       },
+      fireImmediately: true,
     );
-    return child;
+  }
+
+  @override
+  void dispose() {
+    _subscription?.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.child;
   }
 
   Future<void> _showPrompt(
@@ -45,6 +71,12 @@ class ReauthPromptHost extends ConsumerWidget {
       email: prompt.email,
       pendingCount: prompt.pendingCount,
     );
-    ref.read(reauthPromptControllerProvider).answer(confirmed);
+    if (!mounted) return;
+    ref
+        .read(reauthPromptControllerProvider)
+        .answer(confirmed, requestId: prompt.requestId);
+    if (_activeRequestId == prompt.requestId) {
+      _activeRequestId = null;
+    }
   }
 }

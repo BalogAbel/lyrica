@@ -79,6 +79,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   final authController = ref.read(appAuthControllerProvider);
   final identityStore = ref.watch(lastKnownIdentityStoreProvider);
   final epoch = ref.watch(lastKnownIdentityPersistenceEpochProvider);
+  final promptController = ref.read(reauthPromptControllerProvider);
 
   // Serializes signedIn-edge resolutions: only one persistIdentity call is
   // ever in flight at a time (see scheduleIdentityResolution below). Two
@@ -90,19 +91,40 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   // ReauthPromptController.
   var resolutionChain = Future<void>.value();
 
-  Future<void> persistIdentity(AppAuthState authState) async {
-    final generation = epoch.invalidate();
+  bool isCurrent(
+    int generation,
+    AppAuthStatus expectedStatus,
+    AppAuthSession? expectedSession,
+  ) {
+    if (!epoch.isCurrent(generation)) return false;
+    final liveState = authController.state;
+    if (liveState.status != expectedStatus) return false;
+    if (expectedStatus != AppAuthStatus.signedIn) return true;
+    final liveSession = liveState.session;
+    return expectedSession != null &&
+        liveSession != null &&
+        liveSession.userId == expectedSession.userId &&
+        liveSession.email == expectedSession.email;
+  }
+
+  Future<void> persistIdentity(
+    AppAuthState authState,
+    int generation,
+    AppAuthSession? capturedSession,
+  ) async {
+    if (!isCurrent(generation, authState.status, capturedSession)) return;
 
     switch (authState.status) {
       case AppAuthStatus.initializing:
         return;
       case AppAuthStatus.signedOut:
+        if (!isCurrent(generation, AppAuthStatus.signedOut, null)) return;
         await identityStore.clear();
         return;
       case AppAuthStatus.sessionExpired:
         return;
       case AppAuthStatus.signedIn:
-        final session = authState.session;
+        final session = capturedSession;
         if (session == null) {
           return;
         }
@@ -123,6 +145,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // immediately before it runs, not only once up front. See ADR-020,
         // ADR-029, and Finding 3 in the reauth review.
         final priorIdentity = await identityStore.read();
+        if (!isCurrent(generation, AppAuthStatus.signedIn, session)) return;
 
         ActiveOrganizationResolution? resolution;
         try {
@@ -135,27 +158,22 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           // later successful resolution.
           resolution = null;
         }
-        final currentState = authController.state;
-        final currentSession = currentState.session;
-        if (currentState.status != AppAuthStatus.signedIn ||
-            currentSession == null ||
-            currentSession.userId != session.userId ||
-            currentSession.email != session.email ||
-            !epoch.isCurrent(generation)) {
-          return;
-        }
+        if (!isCurrent(generation, AppAuthStatus.signedIn, session)) return;
 
-        Future<void> persistNewIdentity() async {
-          if (!epoch.isCurrent(generation)) {
+        Future<bool> persistNewIdentity() async {
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             // A verified-empty membership cleanup (or another superseding
             // resolution) advanced the epoch after this resolution passed
             // its entry check above. Re-checking here, immediately before
             // the terminal identity write, stops a superseded resolution
             // from clobbering a newer write -- see Finding 3.
-            return;
+            return false;
           }
           switch (resolution) {
             case ActiveOrganizationSelected(:final organizationId):
+              if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+                return false;
+              }
               await identityStore.write(
                 LastKnownIdentity(
                   userId: session.userId,
@@ -164,10 +182,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 ),
               );
             case ActiveOrganizationVerifiedEmpty():
+              if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+                return false;
+              }
               await identityStore.clear();
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
             case null:
+              if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+                return false;
+              }
               await identityStore.write(
                 LastKnownIdentity(
                   userId: session.userId,
@@ -176,6 +200,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 ),
               );
           }
+          return true;
         }
 
         // Returns null when a storage failure prevents determining the count.
@@ -187,41 +212,58 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // encoded as a fabricated count.
         Future<int?> countPriorPendingWork() async {
           final identity = priorIdentity!;
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return null;
+          }
           try {
-            return await ref
+            final count = await ref
                 .read(pendingLocalWorkCounterProvider)
                 .count(userId: identity.userId);
+            if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+              return null;
+            }
+            return count;
           } catch (_) {
             return null;
           }
         }
 
-        Future<void> wipePriorAndProceed() async {
+        Future<bool> wipePriorAndProceed() async {
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
           final priorUserId = priorIdentity!.userId;
-          await Future.wait([
-            ref
-                .read(songCatalogStoreProvider)
-                .deleteCatalogsForUser(userId: priorUserId),
-            ref
-                .read(planningLocalStoreProvider)
-                .deletePlanningDataForUser(userId: priorUserId),
-          ]);
-          if (!epoch.isCurrent(generation)) {
+          final songDeletion = ref
+              .read(songCatalogStoreProvider)
+              .deleteCatalogsForUser(userId: priorUserId);
+          final planningDeletion = ref
+              .read(planningLocalStoreProvider)
+              .deletePlanningDataForUser(userId: priorUserId);
+          await Future.wait([songDeletion, planningDeletion]);
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             // Same reasoning as persistNewIdentity's check, but ahead of
             // the clear that precedes it: don't let a superseded
             // resolution's clear-and-write race a concurrently firing
             // verified-empty cleanup for the same store -- see Finding 3.
-            return;
+            return false;
           }
           await identityStore.clear();
-          await persistNewIdentity();
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          return persistNewIdentity();
         }
 
-        Future<void> cancelToPriorUser() async {
+        Future<bool> cancelToPriorUser() async {
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
           final identity = priorIdentity!;
-          await authController.cancelReauthToPriorSession(
+          final cancellation = authController.cancelReauthToPriorSession(
             AppAuthSession(userId: identity.userId, email: identity.email),
           );
+          await cancellation;
+          return true;
         }
 
         await resolveReauth(
@@ -235,12 +277,19 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               .read(reauthPromptControllerProvider)
               .requestConfirmation,
           cancelToPriorUser: cancelToPriorUser,
+          isCurrent: () =>
+              isCurrent(generation, AppAuthStatus.signedIn, session),
         );
     }
   }
 
   void scheduleIdentityResolution(AppAuthState authState) {
-    final scheduled = resolutionChain.then((_) => persistIdentity(authState));
+    final generation = epoch.invalidate();
+    promptController.supersedePending();
+    final capturedSession = authState.session;
+    final scheduled = resolutionChain.then(
+      (_) => persistIdentity(authState, generation, capturedSession),
+    );
     // Keep the chain itself always-succeeding: one resolution failing must
     // not stall -- or, worse, silently poison -- every resolution queued
     // behind it. Each invocation's own failure is still delivered below,
