@@ -18,7 +18,10 @@ import 'package:lyron_app/src/shared/connectivity_failure.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
-  return DriftSongCatalogStore(ref.watch(songCatalogDatabaseProvider));
+  return DriftSongCatalogStore(
+    ref.watch(songCatalogDatabaseProvider),
+    onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+  );
 });
 
 final supabaseSongRepositoryProvider = Provider<SupabaseSongRepository>((ref) {

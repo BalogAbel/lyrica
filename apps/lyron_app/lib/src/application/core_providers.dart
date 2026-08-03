@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
@@ -59,6 +60,15 @@ final localStorageBudgetProvider = Provider<LocalStorageBudget>((ref) {
 /// Monotonic invalidation seam for SQL-derived local-storage measurements.
 final localStorageFootprintRevisionProvider = StateProvider<int>((ref) => 0);
 
+/// The shared production callback injected into every concrete storage
+/// boundary that can change the SQL-measured local-storage footprint.
+final localStorageFootprintChangedProvider =
+    Provider<LocalStorageFootprintChanged>((ref) {
+      return () {
+        ref.read(localStorageFootprintRevisionProvider.notifier).state += 1;
+      };
+    });
+
 final planningStorageAccountantProvider = Provider<PlanningStorageAccountant>((
   ref,
 ) {
@@ -75,6 +85,7 @@ final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
   return SongCatalogEvictor(
     database: ref.watch(songCatalogDatabaseProvider),
     accountant: ref.watch(catalogStorageAccountantProvider),
+    onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
   );
 });
 

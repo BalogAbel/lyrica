@@ -20,10 +20,12 @@ class SongCatalogEvictor {
     required CatalogStorageAccountant accountant,
     LocalStorageFootprintChanged? onStorageFootprintChanged,
   }) : _database = database,
-       _accountant = accountant;
+       _accountant = accountant,
+       _onStorageFootprintChanged = onStorageFootprintChanged;
 
   final SongCatalogDatabase _database;
   final CatalogStorageAccountant _accountant;
+  final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
   /// Returns the estimated bytes freed.
   ///
@@ -42,14 +44,18 @@ class SongCatalogEvictor {
     if (droppableBytes == 0) {
       return 0;
     }
-    await _database.customStatement(
+    final deletedRows = await _database.customUpdate(
       'DELETE FROM cached_catalog_sources AS s '
       'WHERE NOT EXISTS ('
       'SELECT 1 FROM cached_catalog_song_mutations AS m '
       'WHERE m.user_id = s.user_id '
       'AND m.organization_id = s.organization_id '
       'AND m.song_id = s.song_id)',
+      updates: {_database.cachedCatalogSources},
     );
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
     return droppableBytes;
   }
 }

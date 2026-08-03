@@ -190,9 +190,10 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   const DriftPlanningLocalStore(
     this._database, {
     LocalStorageFootprintChanged? onStorageFootprintChanged,
-  });
+  }) : _onStorageFootprintChanged = onStorageFootprintChanged;
 
   final PlanningLocalDatabase _database;
+  final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
   @override
   Future<void> replaceActiveProjection({
@@ -218,7 +219,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               .getSingleOrNull();
       final nextSnapshotVersion = (currentOwner?.snapshotVersion ?? 0) + 1;
 
-      await deletePlanningProjection(
+      await _deletePlanningProjectionRows(
         userId: userId,
         organizationId: organizationId,
       );
@@ -295,6 +296,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       });
       _ensureProjectionCurrent(shouldContinue);
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -530,43 +532,53 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required String organizationId,
     bool Function()? shouldContinue,
   }) async {
-    await _database.transaction(() async {
+    final deletedRows = await _database.transaction(() async {
+      var deletedRows = 0;
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(_database.cachedPlanningMutations)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(_database.cachedPlanningSessionItems)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedPlanningSessionItems)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedPlanningSessions)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(_database.cachedPlanningPlans)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedPlanningPlans)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(_database.planningProjectionOwners)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+      deletedRows +=
+          await (_database.delete(_database.planningProjectionOwners)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
+      return deletedRows;
     });
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -574,28 +586,33 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required String userId,
     bool Function()? shouldContinue,
   }) async {
-    await _database.transaction(() async {
+    final deletedRows = await _database.transaction(() async {
+      var deletedRows = 0;
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedPlanningMutations,
       )..where((table) => table.userId.equals(userId))).go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedPlanningSessionItems,
       )..where((table) => table.userId.equals(userId))).go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedPlanningSessions,
       )..where((table) => table.userId.equals(userId))).go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedPlanningPlans,
       )..where((table) => table.userId.equals(userId))).go();
       _ensureProjectionCurrent(shouldContinue);
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.planningProjectionOwners,
       )..where((table) => table.userId.equals(userId))).go();
+      return deletedRows;
     });
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -605,29 +622,23 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required CachedPlanRecord plan,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
-      await _database
-          .into(_database.cachedPlanningPlans)
-          .insertOnConflictUpdate(
-            CachedPlanningPlansCompanion.insert(
-              userId: userId,
-              organizationId: organizationId,
-              snapshotVersion: owner.snapshotVersion,
-              planId: plan.id,
-              slug: plan.slug,
-              name: plan.name,
-              description: Value(plan.description),
-              scheduledFor: Value(plan.scheduledFor?.toUtc()),
-              updatedAt: plan.updatedAt.toUtc(),
-              version: plan.version,
-            ),
-          );
+      final rowChanged = await _upsertPlanRow(
+        userId: userId,
+        organizationId: organizationId,
+        snapshotVersion: ensuredOwner.owner.snapshotVersion,
+        plan: plan,
+      );
+      return ensuredOwner.changed || rowChanged;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -637,28 +648,23 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required CachedSessionRecord session,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
-      await _database
-          .into(_database.cachedPlanningSessions)
-          .insertOnConflictUpdate(
-            CachedPlanningSessionsCompanion.insert(
-              userId: userId,
-              organizationId: organizationId,
-              snapshotVersion: owner.snapshotVersion,
-              sessionId: session.id,
-              planId: session.planId,
-              slug: session.slug,
-              position: session.position,
-              name: session.name,
-              version: session.version,
-            ),
-          );
+      final rowChanged = await _upsertSessionRow(
+        userId: userId,
+        organizationId: organizationId,
+        snapshotVersion: ensuredOwner.owner.snapshotVersion,
+        session: session,
+      );
+      return ensuredOwner.changed || rowChanged;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -668,29 +674,41 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required String sessionId,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
-      await (_database.delete(_database.cachedPlanningSessionItems)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionId.equals(sessionId),
-          ))
-          .go();
-      await (_database.delete(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionId.equals(sessionId),
-          ))
-          .go();
+      var changed = ensuredOwner.changed;
+      final owner = ensuredOwner.owner;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessionItems)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.sessionId.equals(sessionId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessions)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.sessionId.equals(sessionId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      return changed;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -703,37 +721,50 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required int planVersion,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
+      final owner = ensuredOwner.owner;
+      var changed = ensuredOwner.changed;
       for (var index = 0; index < orderedSessionIds.length; index += 1) {
         final position =
             orderedSessionPositions != null &&
                 index < orderedSessionPositions.length
             ? orderedSessionPositions[index]
             : index + 1;
-        await (_database.update(_database.cachedPlanningSessions)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion) &
-                  table.planId.equals(planId) &
-                  table.sessionId.equals(orderedSessionIds[index]),
-            ))
-            .write(CachedPlanningSessionsCompanion(position: Value(position)));
+        final updatedRows =
+            await (_database.update(_database.cachedPlanningSessions)..where(
+                  (table) =>
+                      table.userId.equals(userId) &
+                      table.organizationId.equals(organizationId) &
+                      table.snapshotVersion.equals(owner.snapshotVersion) &
+                      table.planId.equals(planId) &
+                      table.sessionId.equals(orderedSessionIds[index]) &
+                      table.position.equals(position).not(),
+                ))
+                .write(
+                  CachedPlanningSessionsCompanion(position: Value(position)),
+                );
+        changed = updatedRows > 0 || changed;
       }
-      await (_database.update(_database.cachedPlanningPlans)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.planId.equals(planId),
-          ))
-          .write(CachedPlanningPlansCompanion(version: Value(planVersion)));
+      final updatedPlanRows =
+          await (_database.update(_database.cachedPlanningPlans)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.planId.equals(planId) &
+                    table.version.equals(planVersion).not(),
+              ))
+              .write(CachedPlanningPlansCompanion(version: Value(planVersion)));
+      return updatedPlanRows > 0 || changed;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -744,38 +775,39 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required int sessionVersion,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
-      await _database
-          .into(_database.cachedPlanningSessionItems)
-          .insertOnConflictUpdate(
-            CachedPlanningSessionItemsCompanion.insert(
-              userId: userId,
-              organizationId: organizationId,
-              snapshotVersion: owner.snapshotVersion,
-              sessionItemId: item.id,
-              planId: item.planId,
-              sessionId: item.sessionId,
-              position: item.position,
-              songId: item.songId,
-              songTitle: item.songTitle,
-            ),
-          );
-      await (_database.update(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionId.equals(item.sessionId),
-          ))
-          .write(
-            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
-          );
+      final owner = ensuredOwner.owner;
+      var changed = ensuredOwner.changed;
+      changed =
+          await _upsertSessionItemRow(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: owner.snapshotVersion,
+            item: item,
+          ) ||
+          changed;
+      final updatedSessionRows =
+          await (_database.update(_database.cachedPlanningSessions)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.sessionId.equals(item.sessionId) &
+                    table.version.equals(sessionVersion).not(),
+              ))
+              .write(
+                CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+              );
+      return updatedSessionRows > 0 || changed;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -787,31 +819,42 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required int sessionVersion,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
-      await (_database.delete(_database.cachedPlanningSessionItems)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionItemId.equals(sessionItemId),
-          ))
-          .go();
-      await (_database.update(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionId.equals(sessionId),
-          ))
-          .write(
-            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
-          );
+      final owner = ensuredOwner.owner;
+      var changed = ensuredOwner.changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessionItems)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.sessionItemId.equals(sessionItemId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      final updatedSessionRows =
+          await (_database.update(_database.cachedPlanningSessions)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.sessionId.equals(sessionId) &
+                    table.version.equals(sessionVersion).not(),
+              ))
+              .write(
+                CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+              );
+      return updatedSessionRows > 0 || changed;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -824,44 +867,184 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required int sessionVersion,
     required DateTime refreshedAt,
   }) async {
-    await _database.transaction(() async {
-      final owner = await _ensureOwner(
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
+      final owner = ensuredOwner.owner;
+      var changed = ensuredOwner.changed;
       for (var index = 0; index < orderedSessionItemIds.length; index += 1) {
         final position =
             orderedSessionItemPositions != null &&
                 index < orderedSessionItemPositions.length
             ? orderedSessionItemPositions[index]
             : index + 1;
-        await (_database.update(_database.cachedPlanningSessionItems)..where(
+        final updatedRows =
+            await (_database.update(
+                  _database.cachedPlanningSessionItems,
+                )..where(
+                  (table) =>
+                      table.userId.equals(userId) &
+                      table.organizationId.equals(organizationId) &
+                      table.snapshotVersion.equals(owner.snapshotVersion) &
+                      table.sessionId.equals(sessionId) &
+                      table.sessionItemId.equals(orderedSessionItemIds[index]) &
+                      table.position.equals(position).not(),
+                ))
+                .write(
+                  CachedPlanningSessionItemsCompanion(
+                    position: Value(position),
+                  ),
+                );
+        changed = updatedRows > 0 || changed;
+      }
+      final updatedSessionRows =
+          await (_database.update(_database.cachedPlanningSessions)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.snapshotVersion.equals(owner.snapshotVersion) &
+                    table.sessionId.equals(sessionId) &
+                    table.version.equals(sessionVersion).not(),
+              ))
+              .write(
+                CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
+              );
+      return updatedSessionRows > 0 || changed;
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  Future<bool> _upsertPlanRow({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required CachedPlanRecord plan,
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedPlanningPlans)..where(
               (table) =>
                   table.userId.equals(userId) &
                   table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion) &
-                  table.sessionId.equals(sessionId) &
-                  table.sessionItemId.equals(orderedSessionItemIds[index]),
+                  table.snapshotVersion.equals(snapshotVersion) &
+                  table.planId.equals(plan.id),
             ))
-            .write(
-              CachedPlanningSessionItemsCompanion(position: Value(position)),
-            );
-      }
-      await (_database.update(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.snapshotVersion.equals(owner.snapshotVersion) &
-                table.sessionId.equals(sessionId),
-          ))
-          .write(
-            CachedPlanningSessionsCompanion(version: Value(sessionVersion)),
-          );
-    });
+            .getSingleOrNull();
+    if (existing != null &&
+        existing.slug == plan.slug &&
+        existing.name == plan.name &&
+        existing.description == plan.description &&
+        existing.scheduledFor?.toUtc() == plan.scheduledFor?.toUtc() &&
+        existing.updatedAt.toUtc() == plan.updatedAt.toUtc() &&
+        existing.version == plan.version) {
+      return false;
+    }
+    await _database
+        .into(_database.cachedPlanningPlans)
+        .insertOnConflictUpdate(
+          CachedPlanningPlansCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            planId: plan.id,
+            slug: plan.slug,
+            name: plan.name,
+            description: Value(plan.description),
+            scheduledFor: Value(plan.scheduledFor?.toUtc()),
+            updatedAt: plan.updatedAt.toUtc(),
+            version: plan.version,
+          ),
+        );
+    return true;
   }
 
-  Future<PlanningProjectionOwner> _ensureOwner({
+  Future<bool> _upsertSessionRow({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required CachedSessionRecord session,
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedPlanningSessions)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(snapshotVersion) &
+                  table.sessionId.equals(session.id),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        existing.planId == session.planId &&
+        existing.slug == session.slug &&
+        existing.position == session.position &&
+        existing.name == session.name &&
+        existing.version == session.version) {
+      return false;
+    }
+    await _database
+        .into(_database.cachedPlanningSessions)
+        .insertOnConflictUpdate(
+          CachedPlanningSessionsCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            sessionId: session.id,
+            planId: session.planId,
+            slug: session.slug,
+            position: session.position,
+            name: session.name,
+            version: session.version,
+          ),
+        );
+    return true;
+  }
+
+  Future<bool> _upsertSessionItemRow({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required CachedSessionItemRecord item,
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedPlanningSessionItems)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(snapshotVersion) &
+                  table.sessionItemId.equals(item.id),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        existing.planId == item.planId &&
+        existing.sessionId == item.sessionId &&
+        existing.position == item.position &&
+        existing.songId == item.songId &&
+        existing.songTitle == item.songTitle) {
+      return false;
+    }
+    await _database
+        .into(_database.cachedPlanningSessionItems)
+        .insertOnConflictUpdate(
+          CachedPlanningSessionItemsCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            sessionItemId: item.id,
+            planId: item.planId,
+            sessionId: item.sessionId,
+            position: item.position,
+            songId: item.songId,
+            songTitle: item.songTitle,
+          ),
+        );
+    return true;
+  }
+
+  Future<_EnsuredProjectionOwner> _ensureOwner({
     required String userId,
     required String organizationId,
     required DateTime refreshedAt,
@@ -871,17 +1054,20 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       organizationId: organizationId,
     );
     if (existingOwner != null) {
-      await (_database.update(_database.planningProjectionOwners)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .write(
-            PlanningProjectionOwnersCompanion(
-              refreshedAt: Value(refreshedAt.toUtc()),
-            ),
-          );
-      return existingOwner;
+      final changed = existingOwner.refreshedAt.toUtc() != refreshedAt.toUtc();
+      if (changed) {
+        await (_database.update(_database.planningProjectionOwners)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .write(
+              PlanningProjectionOwnersCompanion(
+                refreshedAt: Value(refreshedAt.toUtc()),
+              ),
+            );
+      }
+      return _EnsuredProjectionOwner(owner: existingOwner, changed: changed);
     }
 
     await _database
@@ -894,39 +1080,64 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             refreshedAt: refreshedAt.toUtc(),
           ),
         );
-    return (await _readOwner(userId: userId, organizationId: organizationId))!;
+    return _EnsuredProjectionOwner(
+      owner: (await _readOwner(
+        userId: userId,
+        organizationId: organizationId,
+      ))!,
+      changed: true,
+    );
   }
 
   Future<void> deletePlanningProjection({
     required String userId,
     required String organizationId,
   }) async {
-    await _database.transaction(() async {
-      await (_database.delete(_database.cachedPlanningSessionItems)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
-      await (_database.delete(_database.cachedPlanningSessions)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
-      await (_database.delete(_database.cachedPlanningPlans)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
-      await (_database.delete(_database.planningProjectionOwners)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
-    });
+    final deletedRows = await _database.transaction(
+      () => _deletePlanningProjectionRows(
+        userId: userId,
+        organizationId: organizationId,
+      ),
+    );
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  Future<int> _deletePlanningProjectionRows({
+    required String userId,
+    required String organizationId,
+  }) async {
+    var deletedRows = 0;
+    deletedRows +=
+        await (_database.delete(_database.cachedPlanningSessionItems)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    deletedRows +=
+        await (_database.delete(_database.cachedPlanningSessions)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    deletedRows +=
+        await (_database.delete(_database.cachedPlanningPlans)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    deletedRows +=
+        await (_database.delete(_database.planningProjectionOwners)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    return deletedRows;
   }
 
   Future<PlanningProjectionOwner?> _readOwner({
@@ -1008,4 +1219,11 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       throw const PlanningProjectionAbortedException();
     }
   }
+}
+
+class _EnsuredProjectionOwner {
+  const _EnsuredProjectionOwner({required this.owner, required this.changed});
+
+  final PlanningProjectionOwner owner;
+  final bool changed;
 }

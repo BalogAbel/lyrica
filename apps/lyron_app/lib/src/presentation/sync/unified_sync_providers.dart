@@ -41,6 +41,7 @@ T _safeWatch<T>(T Function() read, T fallback) {
 /// via [planningPlanTitlesProvider].
 final localStorageFootprintProvider =
     FutureProvider.autoDispose<LocalStorageFootprint>((ref) async {
+      ref.watch(localStorageFootprintRevisionProvider);
       final context = ref.watch(activePlanningContextProvider);
       if (context == null) {
         return const LocalStorageFootprint.empty();

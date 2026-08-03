@@ -165,9 +165,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
   const DriftSongCatalogStore(
     this._database, {
     LocalStorageFootprintChanged? onStorageFootprintChanged,
-  });
+  }) : _onStorageFootprintChanged = onStorageFootprintChanged;
 
   final SongCatalogDatabase _database;
+  final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
   @override
   Future<void> replaceActiveSnapshot({
@@ -236,6 +237,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
         );
       });
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -414,6 +416,15 @@ class DriftSongCatalogStore implements SongCatalogStore {
       throw const LocalSongSlugConflictException();
     }
 
+    final existing = await readSongMutationBySongId(
+      userId: mutation.userId,
+      organizationId: mutation.organizationId,
+      songId: mutation.songId,
+    );
+    if (existing != null && _matchesSongMutation(existing, mutation)) {
+      return;
+    }
+
     await _database
         .into(_database.cachedCatalogSongMutations)
         .insertOnConflictUpdate(
@@ -430,6 +441,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
             syncErrorContext: Value(mutation.syncErrorContext),
           ),
         );
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -582,29 +594,37 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String organizationId,
     required String songId,
   }) async {
-    await _database.transaction(() async {
-      await (_database.delete(_database.cachedCatalogSongMutations)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.songId.equals(songId),
-          ))
-          .go();
-      await (_database.delete(_database.cachedCatalogSummaries)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.songId.equals(songId),
-          ))
-          .go();
-      await (_database.delete(_database.cachedCatalogSources)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.songId.equals(songId),
-          ))
-          .go();
+    final deletedRows = await _database.transaction(() async {
+      var deletedRows = 0;
+      deletedRows +=
+          await (_database.delete(_database.cachedCatalogSongMutations)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.songId.equals(songId),
+              ))
+              .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedCatalogSummaries)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.songId.equals(songId),
+              ))
+              .go();
+      deletedRows +=
+          await (_database.delete(_database.cachedCatalogSources)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.songId.equals(songId),
+              ))
+              .go();
+      return deletedRows;
     });
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -614,7 +634,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required SongSummary summary,
     required SongSource source,
   }) async {
-    await _database.transaction(() async {
+    final changed = await _database.transaction(() async {
+      var changed = false;
       final activeSnapshot =
           await (_database.select(_database.cachedCatalogSnapshots)..where(
                 (table) =>
@@ -633,41 +654,41 @@ class DriftSongCatalogStore implements SongCatalogStore {
                 refreshedAt: DateTime.now().toUtc(),
               ),
             );
+        changed = true;
       }
       final snapshotVersion = activeSnapshot?.snapshotVersion ?? 1;
 
-      await (_database.delete(_database.cachedCatalogSongMutations)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId) &
-                table.songId.equals(summary.id),
-          ))
-          .go();
-      await _database
-          .into(_database.cachedCatalogSummaries)
-          .insertOnConflictUpdate(
-            CachedCatalogSummariesCompanion.insert(
-              userId: userId,
-              organizationId: organizationId,
-              snapshotVersion: snapshotVersion,
-              songId: summary.id,
-              slug: summary.slug,
-              title: summary.title,
-              version: summary.version,
-            ),
-          );
-      await _database
-          .into(_database.cachedCatalogSources)
-          .insertOnConflictUpdate(
-            CachedCatalogSourcesCompanion.insert(
-              userId: userId,
-              organizationId: organizationId,
-              snapshotVersion: snapshotVersion,
-              songId: source.id,
-              source: source.source,
-            ),
-          );
+      changed =
+          await (_database.delete(_database.cachedCatalogSongMutations)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.songId.equals(summary.id),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await _upsertSummaryRow(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            summary: summary,
+          ) ||
+          changed;
+      changed =
+          await _upsertSourceRow(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            source: source,
+          ) ||
+          changed;
+      return changed;
     });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -676,13 +697,17 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String organizationId,
     required String songId,
   }) async {
-    await (_database.delete(_database.cachedCatalogSongMutations)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId) &
-              table.songId.equals(songId),
-        ))
-        .go();
+    final deletedRows =
+        await (_database.delete(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(songId),
+            ))
+            .go();
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -690,33 +715,132 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String userId,
     required String organizationId,
   }) async {
-    await _database.transaction(() async {
-      await _deleteCatalogRows(userId: userId, organizationId: organizationId);
-      await (_database.delete(_database.cachedCatalogSnapshots)..where(
-            (table) =>
-                table.userId.equals(userId) &
-                table.organizationId.equals(organizationId),
-          ))
-          .go();
+    final deletedRows = await _database.transaction(() async {
+      var deletedRows = await _deleteCatalogRows(
+        userId: userId,
+        organizationId: organizationId,
+      );
+      deletedRows +=
+          await (_database.delete(_database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .go();
+      return deletedRows;
     });
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
   Future<void> deleteCatalogsForUser({required String userId}) async {
-    await _database.transaction(() async {
-      await (_database.delete(
+    final deletedRows = await _database.transaction(() async {
+      var deletedRows = 0;
+      deletedRows += await (_database.delete(
         _database.cachedCatalogSongMutations,
       )..where((table) => table.userId.equals(userId))).go();
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedCatalogSummaries,
       )..where((table) => table.userId.equals(userId))).go();
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedCatalogSources,
       )..where((table) => table.userId.equals(userId))).go();
-      await (_database.delete(
+      deletedRows += await (_database.delete(
         _database.cachedCatalogSnapshots,
       )..where((table) => table.userId.equals(userId))).go();
+      return deletedRows;
     });
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  bool _matchesSongMutation(
+    CachedCatalogSongMutation existing,
+    SongCatalogMutationDraft mutation,
+  ) {
+    return existing.userId == mutation.userId &&
+        existing.organizationId == mutation.organizationId &&
+        existing.songId == mutation.songId &&
+        existing.slug == mutation.slug &&
+        existing.title == mutation.title &&
+        existing.source == mutation.source &&
+        existing.version == mutation.version &&
+        existing.syncStatus == mutation.syncStatus.value &&
+        existing.baseVersion == mutation.baseVersion &&
+        existing.syncErrorContext == mutation.syncErrorContext;
+  }
+
+  Future<bool> _upsertSummaryRow({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required SongSummary summary,
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(summary.id),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        existing.snapshotVersion == snapshotVersion &&
+        existing.slug == summary.slug &&
+        existing.title == summary.title &&
+        existing.version == summary.version) {
+      return false;
+    }
+    await _database
+        .into(_database.cachedCatalogSummaries)
+        .insertOnConflictUpdate(
+          CachedCatalogSummariesCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            songId: summary.id,
+            slug: summary.slug,
+            title: summary.title,
+            version: summary.version,
+          ),
+        );
+    return true;
+  }
+
+  Future<bool> _upsertSourceRow({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required SongSource source,
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedCatalogSources)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(source.id),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        existing.snapshotVersion == snapshotVersion &&
+        existing.source == source.source) {
+      return false;
+    }
+    await _database
+        .into(_database.cachedCatalogSources)
+        .insertOnConflictUpdate(
+          CachedCatalogSourcesCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: snapshotVersion,
+            songId: source.id,
+            source: source.source,
+          ),
+        );
+    return true;
   }
 
   Future<Map<String, _VisibleSongRow>> _readVisibleSongs({
@@ -938,28 +1062,33 @@ class DriftSongCatalogStore implements SongCatalogStore {
     slugOwners.remove(slug);
   }
 
-  Future<void> _deleteCatalogRows({
+  Future<int> _deleteCatalogRows({
     required String userId,
     required String organizationId,
   }) async {
-    await (_database.delete(_database.cachedCatalogSummaries)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId),
-        ))
-        .go();
-    await (_database.delete(_database.cachedCatalogSources)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId),
-        ))
-        .go();
-    await (_database.delete(_database.cachedCatalogSongMutations)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId),
-        ))
-        .go();
+    var deletedRows = 0;
+    deletedRows +=
+        await (_database.delete(_database.cachedCatalogSummaries)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    deletedRows +=
+        await (_database.delete(_database.cachedCatalogSources)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    deletedRows +=
+        await (_database.delete(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .go();
+    return deletedRows;
   }
 
   Future<void> _deleteUserSnapshots({required String userId}) async {

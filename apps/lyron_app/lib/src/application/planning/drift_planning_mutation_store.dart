@@ -13,10 +13,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningLocalStore localStore,
     LocalStorageFootprintChanged? onStorageFootprintChanged,
   }) : _database = database,
-       _localStore = localStore;
+       _localStore = localStore,
+       _onStorageFootprintChanged = onStorageFootprintChanged;
 
   final PlanningLocalDatabase _database;
   final PlanningLocalStore _localStore;
+  final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
   @override
   Future<void> recordPlanCreate({
@@ -53,6 +55,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -121,6 +124,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -159,6 +163,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -207,6 +212,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -272,6 +278,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         sessionId: draft.sessionId,
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -308,6 +315,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -339,6 +347,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -397,6 +406,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         sessionItemId: draft.sessionItemId,
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -434,6 +444,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -614,7 +625,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     if (existing == null) {
       throw StateError('Planning mutation record not found: $aggregateId');
     }
-    await _upsertRecord(
+    final changed = await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
         organizationId: organizationId,
@@ -626,6 +637,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         errorMessage: errorMessage,
       ),
     );
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -650,7 +664,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       userId: userId,
       organizationId: organizationId,
     );
-    await _upsertRecord(
+    final changed = await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
         organizationId: organizationId,
@@ -664,6 +678,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         updatedAt: DateTime.now().toUtc(),
       ),
     );
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -672,23 +689,46 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) {
-    return (_database.delete(_database.cachedPlanningMutations)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId) &
-              table.aggregateType.equals(aggregateType) &
-              table.aggregateId.equals(aggregateId),
-        ))
-        .go();
+  }) async {
+    final deletedRows =
+        await (_database.delete(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(aggregateId),
+            ))
+            .go();
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
-  Future<void> _upsertRecord({
+  Future<bool> _upsertRecord({
     required PlanningMutationContext context,
     required String aggregateType,
     required PlanningMutationRecord record,
-  }) {
-    return _database
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(context.userId) &
+                  table.organizationId.equals(context.organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(record.aggregateId),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        _matchesPersistedRecord(
+          existing,
+          context: context,
+          aggregateType: aggregateType,
+          record: record,
+        )) {
+      return false;
+    }
+
+    await _database
         .into(_database.cachedPlanningMutations)
         .insertOnConflictUpdate(
           CachedPlanningMutationsCompanion.insert(
@@ -718,6 +758,39 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             updatedAt: record.updatedAt.toUtc(),
           ),
         );
+    return true;
+  }
+
+  bool _matchesPersistedRecord(
+    CachedPlanningMutation existing, {
+    required PlanningMutationContext context,
+    required String aggregateType,
+    required PlanningMutationRecord record,
+  }) {
+    return existing.userId == context.userId &&
+        existing.organizationId == context.organizationId &&
+        existing.aggregateType == aggregateType &&
+        existing.aggregateId == record.aggregateId &&
+        existing.mutationKind == record.kind.value &&
+        existing.syncStatus == record.syncStatus.value &&
+        existing.planId == record.planId &&
+        existing.sessionId == record.sessionId &&
+        existing.slug == record.slug &&
+        existing.name == record.name &&
+        existing.description == record.description &&
+        existing.scheduledFor?.toUtc() == record.scheduledFor?.toUtc() &&
+        existing.position == record.position &&
+        existing.songId == record.songId &&
+        existing.songTitle == record.songTitle &&
+        existing.orderedSiblingIds ==
+            _encodeJsonValue(record.orderedSiblingIds) &&
+        existing.baseVersion == record.baseVersion &&
+        existing.originSnapshotJson ==
+            _encodeJsonValue(record.originSnapshot) &&
+        existing.errorCode == record.errorCode?.name &&
+        existing.errorMessage == record.errorMessage &&
+        existing.orderKey == record.orderKey &&
+        existing.updatedAt.toUtc() == record.updatedAt.toUtc();
   }
 
   Future<int> _nextOrderKey({

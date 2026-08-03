@@ -105,7 +105,10 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
     });
 
 final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
-  return DriftPlanningLocalStore(ref.watch(planningLocalDatabaseProvider));
+  return DriftPlanningLocalStore(
+    ref.watch(planningLocalDatabaseProvider),
+    onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+  );
 });
 
 final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
@@ -113,6 +116,9 @@ final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
     delegate: DriftPlanningMutationStore(
       database: ref.watch(planningLocalDatabaseProvider),
       localStore: ref.watch(planningLocalStoreProvider),
+      onStorageFootprintChanged: ref.watch(
+        localStorageFootprintChangedProvider,
+      ),
     ),
     accountant: ref.watch(planningStorageAccountantProvider),
     evictor: ref.watch(songCatalogEvictorProvider),
