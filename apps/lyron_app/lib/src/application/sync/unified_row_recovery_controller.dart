@@ -1,10 +1,14 @@
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 
-/// Runs one song row's keep-mine or discard-mine, returning `true` if the
-/// operation failed. A thrown exception from the underlying sync call must
-/// never escape -- the widget half only needs to know whether to show its
-/// failure snackbar.
+enum UnifiedRowDiscardResult { discarded, syncInProgress, failed }
+
+/// Runs one song row's keep-mine, returning `true` if the operation failed.
 typedef UnifiedRowRecoverySongStep = Future<bool> Function(String songId);
+
+/// Preserves the expected sync-ownership rejection separately from an
+/// unexpected discard failure so the popup can give specific guidance.
+typedef UnifiedRowRecoveryDiscardSongStep =
+    Future<UnifiedRowDiscardResult> Function(String songId);
 
 /// Runs a plan group's retry-or-discard across every mutation ref, returning
 /// `true` if any of them failed. A partial failure across several refs is
@@ -29,19 +33,23 @@ typedef UnifiedRowRecoveryGroupStep =
 class UnifiedRowRecoveryController {
   UnifiedRowRecoveryController({
     required UnifiedRowRecoverySongStep keepMineStep,
-    required UnifiedRowRecoverySongStep discardMineStep,
+    required UnifiedRowRecoveryDiscardSongStep discardMineStep,
     required UnifiedRowRecoveryGroupStep applyToGroupStep,
   }) : _keepMineStep = keepMineStep,
        _discardMineStep = discardMineStep,
        _applyToGroupStep = applyToGroupStep;
 
   final UnifiedRowRecoverySongStep _keepMineStep;
-  final UnifiedRowRecoverySongStep _discardMineStep;
+  final UnifiedRowRecoveryDiscardSongStep _discardMineStep;
   final UnifiedRowRecoveryGroupStep _applyToGroupStep;
 
   Future<bool> keepMine(String songId) => _keepMineStep(songId);
 
-  Future<bool> discardMine(String songId) => _discardMineStep(songId);
+  Future<bool> discardMine(String songId) async =>
+      await discardMineResult(songId) != UnifiedRowDiscardResult.discarded;
+
+  Future<UnifiedRowDiscardResult> discardMineResult(String songId) =>
+      _discardMineStep(songId);
 
   Future<bool> applyToGroup(
     List<UnifiedSyncPlanMutationRef> refs, {

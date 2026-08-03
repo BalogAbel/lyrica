@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart'
     show SongSyncStatus;
+import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
+import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -104,7 +106,16 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
     if (confirmed != true) return;
     if (!context.mounted) return;
     try {
-      await ref.read(unifiedDiscardControllerProvider).discardAll();
+      final result = await ref
+          .read(unifiedDiscardControllerProvider)
+          .discardAll();
+      if (result == UnifiedDiscardResult.syncInProgress && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.unifiedSyncWaitForSyncMessage),
+          ),
+        );
+      }
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -204,15 +215,23 @@ class _SongRowTile extends ConsumerWidget {
   }
 
   Future<void> _discardMine(BuildContext context, WidgetRef ref) async {
-    final hadFailure = await ref
+    final result = await ref
         .read(unifiedRowRecoveryControllerProvider)
-        .discardMine(row.songId);
-    if (hadFailure && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(AppStrings.unifiedSyncActionFailedMessage),
-        ),
-      );
+        .discardMineResult(row.songId);
+    if (!context.mounted || result == UnifiedRowDiscardResult.discarded) {
+      return;
+    }
+    final message = switch (result) {
+      UnifiedRowDiscardResult.syncInProgress =>
+        AppStrings.unifiedSyncWaitForSyncMessage,
+      UnifiedRowDiscardResult.failed =>
+        AppStrings.unifiedSyncActionFailedMessage,
+      UnifiedRowDiscardResult.discarded => null,
+    };
+    if (message != null && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

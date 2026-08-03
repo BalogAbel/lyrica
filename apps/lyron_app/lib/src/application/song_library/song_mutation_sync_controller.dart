@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 
 typedef SongCatalogRefresh = Future<void> Function(SongMutationContext context);
@@ -33,6 +35,32 @@ class SongDiscardLeaseAcquisition {
   final SongDiscardLease? lease;
 }
 
+final class _SongContextKey {
+  const _SongContextKey({required this.userId, required this.organizationId});
+
+  final String userId;
+  final String organizationId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SongContextKey &&
+      other.userId == userId &&
+      other.organizationId == organizationId;
+
+  @override
+  int get hashCode => Object.hash(userId, organizationId);
+}
+
+sealed class _SongContextOperation {}
+
+final class _SongSyncOperation extends _SongContextOperation {
+  late final Future<void> future;
+}
+
+final class _SongDiscardOperation extends _SongContextOperation {
+  final Completer<void> released = Completer<void>();
+}
+
 class SongMutationSyncController {
   SongMutationSyncController({
     required SongMutationStore store,
@@ -46,25 +74,37 @@ class SongMutationSyncController {
   final SongMutationRemoteRepository _remoteRepository;
   final SongCatalogRefresh? _refreshCatalog;
 
-  // Single-flight keyed by sync context. This controller is an app-scoped
-  // singleton, so a global in-flight future would let a sync for one
-  // user/organization coalesce a concurrent sync for a *different* one,
-  // skipping the second context's pending songs. Key by user + organization
-  // so coalescing only ever merges triggers for the same context.
-  final Map<String, Future<void>> _inFlight = {};
+  // A sync snapshots every pending song in its user/organization context, so
+  // sync and discard ownership must be context-wide rather than row-wide. The
+  // operation object is also the owner identity used by successor-safe cleanup.
+  final Map<_SongContextKey, _SongContextOperation> _operations = {};
 
   Future<void> syncPendingSongs(SongMutationContext context) {
-    final key = '${context.userId}_${context.organizationId}';
-    final inFlight = _inFlight[key];
-    if (inFlight != null) return inFlight;
-    // Block body: Map.remove returns the removed future, and a whenComplete
-    // callback that returns a future would wait on it (here, the very future
-    // being completed) and deadlock. Discard the return value.
-    final run = _runSync(context).whenComplete(() {
-      _inFlight.remove(key);
-    });
-    _inFlight[key] = run;
-    return run;
+    final key = _contextKey(context);
+    final current = _operations[key];
+    if (current is _SongSyncOperation) return current.future;
+    if (current is _SongDiscardOperation) {
+      return current.released.future.then((_) => syncPendingSongs(context));
+    }
+
+    final owner = _SongSyncOperation();
+    _operations[key] = owner;
+    owner.future = _runOwnedSync(context, key: key, owner: owner);
+    return owner.future;
+  }
+
+  Future<void> _runOwnedSync(
+    SongMutationContext context, {
+    required _SongContextKey key,
+    required _SongSyncOperation owner,
+  }) async {
+    try {
+      await _runSync(context);
+    } finally {
+      if (identical(_operations[key], owner)) {
+        _operations.remove(key);
+      }
+    }
   }
 
   Future<void> _runSync(SongMutationContext context) async {
@@ -158,14 +198,36 @@ class SongMutationSyncController {
 
   Future<SongDiscardLeaseAcquisition> acquireDiscardLease(
     SongMutationContext context,
-  ) async {
-    return SongDiscardLeaseAcquisition.acquired(
-      SongDiscardLease(
-        discardSong: (songId) => _discardMineOwned(context, songId: songId),
-        release: () {},
+  ) {
+    final key = _contextKey(context);
+    if (_operations.containsKey(key)) {
+      return Future.value(const SongDiscardLeaseAcquisition.syncInProgress());
+    }
+
+    final owner = _SongDiscardOperation();
+    _operations[key] = owner;
+    var released = false;
+    return Future.value(
+      SongDiscardLeaseAcquisition.acquired(
+        SongDiscardLease(
+          discardSong: (songId) => _discardMineOwned(context, songId: songId),
+          release: () {
+            if (released) return;
+            released = true;
+            if (identical(_operations[key], owner)) {
+              _operations.remove(key);
+            }
+            owner.released.complete();
+          },
+        ),
       ),
     );
   }
+
+  _SongContextKey _contextKey(SongMutationContext context) => _SongContextKey(
+    userId: context.userId,
+    organizationId: context.organizationId,
+  );
 
   Future<SongDiscardResult> discardMine(
     SongMutationContext context, {

@@ -43,6 +43,27 @@ class UnifiedDiscardController {
   Future<UnifiedDiscardResult> discardAll() async {
     final context = _activeContextReader();
     if (context == null) return UnifiedDiscardResult.discarded;
+
+    final acquireLease = acquireSongDiscardLease;
+    final discardOwnedSongs = discardSongsWhileOwned;
+    if (acquireLease != null && discardOwnedSongs != null) {
+      final acquisition = await acquireLease(context);
+      if (acquisition.outcome == SongDiscardLeaseOutcome.syncInProgress) {
+        return UnifiedDiscardResult.syncInProgress;
+      }
+
+      final lease = acquisition.lease!;
+      try {
+        await Future.wait([
+          discardOwnedSongs(context, lease),
+          _discardPlanning(context),
+        ], eagerError: false);
+      } finally {
+        lease.release();
+      }
+      return UnifiedDiscardResult.discarded;
+    }
+
     await Future.wait([
       _discardSongs(context),
       _discardPlanning(context),

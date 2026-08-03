@@ -236,6 +236,8 @@ class AppStrings {
   static const unifiedSyncDiscardAllConfirmAction = 'Discard all';
   static const unifiedSyncDiscardAllFailedMessage =
       'Some changes could not be discarded. Try again.';
+  static const unifiedSyncWaitForSyncMessage =
+      'Sync is in progress. Try again after it finishes.';
   static const unifiedSyncActionFailedMessage =
       'Action could not be completed. Try again.';
   static const unifiedSyncActionPartialFailureMessage =

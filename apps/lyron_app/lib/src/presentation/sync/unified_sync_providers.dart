@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
@@ -241,6 +242,32 @@ final unifiedDiscardControllerProvider =
             link.close();
           }
         },
+        acquireSongDiscardLease: (ctx) => ref
+            .read(songMutationSyncControllerProvider)
+            .acquireDiscardLease(
+              SongMutationContext(
+                userId: ctx.userId,
+                organizationId: ctx.organizationId,
+              ),
+            ),
+        discardSongsWhileOwned: (ctx, lease) async {
+          final link = ref.keepAlive();
+          try {
+            final entries = await ref.read(songMutationEntriesProvider.future);
+            for (final entry in entries) {
+              try {
+                await lease.discardMine(songId: entry.id);
+              } catch (_) {
+                // Ownership is already held, so entry failures remain
+                // best-effort without exposing a partial batch to sync.
+              }
+            }
+            ref.invalidate(songMutationEntriesProvider);
+            ref.invalidate(songLibraryListProvider);
+          } finally {
+            link.close();
+          }
+        },
         discardPlanning: (ctx) async {
           final link = ref.keepAlive();
           try {
@@ -312,22 +339,30 @@ final unifiedRowRecoveryControllerProvider =
           final link = ref.keepAlive();
           try {
             final activeContext = ref.read(activeCatalogContextProvider);
-            if (activeContext == null) return false;
+            if (activeContext == null) {
+              return UnifiedRowDiscardResult.discarded;
+            }
             final songContext = SongMutationContext(
               userId: activeContext.userId,
               organizationId: activeContext.organizationId,
             );
-            var hadFailure = false;
             try {
-              await ref
+              final result = await ref
                   .read(songMutationSyncControllerProvider)
                   .discardMine(songContext, songId: songId);
+              ref.invalidate(songMutationEntriesProvider);
+              ref.invalidate(songLibraryListProvider);
+              return switch (result) {
+                SongDiscardResult.discarded =>
+                  UnifiedRowDiscardResult.discarded,
+                SongDiscardResult.syncInProgress =>
+                  UnifiedRowDiscardResult.syncInProgress,
+              };
             } catch (_) {
-              hadFailure = true;
+              ref.invalidate(songMutationEntriesProvider);
+              ref.invalidate(songLibraryListProvider);
+              return UnifiedRowDiscardResult.failed;
             }
-            ref.invalidate(songMutationEntriesProvider);
-            ref.invalidate(songLibraryListProvider);
-            return hadFailure;
           } finally {
             link.close();
           }
