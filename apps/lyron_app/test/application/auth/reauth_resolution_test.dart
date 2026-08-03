@@ -38,16 +38,18 @@ void main() {
         priorPendingCount: () async => 0,
         flushSameUser: () async {
           flushSameUserCalled = true;
+          return true;
         },
         wipePriorAndProceed: () async {
           wipePriorAndProceedCalled = true;
+          return true;
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
               return ReauthPromptResult.confirmed;
             },
-        cancelToPriorUser: () async {},
+        cancelToPriorUser: () async => true,
       );
 
       expect(flushSameUserCalled, isTrue);
@@ -67,15 +69,17 @@ void main() {
         priorPendingCount: () async => 0,
         flushSameUser: () async {
           flushSameUserCalled = true;
+          return true;
         },
         wipePriorAndProceed: () async {
           wipePriorAndProceedCalled = true;
+          return true;
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
               return ReauthPromptResult.confirmed;
             },
-        cancelToPriorUser: () async {},
+        cancelToPriorUser: () async => true,
       );
 
       expect(flushSameUserCalled, isTrue);
@@ -95,9 +99,10 @@ void main() {
           priorUserId: 'u1',
           priorEmail: 'u1@example.com',
           priorPendingCount: () async => 2,
-          flushSameUser: () async {},
+          flushSameUser: () async => true,
           wipePriorAndProceed: () async {
             wipePriorCalled = true;
+            return true;
           },
           confirmDifferentUser:
               ({required String email, required int? pendingCount}) async {
@@ -114,7 +119,7 @@ void main() {
                 expect(pendingCount, 2);
                 return ReauthPromptResult.confirmed;
               },
-          cancelToPriorUser: () async {},
+          cancelToPriorUser: () async => true,
         );
 
         expect(confirmCalled, isTrue);
@@ -138,9 +143,10 @@ void main() {
         priorUserId: 'u1',
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 3,
-        flushSameUser: () async {},
+        flushSameUser: () async => true,
         wipePriorAndProceed: () async {
           wipePriorAndProceedCalled = true;
+          return true;
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
@@ -150,6 +156,7 @@ void main() {
             },
         cancelToPriorUser: () async {
           cancelToPriorUserCalled = true;
+          return true;
         },
       );
 
@@ -172,9 +179,10 @@ void main() {
           priorUserId: 'u1',
           priorEmail: 'u1@example.com',
           priorPendingCount: () async => null,
-          flushSameUser: () async {},
+          flushSameUser: () async => true,
           wipePriorAndProceed: () async {
             wipePriorCalled = true;
+            return true;
           },
           confirmDifferentUser:
               ({required String email, required int? pendingCount}) async {
@@ -189,7 +197,7 @@ void main() {
                 );
                 return ReauthPromptResult.confirmed;
               },
-          cancelToPriorUser: () async {},
+          cancelToPriorUser: () async => true,
         );
 
         expect(
@@ -218,16 +226,17 @@ void main() {
         priorUserId: 'u1',
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 0,
-        flushSameUser: () async {},
+        flushSameUser: () async => true,
         wipePriorAndProceed: () async {
           wipePriorAndProceedCalled = true;
+          return true;
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
               confirmDifferentUserCalled = true;
               return ReauthPromptResult.confirmed;
             },
-        cancelToPriorUser: () async {},
+        cancelToPriorUser: () async => true,
       );
 
       expect(wipePriorAndProceedCalled, isTrue);
@@ -248,9 +257,10 @@ void main() {
         priorUserId: 'u1',
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 1,
-        flushSameUser: () async {},
+        flushSameUser: () async => true,
         wipePriorAndProceed: () async {
           wipePriorAndProceedCalled = true;
+          return true;
         },
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async {
@@ -258,12 +268,63 @@ void main() {
             },
         cancelToPriorUser: () async {
           cancelToPriorUserCalled = true;
+          return true;
         },
       );
 
       expect(wipePriorAndProceedCalled, isFalse);
       expect(cancelToPriorUserCalled, isFalse);
       expect(outcome, isA<ReauthSuperseded>());
+    });
+
+    test('a side-effect callback reporting it did not run (false) resolves '
+        'as superseded, at each of the three call sites', () async {
+      // Pins the fix itself: flushSameUser/wipePriorAndProceed/
+      // cancelToPriorUser are typed Future<bool> Function() concretely, so
+      // a callback that returns false because a last-moment currentness
+      // guard stopped it must be reported as ReauthSuperseded rather than
+      // the coordinator claiming the effect happened.
+      final sameUserOutcome = await resolveReauth(
+        newUserId: 'u1',
+        priorUserId: 'u1',
+        priorEmail: 'u1@example.com',
+        priorPendingCount: () async => 0,
+        flushSameUser: () async => false,
+        wipePriorAndProceed: () async => true,
+        confirmDifferentUser:
+            ({required String email, required int? pendingCount}) async =>
+                ReauthPromptResult.confirmed,
+        cancelToPriorUser: () async => true,
+      );
+      expect(sameUserOutcome, isA<ReauthSuperseded>());
+
+      final wipeOutcome = await resolveReauth(
+        newUserId: 'u2',
+        priorUserId: 'u1',
+        priorEmail: 'u1@example.com',
+        priorPendingCount: () async => 0,
+        flushSameUser: () async => true,
+        wipePriorAndProceed: () async => false,
+        confirmDifferentUser:
+            ({required String email, required int? pendingCount}) async =>
+                ReauthPromptResult.confirmed,
+        cancelToPriorUser: () async => true,
+      );
+      expect(wipeOutcome, isA<ReauthSuperseded>());
+
+      final cancelOutcome = await resolveReauth(
+        newUserId: 'u2',
+        priorUserId: 'u1',
+        priorEmail: 'u1@example.com',
+        priorPendingCount: () async => 1,
+        flushSameUser: () async => true,
+        wipePriorAndProceed: () async => true,
+        confirmDifferentUser:
+            ({required String email, required int? pendingCount}) async =>
+                ReauthPromptResult.cancelled,
+        cancelToPriorUser: () async => false,
+      );
+      expect(cancelOutcome, isA<ReauthSuperseded>());
     });
   });
 }

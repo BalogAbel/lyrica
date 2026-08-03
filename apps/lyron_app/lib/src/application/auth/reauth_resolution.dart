@@ -43,24 +43,30 @@ class ReauthSuperseded extends ReauthOutcome {
 /// no wipe until confirm). Unknown is deliberately NOT treated as zero: only
 /// a count that was actually read as zero skips the prompt.
 ///
-/// Side-effect callbacks may return `false` to report that a last-moment
-/// currentness guard prevented the action. A false report resolves as
-/// [ReauthSuperseded], so the outcome never claims a wipe or cancellation
-/// that did not actually run. Legacy void callbacks remain supported by the
-/// generic result types and are treated as having run.
-Future<ReauthOutcome> resolveReauth<FlushResult, WipeResult, CancelResult>({
+/// Side-effect callbacks report completion by returning `bool`: `true` if
+/// the action actually ran, `false` if a last-moment currentness guard
+/// prevented it. A `false` report resolves as [ReauthSuperseded], so the
+/// outcome never claims a wipe or cancellation that did not actually run.
+///
+/// The callback types are concrete `Future<bool> Function()` -- not
+/// generic -- on purpose: a callback that cannot report whether it ran
+/// (for example one that reverts to returning `void`) must fail to
+/// compile here rather than silently being treated as "ran". Generic
+/// result types previously allowed exactly that regression with no
+/// compile error and no test.
+Future<ReauthOutcome> resolveReauth({
   required String newUserId,
   required String? priorUserId,
   required String? priorEmail,
   required Future<int?> Function() priorPendingCount,
-  required Future<FlushResult> Function() flushSameUser,
-  required Future<WipeResult> Function() wipePriorAndProceed,
+  required Future<bool> Function() flushSameUser,
+  required Future<bool> Function() wipePriorAndProceed,
   required Future<ReauthPromptResult> Function({
     required String email,
     required int? pendingCount,
   })
   confirmDifferentUser,
-  required Future<CancelResult> Function() cancelToPriorUser,
+  required Future<bool> Function() cancelToPriorUser,
   bool Function()? isCurrent,
 }) async {
   bool current() => isCurrent?.call() ?? true;
@@ -71,7 +77,7 @@ Future<ReauthOutcome> resolveReauth<FlushResult, WipeResult, CancelResult>({
 
   // Same user or no prior identity: proceed as same-user
   if (priorUserId == null || priorUserId == newUserId) {
-    if (await flushSameUser() == false) {
+    if (!await flushSameUser()) {
       return const ReauthSuperseded();
     }
     return const ReauthProceededSameUser();
@@ -84,7 +90,7 @@ Future<ReauthOutcome> resolveReauth<FlushResult, WipeResult, CancelResult>({
 
   if (count == 0) {
     // No pending data: safe to wipe without confirmation
-    if (await wipePriorAndProceed() == false) {
+    if (!await wipePriorAndProceed()) {
       return const ReauthSuperseded();
     }
     return const ReauthWipedPriorAndProceeded();
@@ -102,12 +108,12 @@ Future<ReauthOutcome> resolveReauth<FlushResult, WipeResult, CancelResult>({
   }
 
   if (promptResult == ReauthPromptResult.confirmed) {
-    if (await wipePriorAndProceed() == false) {
+    if (!await wipePriorAndProceed()) {
       return const ReauthSuperseded();
     }
     return const ReauthWipedPriorAndProceeded();
   } else if (promptResult == ReauthPromptResult.cancelled) {
-    if (await cancelToPriorUser() == false) {
+    if (!await cancelToPriorUser()) {
       return const ReauthSuperseded();
     }
     return const ReauthCancelledKeptPriorUser();
