@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -10,6 +11,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   const DriftPlanningMutationStore({
     required PlanningLocalDatabase database,
     required PlanningLocalStore localStore,
+    LocalStorageFootprintChanged? onStorageFootprintChanged,
   }) : _database = database,
        _localStore = localStore;
 

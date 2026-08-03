@@ -1,7 +1,12 @@
+import 'dart:io';
+
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
 
@@ -113,6 +118,73 @@ void main() {
       expect(await evictor.evictDroppable(), 0);
     });
 
+    test(
+      'reports eviction after deletion and not for the later true no-op',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'song-catalog-eviction-footprint-revision-test',
+        );
+        addTearDown(() async {
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(directory.path, 'catalog.sqlite'));
+        final trackedDatabase = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(trackedDatabase.close);
+        await trackedDatabase
+            .into(trackedDatabase.cachedCatalogSources)
+            .insert(
+              CachedCatalogSourcesCompanion.insert(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                snapshotVersion: 1,
+                songId: 'song-clean',
+                source: 'body ' * 200,
+              ),
+            );
+        final observer = sqlite3.open(dbFile.path);
+        addTearDown(observer.close);
+        var revisionCount = 0;
+        final committedRowCounts = <int>[];
+        final trackedEvictor = SongCatalogEvictor(
+          database: trackedDatabase,
+          accountant: CatalogStorageAccountant(trackedDatabase),
+          onStorageFootprintChanged: () {
+            revisionCount += 1;
+            final row = observer
+                .select(
+                  'SELECT count(*) AS row_count FROM cached_catalog_sources',
+                )
+                .single;
+            committedRowCounts.add(row['row_count'] as int);
+          },
+        );
+
+        await trackedEvictor.evictDroppable();
+
+        expect(revisionCount, 1);
+        expect(committedRowCounts, [0]);
+
+        expect(await trackedEvictor.evictDroppable(), 0);
+        expect(revisionCount, 1);
+      },
+    );
+
+    test('does not report eviction when measurement throws', () async {
+      var revisionCount = 0;
+      final trackedEvictor = SongCatalogEvictor(
+        database: database,
+        accountant: _ThrowingCatalogStorageAccountant(database),
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+
+      await expectLater(trackedEvictor.evictDroppable, throwsA(anything));
+      expect(revisionCount, 0);
+    });
+
     test('protects per (user, organization): a different owner with no pending '
         'mutation for the same song id is still evicted', () async {
       // Second owner pair, reusing the song id 'song-dirty' — under
@@ -171,4 +243,13 @@ void main() {
       expect(owners, isNot(contains(('user-2', 'org-2', 'song-dirty'))));
     });
   });
+}
+
+class _ThrowingCatalogStorageAccountant extends CatalogStorageAccountant {
+  const _ThrowingCatalogStorageAccountant(super.database);
+
+  @override
+  Future<int> measureDroppableBytes() {
+    throw StateError('simulated measurement failure');
+  }
 }

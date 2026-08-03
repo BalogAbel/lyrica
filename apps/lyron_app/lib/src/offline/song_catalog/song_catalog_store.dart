@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -161,7 +162,10 @@ abstract interface class SongCatalogStore {
 }
 
 class DriftSongCatalogStore implements SongCatalogStore {
-  const DriftSongCatalogStore(this._database);
+  const DriftSongCatalogStore(
+    this._database, {
+    LocalStorageFootprintChanged? onStorageFootprintChanged,
+  });
 
   final SongCatalogDatabase _database;
 

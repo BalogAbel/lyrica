@@ -1,4 +1,5 @@
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 /// The only eviction the app performs.
@@ -17,6 +18,7 @@ class SongCatalogEvictor {
   const SongCatalogEvictor({
     required SongCatalogDatabase database,
     required CatalogStorageAccountant accountant,
+    LocalStorageFootprintChanged? onStorageFootprintChanged,
   }) : _database = database,
        _accountant = accountant;
 

@@ -56,6 +56,9 @@ final localStorageBudgetProvider = Provider<LocalStorageBudget>((ref) {
   return const LocalStorageBudget();
 });
 
+/// Monotonic invalidation seam for SQL-derived local-storage measurements.
+final localStorageFootprintRevisionProvider = StateProvider<int>((ref) => 0);
+
 final planningStorageAccountantProvider = Provider<PlanningStorageAccountant>((
   ref,
 ) {

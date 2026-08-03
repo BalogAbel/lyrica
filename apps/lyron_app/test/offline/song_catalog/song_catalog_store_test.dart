@@ -13,10 +13,13 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
 
 void main() {
+  suppressDriftMultipleDatabaseWarnings();
+
   group('SongCatalogStore', () {
     late SongCatalogDatabase database;
     late DriftSongCatalogStore store;
@@ -28,6 +31,116 @@ void main() {
 
     tearDown(() async {
       await database.close();
+    });
+
+    test('reports catalog storage only after the concrete commit', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'song-catalog-footprint-revision-test',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final dbFile = File(p.join(directory.path, 'catalog.sqlite'));
+      final trackedDatabase = SongCatalogDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      addTearDown(trackedDatabase.close);
+      final observer = sqlite3.open(dbFile.path);
+      addTearDown(observer.close);
+      final committedRowCounts = <int>[];
+      final trackedStore = DriftSongCatalogStore(
+        trackedDatabase,
+        onStorageFootprintChanged: () {
+          final row = observer
+              .select(
+                'SELECT count(*) AS row_count FROM cached_catalog_song_mutations',
+              )
+              .single;
+          committedRowCounts.add(row['row_count'] as int);
+        },
+      );
+
+      await trackedStore.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      expect(committedRowCounts, [1]);
+    });
+
+    test('does not report a catalog throw or true no-op', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftSongCatalogStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      const mutation = SongCatalogMutationDraft(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        slug: 'alpha',
+        title: 'Alpha',
+        source: '{title: Alpha}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      );
+
+      await trackedStore.clearSongMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'missing-song',
+      );
+      expect(revisionCount, 0);
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
+
+      await expectLater(
+        () => trackedStore.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha',
+            title: 'Duplicate slug',
+            source: '{title: Duplicate slug}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ),
+        throwsA(isA<LocalSongSlugConflictException>()),
+      );
+      expect(revisionCount, 1);
+    });
+
+    test('does not report an identical song-mutation upsert', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftSongCatalogStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      const mutation = SongCatalogMutationDraft(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        slug: 'alpha',
+        title: 'Alpha',
+        source: '{title: Alpha}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      );
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
     });
 
     test(

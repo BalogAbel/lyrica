@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
 
@@ -19,6 +24,139 @@ void main() {
     tearDown(() async {
       await database.close();
     });
+
+    test('reports projection storage only after the concrete commit', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'planning-projection-footprint-revision-test',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+      final trackedDatabase = PlanningLocalDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      addTearDown(trackedDatabase.close);
+      final observer = sqlite3.open(dbFile.path);
+      addTearDown(observer.close);
+      final committedRowCounts = <int>[];
+      final trackedStore = DriftPlanningLocalStore(
+        trackedDatabase,
+        onStorageFootprintChanged: () {
+          final row = observer
+              .select('SELECT count(*) AS row_count FROM cached_planning_plans')
+              .single;
+          committedRowCounts.add(row['row_count'] as int);
+        },
+      );
+
+      await trackedStore.upsertSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plan: _planRecord(id: 'plan-1', name: 'Plan'),
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+
+      expect(committedRowCounts, [1]);
+    });
+
+    test('does not report a projection throw or true no-op', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftPlanningLocalStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+
+      await trackedStore.deletePlanningData(
+        userId: 'missing-user',
+        organizationId: 'missing-organization',
+      );
+      expect(revisionCount, 0);
+
+      await expectLater(
+        () => trackedStore.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [_planRecord(id: 'plan-1', name: 'Plan')],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+          shouldContinue: () => false,
+        ),
+        throwsA(isA<PlanningProjectionAbortedException>()),
+      );
+      expect(revisionCount, 0);
+    });
+
+    test('does not report an identical synced-plan upsert', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftPlanningLocalStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      final plan = _planRecord(id: 'plan-1', name: 'Plan');
+      final refreshedAt = DateTime.utc(2026, 4, 3, 12);
+
+      await trackedStore.upsertSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plan: plan,
+        refreshedAt: refreshedAt,
+      );
+      expect(revisionCount, 1);
+
+      await trackedStore.upsertSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plan: plan,
+        refreshedAt: refreshedAt,
+      );
+      expect(revisionCount, 1);
+    });
+
+    test(
+      'reports an earlier committed row when a later outer batch operation fails',
+      () async {
+        var revisionCount = 0;
+        final trackedStore = DriftPlanningLocalStore(
+          database,
+          onStorageFootprintChanged: () => revisionCount += 1,
+        );
+
+        Future<void> applyOuterBatch() async {
+          await trackedStore.upsertSyncedPlan(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plan: _planRecord(id: 'plan-1', name: 'Committed plan'),
+            refreshedAt: DateTime.utc(2026, 4, 3, 12),
+          );
+          await trackedStore.replaceActiveProjection(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plans: [_planRecord(id: 'plan-2', name: 'Aborted projection')],
+            sessions: const [],
+            items: const [],
+            refreshedAt: DateTime.utc(2026, 4, 3, 13),
+            shouldContinue: () => false,
+          );
+        }
+
+        await expectLater(
+          applyOuterBatch,
+          throwsA(isA<PlanningProjectionAbortedException>()),
+        );
+        expect(revisionCount, 1);
+        expect(
+          await trackedStore.readPlanSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          hasLength(1),
+        );
+      },
+    );
 
     test(
       'replaces the active planning projection atomically for one user and organization',

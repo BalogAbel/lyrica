@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -186,7 +187,10 @@ abstract interface class PlanningLocalStore {
 }
 
 class DriftPlanningLocalStore implements PlanningLocalStore {
-  const DriftPlanningLocalStore(this._database);
+  const DriftPlanningLocalStore(
+    this._database, {
+    LocalStorageFootprintChanged? onStorageFootprintChanged,
+  });
 
   final PlanningLocalDatabase _database;
 

@@ -32,6 +32,75 @@ void main() {
       await database.close();
     });
 
+    test(
+      'reports a committed mutation after commit and not for a throw or true no-op',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'planning-mutation-footprint-revision-test',
+        );
+        addTearDown(() async {
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+        final trackedDatabase = PlanningLocalDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(trackedDatabase.close);
+        final observer = sqlite3.open(dbFile.path);
+        addTearDown(observer.close);
+        final committedRowCounts = <int>[];
+        final trackedStore = DriftPlanningMutationStore(
+          database: trackedDatabase,
+          localStore: DriftPlanningLocalStore(trackedDatabase),
+          onStorageFootprintChanged: () {
+            final row = observer
+                .select(
+                  'SELECT count(*) AS row_count FROM cached_planning_mutations',
+                )
+                .single;
+            committedRowCounts.add(row['row_count'] as int);
+          },
+        );
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await trackedStore.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+        expect(committedRowCounts, [1]);
+
+        await trackedStore.clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'missing-plan',
+        );
+        expect(committedRowCounts, [1]);
+
+        await expectLater(
+          () => trackedStore.recordPlanCreate(
+            context: context,
+            draft: const PlanningPlanCreateMutationDraft(
+              planId: 'plan-2',
+              slug: 'weekend-service',
+              name: 'Duplicate slug',
+            ),
+          ),
+          throwsA(isA<LocalPlanningSlugConflictException>()),
+        );
+        expect(committedRowCounts, [1]);
+      },
+    );
+
     test('pending mutations persist across database reopen', () async {
       final directory = await Directory.systemTemp.createTemp(
         'planning-mutation-store-test',

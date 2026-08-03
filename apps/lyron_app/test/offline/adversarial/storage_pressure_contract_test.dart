@@ -50,6 +50,7 @@ void main() {
             ),
           );
 
+      var storageRevisionCount = 0;
       final store = BudgetedPlanningMutationStore(
         delegate: DriftPlanningMutationStore(
           database: database,
@@ -59,6 +60,7 @@ void main() {
         evictor: SongCatalogEvictor(
           database: catalogDatabase,
           accountant: CatalogStorageAccountant(catalogDatabase),
+          onStorageFootprintChanged: () => storageRevisionCount += 1,
         ),
         budget: const LocalStorageBudget(),
       );
@@ -85,6 +87,10 @@ void main() {
           ),
         ),
       );
+
+      // The source deletion committed before the guarded retry failed, so its
+      // revision is independent of the outer write action's final error.
+      expect(storageRevisionCount, 1);
 
       // Eviction actually ran: the droppable source is gone.
       final remainingSources = await catalogDatabase
