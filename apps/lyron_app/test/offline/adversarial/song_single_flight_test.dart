@@ -324,6 +324,62 @@ void main() {
     }
 
     test(
+      'same-context sync calls queued behind discard share one Future and run',
+      () async {
+        final store = _GatedSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _GatedSongMutationRemoteRepository(
+          onSend: () async {},
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+        const context = SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        final acquisition = await controller.acquireDiscardLease(context);
+        final lease = acquisition.lease!;
+
+        final first = controller.syncPendingSongs(context);
+        final second = controller.syncPendingSongs(context);
+
+        try {
+          expect(store.pendingReadCount, 0);
+          expect(
+            identical(first, second),
+            isTrue,
+            reason: 'one queued sync Future must represent the discard owner',
+          );
+        } finally {
+          lease.release();
+          await Future.wait([first, second]);
+        }
+
+        expect(
+          (
+            pendingReadCount: store.pendingReadCount,
+            sentSongCount: repository.sentSongIds.length,
+          ),
+          (pendingReadCount: 1, sentSongCount: 1),
+        );
+      },
+    );
+
+    test(
       'sync started after discard waits to snapshot and never sends the discarded mutation',
       () async {
         final releaseDiscard = Completer<void>();

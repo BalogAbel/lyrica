@@ -59,6 +59,7 @@ final class _SongSyncOperation extends _SongContextOperation {
 
 final class _SongDiscardOperation extends _SongContextOperation {
   final Completer<void> released = Completer<void>();
+  Future<void>? queuedSync;
 }
 
 class SongMutationSyncController {
@@ -84,7 +85,9 @@ class SongMutationSyncController {
     final current = _operations[key];
     if (current is _SongSyncOperation) return current.future;
     if (current is _SongDiscardOperation) {
-      return current.released.future.then((_) => syncPendingSongs(context));
+      return current.queuedSync ??= current.released.future.then(
+        (_) => syncPendingSongs(context),
+      );
     }
 
     final owner = _SongSyncOperation();
