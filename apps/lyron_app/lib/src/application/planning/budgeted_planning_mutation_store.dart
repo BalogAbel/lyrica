@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
@@ -61,19 +63,69 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   final SongCatalogEvictor _evictor;
   final LocalStorageBudget _budget;
 
+  // Per-(userId, organizationId) write queue. Without this, the measure,
+  // check and write in _admitAndWrite are three separate `await` points with
+  // nothing stopping a second `record*` call for the same context from
+  // measuring the same pre-write footprint and also passing the check --
+  // overshooting the "at most one mutation past the threshold" guarantee.
+  // Keyed the same way as PlanningMutationSyncController._inFlight so a
+  // write for one user/organization never blocks a write for another, but
+  // unlike that single-flight map (which coalesces concurrent callers onto
+  // ONE shared future), every `record*` call must run its own write and
+  // report its own outcome, so callers are chained onto the queue instead of
+  // being handed someone else's future.
+  final Map<String, Future<void>> _writeQueue = {};
+
   Future<void> _guardedWrite(
     PlanningMutationContext context,
-    Future<void> Function() write,
-  ) async {
-    final mutationBytes = await _accountant.measureMutationBytes(
-      userId: context.userId,
-      organizationId: context.organizationId,
+    Future<void> Function() write, {
+    Future<bool> Function()? isCollapse,
+  }) {
+    final key = '${context.userId}_${context.organizationId}';
+    final previous = _writeQueue[key] ?? Future<void>.value();
+
+    // `previous` is always already-settled-safe (see `tail` below), so
+    // chaining onto it just waits for our turn -- it never itself throws.
+    final result = previous.then(
+      (_) => _admitAndWrite(context, write, isCollapse: isCollapse),
     );
-    if (_budget.refusesNewMutation(mutationBytes)) {
-      throw PlanningMutationBudgetExceededException(
-        mutationBytes: mutationBytes,
-        refuseBytes: _budget.mutationRefuseBytes,
+
+    // Publish our own completion, success or failure, as the new queue tail
+    // so the next call for this context waits for us. Neutralise the error
+    // for chaining purposes only: one write's failure must never poison the
+    // queue for the next write on the same context. `result` (returned
+    // below) still carries the real outcome back to this call's caller.
+    final tail = result.then((_) {}, onError: (_) {});
+    _writeQueue[key] = tail;
+    unawaited(
+      tail.whenComplete(() {
+        // Only drop the entry if nothing has queued behind us -- a
+        // concurrent call may already have replaced it with its own tail.
+        if (identical(_writeQueue[key], tail)) {
+          _writeQueue.remove(key);
+        }
+      }),
+    );
+
+    return result;
+  }
+
+  Future<void> _admitAndWrite(
+    PlanningMutationContext context,
+    Future<void> Function() write, {
+    Future<bool> Function()? isCollapse,
+  }) async {
+    if (isCollapse == null || !await isCollapse()) {
+      final mutationBytes = await _accountant.measureMutationBytes(
+        userId: context.userId,
+        organizationId: context.organizationId,
       );
+      if (_budget.refusesNewMutation(mutationBytes)) {
+        throw PlanningMutationBudgetExceededException(
+          mutationBytes: mutationBytes,
+          refuseBytes: _budget.mutationRefuseBytes,
+        );
+      }
     }
 
     try {
