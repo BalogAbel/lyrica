@@ -64,7 +64,7 @@ Commands run from the repository root as `(cd apps/lyron_app && flutter test <pa
 - Modify: `apps/lyron_app/lib/src/presentation/sync/unified_sync_status_popup.dart`
 - Test: new file next to the existing `unified_discard_controller_test.dart`
 
-- [ ] **Step 1: Read the pattern you are copying**
+- [x] **Step 1: Read the pattern you are copying**
 
 Read `apps/lyron_app/lib/src/application/sync/unified_discard_controller.dart`
 and its provider in `unified_sync_providers.dart` in full. The controller stores
@@ -72,7 +72,7 @@ no `Ref`; the provider builds closures over its own `ref`, each calling
 `ref.keepAlive()` at the start and `link.close()` in a `finally`. Copy that
 shape exactly — do not invent a variant.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Three behaviours, each of which the current code gets wrong:
 
@@ -89,13 +89,13 @@ Three behaviours, each of which the current code gets wrong:
    *family* slug/detail providers, which are never invalidated directly, so
    dropping it in the move would silently stop them refreshing.
 
-- [ ] **Step 3: Run and confirm they fail**
+- [x] **Step 3: Run and confirm they fail**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/sync/)
 ```
 
-- [ ] **Step 4: Implement the controller**
+- [x] **Step 4: Implement the controller**
 
 `UnifiedRowRecoveryController` exposes `keepMine`, `discardMine` and
 `applyToGroup`, each taking the arguments the popup currently passes (song id,
@@ -112,14 +112,14 @@ Each must report whether any operation failed, so the widget can still show its
 snackbar. Return a value rather than throwing — a partial failure across several
 refs is not one exception.
 
-- [ ] **Step 5: Rewire the popup**
+- [x] **Step 5: Rewire the popup**
 
 `_keepMine`, `_discardMine` and `_applyToGroup` become thin: read the controller,
 await it, and show the failure snackbar if it reports one and
 `context.mounted`. **Every `ref.invalidate` and revision bump leaves the
 widget.** Keep the edit tight; do not restructure anything else in that file.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -133,8 +133,8 @@ git commit -m "fix(sync): run row recovery on a controller that outlives the pop
 
 ### Task 2: Resolve the popup deferred doc
 
-- [ ] **Step 1:** `git rm docs/deferred/2026-05-29-popup-row-recovery-provider-ref.md`
-- [ ] **Step 2:** Commit with the code it resolves if Task 1 is not yet pushed,
+- [x] **Step 1:** `git rm docs/deferred/2026-05-29-popup-row-recovery-provider-ref.md`
+- [x] **Step 2:** Commit with the code it resolves if Task 1 is not yet pushed,
   otherwise as its own commit:
 
 ```bash
@@ -149,7 +149,7 @@ git commit -m "docs(deferred): resolve the popup row recovery provider-ref item"
 - Create: `apps/lyron_app/lib/src/application/auth/pending_local_work_counter.dart`
 - Test: alongside it
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 A counter that, for a given user and organization, returns
 `planning pending mutations + pending songs + conflict songs`. Test: zero when
@@ -157,13 +157,13 @@ everything is empty; the sum when each source contributes; and that a source
 throwing propagates rather than being silently counted as zero — an undercount
 here would understate what a wipe destroys.
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 Read the real APIs first: `PlanningMutationStore.readPendingMutations`,
 `SongMutationStore.readPendingSongs`, `SongMutationStore.readConflictSongs`. The
 counter takes those as injected readers so it is testable without Drift.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/auth/)
@@ -180,7 +180,7 @@ git commit -m "feat(auth): count pending local work across songs and plans"
 - Modify: `apps/lyron_app/lib/src/app/lyron_app.dart`
 - Test: controller test and host widget test
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Controller: requesting a confirmation publishes a pending prompt carrying the
 prior email and the pending count, and completes the returned future with the
@@ -194,9 +194,9 @@ cancel, and cover a barrier dismissal counting as cancel — the existing dialog
 tests already pin that dismissal returns `false`, so the host must not turn it
 into a confirm.
 
-- [ ] **Step 2: Run and confirm they fail**
+- [x] **Step 2: Run and confirm they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 The controller lives on a `ProviderRef` and is app-scoped, not autoDispose — a
 prompt must survive whatever is on screen. The host goes in
@@ -204,7 +204,7 @@ prompt must survive whatever is on screen. The host goes in
 It must not swallow the child, and it must not rebuild the whole app on every
 prompt state change.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -223,7 +223,7 @@ This is the critical auth path. Read
 `docs/architecture/decisions/ADR-020-non-destructive-session-and-offline-authenticated-state.md`
 before writing any code.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 All four outcomes, on the live edge:
 
@@ -244,9 +244,9 @@ Plus two hazard tests:
 6. **a failure to count pending work takes the confirm path, never the wipe
    path.** Uncertainty must never authorise deletion.
 
-- [ ] **Step 2: Run and confirm they fail**
+- [x] **Step 2: Run and confirm they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Hook the same `prev != signedIn && next == signedIn` edge that
 `membershipRefreshEffectProvider` uses. Read the prior identity from
@@ -271,7 +271,7 @@ order.
 non-destructive. Only explicit sign-out, authoritative revocation, and a
 confirmed different-user sign-in delete immediately.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -282,20 +282,20 @@ git commit -m "feat(auth): resolve a different-user sign-in on the live path"
 
 ### Task 6: Documentation
 
-- [ ] **Step 1:** Write
+- [x] **Step 1:** Write
   `docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md`,
   following the structure of ADR-027/ADR-028. Carry D2, D3, D4 and D5 from the
   spec — especially D5's boundary: a confirmed different-user sign-in deleting
   local data is not the destructive-on-uncertainty behaviour ADR-020 forbids, and
   cancel deletes nothing. Record the rejected navigator-key option and why.
 
-- [ ] **Step 2:** Update `docs/architecture/architecture.md` (the authenticated
+- [x] **Step 2:** Update `docs/architecture/architecture.md` (the authenticated
   shell hosts a reauth prompt; recovery actions run on long-lived controllers)
   and `docs/testing/testing-strategy.md` (the new contracts).
 
-- [ ] **Step 3:** `git rm docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`
+- [x] **Step 3:** `git rm docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`
 
-- [ ] **Step 4:** Verify and commit
+- [x] **Step 4:** Verify and commit
 
 ```bash
 ./scripts/verify.sh --skip-migrations --skip-backend-write-contracts

@@ -49,7 +49,7 @@ All commands run from the repository root using the repo convention
 - Modify: `apps/lyron_app/lib/src/application/song_library/song_mutation_sync_controller.dart`
 - Test: the existing song mutation sync controller test file (find it first)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Find the existing test file and its fake remote repository. Add tests that use a
 fake whose `fetchSong` always throws
@@ -71,7 +71,7 @@ Four tests, each asserting one thing the current code gets wrong:
    callback that always throws, `discardMine` still completes and the mutation is
    still gone.
 
-- [ ] **Step 2: Run and confirm they fail**
+- [x] **Step 2: Run and confirm they fail**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/song_library/)
@@ -80,7 +80,7 @@ Four tests, each asserting one thing the current code gets wrong:
 Report the real failure output. Tests 1–3 should fail against the current
 fetch-first implementation.
 
-- [ ] **Step 3: Rewrite `discardMine`**
+- [x] **Step 3: Rewrite `discardMine`**
 
 Replace the body with a local-first sequence. Keep `_requireSong` and the
 `isRemoteDeletedConflict` shortcut. The shape:
@@ -139,7 +139,7 @@ member names before using them. If `refreshCatalog` can throw something other
 than `SongMutationSyncException`, widen the catch to `on Exception` — but never
 to bare `catch`, so a programming defect still propagates.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/song_library/)
@@ -150,7 +150,7 @@ Existing tests that assert `fetchSong` is called during a discard encode the old
 contract. Update them to the new one and say in your report exactly which tests
 you changed and why. Do NOT change a test that is asserting something else.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 (cd apps/lyron_app && dart format lib test)
@@ -172,7 +172,7 @@ Today `retryMutation` marks the record pending, calls `syncPendingMutations`, an
 that swallows a connectivity failure. The caller cannot tell a retry that ran
 from one that never left the device.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 With a remote repository that throws `connectivityFailure`, calling
 `PlanningMutationSyncController.retryMutation` must surface that to the caller.
@@ -185,13 +185,13 @@ Also assert what must NOT change: the record stays in the store, marked pending
 with a `connectivityFailure` error code, so the row still renders as retryable.
 A retry that reports failure must not also discard the user's work.
 
-- [ ] **Step 2: Run and confirm it fails**
+- [x] **Step 2: Run and confirm it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/planning/planning_mutation_sync_controller_test.dart)
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Change `retryMutation` only — do NOT change `syncPendingMutations`'s swallowing
 behaviour for the ordinary background path. A background sync that hits no
@@ -200,7 +200,7 @@ needs to report. If that means `retryMutation` inspects the record's error code
 after syncing rather than catching, that is fine and is probably the smaller
 change.
 
-- [ ] **Step 4: Surface it in the popup**
+- [x] **Step 4: Surface it in the popup**
 
 In `unified_sync_status_popup.dart`, `_applyToGroup(retry: true)` currently
 tracks `hasError` and shows a snackbar. If the controller now reports the
@@ -208,7 +208,7 @@ failure, confirm the existing error handling picks it up; extend it only if it
 does not. Keep the change minimal — the popup is being restructured in the next
 slice and large edits here will collide.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -226,7 +226,7 @@ git commit -m "fix(sync): report an offline retry instead of failing silently"
 - Modify: `apps/lyron_app/lib/src/application/planning/planning_local_read_repository.dart`
 - Test: the existing repository test file
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Two tests, using a recording fake `PlanningLocalStore` and a recording fake
 mutation store (follow whatever fakes the existing test file already has):
@@ -240,13 +240,13 @@ mutation store (follow whatever fakes the existing test file already has):
    `getPlanSummaryBySlug`. This is the trap: the optimisation must resolve
    against pending creates, not just the store's indexed lookup.
 
-- [ ] **Step 2: Run and confirm the counting test fails**
+- [x] **Step 2: Run and confirm the counting test fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/planning/planning_local_read_repository_test.dart)
 ```
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Restructure so the mutation set is read once and threaded through:
 
@@ -268,7 +268,7 @@ draft carries no slug field — so slug resolution only has to consider the
 projection and pending creates. If you find that assumption is wrong, stop and
 report it rather than working around it.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -282,17 +282,17 @@ git commit -m "perf(planning): resolve a plan slug with one mutation read"
 
 ### Task 4: Documentation
 
-- [ ] **Step 1: `docs/architecture/architecture.md`**
+- [x] **Step 1: `docs/architecture/architecture.md`**
 
 In the Offline Strategy section, record that dropping local intent never requires
 the network, for songs and plans alike, and that a discard never leaves a
 conflict status behind. Proportionate edit only.
 
-- [ ] **Step 2: `docs/testing/testing-strategy.md`**
+- [x] **Step 2: `docs/testing/testing-strategy.md`**
 
 Record the offline-discard contracts and the slug-read contracts.
 
-- [ ] **Step 3: `docs/architecture/repository-review-2026-06-22.md`**
+- [x] **Step 3: `docs/architecture/repository-review-2026-06-22.md`**
 
 Mark LF-7 and LF-9 fixed with the existing `~~struck~~ **Done (...)**`
 convention and update the §6 status blocks in the style already used there.
@@ -305,7 +305,7 @@ State two things honestly rather than glossing them:
   `planningPlanListProvider` and fetch detail by id — so this is a correctness
   fix to an interface method, not a measured performance win.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 ./scripts/verify.sh --skip-migrations --skip-backend-write-contracts

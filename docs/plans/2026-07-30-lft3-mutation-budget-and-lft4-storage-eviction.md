@@ -67,7 +67,7 @@ silently break exactly-once sync (ADR-019) or OCC base-version semantics.
 **Files:**
 - Test: `apps/lyron_app/test/offline/adversarial/planning_squash_contract_test.dart` (create)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
@@ -220,12 +220,32 @@ regression harness, not a red test. If any of them fails, stop: the fold
 semantics differ from what the spec assumed, and the plan needs revisiting
 before continuing.
 
+> **Not as specified — genuine RED, not a pure pin.** The suite did not pass
+> on first run: the base-version fold disagreed with itself across the four
+> non-reorder paths (`planEdit`, `sessionRename`, `sessionDelete`,
+> `sessionItemDelete` let a later draft's `baseVersion` overwrite the first
+> captured one; the reorder paths did not). That is a real OCC bug, not a
+> pre-existing-behaviour assumption gone stale, so the correct move under
+> `superpowers:systematic-debugging` was to stop, diagnose, and fix it before
+> the suite could pin anything — which is what happened, in the same commit.
+> See commit `89dc4ff`.
+
 - [ ] **Step 3: Commit**
 
 ```bash
 git add apps/lyron_app/test/offline/adversarial/planning_squash_contract_test.dart
 git commit -m "test(planning): pin mutation squash exactly-once and OCC semantics"
 ```
+
+> **Landed under a different message, combined with the fix it required.**
+> Actual commit: `89dc4ff` — `fix(planning): keep the first captured base
+> version when folding edits`. It carries both the new
+> `planning_squash_contract_test.dart` suite and the four-path base-version
+> fix Step 2 uncovered, because the suite could not pin a contract the code
+> did not yet satisfy. The three original squash/OCC assertions and the
+> exactly-once fold behaviour they pin are genuinely present and passing at
+> HEAD; only the commit shape and message differ from what this step
+> specified.
 
 ---
 
@@ -240,7 +260,7 @@ and they consume the budget Task 5 introduces.
 - Test: `apps/lyron_app/test/offline/adversarial/planning_squash_contract_test.dart` (modify)
 - Modify: `apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append inside the existing `group` in
 `planning_squash_contract_test.dart`:
@@ -298,7 +318,7 @@ Append inside the existing `group` in
     });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/offline/adversarial/planning_squash_contract_test.dart)
@@ -307,7 +327,7 @@ Append inside the existing `group` in
 Expected: FAIL — the item create and the item-order row survive, so
 `remaining` has 2 entries.
 
-- [ ] **Step 3: Implement the cleanup**
+- [x] **Step 3: Implement the cleanup**
 
 In `drift_planning_mutation_store.dart`, inside `recordSessionDelete`, in the
 `existing?.kind == PlanningMutationKind.sessionCreate` branch, add the item
@@ -366,7 +386,7 @@ Add the private helper next to `_removeSessionFromPendingReorder`:
   }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 (cd apps/lyron_app && flutter test test/offline/adversarial/)
@@ -374,7 +394,7 @@ Add the private helper next to `_removeSessionFromPendingReorder`:
 
 Expected: PASS, all adversarial suites.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart \
@@ -391,7 +411,7 @@ git commit -m "fix(planning): drop pending item mutations with a collapsed sessi
 - Create: `apps/lyron_app/lib/src/application/storage/local_storage_budget.dart`
 - Test: `apps/lyron_app/test/application/storage/local_storage_budget_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
@@ -469,7 +489,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/local_storage_budget_test.dart)
@@ -477,7 +497,7 @@ void main() {
 
 Expected: FAIL — `Target of URI doesn't exist` for both new libraries.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `local_storage_footprint.dart`:
 
@@ -573,7 +593,7 @@ class LocalStorageBudget {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/local_storage_budget_test.dart)
@@ -581,7 +601,7 @@ class LocalStorageBudget {
 
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/storage/ \
@@ -601,7 +621,7 @@ keys, integers and timestamps.
 - Create: `apps/lyron_app/lib/src/application/storage/planning_storage_accountant.dart`
 - Test: `apps/lyron_app/test/application/storage/planning_storage_accountant_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
@@ -752,7 +772,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/planning_storage_accountant_test.dart)
@@ -761,7 +781,7 @@ void main() {
 Expected: FAIL — `Target of URI doesn't exist:
 '.../planning_storage_accountant.dart'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```dart
 import 'package:drift/drift.dart';
@@ -866,7 +886,7 @@ class PlanningStorageAccountant {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/planning_storage_accountant_test.dart)
@@ -877,7 +897,7 @@ generated names in
 `apps/lyron_app/lib/src/offline/planning/planning_local_database.g.dart` — Drift
 maps Dart camelCase getters to snake_case columns.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/storage/planning_storage_accountant.dart \
@@ -900,7 +920,7 @@ be read again until the next refresh.
 - Create: `apps/lyron_app/lib/src/application/storage/song_catalog_evictor.dart`
 - Test: `apps/lyron_app/test/application/storage/song_catalog_evictor_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:drift/drift.dart';
@@ -1020,7 +1040,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/song_catalog_evictor_test.dart)
@@ -1028,7 +1048,7 @@ void main() {
 
 Expected: FAIL — both new libraries are missing.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `catalog_storage_accountant.dart`:
 
@@ -1144,7 +1164,7 @@ class SongCatalogEvictor {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/song_catalog_evictor_test.dart)
@@ -1163,7 +1183,7 @@ WHERE NOT EXISTS (
   AND m.song_id = cached_catalog_sources.song_id)
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart \
@@ -1182,7 +1202,7 @@ git commit -m "feat(storage): evict droppable catalog sources, never pending int
 - Modify: `apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart`
 - Test: `apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
@@ -1390,7 +1410,7 @@ class _RecordingEvictor implements SongCatalogEvictor {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/planning/budgeted_planning_mutation_store_test.dart)
@@ -1403,7 +1423,7 @@ Note: `_RecordingEvictor implements SongCatalogEvictor` requires
 `SongCatalogEvictor` to be implementable — it is a plain class with a single
 public method, so `implements` works without extra changes.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Add to `planning_mutation_sync_types.dart`, next to
 `LocalPlanningSlugConflictException`:
@@ -1724,7 +1744,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/planning/budgeted_planning_mutation_store_test.dart)
@@ -1732,7 +1752,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
 
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart \
@@ -1753,7 +1773,7 @@ propagates. Now that there is a policy, it must assert the whole chain: failure
 **Files:**
 - Modify: `apps/lyron_app/test/offline/adversarial/storage_pressure_probe_test.dart`
 
-- [ ] **Step 1: Rewrite the test body**
+- [x] **Step 1: Rewrite the test body**
 
 Keep `_InsertFailingExecutor`, `_InsertFailingTransactionExecutor` and
 `StorageQuotaSimulatedException` exactly as they are. Replace the file's leading
@@ -1861,7 +1881,7 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 ```
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 ```bash
 (cd apps/lyron_app && flutter test test/offline/adversarial/storage_pressure_probe_test.dart)
@@ -1874,7 +1894,7 @@ only fails INSERTs, so SELECT should work), read the actual error before
 changing anything — use superpowers:systematic-debugging rather than adjusting
 the assertion to match.
 
-- [ ] **Step 3: Rename the file to match its new role**
+- [x] **Step 3: Rename the file to match its new role**
 
 ```bash
 git mv apps/lyron_app/test/offline/adversarial/storage_pressure_probe_test.dart \
@@ -1884,7 +1904,7 @@ git mv apps/lyron_app/test/offline/adversarial/storage_pressure_probe_test.dart 
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/lyron_app/test/offline/adversarial/
@@ -1903,7 +1923,7 @@ git commit -m "test(storage): enforce the storage-failure contract, not just obs
 - Modify: `apps/lyron_app/lib/src/presentation/sync/unified_sync_providers.dart`
 - Test: `apps/lyron_app/test/application/storage/local_storage_monitor_test.dart`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
@@ -1996,7 +2016,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/local_storage_monitor_test.dart)
@@ -2004,7 +2024,7 @@ void main() {
 
 Expected: FAIL — `local_storage_monitor.dart` does not exist.
 
-- [ ] **Step 3: Write the monitor**
+- [x] **Step 3: Write the monitor**
 
 ```dart
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
@@ -2059,7 +2079,7 @@ class LocalStorageMonitor {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 (cd apps/lyron_app && flutter test test/application/storage/local_storage_monitor_test.dart)
@@ -2067,7 +2087,7 @@ class LocalStorageMonitor {
 
 Expected: PASS, 2 tests.
 
-- [ ] **Step 5: Wire the providers**
+- [x] **Step 5: Wire the providers**
 
 In `core_providers.dart` (both databases already live there), add after the
 database providers:
@@ -2137,7 +2157,7 @@ with the import:
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 ```
 
-- [ ] **Step 6: Surface the pressure in the sync overview**
+- [x] **Step 6: Surface the pressure in the sync overview**
 
 In `unified_sync_overview.dart`, add the field to `UnifiedSyncOverview`:
 
@@ -2182,7 +2202,7 @@ constructed and pass the measured values through, reading
 `localStorageMonitorProvider` for the active context. Follow the file's existing
 composition style rather than introducing a new pattern.
 
-- [ ] **Step 7: Run the whole suite**
+- [x] **Step 7: Run the whole suite**
 
 ```bash
 (cd apps/lyron_app && flutter test)
@@ -2191,7 +2211,7 @@ composition style rather than introducing a new pattern.
 Expected: PASS. Existing tests that construct `UnifiedSyncOverview` are
 unaffected because the new fields are optional.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/lyron_app/lib/src/application/storage/local_storage_monitor.dart \
@@ -2214,7 +2234,7 @@ git commit -m "feat(storage): surface local storage pressure in the sync overvie
 - Modify: `docs/architecture/repository-review-2026-06-22.md`
 - Delete: `docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`
 
-- [ ] **Step 1: Write the ADR**
+- [x] **Step 1: Write the ADR**
 
 Follow the structure of `docs/architecture/decisions/ADR-027-backend-derived-song-metadata.md`.
 Carry decisions D1–D6 from the spec, and state explicitly:
@@ -2232,24 +2252,24 @@ Carry decisions D1–D6 from the spec, and state explicitly:
 - that eviction and budgeting are local storage policy and never an
   authorization decision (AGENTS.md rule 5).
 
-- [ ] **Step 2: Update `architecture.md`**
+- [x] **Step 2: Update `architecture.md`**
 
 In the Offline Strategy section, replace the "one active snapshot" framing with
 the protection order and the accounting seam, and link the ADR.
 
-- [ ] **Step 3: Update `testing-strategy.md`**
+- [x] **Step 3: Update `testing-strategy.md`**
 
 Record the new contracts: the squash/OCC contract suite, the eviction protection
 contracts, and that the former storage-pressure *probe* is now an enforced
 contract.
 
-- [ ] **Step 4: Mark LF-T3 and LF-T4 fixed**
+- [x] **Step 4: Mark LF-T3 and LF-T4 fixed**
 
 In `docs/architecture/repository-review-2026-06-22.md`, strike both rows using
 the existing `~~struck~~ **Done (...)**` convention, and update the §6 status
 block in the same style already used there.
 
-- [ ] **Step 5: Remove the resolved deferred doc**
+- [x] **Step 5: Remove the resolved deferred doc**
 
 ```bash
 git rm docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md
@@ -2257,7 +2277,7 @@ git rm docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md
 
 Leave `docs/deferred/2026-06-29-web-offline-e2e.md` untouched.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 ```bash
 ./scripts/verify.sh --skip-migrations --skip-backend-write-contracts

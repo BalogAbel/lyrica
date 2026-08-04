@@ -1,6 +1,19 @@
 # Offline-Capable Discard and the Slug Read Path
 
-> Status: Draft
+> Status: Implemented
+>
+> Evidence: branch `feat/offline-durability-phase4`. Full closeout verification
+> passed at `6ffa35c` — `./scripts/verify.sh` exit 0 with the local Supabase
+> stack, database reset, demo-user provisioning and the skip-gated integration
+> suites actually executed (1090 tests passed, 18 skipped, coverage 73.57%),
+> all backend write contracts green, `./scripts/check-migrations.sh` exit 0,
+> and `flutter build web --release` exit 0.
+>
+> The "Discard All offline" testing item landed later than its own task, in
+> `26fc44d`, together with the fix for a retry that could report success after
+> coalescing onto a background sync that never reprocessed its record. Song
+> discard and sync were subsequently serialized by a context lease
+> (`91ab491`, `857deee`), which this document's D1 now describes.
 
 ## Goal
 

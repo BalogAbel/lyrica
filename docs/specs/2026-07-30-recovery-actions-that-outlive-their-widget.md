@@ -1,6 +1,24 @@
 # Recovery Actions That Outlive Their Widget
 
-> Status: Draft
+> Status: Implemented
+>
+> Evidence: branch `feat/offline-durability-phase4`. Full closeout verification
+> passed at `6ffa35c` — `./scripts/verify.sh` exit 0 with the local Supabase
+> stack, database reset, demo-user provisioning and the skip-gated integration
+> suites actually executed (1090 tests passed, 18 skipped, coverage 73.57%),
+> all backend write contracts green, `./scripts/check-migrations.sh` exit 0,
+> and `flutter build web --release` exit 0.
+>
+> Implementing D3 surfaced three hazards this document does not name, all
+> fixed in the same phase and recorded in ADR-029: identity persistence
+> overwrote the prior identity on the same `signedIn` edge, so the
+> different-user case would have been undetectable; cancelling via a plain
+> `signOut()` would have cleared the identity that cancel exists to preserve
+> (`bfdd12f`); and two edges arriving close together could each request a
+> confirmation, throwing an uncaught `StateError` out of an unawaited listener
+> (`083281c`, `173b196`). D4's pending count was also organization-scoped while
+> the wipe is user-wide, so the dialog understated what it would destroy
+> (`8303b9c`, `105cb94`).
 
 ## Goal
 

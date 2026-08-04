@@ -1,6 +1,20 @@
 # Phase 4 Closeout Review Remediation
 
-> Status: Approved
+> Status: Implemented
+>
+> Evidence: every contract in this spec is implemented and verified on branch
+> `feat/offline-durability-phase4`. Full closeout verification passed at
+> `6ffa35c` — `./scripts/verify.sh` exit 0 including the local Supabase stack
+> and the skip-gated integration suites (1090 tests passed, 18 skipped,
+> coverage 73.57%), all backend write contracts green,
+> `./scripts/check-migrations.sh` exit 0, `flutter build web --release` exit 0.
+>
+> The focused review this spec's plan calls for (Task 13) found two Major
+> issues beyond the ones specified here, both fixed test-first before the
+> branch proceeded: a superseded reauth prompt left its dialog on screen for
+> the next one to stack on (`b8ba7cc`), and nothing guarded the production
+> footprint wiring, so removing the callback argument from any provider would
+> have compiled and left every test green (`b628bd1`).
 
 ## Goal
 

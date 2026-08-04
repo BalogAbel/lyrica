@@ -1,6 +1,16 @@
 # Phase 4 Closeout Review Remediation — Implementation Plan
 
-> Status: Approved
+> Status: In progress — Tasks 1–16 complete, Tasks 17–19 outstanding.
+>
+> Task 13's focused review found two Major issues beyond this plan's scope,
+> both resolved test-first before proceeding (`b8ba7cc`, `b628bd1`), plus six
+> Minors (`8d92cd8` through `fd2d7fc`). Task 14's graph refresh landed in
+> `07f671d`. Task 15's full closeout verification passed at `6ffa35c`.
+>
+> Task 17 (graph refresh after this reconciliation), Task 18 (verification at
+> the actual final HEAD) and Task 19 (push, open one PR, watch CI) remain.
+> Task 19 explicitly stops short of merging: the branch is not merged or
+> deleted without the user's approval.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use
 > `superpowers:subagent-driven-development` to execute this plan task by task.

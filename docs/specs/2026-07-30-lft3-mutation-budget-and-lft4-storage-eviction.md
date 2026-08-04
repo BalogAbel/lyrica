@@ -1,6 +1,19 @@
 # Mutation Size Budget and Local Storage Eviction Policy
 
-> Status: Draft
+> Status: Implemented
+>
+> Evidence: branch `feat/offline-durability-phase4`. Full closeout verification
+> passed at `6ffa35c` — `./scripts/verify.sh` exit 0 with the local Supabase
+> stack, database reset, demo-user provisioning and the skip-gated integration
+> suites actually executed (1090 tests passed, 18 skipped, coverage 73.57%),
+> all backend write contracts green, `./scripts/check-migrations.sh` exit 0,
+> and `flutter build web --release` exit 0.
+>
+> Two decisions changed during implementation and are recorded where they
+> landed rather than left as written here: the budget is checked **before** the
+> write, not after with an undo (`cf6ae95`, and ADR-028's "Rejected: check
+> after the write and undo it"), and measured pressure never triggers eviction
+> — only a write that actually fails does (`b9537ae`).
 
 ## Goal
 
