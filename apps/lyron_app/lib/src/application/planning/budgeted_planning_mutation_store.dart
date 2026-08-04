@@ -32,14 +32,22 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// here would only destroy cached data for no benefit. The remedy is to
 /// sync or discard.
 ///
-/// Reads, slug allocation, sync bookkeeping, retry and discard
-/// (`readPendingMutations`, `readActionableMutations`, `readAllMutations`,
-/// `readMutation`, `allocatePlanSlug`, `allocateSessionSlug`,
-/// `hasUnsyncedMutations`, `saveSyncAttemptResult`, `retryMutation`,
-/// `clearMutation`) pass straight through unguarded. In particular,
-/// `clearMutation` must never be budget-guarded: once the store is full, it
-/// is the only way out, and guarding it would turn the budget into a trap
-/// with no recovery path.
+/// Reads, slug allocation, retry and discard (`readPendingMutations`,
+/// `readActionableMutations`, `readAllMutations`, `readMutation`,
+/// `allocatePlanSlug`, `allocateSessionSlug`, `hasUnsyncedMutations`,
+/// `retryMutation`, `clearMutation`) pass straight through unguarded by the
+/// budget. In particular, `clearMutation` must never be budget-guarded: once
+/// the store is full, it is the only way out, and guarding it would turn the
+/// budget into a trap with no recovery path.
+///
+/// `saveSyncAttemptResult` is also never budget-guarded, for the same
+/// no-trap reason, but it DOES go through the storage-recovery boundary
+/// below: unlike `retryMutation`/`clearMutation`, it can grow the stored
+/// record (it adds `errorCode`/`errorMessage`), and it is the durable marker
+/// `PlanningMutationSyncController._run` writes immediately after a
+/// successful remote send. A swallowed or unrecovered failure on it would
+/// leave the record `pending` and cause the next sync to resend a mutation
+/// the backend already accepted (ADR-019 exactly-once).
 ///
 /// `recordSessionDelete` and `recordSessionItemDelete` are budget-guarded
 /// like every other `record*` write EXCEPT when the write itself would
@@ -157,6 +165,15 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     // there exactly as it did when this class caught it directly.
     await _recovery.guard(write);
   }
+
+  /// Storage-recovery boundary with no budget admission. Used by
+  /// `saveSyncAttemptResult`: it can grow the stored record (see the class
+  /// doc), so a storage failure on it needs the same evict-and-retry-once
+  /// treatment as a `record*` write, but it must never be refused for
+  /// budget reasons -- refusing it would strand the ADR-019 exactly-once
+  /// marker.
+  Future<void> _recoveredWrite(Future<void> Function() write) =>
+      _recovery.guard(write);
 
   /// Whether a delete targeting `(aggregateType, aggregateId)` would
   /// collapse a still-pending create rather than grow the store -- i.e. the
@@ -358,14 +375,16 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) => _delegate.saveSyncAttemptResult(
-    userId: userId,
-    organizationId: organizationId,
-    aggregateType: aggregateType,
-    aggregateId: aggregateId,
-    syncStatus: syncStatus,
-    errorCode: errorCode,
-    errorMessage: errorMessage,
+  }) => _recoveredWrite(
+    () => _delegate.saveSyncAttemptResult(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+      syncStatus: syncStatus,
+      errorCode: errorCode,
+      errorMessage: errorMessage,
+    ),
   );
 
   @override
