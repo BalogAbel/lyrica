@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
+
 enum PlanningMutationKind {
   planCreate,
   planEdit,
@@ -101,7 +103,8 @@ PlanningMutationSyncStatus planningMutationSyncStatusFromValue(String value) {
   };
 }
 
-class LocalPlanningSlugConflictException implements Exception {
+class LocalPlanningSlugConflictException
+    implements LocalStorageDomainRejection {
   const LocalPlanningSlugConflictException();
 
   @override

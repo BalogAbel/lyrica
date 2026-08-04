@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 
@@ -58,11 +59,16 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 ///
 /// A write that reaches the delegate and fails at the storage layer (not a
 /// domain rejection such as [LocalPlanningSlugConflictException]) is treated
-/// as storage pressure (LF-T4): droppable catalog sources are evicted and
-/// the write is retried once. Every guarded write is an upsert keyed by its
-/// aggregate, so the retry is idempotent -- a partially applied first
-/// attempt cannot duplicate. If the retry still fails, the failure is
-/// surfaced as a typed [LocalStorageWriteFailure] rather than swallowed.
+/// as storage pressure (LF-T4) by [LocalStorageWriteRecovery.guard], the
+/// same shared boundary every other growing local write in the app uses
+/// (D1): droppable catalog sources are evicted and the write is retried
+/// once. Every guarded write is an upsert keyed by its aggregate, so the
+/// retry is idempotent -- a partially applied first attempt cannot
+/// duplicate. If the retry still fails, the failure is surfaced as a typed
+/// [LocalStorageWriteFailure] rather than swallowed. This class no longer
+/// implements that policy itself -- it only decides WHEN to invoke
+/// `_recovery.guard` (after the budget/collapse admission), not HOW a
+/// storage-layer failure recovers.
 class BudgetedPlanningMutationStore implements PlanningMutationStore {
   BudgetedPlanningMutationStore({
     required PlanningMutationStore delegate,
@@ -71,12 +77,12 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required LocalStorageBudget budget,
   }) : _delegate = delegate,
        _accountant = accountant,
-       _evictor = evictor,
+       _recovery = LocalStorageWriteRecovery(evictor: evictor),
        _budget = budget;
 
   final PlanningMutationStore _delegate;
   final PlanningStorageAccountant _accountant;
-  final SongCatalogEvictor _evictor;
+  final LocalStorageWriteRecovery _recovery;
   final LocalStorageBudget _budget;
 
   // Per-(userId, organizationId) write queue. Without this, the measure,
@@ -144,45 +150,12 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       }
     }
 
-    try {
-      await write();
-    } on LocalPlanningSlugConflictException {
-      // A domain rejection, not storage pressure. Retrying it would fail
-      // identically and evicting would destroy cached data for nothing.
-      rethrow;
-    } on Exception catch (error) {
-      // Catch Exception, not Object: by Dart convention Error subclasses
-      // (ArgumentError, StateError, TypeError, ...) mean a programming
-      // defect, never storage pressure. If a corrupted `mutation_kind` made
-      // `planningMutationKindFromValue` throw an ArgumentError, or any other
-      // real bug threw from inside write(), it must propagate as itself --
-      // not get misreported as storage pressure, trigger a pointless
-      // eviction, and get retried into the same failure.
-      //
-      // Storage failure. Give up droppable catalog sources, then retry once.
-      // Every record* write is an upsert keyed by aggregate, so the retry is
-      // idempotent: a partially applied first attempt cannot duplicate.
-      final int freed;
-      try {
-        freed = await _evictor.evictDroppable();
-      } on Exception {
-        // Eviction itself failed -- plausibly the same condition (disk
-        // full, quota) that broke the original write. Don't retry the
-        // write into a store we couldn't even evict from; surface the
-        // ORIGINAL write error, since that's what the caller actually
-        // needs to see. The eviction failure is a secondary symptom, not
-        // reported bytes freed since none were freed.
-        throw LocalStorageWriteFailure(cause: error, bytesFreedByEviction: 0);
-      }
-      try {
-        await write();
-      } catch (retryError) {
-        throw LocalStorageWriteFailure(
-          cause: retryError,
-          bytesFreedByEviction: freed,
-        );
-      }
-    }
+    // The domain-rejection / Error / storage-pressure policy itself lives in
+    // LocalStorageWriteRecovery.guard now, shared with every other growing
+    // local write (D1). LocalPlanningSlugConflictException implements
+    // LocalStorageDomainRejection, so it still passes through untouched
+    // there exactly as it did when this class caught it directly.
+    await _recovery.guard(write);
   }
 
   /// Whether a delete targeting `(aggregateType, aggregateId)` would
