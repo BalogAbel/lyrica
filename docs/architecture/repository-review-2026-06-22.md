@@ -616,6 +616,59 @@ recovery guarantee narrower than stated, not wrong in direction. Three findings,
   succeeds at an exhausted budget; and a non-collapsing `recordSessionDelete`
   still stays refused at that same exhausted budget.
 
+**Status (2026-08-04, PR #64 second re-review round)**:
+
+A more targeted re-review of the same PR #64 diff, after the remediation
+above had already landed, found two further gaps in the same two decisions
+(D1 and D2 of
+`docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`),
+both scoped to `BudgetedPlanningMutationStore.saveSyncAttemptResult`. Closed
+by commits `ba62067`, `dc6a401`, `2b84978`, `39da44f`.
+
+- **D1 gap** — the shared recovery boundary (D8 above) never reached
+  `saveSyncAttemptResult`, even though it can grow the stored record
+  (`errorCode`/`errorMessage`) exactly like the writes D1 already covered. A
+  storage failure on it surfaced the raw exception instead of a typed
+  `LocalStorageWriteFailure`. This one write matters more than an ordinary
+  D1 gap: `saveSyncAttemptResult` is the durable marker
+  `PlanningMutationSyncController._run` writes immediately after a
+  successful remote send, so an unrecovered failure leaves the record
+  `pending` and the next sync resends a mutation the backend already
+  accepted — an ADR-019 exactly-once violation reached through a storage
+  failure rather than a sync-logic bug.
+- **D2 gap** — the per-context write queue (D9 above) serialised the nine
+  `record*` admissions against each other, but not against
+  `saveSyncAttemptResult`, `retryMutation`, or `clearMutation`. That left a
+  race the D9 remediation's own language claimed was closed: a `record*`
+  call's collapse decision (an early `readMutation`) and the delegate's own
+  re-check of the same aggregate (a late `readMutation`, inside its own
+  transaction) are two separate reads, and an unqueued `clearMutation` —
+  exactly what sync calls for that aggregate immediately after a mutation is
+  accepted — could land between them, so the delegate found nothing to
+  collapse and wrote a brand-new delete row that had never passed a budget
+  check. A falsification test reproduced this deterministically against a
+  Completer-gated fake delegate.
+
+Both are now closed:
+
+- `saveSyncAttemptResult` is routed through `LocalStorageWriteRecovery.guard`
+  via a new `_recoveredWrite` helper, with deliberately no budget admission
+  (refusing it would strand the exactly-once marker it exists to protect).
+- `saveSyncAttemptResult`, `retryMutation`, and `clearMutation` all now join
+  the same per-context `_writeQueue` the nine `record*` admissions use, via a
+  shared `_enqueue` helper — `_queuedWrite` for the two that only need
+  ordering, `_recoveredWrite` for the one that also needs recovery.
+
+Pinned by `test/application/planning/budgeted_planning_mutation_store_test.dart`:
+a `saveSyncAttemptResult` is never refused for budget reasons test; a
+`BudgetedPlanningMutationStore.saveSyncAttemptResult recovery (finding 1)`
+group covering both the evict-once/retry-once/typed-failure path and the
+transient-failure-recovers-on-retry path; and "the collapse race" test,
+which fails against the pre-fix unqueued writes and passes after. See
+ADR-028 D3 (corrected), D8 and D9 (both extended), and
+`docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`'s
+"Second re-review round" section for the full account.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

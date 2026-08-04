@@ -1,7 +1,10 @@
 # Storage Recovery Boundary and Budget Admission
 
 > Status: Implemented (commits `a400461`, `2a09116`, `6f7cf93`, `2e55d70`,
-> `8dd556f`, `72c8fe4`, `96a74a4` on `feat/offline-durability-phase4`, PR #64)
+> `8dd556f`, `72c8fe4`, `96a74a4` on `feat/offline-durability-phase4`, PR #64).
+> A second, more targeted re-review of PR #64 found D1 and D2 below narrower
+> than this spec's own text — see "Second re-review round" under
+> Implemented, closed by commits `ba62067`, `dc6a401`, `2b84978`, `39da44f`.
 
 ## Goal
 
@@ -213,3 +216,58 @@ Also widened past what this spec's own D1 prose named: `reconcileSyncedSong`
 row pair on a song's first sync — the same growth case D1 exists to protect,
 even though this spec's Problem/Decisions sections named only "catalog
 snapshot replacement and catalog song-mutation saves."
+
+### Second re-review round (2026-08-04): D1 and D2 were both still narrower than stated
+
+A subsequent, more targeted re-review of the landed PR #64 diff found that D1
+and D2 above, as implemented at that point, did not yet cover
+`BudgetedPlanningMutationStore.saveSyncAttemptResult` — a gap in exactly the
+two decisions this spec exists to state precisely. Closed by commits
+`ba62067` (red), `dc6a401` (green, D1 gap), `2b84978` (red), `39da44f`
+(green, D2 gap).
+
+**D1 gap — the recovery boundary never reached `saveSyncAttemptResult`.**
+D1's own text says the boundary covers "every local write that can increase
+stored bytes." `saveSyncAttemptResult` writes through `_upsertRecord`, adding
+`errorCode`/`errorMessage` to the stored row — it fits that description
+exactly — but it was never routed through `LocalStorageWriteRecovery.guard`.
+A storage failure on it surfaced the raw exception instead of a typed
+`LocalStorageWriteFailure`. This is not merely a missed test: this write is
+the durable marker `PlanningMutationSyncController._run` writes immediately
+after a successful remote send. An unrecovered failure on it leaves the
+record `pending`, and the next sync resends a mutation the backend already
+accepted — an ADR-019 exactly-once violation reached through a storage
+failure. **Closed** by commit `dc6a401`, which adds `_recoveredWrite`,
+wrapping `saveSyncAttemptResult`'s delegate call in
+`LocalStorageWriteRecovery.guard` with deliberately no budget admission (see
+ADR-028 D3's corrected table). Pinned by
+`test/application/planning/budgeted_planning_mutation_store_test.dart`'s
+`BudgetedPlanningMutationStore.saveSyncAttemptResult recovery (finding 1)`
+group, added in `ba62067`.
+
+**D2 gap — serialisation covered `record*` against `record*`, not `record*`
+against the sync writes.** D2 says the budget admission "runs inside a
+per-`(userId, organizationId)` critical section" so "a concurrent write
+cannot slip in between the measurement and the write it authorised." As
+implemented after the first round, that critical section only chained the
+nine `record*` admissions against each other; `saveSyncAttemptResult`,
+`retryMutation`, and `clearMutation` still ran outside it entirely. That left
+a race D2's own language claimed was closed: a `record*` call's collapse
+decision (an early `readMutation`) and the delegate's own re-check of the
+same aggregate (a late `readMutation`, inside its own transaction) are two
+separate reads, and an unqueued `clearMutation` — exactly what sync calls
+for that aggregate immediately after a mutation is accepted — could land
+between them, so the delegate found nothing to collapse and wrote a new
+delete row that had never passed a budget check. **Closed** by commit
+`39da44f`, which extracts the per-context chaining into a shared `_enqueue`
+helper and routes all three pass-through writes through it (`_queuedWrite`
+for `clearMutation`/`retryMutation`: ordering only; `_recoveredWrite` for
+`saveSyncAttemptResult`: ordering plus the D1 recovery boundary). Pinned by
+the `budgeted_planning_mutation_store_test.dart` test named "the collapse
+race," added failing in `2b84978` against a Completer-gated fake delegate
+that deterministically reproduces the interleaving, and passing after
+`39da44f`.
+
+Both closures are recorded in ADR-028's D3 (corrected), D8 (extended), and
+D9 (extended, second amendment), and in the second 2026-08-04 status block
+in `docs/architecture/repository-review-2026-06-22.md`.

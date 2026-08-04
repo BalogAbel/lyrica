@@ -186,6 +186,38 @@ specific finding:
   against a session that is **not** a pending create is still refused at an
   exhausted budget, proving the admission decision is read from store
   state rather than inferred from the method name.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (ADR-028 D3/D8/D9, second PR #64 re-review round, commits `ba62067`,
+  `dc6a401`, `2b84978`, `39da44f`) — four contracts a more targeted
+  re-review found missing from the D8/D9 coverage above:
+  - `saveSyncAttemptResult` is never refused for budget reasons even with
+    the budget exhausted, and its written status is confirmed to actually
+    persist — the ADR-019 "already accepted" marker must survive a full
+    store.
+  - A `saveSyncAttemptResult` recovery group, driven by a scripted
+    insert-failure executor (`_ScriptedInsertExecutor`/
+    `_ScriptedInsertTransactionExecutor`) that fails by 0-indexed call
+    number rather than a countdown, so a seed write can succeed before the
+    write under test fails: a storage failure on the status write evicts
+    droppable catalog sources, retries once, and surfaces a typed
+    `LocalStorageWriteFailure` when the retry also fails; a transient
+    failure on the same write recovers on the retry, with the record
+    carrying the new status afterwards.
+  - "The collapse race" test: a fake delegate (Completer-gated, not real
+    Drift, so the interleaving is deterministic) pauses `recordSessionDelete`
+    between the decorator's own collapse decision and the delegate's
+    internal re-check of the same aggregate, then issues a concurrent
+    `clearMutation` for that aggregate while it is paused — reproducing what
+    `PlanningMutationSyncController` does immediately after a mutation is
+    accepted. Watched failing before the fix: the resumed write landed a
+    brand-new `sessionDelete` row that had never passed a budget check.
+    After the fix (queuing `clearMutation` behind the same per-context turn
+    as `recordSessionDelete`), the outcome is always the collapse, never a
+    grown row.
+  - `retryMutation` and `clearMutation` are not separately recovery-tested
+    (D3: neither can grow the store, so there is nothing for D8 to recover
+    from) — only their queue ordering is covered, via the collapse-race test
+    above.
 - Committed-storage revision coverage (ADR-028 D7), spread across
   `test/application/sync/unified_sync_providers_test.dart`,
   `test/application/storage/song_catalog_evictor_test.dart`,

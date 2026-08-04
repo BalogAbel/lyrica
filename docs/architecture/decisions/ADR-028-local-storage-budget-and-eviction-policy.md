@@ -9,6 +9,9 @@
 - Amended: 2026-08-04 — Spec:
   `docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`
   (PR #64 review findings P1a, P1b, P2; adds D8, D9, D10 below)
+- Amended: 2026-08-04 — same spec, "What implementation found" closed by a
+  second, more targeted re-review round (commits `ba62067`, `dc6a401`,
+  `2b84978`, `39da44f`): corrects D3, extends D8 and D9
 
 ## Context
 
@@ -115,12 +118,53 @@ exactly the nine `record*` methods — `recordPlanCreate`, `recordPlanEdit`,
 `recordSessionItemDelete`, `recordSessionItemReorder` — because those are
 the only calls that can introduce or grow a pending aggregate.
 
-`saveSyncAttemptResult`, `retryMutation` and `clearMutation` pass straight
-through **unguarded**. This is deliberate, not an oversight: they modify or
-shrink an existing row rather than growing one, and guarding them would make
-a full store unrecoverable. Once the mutation budget is exhausted,
-`clearMutation` is the only way out — discard has to keep working
-unconditionally, or the budget becomes a trap with no recovery path.
+`saveSyncAttemptResult`, `retryMutation` and `clearMutation` are **never
+admitted against the mutation budget**. This is deliberate, not an
+oversight: they modify or shrink an existing row rather than growing one,
+and guarding them would make a full store unrecoverable. Once the mutation
+budget is exhausted, `clearMutation` is the only way out — discard has to
+keep working unconditionally, or the budget becomes a trap with no recovery
+path.
+
+**Corrected, 2026-08-04 (second PR #64 re-review round, commits `ba62067`,
+`dc6a401`, `2b84978`, `39da44f`).** This section previously said the three
+writes above "pass straight through unguarded," full stop. That was stale in
+a way that mattered: unguarded by the *budget*, yes, but a targeted
+re-review found that `saveSyncAttemptResult` also needs the storage-recovery
+boundary (D8), and that all three need to share the per-context write queue
+(D9) the nine `record*` admissions already used — for a race that has
+nothing to do with the budget itself (see D9's second amendment). The three
+writes are not one undifferentiated group; they split three ways:
+
+| write | budget admission (D1/D10) | write queue (D9) | storage recovery (D8) |
+|---|---|---|---|
+| the nine `record*` methods | yes, unless the write provably collapses a pending create (D10) | yes | yes |
+| `saveSyncAttemptResult` | never | yes | yes |
+| `retryMutation` | never | yes | no |
+| `clearMutation` | never | yes | no |
+
+`saveSyncAttemptResult` needs recovery because it is the only one of the
+three that can *grow* the stored row — it writes through the same
+`_upsertRecord` path as the others, adding `errorCode`/`errorMessage` —
+so an unrecovered storage failure on it would surface a raw exception
+instead of the typed `LocalStorageWriteFailure` every other growing local
+write gets (D8). It matters more than that here: `saveSyncAttemptResult` is
+also the durable marker `PlanningMutationSyncController._run` writes
+immediately after a successful remote send, recording the mutation as
+`accepted`. If that write fails and the failure is swallowed rather than
+recovered, the record stays `pending`, and the next sync **resends a
+mutation the backend already accepted** — an ADR-019 exactly-once violation
+reached through a storage failure, not a sync-logic bug. That is exactly why
+this write can never be budget-admitted either: refusing it for budget
+reasons would strand the very marker that prevents the resend, on the one
+write of the three whose failure has the worst consequence.
+
+`retryMutation` clears `errorCode`/`errorMessage` and rebases the base
+version on an already-existing row — it shrinks or holds steady, never
+grows — and `clearMutation` is a pure delete. Neither can produce the kind
+of storage-layer growth failure D8 exists to recover from, so neither needs
+the recovery boundary; they only need the same queue ordering as every other
+write for their context, for the race D9's second amendment closes.
 
 **Rejected alternatives** (from the spec, carried here for the durable
 record):
@@ -134,10 +178,11 @@ record):
   mutation store is public and has more than one caller, so the guarantee
   would not be tight.
 
-This decorator's admission logic is amended twice below without changing
-this guard list: D9 serialises the measure/check/write sequence per
-context, and D10 admits a delete that collapses a still-pending create
-regardless of budget.
+This decorator's admission logic is amended below without changing which
+methods are budget-admitted: D9 serialises the measure/check/write sequence
+per context and, as of the second re-review round, also queues the three
+writes in the table above; D10 admits a delete that collapses a still-pending
+create regardless of budget.
 
 ### D8 — One recovery boundary, shared by every growing local write
 
@@ -186,6 +231,12 @@ write that can increase stored bytes:
   class no longer implements the eviction/retry policy itself, it delegates
   to this boundary after its own budget/collapse admission decision — D3,
   D9, D10);
+- `BudgetedPlanningMutationStore.saveSyncAttemptResult` (2026-08-04, second
+  PR #64 re-review round) — added because it is the one write of the three
+  pass-through methods that can grow the stored record
+  (`errorCode`/`errorMessage`); see D3's table and the exactly-once
+  reasoning there for why this one needed recovery and the other two did
+  not;
 - `DriftPlanningLocalStore.replaceActiveProjection`, `upsertSyncedPlan`,
   `upsertSyncedSession`, `upsertSyncedSessionItem`;
 - `DriftSongCatalogStore.replaceActiveSnapshot`, `saveSongMutation`, and
@@ -202,7 +253,8 @@ reorder methods (`replaceSyncedSessionOrder`, `replaceSyncedSessionItemOrder`,
 which update `position`/`version` on rows that already exist rather than
 inserting). There is nothing to recover from on a pure delete or shrink,
 and guarding one would add an eviction attempt to the very operation that
-frees space.
+frees space. `BudgetedPlanningMutationStore.retryMutation` and
+`.clearMutation` are not guarded for the same reason — see D3's table.
 
 **The marker interface, and why not a hardcoded list.** A caller opts an
 exception into domain-rejection treatment by having its class implement
@@ -265,6 +317,40 @@ threshold by at most one mutation, not by however many writes raced.
 
 Budget logic itself is unchanged by this amendment; it now runs inside
 `_admitAndWrite`, called once per queued turn.
+
+**Second amendment, 2026-08-04, closing the collapse-versus-`clearMutation`
+race found by a second, more targeted re-review round (commits `ba62067`,
+`dc6a401`, `2b84978`, `39da44f`).** The queue above was built to serialise
+the nine `record*` admissions against each other; it did not originally
+include `saveSyncAttemptResult`, `retryMutation`, or `clearMutation`. That
+gap was itself a race, independent of the budget: a `record*` call's
+collapse decision (`_collapsesPendingCreate`, read once, early, before the
+write's queued turn even starts) and the delegate's own re-check of the same
+aggregate (read again, late, inside its own transaction, once the queued
+turn actually runs) are two separate reads of the same row. `clearMutation`
+is exactly what `PlanningMutationSyncController` calls, for that same
+aggregate, immediately after a mutation is accepted. Unqueued, a concurrent
+`clearMutation` could land in the gap between those two reads: the
+decorator's early read still saw the pending create and skipped the budget
+check on that basis, but by the time the delegate's own late re-check ran,
+`clearMutation` had already removed it — so the delegate found nothing left
+to collapse and wrote a brand-new delete row instead, one that had never
+passed a budget check at all. A falsification test in
+`test/application/planning/budgeted_planning_mutation_store_test.dart`
+("the collapse race") reproduced exactly this, deterministically, with a
+Completer-gated fake delegate that pauses `recordSessionDelete` between the
+decorator's collapse decision and its own internal re-check.
+
+`clearMutation` and `retryMutation` now join the same per-context
+`_writeQueue` the nine `record*` admissions use, via a `_queuedWrite` helper
+that provides ordering only — no budget, no recovery. `saveSyncAttemptResult`
+joins it too, via a `_recoveredWrite` helper that adds the D8 recovery
+boundary on top of the ordering (never the budget — D3's table). Once a
+`record*` call's turn starts, no other write for the same context —
+including a `clearMutation` or `retryMutation` for a different aggregate in
+that context — can run until it finishes, so the collapse decision and the
+delegate's re-check can no longer be separated by an intervening write for
+that context.
 
 ### D10 — Admit writes that provably shrink the store
 
@@ -589,6 +675,20 @@ a focused emission test — is guarded separately by
   against a session that is **not** a pending create is still refused at an
   exhausted budget, proving the admission decision comes from store state,
   not the method name.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (2026-08-04, second re-review round, D3/D8/D9) —
+  `saveSyncAttemptResult` is confirmed never refused for budget reasons even
+  with the budget exhausted, and its stored status is confirmed to actually
+  update (D3); a `saveSyncAttemptResult` recovery group, driven by a
+  scripted insert-failure executor that fails by 0-indexed call number
+  rather than a countdown (so a seed write can succeed before the write
+  under test fails), covers both a storage failure that evicts droppable
+  sources, retries once, and surfaces a typed `LocalStorageWriteFailure`
+  when the retry also fails, and a transient failure that recovers on the
+  retry with the record carrying the new status afterwards (D8); and "the
+  collapse race" test, described under D9's second amendment above, pins
+  that a `clearMutation` concurrent with a collapsing `recordSessionDelete`
+  never results in a new delete row admitted without a budget check (D9).
 
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
@@ -624,3 +724,15 @@ adversarial suite.
   admitted regardless of the mutation budget, so an exhausted budget can no
   longer block the ordinary delete affordance from draining a store that is
   actually shrinkable (D10).
+- (2026-08-04, second re-review round) `saveSyncAttemptResult` now shares the
+  D8 recovery boundary, so a storage failure on the ADR-019 "already
+  accepted" marker recovers the same way every other growing local write
+  does instead of surfacing a raw exception and risking a resend of an
+  already-accepted mutation; it remains permanently exempt from budget
+  admission, deliberately, for that same reason (D3). All three previously
+  unqueued pass-through writes (`saveSyncAttemptResult`, `retryMutation`,
+  `clearMutation`) now share the per-context write queue with the nine
+  `record*` admissions, closing a race where a concurrent `clearMutation`
+  landing between a `record*` call's collapse decision and the delegate's
+  own re-check could grow the store with a write that never passed a budget
+  check (D9).
