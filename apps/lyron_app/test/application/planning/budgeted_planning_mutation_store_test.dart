@@ -246,273 +246,261 @@ void main() {
       },
     );
 
-    test(
-      'serialises the measure-check-write sequence so concurrent writes for '
-      'different aggregates in the same context cannot all pass the same '
-      'pre-write measurement',
-      () async {
-        // Threshold of 1 admits only a store that is still empty (0 bytes).
-        // Every real mutation row costs at least kLocalStorageRowOverheadBytes
-        // (64), so once ANY one of these writes lands, every write measured
-        // afterwards must see a footprint >= 1 and be refused. Without
-        // serialising measure+check+write per context, three concurrent
-        // writes can all measure the empty store before any of them lands,
-        // so all three pass the check and all three write.
-        final store = storeWithBudget(
-          const LocalStorageBudget(mutationRefuseBytes: 1),
-        );
+    test('serialises the measure-check-write sequence so concurrent writes for '
+        'different aggregates in the same context cannot all pass the same '
+        'pre-write measurement', () async {
+      // Threshold of 1 admits only a store that is still empty (0 bytes).
+      // Every real mutation row costs at least kLocalStorageRowOverheadBytes
+      // (64), so once ANY one of these writes lands, every write measured
+      // afterwards must see a footprint >= 1 and be refused. Without
+      // serialising measure+check+write per context, three concurrent
+      // writes can all measure the empty store before any of them lands,
+      // so all three pass the check and all three write.
+      final store = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
 
-        Future<Object?> asOutcome(Future<void> future) =>
-            future.then<Object?>((_) => null, onError: (Object error) => error);
+      Future<Object?> asOutcome(Future<void> future) =>
+          future.then<Object?>((_) => null, onError: (Object error) => error);
 
-        final outcomes = await Future.wait<Object?>([
-          asOutcome(
-            store.recordPlanCreate(
-              context: context,
-              draft: const PlanningPlanCreateMutationDraft(
-                planId: 'plan-1',
-                slug: 'plan-one',
-                name: 'Plan One',
-              ),
+      final outcomes = await Future.wait<Object?>([
+        asOutcome(
+          store.recordPlanCreate(
+            context: context,
+            draft: const PlanningPlanCreateMutationDraft(
+              planId: 'plan-1',
+              slug: 'plan-one',
+              name: 'Plan One',
             ),
           ),
-          asOutcome(
-            store.recordSessionCreate(
-              context: context,
-              draft: const PlanningSessionCreateMutationDraft(
-                sessionId: 'session-1',
-                planId: 'plan-x',
-                slug: 'session-one',
-                name: 'Session One',
-                position: 0,
-              ),
+        ),
+        asOutcome(
+          store.recordSessionCreate(
+            context: context,
+            draft: const PlanningSessionCreateMutationDraft(
+              sessionId: 'session-1',
+              planId: 'plan-x',
+              slug: 'session-one',
+              name: 'Session One',
+              position: 0,
             ),
           ),
-          asOutcome(
-            store.recordSessionItemCreateSong(
-              context: context,
-              draft: const PlanningSessionItemCreateSongMutationDraft(
-                sessionItemId: 'item-1',
-                sessionId: 'session-x',
-                planId: 'plan-x',
-                songId: 'song-1',
-                songTitle: 'Song One',
-                position: 0,
-              ),
+        ),
+        asOutcome(
+          store.recordSessionItemCreateSong(
+            context: context,
+            draft: const PlanningSessionItemCreateSongMutationDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-x',
+              planId: 'plan-x',
+              songId: 'song-1',
+              songTitle: 'Song One',
+              position: 0,
             ),
           ),
-        ]);
+        ),
+      ]);
 
-        final succeeded = outcomes.where((outcome) => outcome == null).length;
-        final refused = outcomes
-            .whereType<PlanningMutationBudgetExceededException>()
-            .length;
+      final succeeded = outcomes.where((outcome) => outcome == null).length;
+      final refused = outcomes
+          .whereType<PlanningMutationBudgetExceededException>()
+          .length;
 
-        expect(
-          succeeded,
-          1,
-          reason: 'exactly one concurrent write should be admitted: $outcomes',
-        );
-        expect(refused, 2);
-      },
-    );
+      expect(
+        succeeded,
+        1,
+        reason: 'exactly one concurrent write should be admitted: $outcomes',
+      );
+      expect(refused, 2);
+    });
 
-    test(
-      'does not serialise across different (userId, organizationId) '
-      'contexts',
-      () async {
-        // A fake delegate lets this test control write timing directly,
-        // independent of the real budget accounting (which would otherwise
-        // interact with the concurrency being tested here). Context A's
-        // write blocks on a completer that only context B's write --  a
-        // DIFFERENT context -- completes. If serialisation were keyed
-        // globally instead of per context, B's write would be queued behind
-        // A's (which can never finish without B running first), deadlocking
-        // forever. Per-context serialisation lets B run immediately.
-        final delegateFake = _HookedPlanningMutationStore();
-        final store = BudgetedPlanningMutationStore(
-          delegate: delegateFake,
-          accountant: accountant,
-          evictor: evictor,
-          budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
-        );
+    test('does not serialise across different (userId, organizationId) '
+        'contexts', () async {
+      // A fake delegate lets this test control write timing directly,
+      // independent of the real budget accounting (which would otherwise
+      // interact with the concurrency being tested here). Context A's
+      // write blocks on a completer that only context B's write --  a
+      // DIFFERENT context -- completes. If serialisation were keyed
+      // globally instead of per context, B's write would be queued behind
+      // A's (which can never finish without B running first), deadlocking
+      // forever. Per-context serialisation lets B run immediately.
+      final delegateFake = _HookedPlanningMutationStore();
+      final store = BudgetedPlanningMutationStore(
+        delegate: delegateFake,
+        accountant: accountant,
+        evictor: evictor,
+        budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
 
-        const contextA = PlanningMutationContext(
-          userId: 'user-a',
-          organizationId: 'org-a',
-        );
-        const contextB = PlanningMutationContext(
-          userId: 'user-b',
-          organizationId: 'org-b',
-        );
+      const contextA = PlanningMutationContext(
+        userId: 'user-a',
+        organizationId: 'org-a',
+      );
+      const contextB = PlanningMutationContext(
+        userId: 'user-b',
+        organizationId: 'org-b',
+      );
 
-        final bStarted = Completer<void>();
+      final bStarted = Completer<void>();
 
-        delegateFake.onRecordPlanCreate['user-a_org-a'] = () => bStarted.future;
-        delegateFake.onRecordPlanCreate['user-b_org-b'] = () async {
-          if (!bStarted.isCompleted) bStarted.complete();
-        };
+      delegateFake.onRecordPlanCreate['user-a_org-a'] = () => bStarted.future;
+      delegateFake.onRecordPlanCreate['user-b_org-b'] = () async {
+        if (!bStarted.isCompleted) bStarted.complete();
+      };
 
-        final aFuture = store.recordPlanCreate(
-          context: contextA,
-          draft: const PlanningPlanCreateMutationDraft(
-            planId: 'plan-a',
-            slug: 'plan-a',
-            name: 'Plan A',
-          ),
-        );
+      final aFuture = store.recordPlanCreate(
+        context: contextA,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-a',
+          slug: 'plan-a',
+          name: 'Plan A',
+        ),
+      );
 
-        await store
-            .recordPlanCreate(
-              context: contextB,
-              draft: const PlanningPlanCreateMutationDraft(
-                planId: 'plan-b',
-                slug: 'plan-b',
-                name: 'Plan B',
-              ),
-            )
-            .timeout(const Duration(seconds: 2));
+      await store
+          .recordPlanCreate(
+            context: contextB,
+            draft: const PlanningPlanCreateMutationDraft(
+              planId: 'plan-b',
+              slug: 'plan-b',
+              name: 'Plan B',
+            ),
+          )
+          .timeout(const Duration(seconds: 2));
 
-        await aFuture.timeout(const Duration(seconds: 2));
-      },
-    );
+      await aFuture.timeout(const Duration(seconds: 2));
+    });
 
-    test(
-      'admits a session delete that collapses a still-pending session '
-      'create even at an exhausted budget, and removes the session plus '
-      'its pending item and item-order rows',
-      () async {
-        final permissive = storeWithBudget(
-          const LocalStorageBudget(mutationRefuseBytes: 1000000),
-        );
-        await permissive.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 0,
-          ),
-        );
-        await permissive.recordSessionItemCreateSong(
-          context: context,
-          draft: const PlanningSessionItemCreateSongMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            songId: 'song-1',
-            songTitle: 'Song One',
-            position: 0,
-          ),
-        );
-        await permissive.recordSessionItemReorder(
-          context: context,
-          draft: const PlanningSessionItemReorderMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            orderedSessionItemIds: ['item-1'],
-          ),
-        );
+    test('admits a session delete that collapses a still-pending session '
+        'create even at an exhausted budget, and removes the session plus '
+        'its pending item and item-order rows', () async {
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 0,
+        ),
+      );
+      await permissive.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song One',
+          position: 0,
+        ),
+      );
+      await permissive.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          orderedSessionItemIds: ['item-1'],
+        ),
+      );
 
-        final exhausted = storeWithBudget(
-          const LocalStorageBudget(mutationRefuseBytes: 1),
-        );
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
 
-        // Must not throw PlanningMutationBudgetExceededException: deleting a
-        // still-pending create shrinks the store, so it is admitted
-        // regardless of budget.
-        await exhausted.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      // Must not throw PlanningMutationBudgetExceededException: deleting a
+      // still-pending create shrinks the store, so it is admitted
+      // regardless of budget.
+      await exhausted.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        expect(
-          await exhausted.readMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            aggregateType: 'session',
-            aggregateId: 'session-1',
-          ),
-          isNull,
-        );
-        expect(
-          await exhausted.readMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            aggregateType: 'session_item',
-            aggregateId: 'item-1',
-          ),
-          isNull,
-        );
-        expect(
-          await exhausted.readMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            aggregateType: 'session_item_order',
-            aggregateId: 'session-1',
-          ),
-          isNull,
-        );
-      },
-    );
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        ),
+        isNull,
+      );
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+        ),
+        isNull,
+      );
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item_order',
+          aggregateId: 'session-1',
+        ),
+        isNull,
+      );
+    });
 
-    test(
-      'admits a session-item delete that collapses a still-pending '
-      'session-item create even at an exhausted budget',
-      () async {
-        final permissive = storeWithBudget(
-          const LocalStorageBudget(mutationRefuseBytes: 1000000),
-        );
-        await permissive.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 0,
-          ),
-        );
-        await permissive.recordSessionItemCreateSong(
-          context: context,
-          draft: const PlanningSessionItemCreateSongMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            songId: 'song-1',
-            songTitle: 'Song One',
-            position: 0,
-          ),
-        );
+    test('admits a session-item delete that collapses a still-pending '
+        'session-item create even at an exhausted budget', () async {
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 0,
+        ),
+      );
+      await permissive.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song One',
+          position: 0,
+        ),
+      );
 
-        final exhausted = storeWithBudget(
-          const LocalStorageBudget(mutationRefuseBytes: 1),
-        );
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
 
-        await exhausted.recordSessionItemDelete(
-          context: context,
-          draft: const PlanningSessionItemDeleteMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await exhausted.recordSessionItemDelete(
+        context: context,
+        draft: const PlanningSessionItemDeleteMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        expect(
-          await exhausted.readMutation(
-            userId: context.userId,
-            organizationId: context.organizationId,
-            aggregateType: 'session_item',
-            aggregateId: 'item-1',
-          ),
-          isNull,
-        );
-      },
-    );
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+        ),
+        isNull,
+      );
+    });
 
     test(
       'still refuses a session delete that is not collapsing a pending '
