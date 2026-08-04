@@ -179,6 +179,12 @@ carry the detail; this is the digest.
   `test/application/planning/budgeted_planning_mutation_store_test.dart` suites.
   Every threshold is verified against native Drift/sqlite3 only; the web/IndexedDB
   assumptions remain unverified (`docs/deferred/2026-06-29-web-offline-e2e.md`).
+  The PR #64 review then found the eviction/recovery half of this had only ever
+  been wired to the planning-mutation write path; it is now a single shared
+  boundary covering every local write that can grow stored bytes, the budget's
+  measure-check-write sequence is serialised per `(userId, organizationId)`, and
+  a delete that collapses a still-pending create is admitted regardless of
+  budget — see the 2026-08-04 status block below.
 
 - **LF-7, LF-9** (offline-durability-phase4 slice) — see §6.2 status block. LF-7's live
   violation was on the **song** side (`SongMutationSyncController.discardMine`), not the
@@ -549,6 +555,67 @@ none remain open or partial. LF-T2's non-destructive-expiry half was fixed via
 LF-T1; its residual, the refresh-token TTL hard wall, now has a deferred doc with
 a stated trigger condition rather than being called out as the one id this review
 could not place cleanly into a closed state.
+
+**Status (2026-08-04, PR #64 review remediation)**:
+
+The PR #64 review of the offline-durability-phase4 slice (itself reviewing the
+LF-T3/LF-T4 work recorded in the 2026-07-30 status block above) found the ADR-028
+recovery guarantee narrower than stated, not wrong in direction. Three findings,
+`docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`:
+
+- **P1a** — `SongCatalogEvictor.evictDroppable()` was reachable from exactly one
+  write path, `BudgetedPlanningMutationStore._guardedWrite`. Song mutation
+  writes, catalog snapshot replacement, and planning projection writes went
+  straight to Drift, so a storage failure on any of them surfaced a raw Drift
+  exception instead of the typed `LocalStorageWriteFailure` ADR-028 claimed for
+  local writes generally.
+- **P1b** — the budget's measure-check-write sequence was not serialised, so
+  concurrent `record*` calls for different aggregates in the same context could
+  all measure the same pre-write footprint and all pass, overshooting the
+  documented "at most one mutation past the threshold" bound.
+- **P2** — `recordSessionDelete`/`recordSessionItemDelete` were budget-guarded
+  like every other write even when they would *shrink* the store by collapsing
+  a still-pending create, so an exhausted budget could refuse the very delete
+  that would have freed room for it.
+
+- `LF-T4` — **stays fixed, now on the accurate basis instead of the broader one
+  originally claimed.** P1a is closed: the eviction-once/retry-once/typed-failure
+  policy is now `LocalStorageWriteRecovery.guard`, one shared boundary injected
+  into `DriftSongCatalogStore` and `DriftPlanningLocalStore` the same way
+  `onStorageFootprintChanged` already was, so every local write that can grow
+  stored bytes gets the same recovery — not only planning mutation `record*`
+  calls. Two more exceptions needed the `LocalStorageDomainRejection` marker so
+  the shared guard does not misreport them as storage pressure:
+  `LocalSongSlugConflictException`, and `PlanningProjectionAbortedException` — a
+  cooperative-cancellation signal a superseded projection refresh throws, not a
+  failure, already caught explicitly by `PlanningSyncController`. Pinned by
+  `test/application/storage/local_storage_write_recovery_test.dart` (the
+  boundary itself) and the new `DriftPlanningLocalStore storage recovery (D1)` /
+  `DriftSongCatalogStore storage recovery (D1)` groups in
+  `test/offline/planning/planning_local_store_test.dart` and
+  `test/offline/song_catalog/song_catalog_store_test.dart` (fault-injected
+  recovery on `replaceActiveProjection`, `saveSongMutation`, and
+  `replaceActiveSnapshot`). `reconcileSyncedSong`, `upsertSyncedPlan`,
+  `upsertSyncedSession`, and `upsertSyncedSessionItem` are wired to the same
+  guard but are not separately covered by a fault-injection recovery test — a
+  gap worth stating plainly rather than implying full coverage. Native-only
+  verification is unchanged; `docs/deferred/2026-06-29-web-offline-e2e.md`
+  stays open. ADR-028 D8.
+- `LF-T3` — **stays fixed, with P1b and P2 now closed.** The measure/check/
+  delegated-write sequence runs inside a per-`(userId, organizationId)` FIFO
+  write queue, so the documented overshoot bound holds under concurrency
+  without one user/organization's writes blocking another's (ADR-028 D9).
+  `recordSessionDelete`/`recordSessionItemDelete` now read the target
+  aggregate's existing mutation and admit the write regardless of budget when
+  it collapses a still-pending create, deciding from store state rather than
+  the method name, so an exhausted budget can no longer trap a store that is
+  actually shrinkable (ADR-028 D10). Pinned by new tests in
+  `test/application/planning/budgeted_planning_mutation_store_test.dart`: a
+  three-way concurrent-write race against a budget that admits only one lands
+  exactly one success; two different `(userId, organizationId)` contexts do not
+  block each other; a collapsing `recordSessionDelete`/`recordSessionItemDelete`
+  succeeds at an exhausted budget; and a non-collapsing `recordSessionDelete`
+  still stays refused at that same exhausted budget.
 
 ### 6.2 Correctness / robustness
 

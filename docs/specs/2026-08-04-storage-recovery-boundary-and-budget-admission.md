@@ -1,6 +1,7 @@
 # Storage Recovery Boundary and Budget Admission
 
-> Status: Draft
+> Status: Implemented (commits `a400461`, `2a09116`, `6f7cf93`, `2e55d70`,
+> `8dd556f`, `72c8fe4`, `96a74a4` on `feat/offline-durability-phase4`, PR #64)
 
 ## Goal
 
@@ -151,3 +152,64 @@ be refused.
   updated to match.
 - The LF-T4 entry in `docs/architecture/repository-review-2026-06-22.md` stays
   fixed, but now on an accurate basis; note the widening.
+
+## Implemented
+
+Landed as commits `a400461`, `2a09116`, `6f7cf93`, `2e55d70`, `8dd556f`,
+`72c8fe4`, `96a74a4`. D1 (widened to every guarded write, not only the
+planning-mutation path — see below), D2, and D3 are all implemented as
+specified.
+
+**Evidence:**
+
+- `apps/lyron_app/lib/src/application/storage/local_storage_write_recovery.dart`
+  — the shared `LocalStorageWriteRecovery.guard` boundary (D1).
+- `apps/lyron_app/lib/src/application/storage/local_storage_domain_rejection.dart`
+  — the `LocalStorageDomainRejection` marker interface.
+- `apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart`
+  — delegates to the shared boundary (D1); per-context `_writeQueue` (D2);
+  `_collapsesPendingCreate`/`isCollapse` admission (D3).
+- `apps/lyron_app/lib/src/offline/planning/planning_local_store.dart` and
+  `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart` — the
+  optional `writeRecovery` constructor parameter wired into every write that
+  can grow stored bytes (D1's widening — see "What implementation found" below).
+- `apps/lyron_app/lib/src/application/core_providers.dart`,
+  `planning_providers.dart`, `song_catalog_providers.dart` — production wiring
+  of `localStorageWriteRecoveryProvider` into both stores.
+- Tests: `test/application/storage/local_storage_write_recovery_test.dart`
+  (the boundary itself); the `DriftPlanningLocalStore storage recovery (D1)`
+  group in `test/offline/planning/planning_local_store_test.dart`; the
+  `DriftSongCatalogStore storage recovery (D1)` group in
+  `test/offline/song_catalog/song_catalog_store_test.dart`; and the D2/D3
+  additions to `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (concurrent-write admission, per-context non-blocking, collapse admission,
+  and a non-collapsing delete still refused).
+- Verified: `./scripts/verify.sh --skip-migrations --skip-backend-write-contracts`
+  green (see the branch's CI / the closing commit).
+
+**What implementation found that this spec did not anticipate:**
+
+1. **`LocalSongSlugConflictException` also needed the `LocalStorageDomainRejection`
+   marker.** This spec's D1 named `LocalPlanningSlugConflictException` as the
+   example domain rejection. Widening the guard to `DriftSongCatalogStore.saveSongMutation`
+   (commit `96a74a4`) surfaced that `saveSongMutation` throws its own slug-conflict
+   exception mid-write, on the song side, and it needed the same marker for the
+   same reason — without it, the shared guard would misread a duplicate-slug
+   rejection as storage pressure and evict/retry into the identical rejection.
+2. **`PlanningProjectionAbortedException` is a cooperative-cancellation signal,
+   not a failure, and needed the same marker for a different reason than a
+   domain rejection.** Widening the guard to `DriftPlanningLocalStore.replaceActiveProjection`
+   surfaced that `_ensureProjectionCurrent` throws this exception when a newer
+   refresh has superseded the current one — an expected control-flow signal
+   `PlanningSyncController` already catches, not a rejected write. This spec's
+   D1 described the marker only for domain rejections (a write refused by
+   business rule); a superseded-refresh cancellation is a different reason to
+   need the identical "pass through untouched" treatment, and the marker
+   interface covers both without the guard needing to know which case it is
+   looking at.
+
+Also widened past what this spec's own D1 prose named: `reconcileSyncedSong`
+(commit `96a74a4`) needed guarding too, since it inserts a new summary/source
+row pair on a song's first sync — the same growth case D1 exists to protect,
+even though this spec's Problem/Decisions sections named only "catalog
+snapshot replacement and catalog song-mutation saves."

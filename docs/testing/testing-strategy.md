@@ -138,6 +138,55 @@ specific finding:
   `local_storage_monitor_test.dart`) holds no reference to `SongCatalogEvictor` at all, so a
   critical measured pressure cannot call the evictor even in principle — it can only change
   the classification the sync overview displays (ADR-028 D1/D6).
+- `test/application/storage/local_storage_write_recovery_test.dart` (ADR-028
+  D8) — unit tests of the shared `LocalStorageWriteRecovery.guard` boundary
+  itself, independent of any concrete store: success returns without
+  touching the evictor; a `LocalStorageDomainRejection` and an `Error` both
+  rethrow untouched with no eviction or retry attempted; a plain
+  `Exception` evicts droppable catalog sources once and retries the write
+  once, returning the retry result; a second failure wraps as
+  `LocalStorageWriteFailure` carrying the retry error and the freed byte
+  count; and when eviction itself throws, the write is never retried and
+  the *original* write error is the failure's cause with
+  `bytesFreedByEviction: 0`.
+- `test/offline/planning/planning_local_store_test.dart` (`DriftPlanningLocalStore
+  storage recovery (D1)` group) and `test/offline/song_catalog/song_catalog_store_test.dart`
+  (`DriftSongCatalogStore storage recovery (D1)` group) (ADR-028 D8) — the
+  recovery boundary widened past the planning-mutation path to every other
+  local write that can grow stored bytes. Reuses the fault-injection shape
+  `storage_pressure_contract_test.dart` pioneered (extracted to
+  `test/support/insert_failing_executor.dart`), driven against a second,
+  unwrapped `SongCatalogDatabase` backing the evictor so eviction
+  reads/deletes never contend with the failing guarded database. Covers a
+  failed `replaceActiveProjection` (planning) and failed `saveSongMutation`
+  and `replaceActiveSnapshot` (catalog): evict droppable sources, retry
+  once, surface a typed `LocalStorageWriteFailure`, and confirm the failed
+  write never landed on a subsequent read. `replaceActiveProjection` and
+  `saveSongMutation` are each also covered for the retry-succeeds case, and
+  `PlanningProjectionAbortedException` (a cooperative-cancellation signal
+  from a superseded refresh, not a failure) and a song slug-conflict domain
+  rejection are each confirmed to pass through untouched with zero
+  evictions — pinning that both implement `LocalStorageDomainRejection`.
+  `reconcileSyncedSong`, `upsertSyncedPlan`, `upsertSyncedSession`, and
+  `upsertSyncedSessionItem` are wired to the same guard in production but
+  are **not** separately covered by a fault-injection recovery test here —
+  noted as a gap, not silently implied covered.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (ADR-028 D9/D10 additions) — the budget-admission concurrency and
+  collapse contracts: three concurrent `record*` calls for different
+  aggregates in the same context, against a budget that admits only one,
+  land exactly one success and two refusals (this test fails against the
+  pre-amendment unserialised guard, which lands all three); concurrent
+  writes for two different `(userId, organizationId)` contexts do not block
+  each other, shaped with a `Completer` so it would deadlock forever if
+  serialisation were keyed globally instead of per context; at an
+  exhausted budget, `recordSessionDelete` against a pending `sessionCreate`
+  succeeds and removes the session plus its pending item and item-order
+  rows, and `recordSessionItemDelete` against a pending
+  `sessionItemCreateSong` succeeds and removes it; and `recordSessionDelete`
+  against a session that is **not** a pending create is still refused at an
+  exhausted budget, proving the admission decision is read from store
+  state rather than inferred from the method name.
 - Committed-storage revision coverage (ADR-028 D7), spread across
   `test/application/sync/unified_sync_providers_test.dart`,
   `test/application/storage/song_catalog_evictor_test.dart`,

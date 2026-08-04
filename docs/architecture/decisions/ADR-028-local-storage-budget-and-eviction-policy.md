@@ -6,6 +6,9 @@
 - Plan: `docs/plans/2026-07-30-lft3-mutation-budget-and-lft4-storage-eviction.md`
 - Findings: LF-T3, LF-T4
 - Closes: `docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`
+- Amended: 2026-08-04 — Spec:
+  `docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`
+  (PR #64 review findings P1a, P1b, P2; adds D8, D9, D10 below)
 
 ## Context
 
@@ -131,35 +134,170 @@ record):
   mutation store is public and has more than one caller, so the guarantee
   would not be tight.
 
-### On a storage write failure, evict once and retry once
+This decorator's admission logic is amended twice below without changing
+this guard list: D9 serialises the measure/check/write sequence per
+context, and D10 admits a delete that collapses a still-pending create
+regardless of budget.
 
-A write that reaches the delegate and fails at the storage layer (not a
-domain rejection such as `LocalPlanningSlugConflictException`, which is
-rethrown untouched — retrying it would fail identically, and evicting first
-would destroy cached data for nothing) is treated as storage pressure
-(LF-T4): `SongCatalogEvictor.evictDroppable()` runs once, then the write is
-retried once. Every guarded write is an upsert keyed by its aggregate, so
-the retry is idempotent — a partially applied first attempt cannot
-duplicate. If the retry still fails, the failure is wrapped as a typed
-`LocalStorageWriteFailure` and propagated; it is never swallowed.
+### D8 — One recovery boundary, shared by every growing local write
 
-Two narrowings of that branch, both learned in review:
+**Amendment, 2026-08-04, closing P1a from the PR #64 review.** This section
+originally described the eviction/retry policy as something
+`BudgetedPlanningMutationStore._guardedWrite` implemented inline. That was
+narrower than the ADR's own framing ("a write that reaches the delegate and
+fails at the storage layer is treated as storage pressure"):
+`SongCatalogEvictor.evictDroppable()` was reachable from exactly that one
+write path. Song mutation writes, catalog snapshot replacement, and
+planning projection writes went straight to Drift, so a storage failure on
+any of them surfaced a raw Drift exception instead of the typed
+`LocalStorageWriteFailure` this ADR claimed for local writes generally.
 
-The branch catches `Exception`, not everything. By Dart convention an
-`Error` subclass — `ArgumentError` from decoding a corrupted
-`mutation_kind`, a `StateError`, a `TypeError` — signals a programming
-defect, never storage pressure. Catching it here would run a pointless
-eviction, retry the write into the identical failure, and bury the real
-bug inside a generic `LocalStorageWriteFailure`. Errors now propagate as
-themselves.
+`LocalStorageWriteRecovery.guard<T>(Future<T> Function() write)`
+(`application/storage/local_storage_write_recovery.dart`) is now the single
+implementation of the policy this section describes:
 
-The eviction step is itself guarded. The condition that broke the write —
-a full disk, an exceeded quota — can equally break the eviction `DELETE`.
-If eviction throws, the write is not retried and the **original** write
-error is surfaced as the `LocalStorageWriteFailure` cause: that is what
-the caller needs to act on, and the eviction failure is a secondary
-symptom. Without this, an untyped exception escaped and contradicted the
-guarantee stated above.
+1. run `write`;
+2. on a `LocalStorageDomainRejection` (see below), rethrow untouched —
+   retrying would fail identically, and evicting would destroy cached data
+   for nothing;
+3. on an `Error`, rethrow untouched — unchanged from the original
+   narrowing: an `Error` subclass (`ArgumentError`, `StateError`,
+   `TypeError`, ...) signals a programming defect, never storage pressure,
+   and must never be misreported as such;
+4. on any other `Exception`, evict droppable catalog sources once via the
+   injected `SongCatalogEvictor`, retry `write` once, and wrap a second
+   failure as `LocalStorageWriteFailure`. If eviction itself throws, the
+   write is never retried and the **original** write error is surfaced as
+   the failure's cause with `bytesFreedByEviction: 0` — unchanged from the
+   original narrowing: the caller needs to act on the write failure, and
+   the eviction failure is a secondary symptom, plausibly of the same
+   underlying condition.
+
+It is injected into the Drift stores the same way `onStorageFootprintChanged`
+already is (D7): an optional, nullable constructor parameter, always
+supplied by `core_providers.dart`/`planning_providers.dart`/
+`song_catalog_providers.dart` in production, `null` where a test constructs
+a store directly — in which case the write runs unguarded.
+
+**Which writes are guarded, and the rule that decides it.** Every local
+write that can increase stored bytes:
+
+- `BudgetedPlanningMutationStore`'s nine `record*` methods (unchanged; the
+  class no longer implements the eviction/retry policy itself, it delegates
+  to this boundary after its own budget/collapse admission decision — D3,
+  D9, D10);
+- `DriftPlanningLocalStore.replaceActiveProjection`, `upsertSyncedPlan`,
+  `upsertSyncedSession`, `upsertSyncedSessionItem`;
+- `DriftSongCatalogStore.replaceActiveSnapshot`, `saveSongMutation`, and
+  `reconcileSyncedSong` — reconcile inserts a new summary/source row pair
+  the first time a song syncs, which grows the store the same way a
+  snapshot replacement does, even though it also deletes the now-resolved
+  mutation row in the same transaction.
+
+Deliberately **not** guarded: every pure delete (`deleteSong`,
+`clearSongMutation`, `deleteCatalog`, `deleteCatalogsForUser`,
+`deleteSyncedSession`, `deleteSyncedSessionItem`, `deletePlanningData`,
+`deletePlanningDataForUser`, `deletePlanningProjection`) and the two
+reorder methods (`replaceSyncedSessionOrder`, `replaceSyncedSessionItemOrder`,
+which update `position`/`version` on rows that already exist rather than
+inserting). There is nothing to recover from on a pure delete or shrink,
+and guarding one would add an eviction attempt to the very operation that
+frees space.
+
+**The marker interface, and why not a hardcoded list.** A caller opts an
+exception into domain-rejection treatment by having its class implement
+`LocalStorageDomainRejection` — a bare marker interface owned by
+`application/storage` — rather than the generic boundary hardcoding
+concrete exception types from every module that uses it. `application/storage`
+sits below both `application/planning` and `offline/song_catalog`; a
+hardcoded list would force it to import their exception types, which is a
+layering violation the marker avoids. Three exceptions implement it today:
+`LocalPlanningSlugConflictException`, `LocalSongSlugConflictException`
+(added by this amendment — `saveSongMutation`'s slug-conflict check throws
+mid-write and must not be misread as storage pressure), and
+`PlanningProjectionAbortedException`.
+
+**`PlanningProjectionAbortedException` is a cooperative-cancellation
+signal, not a failure.** `DriftPlanningLocalStore._ensureProjectionCurrent`
+throws it when the caller's `shouldContinue` reports that a newer refresh
+has superseded this one; `PlanningSyncController` already catches it
+explicitly when a refresh is superseded. Without the marker, a superseded
+refresh would have been read by the shared guard as storage pressure,
+evicting droppable catalog data for no benefit and retrying the write
+straight into the same abort.
+
+**No eviction recursion.** `SongCatalogEvictor.evictDroppable()` deletes
+only cached song sources, via a raw statement against `SongCatalogDatabase`
+directly — it never goes through any guarded store method. So a guarded
+write's recovery path can never call back into a guard: eviction is
+structurally outside every write this boundary protects, and shrinking
+writes are never guarded in the first place.
+
+### D9 — Serialise measure, check and write per context
+
+**Amendment, 2026-08-04, closing P1b from the PR #64 review.**
+`_guardedWrite` measured the mutation store's footprint, `await`ed, checked
+the threshold, then `await`ed the write — three separate `await` points
+with nothing serialising the sequence between them. Two concurrent
+`record*` calls for different aggregates in the same context could both
+measure the same pre-write footprint, both pass the check, and both write,
+overshooting the "at most one mutation past the threshold" bound stated
+above.
+
+`BudgetedPlanningMutationStore` now runs measure, check, and the delegated
+write as one unit per `(userId, organizationId)`, via a
+`Map<String, Future<void>> _writeQueue` keyed the same way as
+`PlanningMutationSyncController._inFlight`. It is a FIFO queue, not a
+single-flight coalescer: unlike a sync trigger, every `record*` call must
+run its own write and report its own outcome rather than share another
+call's result, so each caller chains onto the queue instead of being handed
+someone else's future. A write's failure is neutralised before being
+published as the new queue tail, so it never poisons the next queued write
+for the same context; the map entry is dropped once nothing is queued
+behind it, via an `identical()` check mirroring the cleanup already used by
+`PlanningMutationSyncController` and `SongMutationSyncController`.
+
+Serialising per context rather than globally keeps a write for one
+user/organization from blocking a write for another. The overshoot bound
+this ADR originally stated now actually holds: only one admission can be in
+flight per context at a time, so the store can overshoot its refuse
+threshold by at most one mutation, not by however many writes raced.
+
+Budget logic itself is unchanged by this amendment; it now runs inside
+`_admitAndWrite`, called once per queued turn.
+
+### D10 — Admit writes that provably shrink the store
+
+**Amendment, 2026-08-04, closing P2 from the PR #64 review.**
+`recordSessionDelete` and `recordSessionItemDelete` were budget-guarded
+like every other `record*` write, even though both can *shrink* the store:
+when the aggregate they target still holds a still-pending create (a
+session or session item that never reached the backend), the delete
+collapses that create rather than adding a row; `recordSessionDelete`
+additionally removes that session's pending item and item-order rows. At
+an exhausted budget, both were refused before the delegate ever ran, so
+the ordinary delete affordance could not drain a full store. The
+documented escape hatch, `clearMutation` via discard, still worked, so
+this was not a trap — but refusing a write that would free space was wrong
+on its own terms.
+
+`_guardedWrite`/`_admitAndWrite` now take an optional
+`Future<bool> Function()? isCollapse` that, when it resolves `true`, skips
+the budget check entirely for that write. It is wired for
+`recordSessionDelete` and `recordSessionItemDelete` via
+`_collapsesPendingCreate`, which reads the existing mutation for the target
+aggregate through the same `PlanningMutationStore.readMutation` contract
+the delegate itself uses, keyed the same way, and compares only `kind` —
+mirroring, not duplicating, `DriftPlanningMutationStore`'s own
+`existing?.kind == <pendingCreateKind>` collapse check inside those same
+two methods, so the guard and the delegate cannot disagree about what
+counts as a collapse.
+
+This is decided from store state, not from the method name: a
+`recordSessionDelete` against a session that is **not** a pending create
+(including one with no local mutation at all, or one folded into a pending
+edit/rename) genuinely adds a delete row and stays subject to the budget
+exactly like any other write.
 
 ### D4 — Protection order
 
@@ -208,6 +346,11 @@ harness whose absence is already a separately tracked deferred item.
 `docs/deferred/2026-06-29-web-offline-e2e.md` stays open, with its trigger
 condition unchanged: it remains the prerequisite for relying on IndexedDB
 capacity assumptions in production.
+
+The 2026-08-04 widening (D8) that extends the same recovery boundary to
+`DriftSongCatalogStore` and `DriftPlanningLocalStore` is verified the same
+way — native Drift/sqlite3 fault injection only. It neither narrows nor
+widens the web/IndexedDB gap stated above.
 
 ### D6 — Thresholds
 
@@ -404,6 +547,49 @@ receives the shared callback, whether or not its individual commit path has
 a focused emission test — is guarded separately by
 `test/application/storage/footprint_production_wiring_test.dart`.
 
+- `test/application/storage/local_storage_write_recovery_test.dart`
+  (2026-08-04, D8) — unit tests of `LocalStorageWriteRecovery.guard` itself,
+  independent of any concrete store: success returns without touching the
+  evictor; a `LocalStorageDomainRejection` and an `Error` both rethrow
+  untouched with no eviction or retry; a plain `Exception` evicts once and
+  retries once, returning the retry result; a second failure wraps as
+  `LocalStorageWriteFailure` carrying the retry error and the freed byte
+  count; and when eviction itself throws, the write is never retried and the
+  original write error is the failure's cause with
+  `bytesFreedByEviction: 0`.
+- `test/offline/planning/planning_local_store_test.dart` (`DriftPlanningLocalStore
+  storage recovery (D1)` group) and `test/offline/song_catalog/song_catalog_store_test.dart`
+  (`DriftSongCatalogStore storage recovery (D1)` group) (2026-08-04, D8) —
+  the same fault-injection shape `storage_pressure_contract_test.dart` uses,
+  extracted to `test/support/insert_failing_executor.dart`, driven against a
+  second, unwrapped `SongCatalogDatabase` backing the recovery's evictor so
+  eviction reads/deletes never fight with the failing guarded database.
+  Covers a failed `replaceActiveProjection` (planning) and failed
+  `saveSongMutation` and `replaceActiveSnapshot` (catalog): evict droppable
+  sources, retry once, surface a typed `LocalStorageWriteFailure`, and
+  confirm the failed write never landed. `replaceActiveProjection` and
+  `saveSongMutation` are each also covered for the retry-succeeds case, and
+  `PlanningProjectionAbortedException` / a song slug-conflict domain
+  rejection are each confirmed to pass through untouched with zero
+  evictions. `reconcileSyncedSong`, `upsertSyncedPlan`, `upsertSyncedSession`,
+  and `upsertSyncedSessionItem` are wired to the same guard in production
+  but are **not** separately covered by a fault-injection recovery test.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (2026-08-04 additions, D9/D10) — three concurrent `record*` calls for
+  different aggregates in the same context, against a budget that admits
+  only one: exactly one succeeds and the other two are refused (this test
+  fails against the pre-amendment unserialised guard, which lands all
+  three); concurrent writes for two different `(userId, organizationId)`
+  contexts do not block each other, shaped with a `Completer` so it would
+  deadlock forever if serialisation were global instead of per context; at
+  an exhausted budget, `recordSessionDelete` against a pending
+  `sessionCreate` succeeds and removes the session plus its pending item
+  and item-order rows, and `recordSessionItemDelete` against a pending
+  `sessionItemCreateSong` succeeds and removes it; and `recordSessionDelete`
+  against a session that is **not** a pending create is still refused at an
+  exhausted budget, proving the admission decision comes from store state,
+  not the method name.
+
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
 
@@ -425,3 +611,16 @@ adversarial suite.
   storage write that actually fails.
 - The sync overview's storage figure now refreshes after real commits
   instead of being measured once per provider mount (D7).
+- (2026-08-04 amendment) The shared `LocalStorageWriteRecovery.guard` now
+  covers every local write that can grow stored bytes, not only planning
+  mutations — the "a write that reaches the delegate and fails at the
+  storage layer is treated as storage pressure" claim this ADR made was
+  narrower than the code until this amendment (D8).
+- (2026-08-04 amendment) The mutation budget's overshoot bound ("at most one
+  mutation past the threshold") is now actually enforced under concurrency
+  via per-context serialisation; before this amendment it was a documented
+  intention that concurrent writes could violate (D9).
+- (2026-08-04 amendment) A delete that collapses a still-pending create is
+  admitted regardless of the mutation budget, so an exhausted budget can no
+  longer block the ordinary delete affordance from draining a store that is
+  actually shrinkable (D10).
