@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
@@ -243,7 +245,276 @@ void main() {
         expect(evictor.calls, 0);
       },
     );
+
+    test(
+      'serialises the measure-check-write sequence so concurrent writes for '
+      'different aggregates in the same context cannot all pass the same '
+      'pre-write measurement',
+      () async {
+        // Threshold of 1 admits only a store that is still empty (0 bytes).
+        // Every real mutation row costs at least kLocalStorageRowOverheadBytes
+        // (64), so once ANY one of these writes lands, every write measured
+        // afterwards must see a footprint >= 1 and be refused. Without
+        // serialising measure+check+write per context, three concurrent
+        // writes can all measure the empty store before any of them lands,
+        // so all three pass the check and all three write.
+        final store = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1),
+        );
+
+        Future<Object?> asOutcome(Future<void> future) =>
+            future.then<Object?>((_) => null, onError: (Object error) => error);
+
+        final outcomes = await Future.wait<Object?>([
+          asOutcome(
+            store.recordPlanCreate(
+              context: context,
+              draft: const PlanningPlanCreateMutationDraft(
+                planId: 'plan-1',
+                slug: 'plan-one',
+                name: 'Plan One',
+              ),
+            ),
+          ),
+          asOutcome(
+            store.recordSessionCreate(
+              context: context,
+              draft: const PlanningSessionCreateMutationDraft(
+                sessionId: 'session-1',
+                planId: 'plan-x',
+                slug: 'session-one',
+                name: 'Session One',
+                position: 0,
+              ),
+            ),
+          ),
+          asOutcome(
+            store.recordSessionItemCreateSong(
+              context: context,
+              draft: const PlanningSessionItemCreateSongMutationDraft(
+                sessionItemId: 'item-1',
+                sessionId: 'session-x',
+                planId: 'plan-x',
+                songId: 'song-1',
+                songTitle: 'Song One',
+                position: 0,
+              ),
+            ),
+          ),
+        ]);
+
+        final succeeded = outcomes.where((outcome) => outcome == null).length;
+        final refused = outcomes
+            .whereType<PlanningMutationBudgetExceededException>()
+            .length;
+
+        expect(
+          succeeded,
+          1,
+          reason: 'exactly one concurrent write should be admitted: $outcomes',
+        );
+        expect(refused, 2);
+      },
+    );
+
+    test(
+      'does not serialise across different (userId, organizationId) '
+      'contexts',
+      () async {
+        // A fake delegate lets this test control write timing directly,
+        // independent of the real budget accounting (which would otherwise
+        // interact with the concurrency being tested here). Context A's
+        // write blocks on a completer that only context B's write --  a
+        // DIFFERENT context -- completes. If serialisation were keyed
+        // globally instead of per context, B's write would be queued behind
+        // A's (which can never finish without B running first), deadlocking
+        // forever. Per-context serialisation lets B run immediately.
+        final delegateFake = _HookedPlanningMutationStore();
+        final store = BudgetedPlanningMutationStore(
+          delegate: delegateFake,
+          accountant: accountant,
+          evictor: evictor,
+          budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
+        );
+
+        const contextA = PlanningMutationContext(
+          userId: 'user-a',
+          organizationId: 'org-a',
+        );
+        const contextB = PlanningMutationContext(
+          userId: 'user-b',
+          organizationId: 'org-b',
+        );
+
+        final bStarted = Completer<void>();
+
+        delegateFake.onRecordPlanCreate['user-a_org-a'] = () => bStarted.future;
+        delegateFake.onRecordPlanCreate['user-b_org-b'] = () async {
+          if (!bStarted.isCompleted) bStarted.complete();
+        };
+
+        final aFuture = store.recordPlanCreate(
+          context: contextA,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-a',
+            slug: 'plan-a',
+            name: 'Plan A',
+          ),
+        );
+
+        await store
+            .recordPlanCreate(
+              context: contextB,
+              draft: const PlanningPlanCreateMutationDraft(
+                planId: 'plan-b',
+                slug: 'plan-b',
+                name: 'Plan B',
+              ),
+            )
+            .timeout(const Duration(seconds: 2));
+
+        await aFuture.timeout(const Duration(seconds: 2));
+      },
+    );
   });
+}
+
+/// Minimal fake delegate for concurrency tests that need direct control over
+/// when a write's `Future` resolves, keyed by `'${userId}_${organizationId}'`.
+/// Only `recordPlanCreate` is hooked; every other member is unused by these
+/// tests and throws if called.
+class _HookedPlanningMutationStore implements PlanningMutationStore {
+  final Map<String, Future<void> Function()> onRecordPlanCreate = {};
+
+  @override
+  Future<void> recordPlanCreate({
+    required PlanningMutationContext context,
+    required PlanningPlanCreateMutationDraft draft,
+  }) async {
+    final key = '${context.userId}_${context.organizationId}';
+    final hook = onRecordPlanCreate[key];
+    if (hook != null) await hook();
+  }
+
+  @override
+  Future<void> recordPlanEdit({
+    required PlanningMutationContext context,
+    required PlanningPlanEditMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionCreate({
+    required PlanningMutationContext context,
+    required PlanningSessionCreateMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionRename({
+    required PlanningMutationContext context,
+    required PlanningSessionRenameMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readAllMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<PlanningMutationRecord?> readMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocatePlanSlug({
+    required String userId,
+    required String organizationId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocateSessionSlug({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> hasUnsyncedMutations({required String userId}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required PlanningMutationSyncStatus syncStatus,
+    PlanningMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> retryMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> clearMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
 }
 
 /// Counts eviction calls so the tests can assert that eviction happens only
