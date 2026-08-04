@@ -5,8 +5,8 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1785766539.8355043,
-    "ast_hash": "ebd32f58fbdf7927416e7fe2d131c667",
+    "mtime": 1785831154.8478537,
+    "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
   "apps/lyron_app/android/app/src/main/kotlin/com/lyron/lyron_app/MainActivity.kt": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
-    "mtime": 1785418036.5721593,
-    "ast_hash": "4393bca5e5e1dffe9041e8089de360df",
+    "mtime": 1785835122.2867022,
+    "ast_hash": "513fba74f3a33ce9079258b86e66a791",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_remote_refresh_repository.dart": {
@@ -525,8 +525,8 @@
     "semantic_hash": "3cc677a9c42b5e779930b6c20a197a48"
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_store.dart": {
-    "mtime": 1785757985.309241,
-    "ast_hash": "78ad8aeeffec6570d1581b3da75e5edd",
+    "mtime": 1785836281.926988,
+    "ast_hash": "8bef78f1adade3970abdaedeaf44cc7d",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_tables.dart": {
@@ -565,8 +565,8 @@
     "semantic_hash": "0a9d651987de4b6ecca3f5eb16c5bd7b"
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart": {
-    "mtime": 1785757985.354762,
-    "ast_hash": "ee953f4c37adeb611ccddd8c5f35afb9",
+    "mtime": 1785836224.887018,
+    "ast_hash": "90ddbebdb56c0c4a1d47026952fb2cb4",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_tables.dart": {
@@ -1205,8 +1205,8 @@
     "semantic_hash": "81231325371d1b9468b04c13a02a9554"
   },
   "apps/lyron_app/test/offline/planning/planning_local_store_test.dart": {
-    "mtime": 1785752492.6919508,
-    "ast_hash": "5b306e31f0c43cfb0f3e0f05218f17aa",
+    "mtime": 1785836164.3456554,
+    "ast_hash": "4870019d2976dc4d8250fb221feefab2",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart": {
@@ -1215,8 +1215,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart": {
-    "mtime": 1785752580.2070184,
-    "ast_hash": "7c6f8634d347e46554cdd63de8921960",
+    "mtime": 1785836148.0138786,
+    "ast_hash": "b7cac209d4c54e1fbb4d7678e4fa8257",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/account/account_screen_test.dart": {
@@ -1805,8 +1805,8 @@
     "semantic_hash": "29af3e2b7fc6997d0dbadf9db3fb9c45"
   },
   "docs/architecture/architecture.md": {
-    "mtime": 1785761344.3569372,
-    "ast_hash": "dd9290402bf79124db99cb25502dd30b",
+    "mtime": 1785835758.2832816,
+    "ast_hash": "bc31bc53282450c4938665b87656f60a",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md": {
@@ -2455,8 +2455,8 @@
     "semantic_hash": "b6dfaff2d7cc0023ffc4fbc9029cd7e6"
   },
   "docs/testing/testing-strategy.md": {
-    "mtime": 1785758357.2284276,
-    "ast_hash": "448494e39c78f0a259605db10d0eea2d",
+    "mtime": 1785836385.4174662,
+    "ast_hash": "c23c97add89cd0ef02d7ef5fde317f66",
     "semantic_hash": ""
   },
   "docs/workflows/ai-development.md": {
@@ -2815,8 +2815,8 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1785698978.050095,
-    "ast_hash": "6b64b9e003217aaa864c3959b4247ad1",
+    "mtime": 1785836393.8904436,
+    "ast_hash": "e16b804cfa5d90c3b31d1efe7ce9ff9c",
     "semantic_hash": ""
   },
   "docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md": {
@@ -2880,18 +2880,18 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/core_providers.dart": {
-    "mtime": 1785759942.881443,
-    "ast_hash": "917448d98f824e919d8537377f03fab5",
+    "mtime": 1785835162.7961369,
+    "ast_hash": "daf8b47ddebc623542a71197d5aef67b",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning_providers.dart": {
-    "mtime": 1785759928.613658,
-    "ast_hash": "15f62a5a5d68c0357c1ab891c4115568",
+    "mtime": 1785835162.7963972,
+    "ast_hash": "9f47d30db95cb33f83d8f4003ab7f541",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_catalog_providers.dart": {
-    "mtime": 1785759901.1581721,
-    "ast_hash": "191a886258ddd82d3eff0d63d6121ef9",
+    "mtime": 1785835162.796664,
+    "ast_hash": "27cf247e4f4e7eba22e200609bc901b3",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/active_organization_resolver_test.dart": {
@@ -3350,8 +3350,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
-    "mtime": 1785420014.3715441,
-    "ast_hash": "b322119d385110a1c4e9380d98a085ce",
+    "mtime": 1785835122.28646,
+    "ast_hash": "9aa157697669b2b8281b4ef43e8b8f90",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart": {
@@ -3410,8 +3410,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1785418698.9351823,
-    "ast_hash": "928146deffba7982f1d0a091b95b21c7",
+    "mtime": 1785833954.0024476,
+    "ast_hash": "2de842e41213b22e5696e717891bd13c",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
@@ -3460,8 +3460,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-028-local-storage-budget-and-eviction-policy.md": {
-    "mtime": 1785760918.200912,
-    "ast_hash": "a24bf2da41fdc2cd60106f9d4ffcfdf4",
+    "mtime": 1785836354.048786,
+    "ast_hash": "9a264aa17553f4ad370fc819aac7e2cc",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md": {
@@ -3717,6 +3717,31 @@
   "docs/specs/2026-08-02-phase4-closeout-review-remediation.md": {
     "mtime": 1785830884.2006714,
     "ast_hash": "c5e209352ef6e9e45961087ae68f3b50",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/application/storage/local_storage_domain_rejection.dart": {
+    "mtime": 1785835122.2869384,
+    "ast_hash": "086d189ecb2fdd2aedc424247b23b812",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/application/storage/local_storage_write_recovery.dart": {
+    "mtime": 1785835122.2870653,
+    "ast_hash": "1f8206d529a2447c1c231046ddcf1cde",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/application/storage/local_storage_write_recovery_test.dart": {
+    "mtime": 1785835122.2876718,
+    "ast_hash": "3e76f9368efbcc0ce036ec8ab078674d",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/support/insert_failing_executor.dart": {
+    "mtime": 1785835162.8107414,
+    "ast_hash": "95bc93a38821565825da51066692affa",
+    "semantic_hash": ""
+  },
+  "docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md": {
+    "mtime": 1785835852.2817667,
+    "ast_hash": "a3d3f770e1c66d956c5eb7ea342dcd3d",
     "semantic_hash": ""
   }
 }
