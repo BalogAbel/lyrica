@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:drift/backends.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -13,6 +16,8 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 import '../../support/drift_test_setup.dart';
+import '../../support/insert_failing_executor.dart'
+    show StorageQuotaSimulatedException;
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -541,6 +546,154 @@ void main() {
         );
       },
     );
+
+    test('saveSyncAttemptResult is never refused for budget reasons, even '
+        'with the budget exhausted', () async {
+      await storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      ).recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      // Must not throw PlanningMutationBudgetExceededException: this is
+      // sync bookkeeping for a mutation the backend already accepted --
+      // refusing it would strand the durable marker that prevents a resend
+      // (ADR-019 exactly-once).
+      await exhausted.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      final record = await exhausted.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record?.syncStatus, PlanningMutationSyncStatus.accepted);
+    });
+  });
+
+  group('BudgetedPlanningMutationStore.saveSyncAttemptResult recovery '
+      '(finding 1)', () {
+    late PlanningLocalDatabase failingDatabase;
+    late SongCatalogDatabase evictionDatabase;
+    late _RecordingEvictor recordingEvictor;
+
+    const seedContext = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    tearDown(() async {
+      await failingDatabase.close();
+      await evictionDatabase.close();
+    });
+
+    // Builds a real Drift-backed store whose INSERT calls fail on the
+    // 0-indexed call numbers in `failOnCalls`. Call #0 is always the seed
+    // write (recordPlanCreate), so every scenario below starts from a real
+    // pending mutation that saveSyncAttemptResult can update.
+    Future<BudgetedPlanningMutationStore> buildStoreFailingOnCalls(
+      Set<int> failOnCalls,
+    ) async {
+      final script = _InsertCallScript(failOnCalls);
+      failingDatabase = PlanningLocalDatabase.connect(
+        _ScriptedInsertExecutor(NativeDatabase.memory(), script),
+      );
+      evictionDatabase = SongCatalogDatabase.inMemory();
+      recordingEvictor = _RecordingEvictor(
+        SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+        ),
+      );
+
+      final delegate = DriftPlanningMutationStore(
+        database: failingDatabase,
+        localStore: DriftPlanningLocalStore(failingDatabase),
+      );
+      final store = BudgetedPlanningMutationStore(
+        delegate: delegate,
+        accountant: PlanningStorageAccountant(failingDatabase),
+        evictor: recordingEvictor,
+        budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+
+      await store.recordPlanCreate(
+        context: seedContext,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      return store;
+    }
+
+    test('evicts droppable sources, retries once, and -- when the retry still '
+        'fails -- surfaces a typed LocalStorageWriteFailure rather than the '
+        'raw storage exception', () async {
+      // Insert #0 is the seed (succeeds); #1 is the first status-write
+      // attempt and #2 is its retry -- both fail.
+      final store = await buildStoreFailingOnCalls({1, 2});
+
+      await expectLater(
+        () => store.saveSyncAttemptResult(
+          userId: seedContext.userId,
+          organizationId: seedContext.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        ),
+        throwsA(
+          isA<LocalStorageWriteFailure>().having(
+            (failure) => failure.cause,
+            'cause',
+            isA<StorageQuotaSimulatedException>(),
+          ),
+        ),
+      );
+
+      expect(recordingEvictor.calls, 1);
+    });
+
+    test('a transient failure on the status write recovers on retry, and the '
+        'record carries the new status afterwards', () async {
+      // Insert #0 is the seed (succeeds); #1 (the first attempt) fails;
+      // #2 (the retry) is not in the script, so it succeeds.
+      final store = await buildStoreFailingOnCalls({1});
+
+      await store.saveSyncAttemptResult(
+        userId: seedContext.userId,
+        organizationId: seedContext.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      expect(recordingEvictor.calls, 1);
+      final record = await store.readMutation(
+        userId: seedContext.userId,
+        organizationId: seedContext.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record?.syncStatus, PlanningMutationSyncStatus.accepted);
+    });
   });
 }
 
@@ -695,4 +848,153 @@ class _RecordingEvictor implements SongCatalogEvictor {
     calls += 1;
     return _delegate.evictDroppable();
   }
+}
+
+/// Shared mutable counter for [_ScriptedInsertExecutor] /
+/// [_ScriptedInsertTransactionExecutor]: unlike `InsertFailureBudget`'s
+/// "fail the next N inserts forever" (test/support/insert_failing_executor.dart),
+/// a storage-recovery test on `saveSyncAttemptResult` needs to seed a real
+/// pending mutation first (an INSERT that must succeed) and only then fail
+/// the status write under test -- so failures are scripted by 0-indexed
+/// call number instead of a countdown. Shared by reference across every
+/// executor spawned from the same root, since Drift issues the real
+/// `INSERT` through a fresh [TransactionExecutor] inside
+/// `database.transaction`, not the top-level [QueryExecutor]
+/// `saveSyncAttemptResult` itself uses.
+class _InsertCallScript {
+  _InsertCallScript(this._failOnCalls);
+
+  final Set<int> _failOnCalls;
+  int _calls = 0;
+
+  bool shouldFail() {
+    final index = _calls;
+    _calls += 1;
+    return _failOnCalls.contains(index);
+  }
+}
+
+/// A [QueryExecutor] decorator that delegates everything except `runInsert`,
+/// which fails on the call numbers named in the shared [_InsertCallScript].
+/// Mirrors `test/support/insert_failing_executor.dart`'s
+/// `InsertFailingExecutor` shape, just with a script instead of a countdown.
+class _ScriptedInsertExecutor implements QueryExecutor {
+  _ScriptedInsertExecutor(this._delegate, this._script);
+
+  final QueryExecutor _delegate;
+  final _InsertCallScript _script;
+
+  @override
+  SqlDialect get dialect => _delegate.dialect;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _delegate.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) => _delegate.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) {
+    if (_script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runInsert(statement, args);
+  }
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _delegate.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _delegate.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _delegate.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _delegate.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() =>
+      _ScriptedInsertTransactionExecutor(_delegate.beginTransaction(), _script);
+
+  @override
+  QueryExecutor beginExclusive() =>
+      _ScriptedInsertExecutor(_delegate.beginExclusive(), _script);
+
+  @override
+  Future<void> close() => _delegate.close();
+}
+
+/// Transaction-scoped counterpart of [_ScriptedInsertExecutor], sharing the
+/// same [_InsertCallScript] so call numbering is consistent whether an
+/// INSERT lands via the top-level executor or inside a
+/// `database.transaction` block.
+class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
+  _ScriptedInsertTransactionExecutor(this._delegate, this._script);
+
+  final TransactionExecutor _delegate;
+  final _InsertCallScript _script;
+
+  @override
+  bool get supportsNestedTransactions => _delegate.supportsNestedTransactions;
+
+  @override
+  SqlDialect get dialect => _delegate.dialect;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _delegate.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) => _delegate.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) {
+    if (_script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runInsert(statement, args);
+  }
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _delegate.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _delegate.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _delegate.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _delegate.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() =>
+      _ScriptedInsertTransactionExecutor(_delegate.beginTransaction(), _script);
+
+  @override
+  QueryExecutor beginExclusive() =>
+      _ScriptedInsertExecutor(_delegate.beginExclusive(), _script);
+
+  @override
+  Future<void> send() => _delegate.send();
+
+  @override
+  Future<void> rollback() => _delegate.rollback();
+
+  @override
+  Future<void> close() => _delegate.close();
 }
