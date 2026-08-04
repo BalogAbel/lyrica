@@ -594,11 +594,10 @@ recovery guarantee narrower than stated, not wrong in direction. Three findings,
   `DriftSongCatalogStore storage recovery (D1)` groups in
   `test/offline/planning/planning_local_store_test.dart` and
   `test/offline/song_catalog/song_catalog_store_test.dart` (fault-injected
-  recovery on `replaceActiveProjection`, `saveSongMutation`, and
-  `replaceActiveSnapshot`). `reconcileSyncedSong`, `upsertSyncedPlan`,
-  `upsertSyncedSession`, and `upsertSyncedSessionItem` are wired to the same
-  guard but are not separately covered by a fault-injection recovery test — a
-  gap worth stating plainly rather than implying full coverage. Native-only
+  recovery on `replaceActiveProjection`, `upsertSyncedPlan`,
+  `upsertSyncedSession`, `upsertSyncedSessionItem`, `saveSongMutation`,
+  `replaceActiveSnapshot`, and `reconcileSyncedSong` — every write path the
+  guard covers now has a dedicated fault-injection recovery test). Native-only
   verification is unchanged; `docs/deferred/2026-06-29-web-offline-e2e.md`
   stays open. ADR-028 D8.
 - `LF-T3` — **stays fixed, with P1b and P2 now closed.** The measure/check/

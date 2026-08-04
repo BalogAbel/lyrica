@@ -564,16 +564,16 @@ a focused emission test — is guarded separately by
   extracted to `test/support/insert_failing_executor.dart`, driven against a
   second, unwrapped `SongCatalogDatabase` backing the recovery's evictor so
   eviction reads/deletes never fight with the failing guarded database.
-  Covers a failed `replaceActiveProjection` (planning) and failed
-  `saveSongMutation` and `replaceActiveSnapshot` (catalog): evict droppable
-  sources, retry once, surface a typed `LocalStorageWriteFailure`, and
-  confirm the failed write never landed. `replaceActiveProjection` and
-  `saveSongMutation` are each also covered for the retry-succeeds case, and
-  `PlanningProjectionAbortedException` / a song slug-conflict domain
-  rejection are each confirmed to pass through untouched with zero
-  evictions. `reconcileSyncedSong`, `upsertSyncedPlan`, `upsertSyncedSession`,
-  and `upsertSyncedSessionItem` are wired to the same guard in production
-  but are **not** separately covered by a fault-injection recovery test.
+  Covers a failed `replaceActiveProjection`, `upsertSyncedPlan`,
+  `upsertSyncedSession`, and `upsertSyncedSessionItem` (planning) and failed
+  `saveSongMutation`, `replaceActiveSnapshot`, and `reconcileSyncedSong`
+  (catalog): evict droppable sources, retry once, surface a typed
+  `LocalStorageWriteFailure`, and confirm the failed write never landed.
+  `replaceActiveProjection` and `saveSongMutation` are each also covered for
+  the retry-succeeds case, and `PlanningProjectionAbortedException` / a song
+  slug-conflict domain rejection are each confirmed to pass through
+  untouched with zero evictions. Every write path guarded by D1 now has a
+  dedicated fault-injection recovery test.
 - `test/application/planning/budgeted_planning_mutation_store_test.dart`
   (2026-08-04 additions, D9/D10) — three concurrent `record*` calls for
   different aggregates in the same context, against a budget that admits

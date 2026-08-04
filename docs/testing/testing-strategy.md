@@ -158,19 +158,18 @@ specific finding:
   `test/support/insert_failing_executor.dart`), driven against a second,
   unwrapped `SongCatalogDatabase` backing the evictor so eviction
   reads/deletes never contend with the failing guarded database. Covers a
-  failed `replaceActiveProjection` (planning) and failed `saveSongMutation`
-  and `replaceActiveSnapshot` (catalog): evict droppable sources, retry
-  once, surface a typed `LocalStorageWriteFailure`, and confirm the failed
-  write never landed on a subsequent read. `replaceActiveProjection` and
-  `saveSongMutation` are each also covered for the retry-succeeds case, and
-  `PlanningProjectionAbortedException` (a cooperative-cancellation signal
-  from a superseded refresh, not a failure) and a song slug-conflict domain
-  rejection are each confirmed to pass through untouched with zero
-  evictions — pinning that both implement `LocalStorageDomainRejection`.
-  `reconcileSyncedSong`, `upsertSyncedPlan`, `upsertSyncedSession`, and
-  `upsertSyncedSessionItem` are wired to the same guard in production but
-  are **not** separately covered by a fault-injection recovery test here —
-  noted as a gap, not silently implied covered.
+  failed `replaceActiveProjection`, `upsertSyncedPlan`, `upsertSyncedSession`,
+  and `upsertSyncedSessionItem` (planning) and failed `saveSongMutation`,
+  `replaceActiveSnapshot`, and `reconcileSyncedSong` (catalog): evict
+  droppable sources, retry once, surface a typed `LocalStorageWriteFailure`,
+  and confirm the failed write never landed on a subsequent read.
+  `replaceActiveProjection` and `saveSongMutation` are each also covered for
+  the retry-succeeds case, and `PlanningProjectionAbortedException` (a
+  cooperative-cancellation signal from a superseded refresh, not a failure)
+  and a song slug-conflict domain rejection are each confirmed to pass
+  through untouched with zero evictions — pinning that both implement
+  `LocalStorageDomainRejection`. Every write path guarded by D1 now has a
+  dedicated fault-injection recovery test here.
 - `test/application/planning/budgeted_planning_mutation_store_test.dart`
   (ADR-028 D9/D10 additions) — the budget-admission concurrency and
   collapse contracts: three concurrent `record*` calls for different
