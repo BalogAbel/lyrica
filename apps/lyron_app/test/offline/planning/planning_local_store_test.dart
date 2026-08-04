@@ -2,12 +2,18 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
+import '../../support/insert_failing_executor.dart';
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -827,6 +833,175 @@ void main() {
         expect(item.songId, 'song-1');
       },
     );
+  });
+
+  group('DriftPlanningLocalStore storage recovery (D1)', () {
+    // Mirrors the two-database shape in
+    // test/offline/adversarial/storage_pressure_contract_test.dart (which
+    // pins the unchanged BudgetedPlanningMutationStore path): the guarded
+    // planning database fails every INSERT, and a SEPARATE, unwrapped song
+    // catalog database backs the recovery's evictor.
+    Future<
+      ({
+        PlanningLocalDatabase failingDatabase,
+        DriftPlanningLocalStore store,
+        SongCatalogDatabase evictionDatabase,
+        int Function() revisionCount,
+      })
+    >
+    buildGuardedStore({InsertFailureBudget? budget}) async {
+      final failingExecutor = InsertFailingExecutor(
+        NativeDatabase.memory(),
+        budget,
+      );
+      final failingDatabase = PlanningLocalDatabase.connect(failingExecutor);
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'droppable-song',
+              source: 'body ' * 200,
+            ),
+          );
+
+      var revisionCount = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+          onStorageFootprintChanged: () => revisionCount += 1,
+        ),
+      );
+      final store = DriftPlanningLocalStore(
+        failingDatabase,
+        writeRecovery: recovery,
+      );
+
+      return (
+        failingDatabase: failingDatabase,
+        store: store,
+        evictionDatabase: evictionDatabase,
+        revisionCount: () => revisionCount,
+      );
+    }
+
+    test(
+      'a failed replaceActiveProjection write evicts droppable catalog '
+      'sources, retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.replaceActiveProjection(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plans: [_planRecord(id: 'plan-1', name: 'Weekend Service')],
+            sessions: const [],
+            items: const [],
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final summaries = await built.store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries, isEmpty);
+      },
+    );
+
+    test('a replaceActiveProjection write that fails once and succeeds on '
+        'retry lands the projection, after evicting droppable catalog '
+        'sources', () async {
+      final built = await buildGuardedStore(
+        budget: InsertFailureBudget(failuresRemaining: 1),
+      );
+      addTearDown(built.failingDatabase.close);
+      addTearDown(built.evictionDatabase.close);
+
+      await built.store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [_planRecord(id: 'plan-1', name: 'Weekend Service')],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 8, 4),
+      );
+
+      final remainingSources = await built.evictionDatabase
+          .select(built.evictionDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, isEmpty);
+
+      final summaries = await built.store.readPlanSummaries(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(summaries, hasLength(1));
+      expect(summaries.single.id, 'plan-1');
+    });
+
+    test('PlanningProjectionAbortedException still passes through a guarded '
+        'replaceActiveProjection without eviction or retry', () async {
+      // No fault injection here: the underlying database is a plain,
+      // non-failing database, so the ONLY way this can throw is
+      // `shouldContinue` reporting a superseding refresh -- proving the
+      // guard recognises PlanningProjectionAbortedException as a
+      // LocalStorageDomainRejection rather than storage pressure.
+      final database = PlanningLocalDatabase.inMemory();
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(database.close);
+      addTearDown(evictionDatabase.close);
+      var evictions = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+          onStorageFootprintChanged: () => evictions += 1,
+        ),
+      );
+      final store = DriftPlanningLocalStore(database, writeRecovery: recovery);
+
+      await expectLater(
+        () => store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [_planRecord(id: 'plan-1', name: 'Weekend Service')],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 8, 4),
+          shouldContinue: () => false,
+        ),
+        throwsA(isA<PlanningProjectionAbortedException>()),
+      );
+
+      expect(
+        evictions,
+        0,
+        reason: 'a superseded refresh must never trigger eviction',
+      );
+    });
   });
 }
 

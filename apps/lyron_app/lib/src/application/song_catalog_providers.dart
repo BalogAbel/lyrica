@@ -21,6 +21,7 @@ final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
   return DriftSongCatalogStore(
     ref.watch(songCatalogDatabaseProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+    writeRecovery: ref.watch(localStorageWriteRecoveryProvider),
   );
 });
 

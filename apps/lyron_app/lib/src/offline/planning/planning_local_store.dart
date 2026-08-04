@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -7,7 +9,16 @@ import 'package:lyron_app/src/domain/planning/session_summary.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 
-class PlanningProjectionAbortedException implements Exception {
+/// Thrown by [PlanningLocalStore.replaceActiveProjection] when the caller's
+/// `shouldContinue` reports that a newer refresh has superseded this one.
+///
+/// This is a cooperative-cancellation signal, not storage pressure: it must
+/// pass through [LocalStorageWriteRecovery.guard] untouched, the same as any
+/// other domain rejection, so it implements [LocalStorageDomainRejection].
+/// Treating it as storage pressure would evict droppable catalog sources for
+/// no reason and retry into the same abort.
+class PlanningProjectionAbortedException
+    implements LocalStorageDomainRejection {
   const PlanningProjectionAbortedException();
 }
 
@@ -190,13 +201,48 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   const DriftPlanningLocalStore(
     this._database, {
     LocalStorageFootprintChanged? onStorageFootprintChanged,
-  }) : _onStorageFootprintChanged = onStorageFootprintChanged;
+    LocalStorageWriteRecovery? writeRecovery,
+  }) : _onStorageFootprintChanged = onStorageFootprintChanged,
+       _writeRecovery = writeRecovery;
 
   final PlanningLocalDatabase _database;
   final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
+  /// Guards every local write that can increase stored bytes: a projection
+  /// replacement or synced upsert that fails at the storage layer gets one
+  /// eviction-and-retry before surfacing a typed [LocalStorageWriteFailure]
+  /// (LF-T4, D1). `null` in tests that construct this store directly --
+  /// production wiring always supplies it, mirroring how
+  /// [_onStorageFootprintChanged] is injected.
+  final LocalStorageWriteRecovery? _writeRecovery;
+
+  Future<T> _guarded<T>(Future<T> Function() write) {
+    final recovery = _writeRecovery;
+    return recovery == null ? write() : recovery.guard(write);
+  }
+
   @override
   Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) => _guarded(
+    () => _replaceActiveProjection(
+      userId: userId,
+      organizationId: organizationId,
+      plans: plans,
+      sessions: sessions,
+      items: items,
+      refreshedAt: refreshedAt,
+      shouldContinue: shouldContinue,
+    ),
+  );
+
+  Future<void> _replaceActiveProjection({
     required String userId,
     required String organizationId,
     required List<CachedPlanRecord> plans,
@@ -621,6 +667,20 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required String organizationId,
     required CachedPlanRecord plan,
     required DateTime refreshedAt,
+  }) => _guarded(
+    () => _upsertSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      plan: plan,
+      refreshedAt: refreshedAt,
+    ),
+  );
+
+  Future<void> _upsertSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required CachedPlanRecord plan,
+    required DateTime refreshedAt,
   }) async {
     final changed = await _database.transaction(() async {
       final ensuredOwner = await _ensureOwner(
@@ -643,6 +703,20 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
 
   @override
   Future<void> upsertSyncedSession({
+    required String userId,
+    required String organizationId,
+    required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  }) => _guarded(
+    () => _upsertSyncedSession(
+      userId: userId,
+      organizationId: organizationId,
+      session: session,
+      refreshedAt: refreshedAt,
+    ),
+  );
+
+  Future<void> _upsertSyncedSession({
     required String userId,
     required String organizationId,
     required CachedSessionRecord session,
@@ -769,6 +843,22 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
 
   @override
   Future<void> upsertSyncedSessionItem({
+    required String userId,
+    required String organizationId,
+    required CachedSessionItemRecord item,
+    required int sessionVersion,
+    required DateTime refreshedAt,
+  }) => _guarded(
+    () => _upsertSyncedSessionItem(
+      userId: userId,
+      organizationId: organizationId,
+      item: item,
+      sessionVersion: sessionVersion,
+      refreshedAt: refreshedAt,
+    ),
+  );
+
+  Future<void> _upsertSyncedSessionItem({
     required String userId,
     required String organizationId,
     required CachedSessionItemRecord item,

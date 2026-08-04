@@ -108,6 +108,7 @@ final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
   return DriftPlanningLocalStore(
     ref.watch(planningLocalDatabaseProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+    writeRecovery: ref.watch(localStorageWriteRecoveryProvider),
   );
 });
 

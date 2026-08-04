@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dar
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/application/sync/sync_overview.dart';
@@ -86,6 +87,17 @@ final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
     database: ref.watch(songCatalogDatabaseProvider),
     accountant: ref.watch(catalogStorageAccountantProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+  );
+});
+
+/// The shared storage-recovery boundary (D1): every guarded Drift store
+/// write is offered the same evictor, so eviction-and-retry behaves
+/// identically regardless of which write triggered it.
+final localStorageWriteRecoveryProvider = Provider<LocalStorageWriteRecovery>((
+  ref,
+) {
+  return LocalStorageWriteRecovery(
+    evictor: ref.watch(songCatalogEvictorProvider),
   );
 });
 

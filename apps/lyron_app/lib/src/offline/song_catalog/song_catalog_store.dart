@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -12,7 +14,7 @@ enum SongSyncStatus {
   conflict,
 }
 
-class LocalSongSlugConflictException implements Exception {
+class LocalSongSlugConflictException implements LocalStorageDomainRejection {
   const LocalSongSlugConflictException();
 
   @override
@@ -165,13 +167,44 @@ class DriftSongCatalogStore implements SongCatalogStore {
   const DriftSongCatalogStore(
     this._database, {
     LocalStorageFootprintChanged? onStorageFootprintChanged,
-  }) : _onStorageFootprintChanged = onStorageFootprintChanged;
+    LocalStorageWriteRecovery? writeRecovery,
+  }) : _onStorageFootprintChanged = onStorageFootprintChanged,
+       _writeRecovery = writeRecovery;
 
   final SongCatalogDatabase _database;
   final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
+  /// Guards every local write that can increase stored bytes: a snapshot
+  /// replacement or song-mutation save that fails at the storage layer gets
+  /// one eviction-and-retry before surfacing a typed
+  /// [LocalStorageWriteFailure] (LF-T4, D1). `null` in tests that construct
+  /// this store directly -- production wiring always supplies it, mirroring
+  /// how [_onStorageFootprintChanged] is injected.
+  final LocalStorageWriteRecovery? _writeRecovery;
+
+  Future<T> _guarded<T>(Future<T> Function() write) {
+    final recovery = _writeRecovery;
+    return recovery == null ? write() : recovery.guard(write);
+  }
+
   @override
   Future<void> replaceActiveSnapshot({
+    required String userId,
+    required String organizationId,
+    required List<SongSummary> summaries,
+    required List<SongSource> sources,
+    required DateTime refreshedAt,
+  }) => _guarded(
+    () => _replaceActiveSnapshot(
+      userId: userId,
+      organizationId: organizationId,
+      summaries: summaries,
+      sources: sources,
+      refreshedAt: refreshedAt,
+    ),
+  );
+
+  Future<void> _replaceActiveSnapshot({
     required String userId,
     required String organizationId,
     required List<SongSummary> summaries,
@@ -406,7 +439,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
-  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) async {
+  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) =>
+      _guarded(() => _saveSongMutation(mutation));
+
+  Future<void> _saveSongMutation(SongCatalogMutationDraft mutation) async {
     final conflictingRow = await readSongMutationBySlug(
       userId: mutation.userId,
       organizationId: mutation.organizationId,
@@ -629,6 +665,25 @@ class DriftSongCatalogStore implements SongCatalogStore {
 
   @override
   Future<void> reconcileSyncedSong({
+    required String userId,
+    required String organizationId,
+    required SongSummary summary,
+    required SongSource source,
+  }) => _guarded(
+    () => _reconcileSyncedSong(
+      userId: userId,
+      organizationId: organizationId,
+      summary: summary,
+      source: source,
+    ),
+  );
+
+  // Guarded like the other writes above: reconciling a synced song can
+  // insert a brand-new summary/source row pair for a song that had no cached
+  // representation before (first sync), which is exactly the growth case D1
+  // exists to protect, even though it also deletes the now-resolved mutation
+  // row in the same transaction.
+  Future<void> _reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongSummary summary,

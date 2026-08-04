@@ -5,6 +5,10 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -16,6 +20,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
+import '../../support/insert_failing_executor.dart';
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -1207,6 +1212,235 @@ void main() {
           organizationId: 'org-1',
         ),
         isEmpty,
+      );
+    });
+  });
+
+  group('DriftSongCatalogStore storage recovery (D1)', () {
+    // Every test below wires a real DriftSongCatalogStore whose underlying
+    // executor fails every INSERT, and a real LocalStorageWriteRecovery
+    // backed by a SECOND, unwrapped SongCatalogDatabase seeded with one
+    // droppable source -- mirroring the two-database shape
+    // storage_pressure_contract_test.dart already uses for the (unchanged)
+    // planning-mutation path, so a storage failure on the guarded database
+    // never fights with eviction reads/deletes on the catalog database.
+    Future<
+      ({
+        SongCatalogDatabase failingDatabase,
+        DriftSongCatalogStore store,
+        SongCatalogDatabase evictionDatabase,
+        int Function() revisionCount,
+      })
+    >
+    buildGuardedStore({InsertFailureBudget? budget}) async {
+      final failingExecutor = InsertFailingExecutor(
+        NativeDatabase.memory(),
+        budget,
+      );
+      final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'droppable-song',
+              source: 'body ' * 200,
+            ),
+          );
+
+      var revisionCount = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+          onStorageFootprintChanged: () => revisionCount += 1,
+        ),
+      );
+      final store = DriftSongCatalogStore(
+        failingDatabase,
+        writeRecovery: recovery,
+      );
+
+      return (
+        failingDatabase: failingDatabase,
+        store: store,
+        evictionDatabase: evictionDatabase,
+        revisionCount: () => revisionCount,
+      );
+    }
+
+    test(
+      'a failed saveSongMutation write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              source: '{title: Alpha}',
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final mutation = await built.store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(mutation, isNull);
+      },
+    );
+
+    test('a saveSongMutation write that fails once and succeeds on retry lands '
+        'the mutation, after evicting droppable catalog sources', () async {
+      final built = await buildGuardedStore(
+        budget: InsertFailureBudget(failuresRemaining: 1),
+      );
+      addTearDown(built.failingDatabase.close);
+      addTearDown(built.evictionDatabase.close);
+
+      await built.store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final remainingSources = await built.evictionDatabase
+          .select(built.evictionDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, isEmpty);
+
+      final mutation = await built.store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(mutation, isNotNull);
+      expect(mutation!.title, 'Alpha');
+    });
+
+    test(
+      'a failed replaceActiveSnapshot write evicts droppable catalog '
+      'sources, retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [SongSummary(id: 'song-1', title: 'Song One')],
+            sources: const [SongSource(id: 'song-1', source: 'chordpro body')],
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        final summaries = await built.store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries, isEmpty);
+      },
+    );
+
+    test('domain rejections still pass through a guarded saveSongMutation '
+        'without eviction or retry', () async {
+      // No fault injection here: the underlying database is a plain,
+      // non-failing database, so the ONLY way this can throw is the
+      // domain check inside saveSongMutation itself (a slug already
+      // reserved by a different song) -- proving the guard recognises it
+      // as a LocalStorageDomainRejection rather than storage pressure.
+      final database = SongCatalogDatabase.inMemory();
+      addTearDown(database.close);
+      var evictions = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: database,
+          accountant: CatalogStorageAccountant(database),
+          onStorageFootprintChanged: () => evictions += 1,
+        ),
+      );
+      final store = DriftSongCatalogStore(database, writeRecovery: recovery);
+
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingDelete,
+        ),
+      );
+
+      await expectLater(
+        () => store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha',
+            title: 'Alpha Recreated',
+            source: '{title: Alpha Recreated}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ),
+        throwsA(isA<LocalSongSlugConflictException>()),
+      );
+
+      expect(
+        evictions,
+        0,
+        reason: 'a domain rejection must never trigger eviction',
       );
     });
   });
