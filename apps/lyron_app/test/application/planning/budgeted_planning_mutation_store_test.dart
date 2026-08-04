@@ -584,6 +584,77 @@ void main() {
       );
       expect(record?.syncStatus, PlanningMutationSyncStatus.accepted);
     });
+
+    test('the collapse race: a clearMutation concurrent with a collapsing '
+        'recordSessionDelete never results in a new delete row admitted '
+        'without a budget check -- either the collapse lands, or (if the '
+        'race were resolved the other way) the write would be refused by '
+        'the budget, but never silently grown', () async {
+      // A fake delegate, not real Drift, so the interleaving is gated
+      // purely by Completers -- no reliance on real-database timing.
+      // readMutation (used by the decorator's collapse decision) always
+      // answers from current state instantly; recordSessionDelete pauses
+      // BEFORE its own internal re-check (mirroring
+      // DriftPlanningMutationStore.recordSessionDelete's `existing =
+      // await readMutation(...)` inside its own transaction), so a
+      // concurrent clearMutation issued while it is paused can be
+      // observed by that re-check exactly like the real delegate would.
+      final fakeDelegate = _CollapseRaceMutationStore(
+        initialSessionKind: PlanningMutationKind.sessionCreate,
+      );
+      final store = BudgetedPlanningMutationStore(
+        delegate: fakeDelegate,
+        accountant: accountant,
+        evictor: evictor,
+        budget: const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      final pauseGate = Completer<void>();
+      fakeDelegate.gateNextRecordSessionDelete(pauseGate);
+
+      final deleteFuture = store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+
+      // Blocks until the decorator's collapse decision has already run
+      // (it must, in program order, before recordSessionDelete's paused
+      // body is even reached) and the fake's write is now paused, having
+      // not yet re-read or mutated state.
+      await fakeDelegate.entered.future;
+
+      // Issued while the write is paused. Whether this actually mutates
+      // state before or after the write's own re-check is exactly what
+      // this test pins: unqueued (today), the fake delegate's body runs
+      // synchronously here, before the write resumes. Queued (after the
+      // fix), it is chained behind the write's still-pending queue slot
+      // and cannot run until the write settles.
+      final clearFuture = store.clearMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+
+      pauseGate.complete();
+
+      await Future.wait([
+        deleteFuture,
+        clearFuture,
+      ]).timeout(const Duration(seconds: 2));
+
+      // Never a new sessionDelete row admitted without ever passing the
+      // budget check: the outcome must be the collapse (kind == null),
+      // not growth.
+      expect(
+        fakeDelegate.currentSessionKind,
+        isNot(PlanningMutationKind.sessionDelete),
+      );
+      expect(fakeDelegate.currentSessionKind, isNull);
+    });
   });
 
   group('BudgetedPlanningMutationStore.saveSyncAttemptResult recovery '
@@ -997,4 +1068,199 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
 
   @override
   Future<void> close() => _delegate.close();
+}
+
+/// Fake delegate for the finding-2 collapse-race test. Deliberately not a
+/// real Drift store: the race is gated purely by Completers, so it must be
+/// possible to pause `recordSessionDelete` at an exact point with no real
+/// storage/IO uncertainty in between.
+///
+/// `readMutation` always answers instantly from current state -- it models
+/// the decorator's OWN early collapse-decision read
+/// (`_collapsesPendingCreate`), which must never be paused, since pausing
+/// it would test something other than the race this exists to reproduce.
+///
+/// `recordSessionDelete` pauses on the gate installed by
+/// [gateNextRecordSessionDelete] BEFORE doing anything else, then -- once
+/// released -- re-reads `_sessionKind` and either collapses (kind was still
+/// `sessionCreate`: clears it) or grows (anything else: sets it to
+/// `sessionDelete`), mirroring
+/// `DriftPlanningMutationStore.recordSessionDelete`'s own internal
+/// `existing?.kind == sessionCreate` re-check inside its transaction.
+class _CollapseRaceMutationStore implements PlanningMutationStore {
+  _CollapseRaceMutationStore({
+    required PlanningMutationKind? initialSessionKind,
+  }) : _sessionKind = initialSessionKind;
+
+  PlanningMutationKind? _sessionKind;
+  Completer<void>? _pauseGate;
+
+  /// Completes the moment `recordSessionDelete` is entered and about to
+  /// await the pause gate -- proof that the decorator's collapse decision
+  /// (which runs strictly earlier, in `_admitAndWrite`'s program order) has
+  /// already resolved.
+  final Completer<void> entered = Completer<void>();
+
+  PlanningMutationKind? get currentSessionKind => _sessionKind;
+
+  void gateNextRecordSessionDelete(Completer<void> gate) {
+    _pauseGate = gate;
+  }
+
+  bool _isSessionOne(String aggregateType, String aggregateId) =>
+      aggregateType == 'session' && aggregateId == 'session-1';
+
+  @override
+  Future<PlanningMutationRecord?> readMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    if (!_isSessionOne(aggregateType, aggregateId) || _sessionKind == null) {
+      return null;
+    }
+    return PlanningMutationRecord(
+      aggregateId: aggregateId,
+      organizationId: organizationId,
+      kind: _sessionKind!,
+      syncStatus: PlanningMutationSyncStatus.pending,
+      orderKey: 0,
+      updatedAt: DateTime.utc(2026, 8, 4),
+    );
+  }
+
+  @override
+  Future<void> recordSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionDeleteMutationDraft draft,
+  }) async {
+    final gate = _pauseGate;
+    if (gate != null) {
+      _pauseGate = null;
+      if (!entered.isCompleted) {
+        entered.complete();
+      }
+      await gate.future;
+    }
+    _sessionKind = _sessionKind == PlanningMutationKind.sessionCreate
+        ? null
+        : PlanningMutationKind.sessionDelete;
+  }
+
+  @override
+  Future<void> clearMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    if (_isSessionOne(aggregateType, aggregateId)) {
+      _sessionKind = null;
+    }
+  }
+
+  @override
+  Future<void> recordPlanCreate({
+    required PlanningMutationContext context,
+    required PlanningPlanCreateMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordPlanEdit({
+    required PlanningMutationContext context,
+    required PlanningPlanEditMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionCreate({
+    required PlanningMutationContext context,
+    required PlanningSessionCreateMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionRename({
+    required PlanningMutationContext context,
+    required PlanningSessionRenameMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readAllMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocatePlanSlug({
+    required String userId,
+    required String organizationId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocateSessionSlug({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> hasUnsyncedMutations({required String userId}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required PlanningMutationSyncStatus syncStatus,
+    PlanningMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> retryMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
 }
