@@ -962,6 +962,138 @@ void main() {
       expect(summaries.single.id, 'plan-1');
     });
 
+    test(
+      'a failed upsertSyncedPlan write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.upsertSyncedPlan(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plan: _planRecord(id: 'plan-1', name: 'Weekend Service'),
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final summaries = await built.store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries, isEmpty);
+      },
+    );
+
+    test(
+      'a failed upsertSyncedSession write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.upsertSyncedSession(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            session: const CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              position: 10,
+              name: 'Worship',
+            ),
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final detail = await built.store.readPlanDetail(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+        );
+        expect(detail, isNull);
+      },
+    );
+
+    test(
+      'a failed upsertSyncedSessionItem write evicts droppable catalog '
+      'sources, retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.upsertSyncedSessionItem(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            item: const CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Song 1',
+            ),
+            sessionVersion: 2,
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final detail = await built.store.readPlanDetail(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+        );
+        expect(detail, isNull);
+      },
+    );
+
     test('PlanningProjectionAbortedException still passes through a guarded '
         'replaceActiveProjection without eviction or retry', () async {
       // No fault injection here: the underlying database is a plain,

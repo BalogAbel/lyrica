@@ -1391,6 +1391,51 @@ void main() {
       },
     );
 
+    test(
+      'a failed reconcileSyncedSong write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.reconcileSyncedSong(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summary: const SongSummary(
+              id: 'song-1',
+              title: 'Alpha',
+              slug: 'alpha',
+              version: 2,
+            ),
+            source: const SongSource(id: 'song-1', source: '{title: Alpha}'),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final summary = await built.store.readActiveSummaryById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(summary, isNull);
+      },
+    );
+
     test('domain rejections still pass through a guarded saveSongMutation '
         'without eviction or retry', () async {
       // No fault injection here: the underlying database is a plain,
