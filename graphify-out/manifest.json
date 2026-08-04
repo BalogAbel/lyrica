@@ -5,7 +5,7 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1785831154.8478537,
+    "mtime": 1785849967.3038013,
     "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
@@ -2455,8 +2455,8 @@
     "semantic_hash": "b6dfaff2d7cc0023ffc4fbc9029cd7e6"
   },
   "docs/testing/testing-strategy.md": {
-    "mtime": 1785836385.4174662,
-    "ast_hash": "c23c97add89cd0ef02d7ef5fde317f66",
+    "mtime": 1785850977.009301,
+    "ast_hash": "810bd88a997a9c242802c2fb1ba4988b",
     "semantic_hash": ""
   },
   "docs/workflows/ai-development.md": {
@@ -2815,8 +2815,8 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1785836393.8904436,
-    "ast_hash": "e16b804cfa5d90c3b31d1efe7ce9ff9c",
+    "mtime": 1785851043.324737,
+    "ast_hash": "0d23153ccdee73ccf059039c46f8afa9",
     "semantic_hash": ""
   },
   "docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md": {
@@ -3350,8 +3350,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
-    "mtime": 1785835122.28646,
-    "ast_hash": "9aa157697669b2b8281b4ef43e8b8f90",
+    "mtime": 1785850511.039757,
+    "ast_hash": "98c725a30e6e860dc7dabe8a34071435",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart": {
@@ -3410,8 +3410,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1785833954.0024476,
-    "ast_hash": "2de842e41213b22e5696e717891bd13c",
+    "mtime": 1785850412.8512714,
+    "ast_hash": "1c60b84edc951da2f93d22ce2dc55015",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
@@ -3460,8 +3460,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-028-local-storage-budget-and-eviction-policy.md": {
-    "mtime": 1785836354.048786,
-    "ast_hash": "9a264aa17553f4ad370fc819aac7e2cc",
+    "mtime": 1785850945.1875756,
+    "ast_hash": "2dc3affb9b26b4bd4085d38b51528cca",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md": {
@@ -3740,8 +3740,8 @@
     "semantic_hash": ""
   },
   "docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md": {
-    "mtime": 1785835852.2817667,
-    "ast_hash": "a3d3f770e1c66d956c5eb7ea342dcd3d",
+    "mtime": 1785851013.4221318,
+    "ast_hash": "655b5fb36ee5f5461e73803987d6baf4",
     "semantic_hash": ""
   }
 }
