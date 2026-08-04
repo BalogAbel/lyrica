@@ -376,6 +376,183 @@ void main() {
         await aFuture.timeout(const Duration(seconds: 2));
       },
     );
+
+    test(
+      'admits a session delete that collapses a still-pending session '
+      'create even at an exhausted budget, and removes the session plus '
+      'its pending item and item-order rows',
+      () async {
+        final permissive = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1000000),
+        );
+        await permissive.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'session-one',
+            name: 'Session One',
+            position: 0,
+          ),
+        );
+        await permissive.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-1',
+            songTitle: 'Song One',
+            position: 0,
+          ),
+        );
+        await permissive.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-1'],
+          ),
+        );
+
+        final exhausted = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1),
+        );
+
+        // Must not throw PlanningMutationBudgetExceededException: deleting a
+        // still-pending create shrinks the store, so it is admitted
+        // regardless of budget.
+        await exhausted.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+          ),
+        );
+
+        expect(
+          await exhausted.readMutation(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'session',
+            aggregateId: 'session-1',
+          ),
+          isNull,
+        );
+        expect(
+          await exhausted.readMutation(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'session_item',
+            aggregateId: 'item-1',
+          ),
+          isNull,
+        );
+        expect(
+          await exhausted.readMutation(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'session_item_order',
+            aggregateId: 'session-1',
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'admits a session-item delete that collapses a still-pending '
+      'session-item create even at an exhausted budget',
+      () async {
+        final permissive = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1000000),
+        );
+        await permissive.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'session-one',
+            name: 'Session One',
+            position: 0,
+          ),
+        );
+        await permissive.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-1',
+            songTitle: 'Song One',
+            position: 0,
+          ),
+        );
+
+        final exhausted = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1),
+        );
+
+        await exhausted.recordSessionItemDelete(
+          context: context,
+          draft: const PlanningSessionItemDeleteMutationDraft(
+            sessionItemId: 'item-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+          ),
+        );
+
+        expect(
+          await exhausted.readMutation(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'session_item',
+            aggregateId: 'item-1',
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'still refuses a session delete that is not collapsing a pending '
+      'create, even though it is the same method as the collapse case',
+      () async {
+        // Seed an UNRELATED pending mutation so the store is genuinely over
+        // budget. The session targeted below has no local mutation of its
+        // own (as if it is synced and unmodified locally), so deleting it
+        // adds a brand new sessionDelete row -- it grows the store rather
+        // than shrinking it, and must stay subject to the budget exactly
+        // like any other write. The admission decision has to come from
+        // store state (is there a pending create to collapse?), not from
+        // the method name alone.
+        await storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1000000),
+        ).recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+
+        final exhausted = storeWithBudget(
+          const LocalStorageBudget(mutationRefuseBytes: 1),
+        );
+
+        await expectLater(
+          () => exhausted.recordSessionDelete(
+            context: context,
+            draft: const PlanningSessionDeleteMutationDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+            ),
+          ),
+          throwsA(isA<PlanningMutationBudgetExceededException>()),
+        );
+      },
+    );
   });
 }
 
