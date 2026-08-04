@@ -32,22 +32,35 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// here would only destroy cached data for no benefit. The remedy is to
 /// sync or discard.
 ///
-/// Reads, slug allocation, retry and discard (`readPendingMutations`,
+/// Reads and slug allocation (`readPendingMutations`,
 /// `readActionableMutations`, `readAllMutations`, `readMutation`,
-/// `allocatePlanSlug`, `allocateSessionSlug`, `hasUnsyncedMutations`,
-/// `retryMutation`, `clearMutation`) pass straight through unguarded by the
-/// budget. In particular, `clearMutation` must never be budget-guarded: once
-/// the store is full, it is the only way out, and guarding it would turn the
-/// budget into a trap with no recovery path.
+/// `allocatePlanSlug`, `allocateSessionSlug`, `hasUnsyncedMutations`) pass
+/// straight through, entirely outside the write queue: nothing about them
+/// can race a write in a way that matters here.
 ///
-/// `saveSyncAttemptResult` is also never budget-guarded, for the same
-/// no-trap reason, but it DOES go through the storage-recovery boundary
-/// below: unlike `retryMutation`/`clearMutation`, it can grow the stored
-/// record (it adds `errorCode`/`errorMessage`), and it is the durable marker
-/// `PlanningMutationSyncController._run` writes immediately after a
-/// successful remote send. A swallowed or unrecovered failure on it would
-/// leave the record `pending` and cause the next sync to resend a mutation
-/// the backend already accepted (ADR-019 exactly-once).
+/// `saveSyncAttemptResult`, `retryMutation` and `clearMutation` are never
+/// budget-guarded -- guarding any of them would turn the budget into a trap
+/// with no recovery path, and `clearMutation` in particular is the only way
+/// out once the store is full. But all three DO go through the same
+/// per-context write queue as the `record*` admissions (see `_writeQueue`
+/// below), because a `record*` call's collapse decision
+/// (`_collapsesPendingCreate`) and the delegate's own re-check inside its
+/// transaction are two separate reads of the same aggregate -- without
+/// shared queue ordering, a `clearMutation` for that aggregate could land in
+/// between them (exactly what sync does immediately after a mutation is
+/// accepted), so the delegate's re-check would find nothing to collapse and
+/// write a brand-new row that never passed a budget check. Only
+/// `saveSyncAttemptResult` additionally goes through the storage-recovery
+/// boundary (see below): it is the one of the three that can grow the
+/// stored record (it adds `errorCode`/`errorMessage`), and it is also the
+/// durable marker `PlanningMutationSyncController._run` writes immediately
+/// after a successful remote send, so a swallowed or unrecovered failure on
+/// it would leave the record `pending` and cause the next sync to resend a
+/// mutation the backend already accepted (ADR-019 exactly-once). Neither
+/// `retryMutation` (it clears `errorCode`/`errorMessage` and rebases the
+/// base version -- it does not meaningfully grow the row) nor
+/// `clearMutation` (a pure delete) needs the recovery boundary; they only
+/// need the same ordering.
 ///
 /// `recordSessionDelete` and `recordSessionItemDelete` are budget-guarded
 /// like every other `record*` write EXCEPT when the write itself would
@@ -59,24 +72,27 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// pending create genuinely grows the store and stays subject to the
 /// budget. See `_collapsesPendingCreate`.
 ///
-/// The measure-check-write sequence for each `record*` call is serialised
-/// per `(userId, organizationId)` -- see `_writeQueue` -- so the "at most
-/// one mutation past the threshold" bound above holds under concurrency:
-/// only one admission can be in flight per context at a time. Writes for
-/// different contexts never block each other.
+/// The measure-check-write sequence for each `record*` call, and every
+/// `saveSyncAttemptResult`/`retryMutation`/`clearMutation` call, is
+/// serialised per `(userId, organizationId)` -- see `_writeQueue` -- so the
+/// "at most one mutation past the threshold" bound above holds under
+/// concurrency: only one write for a context is ever in flight at a time.
+/// Writes for different contexts never block each other.
 ///
-/// A write that reaches the delegate and fails at the storage layer (not a
-/// domain rejection such as [LocalPlanningSlugConflictException]) is treated
-/// as storage pressure (LF-T4) by [LocalStorageWriteRecovery.guard], the
-/// same shared boundary every other growing local write in the app uses
+/// A `record*` write that reaches the delegate and fails at the storage
+/// layer (not a domain rejection such as [LocalPlanningSlugConflictException])
+/// is treated as storage pressure (LF-T4) by [LocalStorageWriteRecovery.guard],
+/// the same shared boundary every other growing local write in the app uses
 /// (D1): droppable catalog sources are evicted and the write is retried
-/// once. Every guarded write is an upsert keyed by its aggregate, so the
-/// retry is idempotent -- a partially applied first attempt cannot
-/// duplicate. If the retry still fails, the failure is surfaced as a typed
-/// [LocalStorageWriteFailure] rather than swallowed. This class no longer
-/// implements that policy itself -- it only decides WHEN to invoke
-/// `_recovery.guard` (after the budget/collapse admission), not HOW a
-/// storage-layer failure recovers.
+/// once. `saveSyncAttemptResult` goes through the identical boundary, for
+/// the reason above. Every guarded write is an upsert keyed by its
+/// aggregate, so the retry is idempotent -- a partially applied first
+/// attempt cannot duplicate. If the retry still fails, the failure is
+/// surfaced as a typed [LocalStorageWriteFailure] rather than swallowed.
+/// This class no longer implements that policy itself -- it only decides
+/// WHEN to invoke `_recovery.guard` (after the budget/collapse admission, or
+/// directly for `saveSyncAttemptResult`), not HOW a storage-layer failure
+/// recovers.
 class BudgetedPlanningMutationStore implements PlanningMutationStore {
   BudgetedPlanningMutationStore({
     required PlanningMutationStore delegate,
@@ -93,32 +109,57 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   final LocalStorageWriteRecovery _recovery;
   final LocalStorageBudget _budget;
 
-  // Per-(userId, organizationId) write queue. Without this, the measure,
-  // check and write in _admitAndWrite are three separate `await` points with
-  // nothing stopping a second `record*` call for the same context from
-  // measuring the same pre-write footprint and also passing the check --
-  // overshooting the "at most one mutation past the threshold" guarantee.
+  // Per-(userId, organizationId) write queue, shared by the nine `record*`
+  // admissions AND by saveSyncAttemptResult/retryMutation/clearMutation.
+  // Two reasons this queue has to cover all of those, not just `record*`:
+  //
+  // 1. Without it, the measure, check and write in _admitAndWrite are three
+  //    separate `await` points with nothing stopping a second `record*`
+  //    call for the same context from measuring the same pre-write
+  //    footprint and also passing the check -- overshooting the "at most
+  //    one mutation past the threshold" guarantee.
+  // 2. A `record*` collapse decision (`_collapsesPendingCreate`, read
+  //    early, before the queued turn even starts) and the delegate's own
+  //    re-check of the same aggregate (read late, inside its own
+  //    transaction, once the queued turn runs) are two separate reads.
+  //    `clearMutation` is exactly what sync calls, for that same aggregate,
+  //    immediately after a mutation is accepted -- if it could run in
+  //    between those two reads, the delegate would find nothing left to
+  //    collapse and would write a brand-new row that never passed a budget
+  //    check. Queuing clearMutation (and retryMutation, for the same
+  //    aggregate-race reason) behind the same per-context turn closes that
+  //    window: once a `record*` call's turn starts, no other write for the
+  //    same context can run until it finishes.
+  //
   // Keyed the same way as PlanningMutationSyncController._inFlight so a
   // write for one user/organization never blocks a write for another, but
   // unlike that single-flight map (which coalesces concurrent callers onto
-  // ONE shared future), every `record*` call must run its own write and
-  // report its own outcome, so callers are chained onto the queue instead of
-  // being handed someone else's future.
+  // ONE shared future), every call here must run its own write and report
+  // its own outcome, so callers are chained onto the queue instead of being
+  // handed someone else's future.
   final Map<String, Future<void>> _writeQueue = {};
 
-  Future<void> _guardedWrite(
+  /// Chains [task] onto the per-`(userId, organizationId)` write queue and
+  /// returns a future for its own outcome. No re-entrancy: [task] (and
+  /// everything it calls -- `_admitAndWrite`, `_recovery.guard`,
+  /// `_collapsesPendingCreate`'s `_delegate.readMutation`, every `_delegate`
+  /// write) must never itself call back into `_enqueue`/`_guardedWrite`/
+  /// `_recoveredWrite`/`_queuedWrite` for the SAME instance, or the second
+  /// call would await a queue tail that can only resolve after the first
+  /// call (which is what's blocking it) completes -- a self-deadlock. This
+  /// holds here because `_delegate` is a plain `PlanningMutationStore`
+  /// (`DriftPlanningMutationStore` in production) with no reference back to
+  /// this decorator, so nothing it does can re-enter the queue.
+  Future<void> _enqueue(
     PlanningMutationContext context,
-    Future<void> Function() write, {
-    Future<bool> Function()? isCollapse,
-  }) {
+    Future<void> Function() task,
+  ) {
     final key = '${context.userId}_${context.organizationId}';
     final previous = _writeQueue[key] ?? Future<void>.value();
 
     // `previous` is always already-settled-safe (see `tail` below), so
     // chaining onto it just waits for our turn -- it never itself throws.
-    final result = previous.then(
-      (_) => _admitAndWrite(context, write, isCollapse: isCollapse),
-    );
+    final result = previous.then((_) => task());
 
     // Publish our own completion, success or failure, as the new queue tail
     // so the next call for this context waits for us. Neutralise the error
@@ -139,6 +180,38 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
 
     return result;
   }
+
+  /// Queued budget/collapse admission followed by the storage-recovery
+  /// boundary. Used by the nine `record*` methods.
+  Future<void> _guardedWrite(
+    PlanningMutationContext context,
+    Future<void> Function() write, {
+    Future<bool> Function()? isCollapse,
+  }) => _enqueue(
+    context,
+    () => _admitAndWrite(context, write, isCollapse: isCollapse),
+  );
+
+  /// Queued, but with no budget admission -- just the storage-recovery
+  /// boundary. Used by `saveSyncAttemptResult`: it can grow the stored
+  /// record (it adds `errorCode`/`errorMessage`) so a storage failure on it
+  /// needs the same evict-and-retry-once treatment as a `record*` write,
+  /// but it must never be refused for budget reasons -- see the class doc
+  /// for why (the ADR-019 exactly-once marker).
+  Future<void> _recoveredWrite(
+    PlanningMutationContext context,
+    Future<void> Function() write,
+  ) => _enqueue(context, () => _recovery.guard(write));
+
+  /// Queued, with neither budget admission nor the recovery boundary. Used
+  /// by `retryMutation` and `clearMutation`: neither can meaningfully grow
+  /// the store (see the class doc), so there is nothing to recover from --
+  /// they only need the same ordering as every other write for this
+  /// context.
+  Future<void> _queuedWrite(
+    PlanningMutationContext context,
+    Future<void> Function() write,
+  ) => _enqueue(context, write);
 
   Future<void> _admitAndWrite(
     PlanningMutationContext context,
@@ -165,15 +238,6 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     // there exactly as it did when this class caught it directly.
     await _recovery.guard(write);
   }
-
-  /// Storage-recovery boundary with no budget admission. Used by
-  /// `saveSyncAttemptResult`: it can grow the stored record (see the class
-  /// doc), so a storage failure on it needs the same evict-and-retry-once
-  /// treatment as a `record*` write, but it must never be refused for
-  /// budget reasons -- refusing it would strand the ADR-019 exactly-once
-  /// marker.
-  Future<void> _recoveredWrite(Future<void> Function() write) =>
-      _recovery.guard(write);
 
   /// Whether a delete targeting `(aggregateType, aggregateId)` would
   /// collapse a still-pending create rather than grow the store -- i.e. the
@@ -376,6 +440,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
   }) => _recoveredWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
     () => _delegate.saveSyncAttemptResult(
       userId: userId,
       organizationId: organizationId,
@@ -393,11 +458,14 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) => _delegate.retryMutation(
-    userId: userId,
-    organizationId: organizationId,
-    aggregateType: aggregateType,
-    aggregateId: aggregateId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.retryMutation(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    ),
   );
 
   @override
@@ -406,10 +474,13 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) => _delegate.clearMutation(
-    userId: userId,
-    organizationId: organizationId,
-    aggregateType: aggregateType,
-    aggregateId: aggregateId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.clearMutation(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    ),
   );
 }
