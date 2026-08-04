@@ -40,6 +40,22 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// is the only way out, and guarding it would turn the budget into a trap
 /// with no recovery path.
 ///
+/// `recordSessionDelete` and `recordSessionItemDelete` are budget-guarded
+/// like every other `record*` write EXCEPT when the write itself would
+/// shrink the store: if the aggregate they target still holds a pending
+/// create (a session or session item that never reached the backend), the
+/// delete collapses that create rather than adding a row, and is admitted
+/// regardless of budget. That decision is read from the store, not inferred
+/// from the method name -- a delete against an aggregate that is not a
+/// pending create genuinely grows the store and stays subject to the
+/// budget. See `_collapsesPendingCreate`.
+///
+/// The measure-check-write sequence for each `record*` call is serialised
+/// per `(userId, organizationId)` -- see `_writeQueue` -- so the "at most
+/// one mutation past the threshold" bound above holds under concurrency:
+/// only one admission can be in flight per context at a time. Writes for
+/// different contexts never block each other.
+///
 /// A write that reaches the delegate and fails at the storage layer (not a
 /// domain rejection such as [LocalPlanningSlugConflictException]) is treated
 /// as storage pressure (LF-T4): droppable catalog sources are evicted and
@@ -169,6 +185,36 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     }
   }
 
+  /// Whether a delete targeting `(aggregateType, aggregateId)` would
+  /// collapse a still-pending create rather than grow the store -- i.e. the
+  /// existing mutation row at that aggregate key is [pendingCreateKind].
+  ///
+  /// This must decide from store state, not from the calling method's name:
+  /// a delete against an aggregate with no pending create (including one
+  /// with no local mutation at all, or one folded into pending edit/rename)
+  /// genuinely adds a row and stays subject to the budget.
+  ///
+  /// Mirrors, rather than duplicates, the delegate's own collapse check
+  /// (`existing?.kind == <pendingCreateKind>` in
+  /// DriftPlanningMutationStore.recordSessionDelete /
+  /// recordSessionItemDelete) so the two can never disagree: both read
+  /// through the same [PlanningMutationStore.readMutation] contract keyed by
+  /// the same `(aggregateType, aggregateId)`, and both compare only `kind`.
+  Future<bool> _collapsesPendingCreate({
+    required PlanningMutationContext context,
+    required String aggregateType,
+    required String aggregateId,
+    required PlanningMutationKind pendingCreateKind,
+  }) async {
+    final existing = await _delegate.readMutation(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    );
+    return existing?.kind == pendingCreateKind;
+  }
+
   @override
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
@@ -212,6 +258,12 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   }) => _guardedWrite(
     context,
     () => _delegate.recordSessionDelete(context: context, draft: draft),
+    isCollapse: () => _collapsesPendingCreate(
+      context: context,
+      aggregateType: PlanningMutationKind.sessionDelete.aggregateType,
+      aggregateId: draft.sessionId,
+      pendingCreateKind: PlanningMutationKind.sessionCreate,
+    ),
   );
 
   @override
@@ -239,6 +291,12 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   }) => _guardedWrite(
     context,
     () => _delegate.recordSessionItemDelete(context: context, draft: draft),
+    isCollapse: () => _collapsesPendingCreate(
+      context: context,
+      aggregateType: PlanningMutationKind.sessionItemDelete.aggregateType,
+      aggregateId: draft.sessionItemId,
+      pendingCreateKind: PlanningMutationKind.sessionItemCreateSong,
+    ),
   );
 
   @override
