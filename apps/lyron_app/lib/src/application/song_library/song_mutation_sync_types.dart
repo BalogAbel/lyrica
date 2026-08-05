@@ -64,6 +64,7 @@ class SongMutationRecord {
     this.errorCode,
     this.errorMessage,
     this.conflictSourceSyncStatus,
+    this.localRevision = 0,
   });
 
   final String id;
@@ -77,6 +78,14 @@ class SongMutationRecord {
   final SongMutationSyncErrorCode? errorCode;
   final String? errorMessage;
   final SongSyncStatus? conflictSourceSyncStatus;
+
+  /// Local bookkeeping only -- see `CachedCatalogSongMutations.localRevision`
+  /// (`song_catalog_tables.dart`) for why this exists and why it is not OCC.
+  /// Populated when a record is read back from storage; `0` for a record a
+  /// caller is about to hand to `upsertSong` (the store computes the real
+  /// value on write and callers never need to guess it) or for the synced
+  /// fallback `readById` synthesizes when no mutation row exists.
+  final int localRevision;
 
   SongSyncStatus get effectiveSyncStatus =>
       conflictSourceSyncStatus ?? syncStatus;
@@ -101,6 +110,7 @@ class SongMutationRecord {
     bool clearErrorMessage = false,
     SongSyncStatus? conflictSourceSyncStatus,
     bool clearConflictSourceSyncStatus = false,
+    int? localRevision,
   }) {
     return SongMutationRecord(
       id: id ?? this.id,
@@ -118,6 +128,7 @@ class SongMutationRecord {
       conflictSourceSyncStatus: clearConflictSourceSyncStatus
           ? null
           : (conflictSourceSyncStatus ?? this.conflictSourceSyncStatus),
+      localRevision: localRevision ?? this.localRevision,
     );
   }
 }
@@ -171,10 +182,25 @@ abstract interface class SongMutationStore {
     required String songId,
   });
 
-  Future<void> reconcileSyncedSong({
+  /// Concludes a successful sync: reconciles the cached snapshot with
+  /// [record] and drops the song's mutation row.
+  ///
+  /// D2 (docs/specs/2026-08-05-sync-snapshot-identity.md): when
+  /// [expectedRevision] is supplied, the whole reconcile -- including the
+  /// snapshot update, not only the mutation-row delete -- applies only if
+  /// the row's CURRENT `localRevision` still matches it, checked atomically
+  /// inside the storage boundary (never a preceding read compared in Dart).
+  /// Returns `true` if it applied, `false` if the row's revision had already
+  /// moved (D3: not an error -- a local edit landed on this song during the
+  /// remote round trip, and that edit already reset the row to pending with
+  /// the newer content, so the next sync sends it). Omitting
+  /// [expectedRevision] always applies unconditionally (and returns `true`),
+  /// matching this method's shape before the D2 gate existed.
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   });
 
   Future<void> clearSongMutation({

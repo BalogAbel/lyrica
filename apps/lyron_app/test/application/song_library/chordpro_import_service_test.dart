@@ -306,11 +306,12 @@ class _FakeRepo implements SongCatalogReadRepository, SongMutationStore {
   }) async {}
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
-  }) async {}
+    int? expectedRevision,
+  }) async => true;
 
   @override
   Future<void> clearSongMutation({

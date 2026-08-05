@@ -422,12 +422,14 @@ class _FakeSongStore implements SongMutationStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) async {
     _mutations.remove(record.id);
+    return true;
   }
 
   @override

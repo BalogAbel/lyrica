@@ -550,12 +550,14 @@ class _GatedSongMutationStore implements SongMutationStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) async {
     _records[record.id] = record;
+    return true;
   }
 
   @override

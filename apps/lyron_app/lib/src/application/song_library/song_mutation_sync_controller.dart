@@ -350,6 +350,15 @@ class SongMutationSyncController {
       return;
     }
 
+    // D2/D3 (docs/specs/2026-08-05-sync-snapshot-identity.md): `original` was
+    // read BEFORE the remote round trip (either from the sync's pending-songs
+    // snapshot, or by `keepMine`'s own pre-send read), so its localRevision is
+    // the exact content this response concludes. Passing it as
+    // expectedRevision lets the store atomically detect a local edit that
+    // landed on this song during the remote wait. A `false` return means
+    // exactly that happened -- not an error, nothing further to do here: the
+    // edit already reset the row to pending with the newer content, so the
+    // next sync sends it.
     await _store.reconcileSyncedSong(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -359,6 +368,7 @@ class SongMutationSyncController {
         clearErrorMessage: true,
         clearConflictSourceSyncStatus: true,
       ),
+      expectedRevision: original.localRevision,
     );
   }
 }

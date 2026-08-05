@@ -57,10 +57,11 @@ class DriftSongMutationStore implements SongMutationStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) {
     return _songCatalogStore.reconcileSyncedSong(
       userId: userId,
@@ -72,6 +73,7 @@ class DriftSongMutationStore implements SongMutationStore {
         version: record.version,
       ),
       source: SongSource(id: record.id, source: record.chordproSource),
+      expectedRevision: expectedRevision,
     );
   }
 
@@ -239,6 +241,7 @@ class DriftSongMutationStore implements SongMutationStore {
       errorCode: error.$1,
       errorMessage: error.$2,
       conflictSourceSyncStatus: error.$3,
+      localRevision: row.localRevision,
     );
   }
 

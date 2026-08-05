@@ -364,12 +364,14 @@ class _FakeSongRepository
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) async {
     songById = record;
+    return true;
   }
 
   @override

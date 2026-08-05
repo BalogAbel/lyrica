@@ -885,16 +885,22 @@ class _FakeSongMutationStore implements SongMutationStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) async {
     lastUpsertedRecord = record;
     // Mirrors production: a successful sync clears the mutation row and
-    // (re)writes the cached snapshot with the server's copy.
+    // (re)writes the cached snapshot with the server's copy. The D2 revision
+    // gate itself is proven against the real DriftSongCatalogStore in
+    // song_sync_snapshot_identity_test.dart (a fake could too easily "pass"
+    // by encoding the desired behaviour directly), so this fake applies
+    // unconditionally regardless of expectedRevision.
     _mutations.remove(record.id);
     _snapshots[record.id] = record;
+    return true;
   }
 
   @override

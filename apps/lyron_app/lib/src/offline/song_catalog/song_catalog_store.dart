@@ -142,11 +142,24 @@ abstract interface class SongCatalogStore {
     required String songId,
   });
 
-  Future<void> reconcileSyncedSong({
+  /// Concludes a successful sync: reconciles the cached snapshot with
+  /// [summary]/[source] and drops the song's mutation row.
+  ///
+  /// D2 (docs/specs/2026-08-05-sync-snapshot-identity.md): when
+  /// [expectedRevision] is supplied, the whole reconcile applies only if the
+  /// mutation row's CURRENT `localRevision` still matches it -- gated inside
+  /// the same transaction's DELETE statement, never a preceding `SELECT`
+  /// compared in Dart (that would reopen the race this closes). Returns
+  /// `true` if it applied, `false` if the revision had already moved (D3:
+  /// not an error -- the row is left exactly as the concurrent local write
+  /// left it, still pending with the newer content). Omitting
+  /// [expectedRevision] always applies unconditionally.
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongSummary summary,
     required SongSource source,
+    int? expectedRevision,
   });
 
   Future<void> clearSongMutation({
@@ -461,6 +474,16 @@ class DriftSongCatalogStore implements SongCatalogStore {
       return;
     }
 
+    // D1 (docs/specs/2026-08-05-sync-snapshot-identity.md): every local
+    // write to this row bumps localRevision, including a fold onto an
+    // already-pending row (e.g. a second edit before the first ever
+    // synced) -- this is the store's one write path for the mutation
+    // table's content, shared by every caller of saveSongMutation. Reading
+    // `existing` here (already done above, for the no-op short-circuit)
+    // and computing the increment in Dart is safe: this is not a
+    // conditional write racing a network round trip (unlike
+    // reconcileSyncedSong, D2), it is the store's own single, ordinary
+    // write for this song.
     await _database
         .into(_database.cachedCatalogSongMutations)
         .insertOnConflictUpdate(
@@ -475,6 +498,9 @@ class DriftSongCatalogStore implements SongCatalogStore {
             syncStatus: mutation.syncStatus.value,
             baseVersion: Value(mutation.baseVersion),
             syncErrorContext: Value(mutation.syncErrorContext),
+            localRevision: Value(
+              existing == null ? 1 : existing.localRevision + 1,
+            ),
           ),
         );
     _onStorageFootprintChanged?.call();
@@ -664,17 +690,19 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongSummary summary,
     required SongSource source,
+    int? expectedRevision,
   }) => _guarded(
     () => _reconcileSyncedSong(
       userId: userId,
       organizationId: organizationId,
       summary: summary,
       source: source,
+      expectedRevision: expectedRevision,
     ),
   );
 
@@ -683,14 +711,49 @@ class DriftSongCatalogStore implements SongCatalogStore {
   // representation before (first sync), which is exactly the growth case D1
   // exists to protect, even though it also deletes the now-resolved mutation
   // row in the same transaction.
-  Future<void> _reconcileSyncedSong({
+  Future<bool> _reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongSummary summary,
     required SongSource source,
+    int? expectedRevision,
   }) async {
-    final changed = await _database.transaction(() async {
-      var changed = false;
+    final result = await _database.transaction(() async {
+      // D2 (docs/specs/2026-08-05-sync-snapshot-identity.md): the mutation
+      // row's own DELETE, gated on `localRevision` in its WHERE clause, is
+      // the sole arbiter of whether this reconcile applies at all -- not a
+      // preceding SELECT compared in Dart, which would reopen the exact
+      // window this closes. When `expectedRevision` is stale, the whole
+      // reconcile (including the snapshot upsert below) is skipped: the
+      // backend response being reconciled describes content a newer local
+      // edit has already superseded, so nothing here should land.
+      var deleteQuery = _database.delete(_database.cachedCatalogSongMutations)
+        ..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId) &
+              table.songId.equals(summary.id),
+        );
+      if (expectedRevision != null) {
+        deleteQuery = _database.delete(_database.cachedCatalogSongMutations)
+          ..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.songId.equals(summary.id) &
+                table.localRevision.equals(expectedRevision),
+          );
+      }
+      final deletedMutationRows = await deleteQuery.go();
+
+      if (expectedRevision != null && deletedMutationRows == 0) {
+        // D3: a local edit landed on this song during the remote round
+        // trip. Not an error -- leave the row exactly as that edit left it
+        // (still pending, with the newer content); the next sync sends it.
+        return (applied: false, changed: false);
+      }
+
+      var changed = deletedMutationRows > 0;
       final activeSnapshot =
           await (_database.select(_database.cachedCatalogSnapshots)..where(
                 (table) =>
@@ -714,16 +777,6 @@ class DriftSongCatalogStore implements SongCatalogStore {
       final snapshotVersion = activeSnapshot?.snapshotVersion ?? 1;
 
       changed =
-          await (_database.delete(_database.cachedCatalogSongMutations)..where(
-                    (table) =>
-                        table.userId.equals(userId) &
-                        table.organizationId.equals(organizationId) &
-                        table.songId.equals(summary.id),
-                  ))
-                  .go() >
-              0 ||
-          changed;
-      changed =
           await _upsertSummaryRow(
             userId: userId,
             organizationId: organizationId,
@@ -739,11 +792,12 @@ class DriftSongCatalogStore implements SongCatalogStore {
             source: source,
           ) ||
           changed;
-      return changed;
+      return (applied: true, changed: changed);
     });
-    if (changed) {
+    if (result.changed) {
       _onStorageFootprintChanged?.call();
     }
+    return result.applied;
   }
 
   @override

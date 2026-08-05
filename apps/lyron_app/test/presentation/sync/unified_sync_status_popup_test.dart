@@ -95,10 +95,11 @@ class _FakeSongStore implements SongMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) => throw UnimplementedError();
 
   @override
