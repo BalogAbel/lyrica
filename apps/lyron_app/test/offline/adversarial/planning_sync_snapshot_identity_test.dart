@@ -118,6 +118,72 @@ void main() {
       );
       expect(remote.syncedDescriptions.last, 'Edited while syncing');
     });
+
+    test(
+      'the unchanged case still completes exactly as before -- accepted '
+      'and cleared -- when nothing edits the aggregate during the sync',
+      () async {
+        final db = PlanningLocalDatabase.inMemory();
+        addTearDown(db.close);
+        final localStore = DriftPlanningLocalStore(db);
+        final store = DriftPlanningMutationStore(
+          database: db,
+          localStore: localStore,
+        );
+
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        const readContext = ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+            description: 'Untouched description',
+          ),
+        );
+
+        final remote = _GatedPlanningRemote();
+        var refreshCalls = 0;
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => remote,
+          refreshPlanning: () async {
+            refreshCalls += 1;
+            return true;
+          },
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        // No concurrent edit this time -- release the gate immediately.
+        remote.gate.complete();
+        await controller.syncPendingMutations(readContext);
+
+        expect(refreshCalls, 1);
+        final afterSync = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        );
+        expect(
+          afterSync,
+          isNull,
+          reason:
+              'the ordinary path must still accept-then-clear exactly as '
+              'before the D2 condition was added',
+        );
+        expect(remote.syncedDescriptions, ['Untouched description']);
+      },
+    );
   });
 }
 

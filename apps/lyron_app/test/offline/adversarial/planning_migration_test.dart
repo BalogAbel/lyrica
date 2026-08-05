@@ -205,25 +205,35 @@ void main() {
       expect(record.slug, 'pre-migration-plan');
       expect(record.name, 'Pre-Migration Plan');
       expect(record.description, 'Created before localRevision existed');
-
-      // The migrated column itself: read it directly rather than through
-      // PlanningMutationRecord (which does not expose it yet -- that lands
-      // with the conditional-write step) to confirm onUpgrade actually
-      // added it, with a sane starting value, for a pre-migration row.
-      final localRevisionRow = await db
-          .customSelect(
-            'SELECT local_revision FROM cached_planning_mutations '
-            "WHERE aggregate_id = 'plan-pre-migration'",
-          )
-          .getSingle();
       expect(
-        localRevisionRow.data['local_revision'],
+        record.localRevision,
         1,
         reason:
             'a pre-migration row has no sync attempt in flight to '
             'distinguish from -- 1 is a sane starting revision, matching '
             'what a freshly-inserted row gets',
       );
+
+      // The migrated column is real and usable, not just present: a
+      // subsequent local write must be able to bump it, exactly as it
+      // would for a row that was always on the current schema.
+      await store.recordPlanEdit(
+        context: const PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-pre-migration',
+          name: 'Edited After Migration',
+        ),
+      );
+      final afterEdit = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-pre-migration',
+      );
+      expect(afterEdit!.localRevision, 2);
 
       await db.close();
       openDb = null;
