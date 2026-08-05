@@ -520,10 +520,14 @@ abstract interface class PlanningMutationStore {
   /// not part of the D2 snapshot-identity contract).
   ///
   /// Returns the row's new `localRevision` if the write applied, or `null`
-  /// if [expectedRevision] no longer matched -- meaning a local edit landed
-  /// on this aggregate after the snapshot that was sent, so the outcome is
-  /// stale (D3: not an error). The caller must leave the row as-is (already
-  /// pending, already carrying the newer content) and must not proceed to
+  /// if it did not apply -- either because [expectedRevision] no longer
+  /// matched (meaning a local edit landed on this aggregate after the
+  /// snapshot that was sent, so the outcome is stale; D3: not an error), or
+  /// because the row no longer exists at all (D4,
+  /// `docs/specs/2026-08-06-in-flight-create-cancellation.md`: the user
+  /// deleted a still-pending create while its remote call was in flight,
+  /// and the collapse path removed the row; also not an error). Either way
+  /// the caller must leave things as they are and must not proceed to
   /// [clearMutation] or reconcile it.
   Future<int?> saveSyncAttemptResult({
     required String userId,
@@ -536,7 +540,14 @@ abstract interface class PlanningMutationStore {
     int? expectedRevision,
   });
 
-  Future<void> retryMutation({
+  /// Resets a failed mutation back to `pending` so the next sync resends it.
+  ///
+  /// Returns `true` if the row existed and was reset, or `false` if it did
+  /// not exist (D4,
+  /// `docs/specs/2026-08-06-in-flight-create-cancellation.md`: an ordinary
+  /// concurrent-world outcome -- the row vanished before this retry ran --
+  /// not an error). There is nothing to retry in that case.
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,

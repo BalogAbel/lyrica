@@ -161,7 +161,19 @@ abstract interface class SongMutationStore {
     required String organizationId,
   });
 
-  Future<void> saveSyncAttemptResult({
+  /// Writes the outcome of a remote sync attempt onto the song's mutation
+  /// row.
+  ///
+  /// Returns `true` if the row existed and was updated, or `false` if it
+  /// did not (D4,
+  /// `docs/specs/2026-08-06-in-flight-create-cancellation.md`: an ordinary
+  /// concurrent-world outcome -- the user deleted a still-pending create
+  /// while this exact remote attempt for it was in flight, and the
+  /// collapse branch in `SongLibraryService.deleteSong` removed the row;
+  /// not a defect). The caller must treat `false` the same as any other
+  /// "did not apply" outcome: there is nothing left to write the status
+  /// onto, and whatever else the sync pass was doing carries on.
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,

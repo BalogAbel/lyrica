@@ -891,7 +891,7 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -1281,7 +1281,7 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,

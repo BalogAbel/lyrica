@@ -832,7 +832,7 @@ class _FakeSongMutationStore implements SongMutationStore {
       .toList(growable: false);
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
@@ -859,6 +859,7 @@ class _FakeSongMutationStore implements SongMutationStore {
       );
       _mutations[songId] = lastUpsertedRecord!;
     }
+    return existing != null;
   }
 
   @override

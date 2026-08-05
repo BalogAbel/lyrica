@@ -819,14 +819,14 @@ class _RecordingSongMutationStore implements SongMutationStore {
   }) async => const [];
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+  }) async => true;
 
   @override
   Future<void> upsertSong({

@@ -134,6 +134,13 @@ class SongMutationSyncController {
           );
           continue;
         }
+        // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+        // `false` return means the song's row vanished while this remote
+        // attempt for it was in flight (a concurrent delete of a
+        // still-pending create). Deliberately unchecked: there is nothing
+        // to write the failure status onto, and this loop iteration was
+        // already done regardless -- the next song in `pendingSongs` is
+        // attempted normally either way.
         await _store.saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -198,6 +205,11 @@ class SongMutationSyncController {
         );
         return;
       }
+      // D4: a `false` return (row vanished) is not inspected here either --
+      // keepMine operates on a single song, not a batch, so there is no
+      // "next record" to protect; the original SongMutationSyncException is
+      // rethrown to the caller regardless of whether the status write
+      // found anything to update.
       await _store.saveSyncAttemptResult(
         userId: context.userId,
         organizationId: context.organizationId,

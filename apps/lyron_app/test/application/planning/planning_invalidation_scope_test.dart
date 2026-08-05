@@ -417,12 +417,12 @@ class _CountingPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+  }) async => true;
 
   @override
   Future<int?> saveSyncAttemptResult({

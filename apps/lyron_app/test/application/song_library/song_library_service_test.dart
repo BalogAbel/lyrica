@@ -236,6 +236,54 @@ void main() {
     },
   );
 
+  // docs/specs/2026-08-06-in-flight-create-cancellation.md D4 draws the
+  // line between "a row vanished while a sync was concluding a remote
+  // attempt for it" (DriftSongMutationStore.saveSyncAttemptResult -- fixed
+  // to report false instead of throwing, see song_catalog_store_test.dart)
+  // and this: a direct, single-shot user action whose target genuinely
+  // does not exist in local storage at all (no pending mutation AND no
+  // synced snapshot). There is no sync loop here, so no other queued work
+  // is ever at risk of being aborted -- these deliberately stay
+  // StateErrors (Error, not a recoverable domain rejection), pinned so a
+  // future change does not accidentally widen D4's scope to cover them.
+  test('update against a song absent from local storage entirely still throws '
+      '(not the D4 vanished-record case -- there is no sync loop here to '
+      'protect)', () async {
+    final repository = _FakeSongRepository();
+    final service = SongLibraryService(repository, repository);
+
+    await expectLater(
+      () => service.updateSong(
+        context: const ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        songId: 'ghost-song',
+        title: 'Ghost',
+        chordproSource: '{title: Ghost}',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('delete against a song absent from local storage entirely still throws '
+      '(not the D4 vanished-record case -- there is no sync loop here to '
+      'protect)', () async {
+    final repository = _FakeSongRepository();
+    final service = SongLibraryService(repository, repository);
+
+    await expectLater(
+      () => service.deleteSong(
+        context: const ActiveCatalogContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        songId: 'ghost-song',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('create normalizes chordpro source aliases before storing', () async {
     final repository = _FakeSongRepository();
     final service = SongLibraryService(repository, repository);
@@ -404,14 +452,14 @@ class _FakeSongRepository
   }) async => const [];
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+  }) async => true;
 
   SongMutationRecord? lastUpsertedRecord;
 

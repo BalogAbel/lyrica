@@ -433,7 +433,7 @@ class _FakeSongStore implements SongMutationStore {
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
@@ -451,6 +451,7 @@ class _FakeSongStore implements SongMutationStore {
         clearErrorMessage: errorMessage == null,
       );
     }
+    return existing != null;
   }
 
   @override
@@ -624,7 +625,7 @@ class _FakePlanningStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -639,6 +640,7 @@ class _FakePlanningStore implements PlanningMutationStore {
         clearErrorMessage: true,
       );
     }
+    return existing != null;
   }
 
   @override

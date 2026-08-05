@@ -171,7 +171,7 @@ class DriftSongMutationStore implements SongMutationStore {
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
@@ -185,7 +185,16 @@ class DriftSongMutationStore implements SongMutationStore {
       songId: songId,
     );
     if (existing == null) {
-      throw StateError('Song mutation record not found: $songId');
+      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): the
+      // song this sync attempt was concluding is gone -- the user deleted
+      // a still-pending create while its remote call was in flight, and
+      // SongLibraryService.deleteSong's pendingCreate branch collapsed the
+      // row. An ordinary concurrent-world outcome, not a defect: report
+      // "did not apply" (the same vocabulary ADR-030 uses for
+      // reconcileSyncedSong's stale-revision case) instead of throwing, so
+      // SongMutationSyncController._runSync moves on to the songs queued
+      // behind this one instead of the whole pass dying.
+      return false;
     }
 
     await upsertSong(
@@ -200,6 +209,7 @@ class DriftSongMutationStore implements SongMutationStore {
         clearConflictSourceSyncStatus: syncStatus != SongSyncStatus.conflict,
       ),
     );
+    return true;
   }
 
   @override

@@ -674,12 +674,12 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
   }) async => _actionable;
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+  }) async => true;
 
   @override
   Future<void> recordPlanCreate({

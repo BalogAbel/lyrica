@@ -119,6 +119,17 @@ class PlanningMutationSyncController {
           // (every local write does), so it is already exactly where it
           // needs to be for the next sync to pick it up. Nothing further
           // to do: don't mark accepted, don't reconcile, don't clear.
+          //
+          // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md):
+          // the same `null` also covers the row having vanished entirely
+          // -- the user deleted a still-pending create while this exact
+          // remote call was in flight, and the collapse path physically
+          // removed it. Also not an error, and handled identically: skip
+          // this record and continue the loop with whatever is queued
+          // behind it. No user-facing signal is raised for either cause --
+          // the row is already gone from every list the sync overview
+          // reads (readActionableMutations/readAllMutations), which is
+          // exactly the state a user-initiated delete asked for.
           continue;
         }
         acceptedRecords.add((mutation, syncedMutation, newRevision));
@@ -141,6 +152,13 @@ class PlanningMutationSyncController {
         // only that path can destroy unsynced intent by claiming the
         // backend accepted something it never received a later edit for.
         // A failure outcome never claims that, so it is out of scope here.
+        //
+        // D4: if the row has vanished (collapsed by a concurrent delete of
+        // this still-pending create while the failed call above was in
+        // flight), this write simply does not apply -- the return value is
+        // deliberately unchecked, same as always: there is no accepted
+        // outcome or clear to skip for a failure branch either way, and the
+        // loop continues to the next candidate regardless.
         await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,

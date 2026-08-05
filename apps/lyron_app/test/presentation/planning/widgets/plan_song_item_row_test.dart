@@ -175,12 +175,12 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   }) async => null;
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+  }) async => true;
 
   @override
   Future<bool> clearMutation({

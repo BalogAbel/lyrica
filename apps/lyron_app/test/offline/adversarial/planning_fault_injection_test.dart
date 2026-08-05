@@ -213,7 +213,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => pending;
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -232,6 +232,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
         clearErrorMessage: true,
       ),
     );
+    return true;
   }
 
   @override

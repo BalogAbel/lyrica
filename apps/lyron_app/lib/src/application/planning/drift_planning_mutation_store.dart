@@ -648,7 +648,15 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             ))
             .getSingleOrNull();
     if (existing == null) {
-      throw StateError('Planning mutation record not found: $aggregateId');
+      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): the
+      // row this sync attempt was concluding is gone -- an ordinary
+      // concurrent-world outcome (the user deleted a still-pending create
+      // while its remote call was in flight, and the collapse path
+      // physically removed the row; ADR-028 D10), not a defect. Reporting
+      // it the same way D3 reports a stale revision ("did not apply", not
+      // an exception) is what lets PlanningMutationSyncController._run
+      // move on to the records queued behind this one instead of dying.
+      return null;
     }
 
     // D2: the gating condition lives in the WHERE clause of this single
@@ -706,7 +714,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -719,7 +727,11 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       aggregateId: aggregateId,
     );
     if (existing == null) {
-      throw StateError('Planning mutation record not found: $aggregateId');
+      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): same
+      // reasoning as saveSyncAttemptResult above -- the row is gone, an
+      // ordinary concurrent-world outcome, not a defect. There is nothing
+      // left to retry.
+      return false;
     }
 
     final rebasedBaseVersion = await _currentBaseVersionFor(
@@ -744,6 +756,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     if (changed) {
       _onStorageFootprintChanged?.call();
     }
+    return true;
   }
 
   @override

@@ -1691,6 +1691,78 @@ void main() {
       );
     });
   });
+
+  group('DriftSongMutationStore missing-record handling (D4, in-flight '
+      'create cancellation)', () {
+    // docs/specs/2026-08-06-in-flight-create-cancellation.md D4: the song
+    // side's equivalent of planning's saveSyncAttemptResult -- the write
+    // SongMutationSyncController concludes a remote sync attempt with --
+    // must report "did not apply" instead of throwing when the song's row
+    // no longer exists (mutation row AND synced snapshot both gone): the
+    // ordinary outcome of the user deleting a still-pending create while
+    // its remote call was in flight (SongLibraryService.deleteSong's
+    // pendingCreate branch).
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+    late DriftSongMutationStore mutationStore;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+      mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('saveSyncAttemptResult against a nonexistent song returns false '
+        'instead of throwing', () async {
+      final result = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'ghost-song',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.authorizationDenied,
+      );
+      expect(result, isFalse);
+    });
+
+    test('saveSyncAttemptResult against an EXISTING song is unchanged -- it '
+        'still applies and reports success', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final result = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.dependencyBlocked,
+        errorMessage: 'blocked',
+      );
+      expect(result, isTrue);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(record!.syncErrorContext, contains('dependencyBlocked'));
+    });
+  });
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {

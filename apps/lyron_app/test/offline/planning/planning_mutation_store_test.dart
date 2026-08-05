@@ -1180,6 +1180,115 @@ void main() {
     );
   });
 
+  group('PlanningMutationStore missing-record handling (D4, in-flight '
+      'create cancellation)', () {
+    // docs/specs/2026-08-06-in-flight-create-cancellation.md D4:
+    // saveSyncAttemptResult and retryMutation must report "did not apply"
+    // (the same vocabulary D3 already established for a stale revision)
+    // rather than throw when the target row does not exist -- a row can
+    // vanish for the ordinary reason that the user deleted the item while
+    // a sync was awaiting the backend for it (ADR-028 D10 collapse).
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('saveSyncAttemptResult against a nonexistent aggregate returns null '
+        'instead of throwing', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      // No record ever created for this aggregate -- readMutation would
+      // return null.
+      final result = await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'ghost-plan',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        expectedRevision: 1,
+      );
+      expect(result, isNull);
+    });
+
+    test('retryMutation against a nonexistent aggregate returns false instead '
+        'of throwing', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      final result = await store.retryMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'ghost-plan',
+      );
+      expect(result, isFalse);
+    });
+
+    test('saveSyncAttemptResult and retryMutation against an EXISTING record '
+        'are unchanged -- they still apply and report success, including the '
+        'ADR-030 revision conditioning', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      // saveSyncAttemptResult: matching revision still applies and
+      // returns the new revision, exactly as before D4.
+      final applied = await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.failedDependency,
+        expectedRevision: 1,
+      );
+      expect(applied, 2);
+
+      // retryMutation: an existing record is reset to pending and
+      // reports true.
+      final retried = await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(retried, isTrue);
+
+      final record = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(record.errorCode, isNull);
+    });
+  });
+
   group('PlanningMutationStore content folds reset status (ADR-030 '
       'follow-up)', () {
     // ADR-030 "Known Follow-Up": a fold that carries an existing row

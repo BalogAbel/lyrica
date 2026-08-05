@@ -455,7 +455,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   );
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,

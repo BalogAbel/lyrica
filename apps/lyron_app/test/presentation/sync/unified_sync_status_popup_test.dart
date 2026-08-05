@@ -71,7 +71,7 @@ class _FakeSongStore implements SongMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
