@@ -271,11 +271,64 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               clearErrorMessage: true,
             ),
           );
+        } else if (existing.syncStatus == PlanningMutationSyncStatus.accepted) {
+          // Gap closed (docs/specs/2026-08-06-in-flight-create-cancellation.md,
+          // the variant D1-D3 left open): `accepted` is ADR-019's own
+          // durable-marker window -- the backend has ALREADY confirmed this
+          // create; only the local clear has not run yet (e.g. a crash
+          // between PlanningMutationSyncController._run's accept write and
+          // its batch clear -- the exact LF-1 scenario ADR-030's
+          // fold-status follow-up documents). Unlike `sending`, there is no
+          // live remote call to race here: the create's fate is already
+          // known, not in flight. That makes this simpler than the
+          // `sending` branch above -- no tombstone, no resolveCancelledCreate
+          // step -- the delete can become a real pending delete directly.
+          // Falling through to the physical-collapse branch below would
+          // still lose the delete intent for an object the backend already
+          // has, one state over from the gap D1-D3 closed.
+          //
+          // baseVersion: `existing.baseVersion` is whatever was captured
+          // for the CREATE's own OCC check and was never updated by the
+          // accept write (saveSyncAttemptResult only ever touches
+          // syncStatus/errorCode/errorMessage/localRevision) -- it is not
+          // guaranteed to be the version the backend assigned as a result
+          // of accepting this create. `draft.baseVersion`, supplied by the
+          // caller from today's local merged read, is the best
+          // complementary source but is not guaranteed to carry that
+          // post-create version either, for the same reason
+          // resolveCancelledCreate's D3 branch is handed
+          // `acceptedBaseVersion` explicitly from the RPC response instead
+          // of recomputing it locally -- that response is long gone by the
+          // time a delete can land here. Rather than invent a number, this
+          // uses `existing.baseVersion ?? draft.baseVersion`, the exact
+          // same fallback the genuine (non-create) delete path below
+          // already uses for every other kind of delete. If it happens to
+          // be correct, the delete's OCC check on the backend passes
+          // normally. If it is stale, the backend's own
+          // `delete_empty_session`/`delete_session_item` version guard
+          // rejects the RPC into a visible, recoverable `conflict` (or, if
+          // no version is known at all, a deterministic rejection) rather
+          // than this code silently guessing -- the fail-safe outcome.
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session',
+            record: PlanningMutationRecord(
+              aggregateId: draft.sessionId,
+              organizationId: context.organizationId,
+              planId: draft.planId,
+              baseVersion: existing.baseVersion ?? draft.baseVersion,
+              kind: PlanningMutationKind.sessionDelete,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: existing.orderKey,
+              updatedAt: DateTime.now().toUtc(),
+              originSnapshot: existing.originSnapshot ?? draft.originSnapshot,
+            ),
+          );
         } else {
-          // Not in flight: physically collapse, exactly as before (ADR-028
-          // D10) -- the create never left the device (or already concluded
-          // with an error), so there is nothing on the backend a delete
-          // would need to reach.
+          // Not in flight and not accepted: physically collapse, exactly
+          // as before (ADR-028 D10) -- the create never left the device
+          // (or already concluded with an error), so there is nothing on
+          // the backend a delete would need to reach.
           await (_database.delete(_database.cachedPlanningMutations)..where(
                 (table) =>
                     table.userId.equals(context.userId) &
@@ -285,13 +338,15 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               ))
               .go();
         }
-        // Either way the session is being cancelled: whether the tombstone
-        // above eventually converts to a real delete or is discarded, a
-        // pending item mutation under it has no reachable destination --
-        // sent to a session that doesn't exist yet (create still pending),
-        // or sent to one about to be deleted (create succeeds and the
-        // tombstone converts). Drop them with the session, inside the same
-        // transaction, same as the pre-existing collapse behaviour.
+        // Whichever of the three branches above ran, the session is being
+        // deleted one way or another: a tombstone that will eventually
+        // convert to a real delete or be discarded, an immediate physical
+        // collapse, or (the branch closed by this change) an immediate real
+        // pending delete. Either way a pending item mutation under it has
+        // no reachable destination -- sent to a session that doesn't exist
+        // yet, or sent to one that is being deleted for real. Drop them
+        // with the session, inside the same transaction, same as the
+        // pre-existing collapse behaviour.
         await _deletePendingMutationsForSession(
           context: context,
           sessionId: draft.sessionId,
@@ -428,6 +483,46 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               updatedAt: DateTime.now().toUtc(),
               clearErrorCode: true,
               clearErrorMessage: true,
+            ),
+          );
+        } else if (existing.syncStatus == PlanningMutationSyncStatus.accepted) {
+          // Gap closed (docs/specs/2026-08-06-in-flight-create-cancellation.md,
+          // the variant D1-D3 left open): same reasoning as the accepted
+          // branch of recordSessionDelete above -- `accepted` means the
+          // backend already confirmed this create and only the local clear
+          // has not run yet, so there is no live remote call to race and no
+          // need for the tombstone/resolve dance `sending` uses. Convert
+          // straight into a real pending delete.
+          //
+          // baseVersion: `existing.baseVersion` was captured for the
+          // create's own OCC check (the session's version BEFORE this item
+          // was added) and was never updated by the accept write. The
+          // backend's `create_song_session_item` bumps the session's
+          // version by one as a side effect of accepting the create, and
+          // that new value is only ever returned in the RPC response --
+          // never persisted back onto this row -- so it is not available
+          // here. `draft.baseVersion` (from today's merged read) carries
+          // the same pre-create value for the same reason, not the
+          // post-create one. Rather than invent the "+1" this create is
+          // known to have caused, this uses `existing.baseVersion ??
+          // draft.baseVersion`, the same fallback the genuine delete path
+          // below already uses. A stale value fails safe: the backend's
+          // `delete_session_item` version guard rejects it into a visible,
+          // recoverable `conflict` instead of this code silently guessing.
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session_item',
+            record: PlanningMutationRecord(
+              aggregateId: draft.sessionItemId,
+              organizationId: context.organizationId,
+              planId: draft.planId,
+              sessionId: draft.sessionId,
+              baseVersion: existing.baseVersion ?? draft.baseVersion,
+              kind: PlanningMutationKind.sessionItemDelete,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: existing.orderKey,
+              updatedAt: DateTime.now().toUtc(),
+              originSnapshot: existing.originSnapshot ?? draft.originSnapshot,
             ),
           );
         } else {

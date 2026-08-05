@@ -324,112 +324,109 @@ void main() {
       );
     });
 
-    test(
-      'session: deleting a session in the accepted-but-uncleared window '
-      'survives as a pending delete, with no tombstone needed',
-      () async {
-        // ADR-019's own durable-marker window: the backend has already
-        // confirmed this create (accepted), but the local clear has not
-        // run yet -- e.g. a crash between
-        // PlanningMutationSyncController._run's accept write and its
-        // batch clear (the exact LF-1 scenario ADR-030's fold-status
-        // follow-up documents). Unlike `sending`, there is no live remote
-        // call to race here: the create's fate is already known. This
-        // must NOT fall into the physical-collapse branch (ADR-028 D10)
-        // -- that would lose the delete intent for an object the backend
-        // already has, one state over from the `sending` gap D1-D3
-        // closed.
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('session: deleting a session in the accepted-but-uncleared window '
+        'survives as a pending delete, with no tombstone needed', () async {
+      // ADR-019's own durable-marker window: the backend has already
+      // confirmed this create (accepted), but the local clear has not
+      // run yet -- e.g. a crash between
+      // PlanningMutationSyncController._run's accept write and its
+      // batch clear (the exact LF-1 scenario ADR-030's fold-status
+      // follow-up documents). Unlike `sending`, there is no live remote
+      // call to race here: the create's fate is already known. This
+      // must NOT fall into the physical-collapse branch (ADR-028 D10)
+      // -- that would lose the delete intent for an object the backend
+      // already has, one state over from the `sending` gap D1-D3
+      // closed.
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        const readContext = ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
 
-        // Simulate the accepted-but-uncleared window directly, the same
-        // technique the crash-recovery test below uses for `sending`.
-        final created = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        await store.saveSyncAttemptResult(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-          syncStatus: PlanningMutationSyncStatus.accepted,
-          expectedRevision: created!.localRevision,
-        );
+      // Simulate the accepted-but-uncleared window directly, the same
+      // technique the crash-recovery test below uses for `sending`.
+      final created = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        expectedRevision: created!.localRevision,
+      );
 
-        await store.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        final afterDelete = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        expect(
-          afterDelete,
-          isNotNull,
-          reason:
-              'the create is already confirmed on the backend -- '
-              'collapsing here would strand a delete intent for an '
-              'object the server still has',
-        );
-        expect(afterDelete!.kind, PlanningMutationKind.sessionDelete);
-        expect(afterDelete.syncStatus, PlanningMutationSyncStatus.pending);
+      final afterDelete = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(
+        afterDelete,
+        isNotNull,
+        reason:
+            'the create is already confirmed on the backend -- '
+            'collapsing here would strand a delete intent for an '
+            'object the server still has',
+      );
+      expect(afterDelete!.kind, PlanningMutationKind.sessionDelete);
+      expect(afterDelete.syncStatus, PlanningMutationSyncStatus.pending);
 
-        // And a sync actually sends it.
-        final remote = _GatedPlanningRemote();
-        remote.gate.complete();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
-        await controller.syncPendingMutations(readContext);
-        final deleteCalls = remote.calls.where(
-          (record) => record.kind == PlanningMutationKind.sessionDelete,
-        );
-        expect(
-          deleteCalls,
-          hasLength(1),
-          reason: 'the survived delete intent must actually be sent',
-        );
-      },
-    );
+      // And a sync actually sends it.
+      final remote = _GatedPlanningRemote();
+      remote.gate.complete();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+      await controller.syncPendingMutations(readContext);
+      final deleteCalls = remote.calls.where(
+        (record) => record.kind == PlanningMutationKind.sessionDelete,
+      );
+      expect(
+        deleteCalls,
+        hasLength(1),
+        reason: 'the survived delete intent must actually be sent',
+      );
+    });
 
     test(
       'session item: deleting a session item in the accepted-but-uncleared '
@@ -497,7 +494,8 @@ void main() {
         expect(
           afterDelete,
           isNotNull,
-          reason: 'the delete intent must survive the accepted-but-uncleared '
+          reason:
+              'the delete intent must survive the accepted-but-uncleared '
               'window',
         );
         expect(afterDelete!.kind, PlanningMutationKind.sessionItemDelete);
@@ -520,111 +518,105 @@ void main() {
       },
     );
 
-    test(
-      "session: a session's pending item and item-order mutations are still "
-      'dropped when deleted in the accepted-but-uncleared window',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test("session: a session's pending item and item-order mutations are still "
+        'dropped when deleted in the accepted-but-uncleared window', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
-        await store.recordSessionItemCreateSong(
-          context: context,
-          draft: const PlanningSessionItemCreateSongMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            songId: 'song-1',
-            songTitle: 'Song One',
-            position: 1,
-          ),
-        );
-        await store.recordSessionItemReorder(
-          context: context,
-          draft: const PlanningSessionItemReorderMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            orderedSessionItemIds: ['item-1'],
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song One',
+          position: 1,
+        ),
+      );
+      await store.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          orderedSessionItemIds: ['item-1'],
+        ),
+      );
 
-        final created = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        await store.saveSyncAttemptResult(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-          syncStatus: PlanningMutationSyncStatus.accepted,
-          expectedRevision: created!.localRevision,
-        );
+      final created = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        expectedRevision: created!.localRevision,
+      );
 
-        await store.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        final itemMutation = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session_item',
-          aggregateId: 'item-1',
-        );
-        final itemOrderMutation = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session_item_order',
-          aggregateId: 'session-1',
-        );
-        expect(
-          itemMutation,
-          isNull,
-          reason:
-              'the session is really being deleted -- a pending item under '
-              'it has no reachable destination, same reasoning as the '
-              'collapse/tombstone branches',
-        );
-        expect(itemOrderMutation, isNull);
+      final itemMutation = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item',
+        aggregateId: 'item-1',
+      );
+      final itemOrderMutation = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item_order',
+        aggregateId: 'session-1',
+      );
+      expect(
+        itemMutation,
+        isNull,
+        reason:
+            'the session is really being deleted -- a pending item under '
+            'it has no reachable destination, same reasoning as the '
+            'collapse/tombstone branches',
+      );
+      expect(itemOrderMutation, isNull);
 
-        final sessionMutation = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        expect(sessionMutation!.kind, PlanningMutationKind.sessionDelete);
-        expect(
-          sessionMutation.syncStatus,
-          PlanningMutationSyncStatus.pending,
-        );
-      },
-    );
+      final sessionMutation = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(sessionMutation!.kind, PlanningMutationKind.sessionDelete);
+      expect(sessionMutation.syncStatus, PlanningMutationSyncStatus.pending);
+    });
 
     test('crash recovery: a record left `sending` is treated as pending on a '
         'fresh pass and resent', () async {
