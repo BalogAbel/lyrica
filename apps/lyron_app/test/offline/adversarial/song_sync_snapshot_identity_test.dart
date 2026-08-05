@@ -127,6 +127,72 @@ void main() {
       );
       expect(remote.syncedSources.last, '{title: Edited while syncing}');
     });
+
+    test(
+      'the unchanged case still completes exactly as before -- reconciled '
+      'and cleared -- when nothing edits the song during the sync',
+      () async {
+        final songDatabase = SongCatalogDatabase.inMemory();
+        addTearDown(songDatabase.close);
+        final songStore = DriftSongCatalogStore(songDatabase);
+        final planningDatabase = PlanningLocalDatabase.inMemory();
+        addTearDown(planningDatabase.close);
+        final mutationStore = DriftSongMutationStore(
+          songCatalogStore: songStore,
+          planningLocalStore: DriftPlanningLocalStore(planningDatabase),
+        );
+
+        const context = SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await mutationStore.upsertSong(
+          userId: 'user-1',
+          record: const SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Untouched}',
+            version: 1,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        );
+
+        final remote = _GatedSongRemote();
+        final controller = SongMutationSyncController(
+          store: mutationStore,
+          remoteRepository: remote,
+        );
+
+        // No concurrent edit this time -- release the gate immediately.
+        remote.gate.complete();
+        await controller.syncPendingSongs(context);
+
+        final afterSync = await songStore.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(
+          afterSync,
+          isNull,
+          reason:
+              'the ordinary path must still reconcile-then-clear exactly as '
+              'before the D2 condition was added',
+        );
+        expect(remote.syncedSources, ['{title: Untouched}']);
+
+        final summary = await songStore.readActiveSummaryById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(summary, isNotNull);
+      },
+    );
   });
 }
 

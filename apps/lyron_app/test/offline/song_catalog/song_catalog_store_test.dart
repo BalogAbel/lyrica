@@ -1489,6 +1489,208 @@ void main() {
       );
     });
   });
+
+  group('SongCatalogStore.localRevision (D1, sync-snapshot-identity)', () {
+    // docs/specs/2026-08-05-sync-snapshot-identity.md D1: localRevision is
+    // local bookkeeping incremented by the store on every local write to a
+    // mutation row -- unrelated to baseVersion/version (which track the
+    // server's view) and never sent to the backend. Unlike planning's
+    // several distinct record* writers, every song local write funnels
+    // through the single saveSongMutation upsert (including the status
+    // write DriftSongMutationStore.saveSyncAttemptResult makes), so this
+    // group proves the "every" across that one path: a fold (a second local
+    // edit landing on a still-pending row) and a status write.
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('increments by exactly one on every local write, including a fold '
+        'and a status write', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final afterCreate = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(
+        afterCreate!.localRevision,
+        1,
+        reason: 'a brand-new row starts at revision 1',
+      );
+
+      // Fold: a second local edit before the song ever synced lands in
+      // the SAME row (still pendingCreate), not a new one -- the revision
+      // must still advance.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Edited content}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final afterFold = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterFold!.localRevision, 2);
+      expect(afterFold.source, '{title: Edited content}');
+
+      // A status write (the shape
+      // DriftSongMutationStore.saveSyncAttemptResult uses after a failed
+      // remote attempt) also advances the revision.
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+      await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.dependencyBlocked,
+        errorMessage: 'blocked',
+      );
+      final afterStatusWrite = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterStatusWrite!.localRevision, 3);
+    });
+
+    test('a conditional reconcileSyncedSong that matches applies and returns '
+        'true; a stale one does not apply, returns false, and leaves the row '
+        'untouched', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      // Matching expectedRevision: applies.
+      final applied = await store.reconcileSyncedSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summary: const SongSummary(
+          id: 'song-1',
+          title: 'Alpha',
+          slug: 'alpha',
+          version: 1,
+        ),
+        source: const SongSource(id: 'song-1', source: '{title: Alpha}'),
+        expectedRevision: 1,
+      );
+      expect(applied, isTrue);
+      expect(
+        await store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        isNull,
+      );
+
+      // A second song, edited once more after the snapshot a sync would
+      // have captured: a reconcile keyed to the STALE revision must not
+      // apply.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta edited}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final stale = await store.reconcileSyncedSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summary: const SongSummary(
+          id: 'song-2',
+          title: 'Beta',
+          slug: 'beta',
+          version: 1,
+        ),
+        source: const SongSource(id: 'song-2', source: '{title: Beta}'),
+        expectedRevision: 1,
+      );
+      expect(stale, isFalse);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+      );
+      expect(
+        record,
+        isNotNull,
+        reason: 'the stale attempt must not have deleted the row',
+      );
+      expect(record!.localRevision, 2);
+      expect(
+        record.source,
+        '{title: Beta edited}',
+        reason: 'the stale attempt must not have overwritten anything',
+      );
+      // readActiveSummaryById overlays the still-pending mutation row
+      // above the snapshot table, so it is not the right probe for "did
+      // the snapshot write happen" -- query the raw snapshot table
+      // directly instead.
+      final rawSummaryRows = await (database.select(
+        database.cachedCatalogSummaries,
+      )..where((table) => table.songId.equals('song-2'))).get();
+      expect(
+        rawSummaryRows,
+        isEmpty,
+        reason:
+            'a stale reconcile must skip the snapshot write too, not '
+            'just the mutation-row delete',
+      );
+    });
+  });
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {
