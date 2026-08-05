@@ -120,10 +120,46 @@ specific finding:
   `clearMutation` call whose `expectedRevision` still matches the row applies and reports the
   new revision, while a stale one reports `null`/`false` and leaves the row untouched (D3: a
   stale conclusion is not an error, so this is never a thrown exception).
+- `song_sync_snapshot_identity_test.dart` — the song/catalog half of the same finding (ADR-030,
+  D2 (song/catalog)/D3): `SongMutationSyncController._runSync` sends a pending song's snapshot
+  and awaits the backend; a local edit landing on the same song during that wait must survive.
+  Drives the real `DriftSongCatalogStore`/`DriftSongMutationStore` (not a fake, for the same
+  reason as the planning suite) with the remote call gated on a `Completer`: the edited song is
+  confirmed still `pendingCreate` with the newer content after the gate releases, and a second
+  sync is confirmed to resend it — watched failing before the fix, when `reconcileSyncedSong`
+  wrote unconditionally, the mutation was found deleted outright. A companion test pins that the
+  unchanged (no concurrent edit) case still reconciles-then-clears exactly as before.
+  `song_catalog_store_test.dart`'s `SongCatalogStore.localRevision` group covers the store
+  contract directly: the revision advances by exactly one on every local write through the
+  single `saveSongMutation` path (a fold onto a still-pending row, and the status write
+  `DriftSongMutationStore.saveSyncAttemptResult` makes through it); a `reconcileSyncedSong` call
+  whose `expectedRevision` still matches applies and returns `true`, while a stale one returns
+  `false` and leaves both the mutation row and the snapshot tables untouched — proving the skip
+  covers the summary/source upsert too, not only the mutation-row delete.
+- `planning_mutation_store_test.dart`'s `PlanningMutationStore content folds reset status
+  (ADR-030 follow-up)` group and `planning_sync_snapshot_identity_test.dart`'s controller-level
+  companion test — the fold-status defect ADR-030 flagged as a known follow-up and then closed
+  (`a98c496`/`8f45988`): a fold that carries an existing mutation row forward with `copyWith`
+  must not carry the row's current `syncStatus` along with it, or a row `accepted` but not yet
+  cleared (the ADR-019 durable-marker window, e.g. LF-1's crash-between-accept-and-clear) stays
+  labelled `accepted` after new, unsent content lands in it. Store-level tests cover all four
+  fold paths that carry a row forward — `recordPlanEdit` onto a pending `planCreate`,
+  `recordSessionRename` onto a pending `sessionCreate`, and both reorder-trim folds
+  (`_removeSessionFromPendingReorder`/`_removeSessionItemFromPendingReorder`) — resetting to
+  `pending` with the new content, plus that a stale `errorCode`/`errorMessage` from a prior
+  failed attempt does not survive a content fold either. The controller-level test proves the
+  practical consequence: an edit folded onto an accepted-but-uncleared row is actually sent on
+  the next sync rather than silently skipped by the durable-marker shortcut. `retryMutation` and
+  `saveSyncAttemptResult` are deliberately untouched and uncovered by this group — they compute
+  `syncStatus` as their own purpose, not a side effect of carrying content forward.
 - `song_catalog_migration_test.dart` — `LF-T7` (catalog half): `SongCatalogDatabase` now
   declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
   pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
-  just a validation.
+  just a validation. Also covers `D1` (ADR-030, song/catalog half): a genuine pre-migration
+  (schemaVersion 2) database, built by hand via raw `sqlite3` against the exact `CREATE TABLE`
+  text Drift generated before `localRevision` existed (not through `SongCatalogDatabase`, which
+  would build the current schema directly via `onCreate` and never exercise `onUpgrade`), gains
+  the column on open with a sane starting value (1) and keeps its pending row intact.
 - `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
   (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
   and eviction policy have landed (ADR-028). Drives the full chain against a

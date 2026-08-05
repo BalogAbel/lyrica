@@ -688,8 +688,8 @@ against the pre-fix code: the mutation was read back as `null` (deleted
 outright by the unconditional `clearMutation`) after the race, not merely
 stale. `docs/specs/2026-08-05-sync-snapshot-identity.md`, ADR-030.
 
-Closed for the planning half (the song/catalog half of the same spec is a
-separate, not-yet-landed change):
+Closed for the planning half (the song/catalog half of the same spec landed
+separately — see the 2026-08-05 song/catalog status block below):
 
 - **D1** — `CachedPlanningMutations` gains a `localRevision` integer column
   (schemaVersion 5 → 6), incremented by the store on every local write to a
@@ -737,6 +737,78 @@ write, and the conditional-write contract itself), and an extended
 by hand against the schema Drift generated before this column existed,
 gains it on open with a sane starting value and keeps its pending row
 intact). See ADR-030 for the full account.
+
+**Status (2026-08-05, PR #64 sync-snapshot-identity remediation, song/catalog
+half and fold-status follow-up)**:
+
+The song/catalog half of the same finding closed the same day, same shape:
+`SongMutationSyncController._runSync` reads a snapshot of a pending song,
+sends it, and awaits the backend; on success `reconcileSyncedSong` deleted
+the mutation row and reconciled the cached snapshot unconditionally, keyed
+only by song identity. A local edit to the same song during that remote wait
+was destroyed the same way — confirmed by the same style of gated-`Completer`
+test against the real `DriftSongCatalogStore`/`DriftSongMutationStore`, not a
+fake.
+
+- **D1** — `CachedCatalogSongMutations` gains the identical `localRevision`
+  integer column (schemaVersion 2 → 3), incremented by
+  `DriftSongCatalogStore._saveSongMutation` — the store's one write path for
+  the mutation table's content, so every local writer (including the status
+  write `DriftSongMutationStore.saveSyncAttemptResult` makes through it)
+  advances it through a single call site.
+- **D2/D3** — `reconcileSyncedSong` gained an optional `expectedRevision` and
+  now returns `Future<bool>` rather than `void`. Because song has no
+  separate accept-status write to gate the way planning's
+  `saveSyncAttemptResult` is gated — the delete and the summary/source
+  snapshot upsert are one combined operation — the gate lives on the
+  mutation row's own `DELETE ... WHERE localRevision = ?`; when it removes
+  zero rows, the *entire* reconcile is skipped, not merely the delete, and
+  `false` reports the stale outcome rather than throwing. `bool` (not
+  planning's `int?`) is the complete answer here because there is no
+  intermediate accept-write revision left to report back. Deliberately still
+  unconditional: `clearSongMutation` (the discard path, no remote round trip
+  to race) and the `pendingDelete` → `deleteSong` branch in
+  `_applySuccessfulSync` (a converged delete has no newer content for a fold
+  to preserve).
+
+Pinned by
+`test/offline/adversarial/song_sync_snapshot_identity_test.dart` (the
+gated-remote-call race, watched failing before the fix, and a companion
+unchanged-case regression check), the `SongCatalogStore.localRevision` group
+in `test/offline/song_catalog/song_catalog_store_test.dart` (monotonic
+increment across the single `saveSongMutation` write path, and the
+conditional-`reconcileSyncedSong` contract itself, including that a stale
+call skips the snapshot upsert too), and an extended
+`song_catalog_migration_test.dart` (a genuine pre-migration schemaVersion-2
+database, built by hand via raw `sqlite3` against the exact `CREATE TABLE`
+text Drift generated before this column existed, gains it on open with a
+sane starting value and keeps its pending row intact).
+
+Separately, the fold-status gap ADR-030 flagged as a known follow-up on the
+planning half (above) was resolved the same day
+(`a98c496`/`8f45988`): a fold that carries an existing mutation row forward
+with `copyWith` must not carry the row's current `syncStatus` along with it,
+or a row `accepted` but not yet cleared (the ADR-019 durable-marker window)
+stays labelled `accepted` after new, unsent content lands in it, and a later
+sync's durable-marker branch reconciles that content as server-confirmed
+without ever having sent it. Fixed in every planning fold write that carries
+a row forward via `copyWith`: `recordPlanEdit` onto a pending `planCreate`,
+`recordSessionRename` onto a pending `sessionCreate`, and both reorder-trim
+folds (`_removeSessionFromPendingReorder`/
+`_removeSessionItemFromPendingReorder`); each now resets `syncStatus` to
+`pending` and clears any stale `errorCode`/`errorMessage`. `retryMutation`
+and `saveSyncAttemptResult` are deliberately untouched — they compute
+`syncStatus` as their entire purpose, not as a side effect of carrying
+content forward. Verified, not assumed, that the song side has no equivalent
+gap: `SongSyncStatus` has no two-phase accepted-but-not-cleared marker, so
+the window this follow-up closes does not exist there. Pinned by the
+`PlanningMutationStore content folds reset status (ADR-030 follow-up)` group
+in `planning_mutation_store_test.dart` (all four fold paths, plus a
+stale-error-does-not-survive-a-fold case) and a controller-level test in
+`planning_sync_snapshot_identity_test.dart` proving the edited content is
+actually sent on the next sync rather than skipped by the durable-marker
+shortcut. See ADR-030 (now covering both domains and this follow-up) for the
+full account.
 
 ### 6.2 Correctness / robustness
 

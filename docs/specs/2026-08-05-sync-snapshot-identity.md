@@ -1,6 +1,6 @@
 # Sync Snapshot Identity
 
-> Status: Draft
+> Status: Implemented
 
 ## Goal
 
@@ -123,3 +123,84 @@ them fail before implementing.
   `docs/testing/testing-strategy.md`.
 - `docs/architecture/repository-review-2026-06-22.md`: extend the PR #64
   remediation status block.
+
+## Implementation
+
+Landed on `feat/offline-durability-phase4`, in three parts, in this order:
+
+Planning half:
+
+- `61717fe` test(planning): red — local edit during remote sync is destroyed
+- `4d50c1e` feat(planning): green — add `localRevision` schema column (D1)
+- `faef372` fix(planning): green — gate post-sync writes on `localRevision` (D2/D3)
+- `54e7700` test(planning): green — D2/D3 characterization coverage
+- `94d974c` docs(planning): record the sync-snapshot-identity contract (ADR-030)
+
+Song/catalog half:
+
+- `9f3c303` feat(catalog): green — add `localRevision` schema column (D1)
+- `fdadaff` test(catalog): red — local edit during remote sync is destroyed
+- `febd111` fix(catalog): green — gate `reconcileSyncedSong` on `localRevision` (D2/D3)
+- `db6f87e` test(catalog): green — D2/D3 characterization coverage
+- `e0873de` style(catalog): dart format `song_sync_snapshot_identity_test.dart`
+
+Fold-status follow-up (see below):
+
+- `a98c496` test(planning): red — content folds must reset status to pending
+- `8f45988` fix(planning): green — content folds reset status to pending
+
+Both domains match the D1-D3 contract as specified, with one shape
+difference the spec did not anticipate: `reconcileSyncedSong` returns
+`Future<bool>` rather than an `int?` revision, because the song/catalog side
+has no separate accept-status write to gate the way planning's
+`saveSyncAttemptResult` is gated — the mutation-row delete and the
+summary/source snapshot upsert are one combined operation, so there is no
+intermediate accept-write revision for an `int?` to report back. `bool` (did
+the reconcile apply) is the complete answer, matching the shape planning's
+own `clearMutation` already uses. See ADR-030's "D2 (song/catalog)" section.
+
+Evidence: both `song_sync_snapshot_identity_test.dart` (gated-remote-call
+race plus the unchanged-case regression) and the `SongCatalogStore
+.localRevision` group in `song_catalog_store_test.dart` (monotonic
+increment, and that a stale `reconcileSyncedSong` call skips the snapshot
+upsert as well as the delete) pass; `song_catalog_migration_test.dart`
+confirms a genuine pre-migration (schemaVersion 2) database gains the column
+on `onUpgrade` and keeps its pending row intact.
+
+### A defect implementation found that this spec had not anticipated
+
+Implementing D1 on the planning side surfaced a related but distinct gap
+this spec's problem statement does not describe: `recordPlanEdit` folding
+onto a `planCreate` row (and, it turned out, three sibling fold paths) carried
+forward whatever `syncStatus` the existing row already had, via a bare
+`copyWith`, instead of resetting it to `pending`. In the ADR-019
+durable-marker window — a mutation accepted by the backend but not yet
+locally cleared, e.g. a crash between accept and clear (LF-1) — a further
+local edit landing on that row kept it labelled `accepted` while it now held
+newer, never-sent content. The `localRevision` gate this spec specifies
+protects the row from being *deleted* under that condition, but does not
+protect it from being *reconciled*: a later sync's own durable-marker
+shortcut (`syncStatus == accepted` skips the remote send) would treat that
+unsent content as server-confirmed and clear it, silently diverging the
+local projection from server truth. This is a different failure mode from
+the one D1-D3 close — not an unconditional post-sync write, but a local
+write that fails to reset status on an already-concluded row — and it was
+recorded as a known follow-up in ADR-030 rather than fixed in the same
+change.
+
+It was resolved on the same branch shortly after (`a98c496`/`8f45988`):
+every planning-store write that folds new user content onto an existing row
+via `copyWith` — `recordPlanEdit` onto a pending `planCreate`,
+`recordSessionRename` onto a pending `sessionCreate`, and both reorder-trim
+folds (`_removeSessionFromPendingReorder`/
+`_removeSessionItemFromPendingReorder`) — now resets `syncStatus` to
+`pending` and clears any stale `errorCode`/`errorMessage`, on the reasoning
+that new local intent is unsent by definition. `retryMutation` and
+`saveSyncAttemptResult` were deliberately left untouched: they compute
+`syncStatus` as their entire purpose, not as a side effect of carrying
+content forward. The song/catalog side was checked, not assumed, to have no
+equivalent gap: `SongSyncStatus` has no two-phase accepted-but-not-cleared
+marker, so the window this follow-up closes does not exist there. See
+ADR-030's "Fold-Status Follow-Up (resolved)" section for the full account,
+and `docs/architecture/repository-review-2026-06-22.md`'s 2026-08-05
+song/catalog and fold-status status block.
