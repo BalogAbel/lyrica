@@ -57,9 +57,19 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
           cachedPlanningMutations.originSnapshotJson,
         );
       }
+      if (from < 6) {
+        // D1 (docs/specs/2026-08-05-sync-snapshot-identity.md): every
+        // pre-migration row predates the concept of a local revision, so it
+        // has no sync attempt in flight to distinguish from -- 1 is a sane
+        // starting value, matching what a freshly-inserted row gets.
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.localRevision,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 }

@@ -80,6 +80,19 @@ class CachedPlanningMutations extends Table {
   IntColumn get orderKey => integer()();
   DateTimeColumn get updatedAt => dateTime()();
 
+  /// Local bookkeeping only: incremented by the store on every local write
+  /// to this row (a fold, a status write, anything). It identifies the
+  /// exact content that was handed to a sync attempt, so a post-sync write
+  /// can detect whether the row is still the one that was sent.
+  ///
+  /// This is NOT part of OCC and NEVER leaves the device -- unlike
+  /// [baseVersion], which tracks the server's view of the aggregate.
+  /// `updatedAt` cannot serve this purpose: two local writes inside the
+  /// same millisecond collide, and a device clock can step backwards
+  /// (LF-T6), so only a store-owned counter is guaranteed monotonic. See
+  /// `docs/specs/2026-08-05-sync-snapshot-identity.md` (D1).
+  IntColumn get localRevision => integer().withDefault(const Constant(1))();
+
   @override
   Set<Column<Object>> get primaryKey => {
     userId,
