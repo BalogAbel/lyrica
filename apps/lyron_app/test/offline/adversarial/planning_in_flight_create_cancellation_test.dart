@@ -408,6 +408,125 @@ void main() {
             'like an ordinary pending record',
       );
     });
+
+    test(
+      "a session's pending item and item-order mutations are dropped when "
+      'its in-flight create is cancelled, same as an ordinary collapse',
+      () async {
+        final db = PlanningLocalDatabase.inMemory();
+        addTearDown(db.close);
+        final localStore = DriftPlanningLocalStore(db);
+        final store = DriftPlanningMutationStore(
+          database: db,
+          localStore: localStore,
+        );
+
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        const readContext = ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'session-one',
+            name: 'Session One',
+            position: 1,
+          ),
+        );
+
+        // A song is added to the still-local session before it ever
+        // syncs -- an ordinary offline sequence.
+        await store.recordSessionItemCreateSong(
+          context: context,
+          draft: const PlanningSessionItemCreateSongMutationDraft(
+            sessionItemId: 'item-1',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-1',
+            songTitle: 'Song One',
+            position: 1,
+          ),
+        );
+        await store.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-1'],
+          ),
+        );
+
+        final remote = _GatedPlanningRemote();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => remote,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final syncFuture = controller.syncPendingMutations(readContext);
+        // The candidate snapshot only ever contained the session create
+        // (the item mutations are blocked on it, dependencyBlocked, so a
+        // real remote repository would reject them -- irrelevant here
+        // since the session create is the only one gated).
+        await remote.entered.future;
+
+        // The user cancels the whole session -- create, item, and
+        // reorder together -- while the session's create is in flight.
+        await store.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+          ),
+        );
+
+        remote.gate.complete();
+        await syncFuture;
+
+        final itemMutation = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+        );
+        final itemOrderMutation = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item_order',
+          aggregateId: 'session-1',
+        );
+
+        expect(
+          itemMutation,
+          isNull,
+          reason:
+              'the session is being cancelled either way (converted to a '
+              'real delete once the create resolves, or discarded) -- a '
+              'pending item under it has no reachable destination, so it '
+              'is dropped immediately, same as the ordinary collapse case',
+        );
+        expect(itemOrderMutation, isNull);
+
+        // The session-create-turned-delete still resolves and sends
+        // normally; only the item/item-order rows were dropped.
+        final sessionMutation = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        );
+        expect(sessionMutation!.kind, PlanningMutationKind.sessionDelete);
+      },
+    );
   });
 }
 
