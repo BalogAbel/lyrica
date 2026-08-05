@@ -1179,4 +1179,294 @@ void main() {
       },
     );
   });
+
+  group('PlanningMutationStore content folds reset status (ADR-030 '
+      'follow-up)', () {
+    // ADR-030 "Known Follow-Up": a fold that carries an existing row
+    // forward with copyWith must not carry the row's CURRENT syncStatus
+    // along with it. The important case is the ADR-019 durable-marker
+    // window -- the row is `accepted` (backend confirmed, not yet cleared)
+    // -- and a further local edit lands in that same row. New local intent
+    // is by definition unsent, so folding it in must reset the row to
+    // `pending` (and drop any stale error left by a prior attempt), or a
+    // later sync run's accepted-durable-marker branch will skip the remote
+    // send and reconcile the newer, never-sent content as if the backend
+    // already had it.
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('recordPlanEdit folding onto an accepted-but-uncleared planCreate '
+        'resets the row to pending with the newer content', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      // Simulate the ADR-019 durable-marker window: the backend accepted
+      // this create, but the row has not been cleared yet (e.g. a crash
+      // between accept and clear -- LF-1).
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+      final accepted = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(accepted!.syncStatus, PlanningMutationSyncStatus.accepted);
+
+      // The user edits the same plan while the row is still marked
+      // accepted -- new, unsent content landing on it.
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited after acceptance',
+        ),
+      );
+
+      final afterFold = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      expect(
+        afterFold!.syncStatus,
+        PlanningMutationSyncStatus.pending,
+        reason:
+            'new local intent is unsent by definition; a row still '
+            'labelled accepted would make a later sync skip sending it',
+      );
+      expect(afterFold.description, 'Edited after acceptance');
+    });
+
+    test(
+      'recordSessionRename folding onto an accepted-but-uncleared '
+      'sessionCreate resets the row to pending with the newer name',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'welcome',
+            name: 'Welcome',
+            position: 10,
+          ),
+        );
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionCreate.aggregateType,
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        );
+
+        await store.recordSessionRename(
+          context: context,
+          draft: const PlanningSessionRenameMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            name: 'Welcome Team',
+          ),
+        );
+
+        final afterFold = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        );
+
+        expect(afterFold!.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(afterFold.name, 'Welcome Team');
+      },
+    );
+
+    test('a delete collapsing into an accepted-but-uncleared session reorder '
+        'resets that row to pending with the trimmed sibling list', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordSessionReorder(
+        context: context,
+        draft: const PlanningSessionReorderMutationDraft(
+          planId: 'plan-1',
+          orderedSessionIds: ['session-1', 'session-2', 'session-3'],
+          baseVersion: 4,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.sessionReorder.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      // session-2 already exists remotely (no pending sessionCreate for
+      // it), so this takes the ordinary delete path, which folds the
+      // removal into the still-accepted reorder row via
+      // _removeSessionFromPendingReorder.
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-1',
+          baseVersion: 4,
+        ),
+      );
+
+      final reorderAfter = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_order',
+        aggregateId: 'plan-1',
+      );
+
+      expect(reorderAfter!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(
+        reorderAfter.orderedSiblingIds,
+        orderedEquals(const ['session-1', 'session-3']),
+      );
+    });
+
+    test(
+      'a delete collapsing into an accepted-but-uncleared session-item '
+      'reorder resets that row to pending with the trimmed sibling list',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-1', 'item-2', 'item-3'],
+            baseVersion: 4,
+          ),
+        );
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionItemReorder.aggregateType,
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        );
+
+        await store.recordSessionItemDelete(
+          context: context,
+          draft: const PlanningSessionItemDeleteMutationDraft(
+            sessionItemId: 'item-2',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 4,
+          ),
+        );
+
+        final reorderAfter = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item_order',
+          aggregateId: 'session-1',
+        );
+
+        expect(reorderAfter!.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(
+          reorderAfter.orderedSiblingIds,
+          orderedEquals(const ['item-1', 'item-3']),
+        );
+      },
+    );
+
+    test('a stale error left by a failed attempt does not survive a content '
+        'fold', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited after failure',
+        ),
+      );
+
+      final afterFold = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      expect(afterFold!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(afterFold.errorCode, isNull);
+      expect(afterFold.errorMessage, isNull);
+      expect(afterFold.description, 'Edited after failure');
+    });
+  });
 }

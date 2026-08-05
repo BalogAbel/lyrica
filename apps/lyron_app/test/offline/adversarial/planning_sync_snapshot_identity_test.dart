@@ -184,6 +184,93 @@ void main() {
         expect(remote.syncedDescriptions, ['Untouched description']);
       },
     );
+
+    test('an edit folded onto an accepted-but-uncleared row is sent, not '
+        'silently reconciled through the durable-marker shortcut '
+        '(ADR-030 known follow-up)', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      // Simulate the ADR-019 durable-marker window: the backend accepted
+      // this create, but the row has not been cleared yet (LF-1: a crash
+      // between accept and clear).
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      // A deliberate user edit lands in that exact window -- new content
+      // on top of what the server already has.
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited after acceptance',
+        ),
+      );
+
+      final remote = _GatedPlanningRemote();
+      remote.gate.complete();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.syncPendingMutations(readContext);
+
+      expect(
+        remote.syncedDescriptions,
+        ['Edited after acceptance'],
+        reason:
+            'the edited content must actually be sent -- the '
+            'accepted-durable-marker branch must not skip the remote '
+            'call for it, because the row no longer matches what the '
+            'backend already has',
+      );
+
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(
+        afterSync,
+        isNull,
+        reason: 'once actually sent and accepted, the row clears normally',
+      );
+    });
   });
 }
 
