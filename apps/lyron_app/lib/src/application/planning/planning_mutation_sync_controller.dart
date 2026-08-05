@@ -68,13 +68,28 @@ class PlanningMutationSyncController {
         )
         .toList(growable: false);
 
+    // `clearRevision` is the localRevision to gate the eventual clearMutation
+    // on (D2) -- NOT necessarily `original.localRevision`, the value read at
+    // snapshot time. For a mutation sent and accepted THIS run, the row was
+    // just written by saveSyncAttemptResult, which bumped it; `clearRevision`
+    // is that write's own reported outcome, so the final clear checks against
+    // the content the accept-write actually landed on top of, not the
+    // pre-send snapshot. For an already-`accepted` durable marker (no send
+    // this run -- see below), nothing has written the row yet, so the
+    // snapshot value is still current.
     final acceptedRecords =
-        <(PlanningMutationRecord original, PlanningMutationRecord synced)>[];
+        <
+          (
+            PlanningMutationRecord original,
+            PlanningMutationRecord synced,
+            int clearRevision,
+          )
+        >[];
 
     for (final mutation in candidates) {
       if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {
         // Durable marker: already accepted, skip remote send
-        acceptedRecords.add((mutation, mutation));
+        acceptedRecords.add((mutation, mutation, mutation.localRevision));
         continue;
       }
 
@@ -83,15 +98,30 @@ class PlanningMutationSyncController {
           organizationId: context.organizationId,
           record: mutation,
         );
-        // Durable marker: save accepted status immediately (survives crash)
-        await _mutationStore().saveSyncAttemptResult(
+        // Durable marker: save accepted status immediately (survives
+        // crash) -- but only if this row is still the exact content that
+        // was just sent (D2). `expectedRevision` is the revision captured
+        // BEFORE the remote round trip; the store compares it against the
+        // row's CURRENT revision atomically, inside the write itself.
+        final newRevision = await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: mutation.kind.aggregateType,
           aggregateId: mutation.aggregateId,
           syncStatus: PlanningMutationSyncStatus.accepted,
+          expectedRevision: mutation.localRevision,
         );
-        acceptedRecords.add((mutation, syncedMutation));
+        if (newRevision == null) {
+          // D3: a local edit landed on this aggregate during the remote
+          // round trip. Not an error -- the accepted remote write is not
+          // undone (it happened), but this row is no longer that content:
+          // the edit that moved the revision already reset it to `pending`
+          // (every local write does), so it is already exactly where it
+          // needs to be for the next sync to pick it up. Nothing further
+          // to do: don't mark accepted, don't reconcile, don't clear.
+          continue;
+        }
+        acceptedRecords.add((mutation, syncedMutation, newRevision));
       } on PlanningMutationSyncException catch (error) {
         final syncStatus = switch (error.code) {
           PlanningMutationSyncErrorCode.authorizationDenied =>
@@ -106,6 +136,11 @@ class PlanningMutationSyncController {
           PlanningMutationSyncErrorCode.unknown =>
             PlanningMutationSyncStatus.pending,
         };
+        // Not gated by revision: D2 scopes the snapshot-identity contract
+        // to the ACCEPTED outcome and the clears that follow it, because
+        // only that path can destroy unsynced intent by claiming the
+        // backend accepted something it never received a later edit for.
+        // A failure outcome never claims that, so it is out of scope here.
         await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -127,16 +162,21 @@ class PlanningMutationSyncController {
 
     final refreshed = await _refreshPlanning();
     if (refreshed) {
-      for (final (original, _) in acceptedRecords) {
+      for (final (original, _, clearRevision) in acceptedRecords) {
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: original.kind.aggregateType,
           aggregateId: original.aggregateId,
+          // D2/D3: if a local edit landed during the refresh await, this
+          // no-ops and leaves the row pending with the newer content --
+          // the next sync sends it. It does not need to be inspected here:
+          // the edit already reset the row itself.
+          expectedRevision: clearRevision,
         );
       }
     } else {
-      for (final (original, synced) in acceptedRecords) {
+      for (final (original, synced, clearRevision) in acceptedRecords) {
         try {
           if (await _shouldReconcileAcceptedMutation(context)) {
             await _reconcileAcceptedMutation(context, synced);
@@ -151,7 +191,8 @@ class PlanningMutationSyncController {
           // and visible (LF-4 sync UI) instead, and leave it un-cleared so
           // it can be inspected/discarded. failedDependency is not in the
           // pending||accepted candidate filter above, so it will not be
-          // auto-resent and loop forever.
+          // auto-resent and loop forever. Not revision-gated, same reason
+          // as the other failure-status write above.
           await _mutationStore().saveSyncAttemptResult(
             userId: context.userId,
             organizationId: context.organizationId,
@@ -168,6 +209,7 @@ class PlanningMutationSyncController {
           organizationId: context.organizationId,
           aggregateType: original.kind.aggregateType,
           aggregateId: original.aggregateId,
+          expectedRevision: clearRevision,
         );
       }
     }

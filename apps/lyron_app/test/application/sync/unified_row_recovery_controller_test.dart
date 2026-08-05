@@ -559,17 +559,18 @@ class _FakePlanningStore implements PlanningMutationStore {
   }) async => _mutations[_key(aggregateType, aggregateId)];
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
-    _mutations.remove(_key(aggregateType, aggregateId));
+    return _mutations.remove(_key(aggregateType, aggregateId)) != null;
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -577,18 +578,21 @@ class _FakePlanningStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     final key = _key(aggregateType, aggregateId);
     final existing = _mutations[key];
-    if (existing != null) {
-      _mutations[key] = existing.copyWith(
-        syncStatus: syncStatus,
-        errorCode: errorCode,
-        clearErrorCode: errorCode == null,
-        errorMessage: errorMessage,
-        clearErrorMessage: errorMessage == null,
-      );
+    if (existing == null) {
+      return null;
     }
+    _mutations[key] = existing.copyWith(
+      syncStatus: syncStatus,
+      errorCode: errorCode,
+      clearErrorCode: errorCode == null,
+      errorMessage: errorMessage,
+      clearErrorMessage: errorMessage == null,
+    );
+    return 1;
   }
 
   @override

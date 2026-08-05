@@ -130,13 +130,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   PlanningMutationSyncStatus? lastSavedStatus;
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
     clearedAggregateIds.add(aggregateId);
+    return true;
   }
 
   @override
@@ -279,7 +281,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -287,7 +289,9 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     lastSavedStatus = syncStatus;
+    return 1;
   }
 }

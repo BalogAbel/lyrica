@@ -150,9 +150,9 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   /// holds here because `_delegate` is a plain `PlanningMutationStore`
   /// (`DriftPlanningMutationStore` in production) with no reference back to
   /// this decorator, so nothing it does can re-enter the queue.
-  Future<void> _enqueue(
+  Future<T> _enqueue<T>(
     PlanningMutationContext context,
-    Future<void> Function() task,
+    Future<T> Function() task,
   ) {
     final key = '${context.userId}_${context.organizationId}';
     final previous = _writeQueue[key] ?? Future<void>.value();
@@ -198,9 +198,9 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   /// needs the same evict-and-retry-once treatment as a `record*` write,
   /// but it must never be refused for budget reasons -- see the class doc
   /// for why (the ADR-019 exactly-once marker).
-  Future<void> _recoveredWrite(
+  Future<T> _recoveredWrite<T>(
     PlanningMutationContext context,
-    Future<void> Function() write,
+    Future<T> Function() write,
   ) => _enqueue(context, () => _recovery.guard(write));
 
   /// Queued, with neither budget admission nor the recovery boundary. Used
@@ -208,9 +208,9 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   /// the store (see the class doc), so there is nothing to recover from --
   /// they only need the same ordering as every other write for this
   /// context.
-  Future<void> _queuedWrite(
+  Future<T> _queuedWrite<T>(
     PlanningMutationContext context,
-    Future<void> Function() write,
+    Future<T> Function() write,
   ) => _enqueue(context, write);
 
   Future<void> _admitAndWrite(
@@ -431,7 +431,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       _delegate.hasUnsyncedMutations(userId: userId);
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -439,6 +439,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) => _recoveredWrite(
     PlanningMutationContext(userId: userId, organizationId: organizationId),
     () => _delegate.saveSyncAttemptResult(
@@ -449,6 +450,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       syncStatus: syncStatus,
       errorCode: errorCode,
       errorMessage: errorMessage,
+      expectedRevision: expectedRevision,
     ),
   );
 
@@ -469,11 +471,12 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   );
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) => _queuedWrite(
     PlanningMutationContext(userId: userId, organizationId: organizationId),
     () => _delegate.clearMutation(
@@ -481,6 +484,7 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       organizationId: organizationId,
       aggregateType: aggregateType,
       aggregateId: aggregateId,
+      expectedRevision: expectedRevision,
     ),
   );
 }

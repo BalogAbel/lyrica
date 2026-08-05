@@ -171,6 +171,7 @@ class PlanningMutationRecord {
     this.originSnapshot,
     this.errorCode,
     this.errorMessage,
+    this.localRevision = 0,
   });
 
   final String aggregateId;
@@ -194,6 +195,13 @@ class PlanningMutationRecord {
   final PlanningMutationSyncStatus syncStatus;
   final int orderKey;
   final DateTime updatedAt;
+
+  /// Local bookkeeping only -- see `CachedPlanningMutations.localRevision`
+  /// (`planning_local_tables.dart`) for why this exists and why it is not
+  /// OCC. Populated when a record is read back from storage; `0` for a
+  /// record a caller is about to hand to a `record*` write (the store
+  /// computes the real value on write and callers never need to guess it).
+  final int localRevision;
 
   PlanningMutationRecord copyWith({
     String? aggregateId,
@@ -232,6 +240,7 @@ class PlanningMutationRecord {
     PlanningMutationSyncStatus? syncStatus,
     int? orderKey,
     DateTime? updatedAt,
+    int? localRevision,
   }) {
     return PlanningMutationRecord(
       aggregateId: aggregateId ?? this.aggregateId,
@@ -265,6 +274,7 @@ class PlanningMutationRecord {
       syncStatus: syncStatus ?? this.syncStatus,
       orderKey: orderKey ?? this.orderKey,
       updatedAt: updatedAt ?? this.updatedAt,
+      localRevision: localRevision ?? this.localRevision,
     );
   }
 }
@@ -500,7 +510,22 @@ abstract interface class PlanningMutationStore {
 
   Future<bool> hasUnsyncedMutations({required String userId});
 
-  Future<void> saveSyncAttemptResult({
+  /// Writes the outcome of a remote sync attempt onto the mutation row.
+  ///
+  /// [expectedRevision], when supplied, gates the write: it is compared
+  /// against the row's CURRENT `localRevision` as part of the same storage
+  /// statement (D2, `docs/specs/2026-08-05-sync-snapshot-identity.md`), and
+  /// the write applies only if they still match. A `null` [expectedRevision]
+  /// writes unconditionally (used by the non-accept status paths, which are
+  /// not part of the D2 snapshot-identity contract).
+  ///
+  /// Returns the row's new `localRevision` if the write applied, or `null`
+  /// if [expectedRevision] no longer matched -- meaning a local edit landed
+  /// on this aggregate after the snapshot that was sent, so the outcome is
+  /// stale (D3: not an error). The caller must leave the row as-is (already
+  /// pending, already carrying the newer content) and must not proceed to
+  /// [clearMutation] or reconcile it.
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -508,6 +533,7 @@ abstract interface class PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   });
 
   Future<void> retryMutation({
@@ -517,11 +543,24 @@ abstract interface class PlanningMutationStore {
     required String aggregateId,
   });
 
-  Future<void> clearMutation({
+  /// Deletes the mutation row concluding a sync.
+  ///
+  /// [expectedRevision], when supplied, gates the delete the same way it
+  /// gates [saveSyncAttemptResult] (D2): the row is removed only if its
+  /// CURRENT `localRevision` still matches, as part of the same storage
+  /// statement. A `null` [expectedRevision] deletes unconditionally (used by
+  /// explicit user discard, which is not part of the D2 contract -- the user
+  /// wants whatever is there gone).
+  ///
+  /// Returns `true` if the row was deleted, `false` if [expectedRevision] no
+  /// longer matched -- the row is left pending with its newer content (D3:
+  /// not an error), and the next sync will send it.
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   });
 }
 

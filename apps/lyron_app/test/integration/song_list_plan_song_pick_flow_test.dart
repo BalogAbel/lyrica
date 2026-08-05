@@ -300,12 +300,13 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   const _NoopPlanningMutationStore();
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+    int? expectedRevision,
+  }) async => false;
 
   @override
   Future<String> allocatePlanSlug({
@@ -411,7 +412,7 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -419,7 +420,8 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => null;
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async => false;

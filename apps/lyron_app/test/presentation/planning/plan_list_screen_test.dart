@@ -465,12 +465,13 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => 'unused';
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+    int? expectedRevision,
+  }) async => false;
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async => false;
@@ -564,7 +565,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -572,7 +573,8 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => null;
 }
 
 class _StaticCapabilityGateway implements CapabilityGateway {

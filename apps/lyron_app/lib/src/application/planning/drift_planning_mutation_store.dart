@@ -607,7 +607,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -615,31 +615,73 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
-    final existing = await readMutation(
-      userId: userId,
-      organizationId: organizationId,
-      aggregateType: aggregateType,
-      aggregateId: aggregateId,
-    );
+    final existing =
+        await (_database.select(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(aggregateId),
+            ))
+            .getSingleOrNull();
     if (existing == null) {
       throw StateError('Planning mutation record not found: $aggregateId');
     }
-    final changed = await _upsertRecord(
-      context: PlanningMutationContext(
-        userId: userId,
-        organizationId: organizationId,
-      ),
-      aggregateType: aggregateType,
-      record: existing.copyWith(
-        syncStatus: syncStatus,
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-      ),
-    );
-    if (changed) {
-      _onStorageFootprintChanged?.call();
+
+    // D2: the gating condition lives in the WHERE clause of this single
+    // UPDATE, not as a read-then-decide in Dart. `existing` above is read
+    // only to raise the not-found error and to know the pre-write revision
+    // for computing the new one -- it is NEVER used to decide whether the
+    // write applies. That decision is `expectedRevision`, captured by the
+    // CALLER at snapshot time, before the remote round trip; comparing it
+    // against the row's revision atomically, inside the same statement, is
+    // what closes the race a Dart-side read-then-write would reopen.
+    final newRevision = (expectedRevision ?? existing.localRevision) + 1;
+    var predicate =
+        _database.cachedPlanningMutations.userId.equals(userId) &
+        _database.cachedPlanningMutations.organizationId.equals(
+          organizationId,
+        ) &
+        _database.cachedPlanningMutations.aggregateType.equals(aggregateType) &
+        _database.cachedPlanningMutations.aggregateId.equals(aggregateId);
+    if (expectedRevision != null) {
+      predicate =
+          predicate &
+          _database.cachedPlanningMutations.localRevision.equals(
+            expectedRevision,
+          );
     }
+    final rowsUpdated =
+        await (_database.update(
+          _database.cachedPlanningMutations,
+        )..where((_) => predicate)).write(
+          CachedPlanningMutationsCompanion(
+            syncStatus: Value(syncStatus.value),
+            // Matches the pre-existing copyWith-based semantics this method
+            // used to go through: a null errorCode/errorMessage argument
+            // leaves the stored value untouched (Value.absent), it does not
+            // clear it. Value.absent() also happens to be exactly what
+            // "don't touch this column" means for a targeted UPDATE.
+            errorCode: errorCode == null
+                ? const Value.absent()
+                : Value(errorCode.name),
+            errorMessage: errorMessage == null
+                ? const Value.absent()
+                : Value(errorMessage),
+            localRevision: Value(newRevision),
+          ),
+        );
+
+    if (rowsUpdated == 0) {
+      // D3: the row's revision moved past what the caller expected -- a
+      // local edit landed on this aggregate after the snapshot that was
+      // sent. Not an error: leave the row exactly as the edit left it.
+      return null;
+    }
+    _onStorageFootprintChanged?.call();
+    return newRevision;
   }
 
   @override
@@ -684,24 +726,40 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
-    final deletedRows =
-        await (_database.delete(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.aggregateType.equals(aggregateType) &
-                  table.aggregateId.equals(aggregateId),
-            ))
-            .go();
+    // D2: same shape as saveSyncAttemptResult -- the revision check is part
+    // of the DELETE's own WHERE clause, atomically, not a preceding read
+    // that could go stale before the delete runs.
+    var predicate =
+        _database.cachedPlanningMutations.userId.equals(userId) &
+        _database.cachedPlanningMutations.organizationId.equals(
+          organizationId,
+        ) &
+        _database.cachedPlanningMutations.aggregateType.equals(aggregateType) &
+        _database.cachedPlanningMutations.aggregateId.equals(aggregateId);
+    if (expectedRevision != null) {
+      predicate =
+          predicate &
+          _database.cachedPlanningMutations.localRevision.equals(
+            expectedRevision,
+          );
+    }
+    final deletedRows = await (_database.delete(
+      _database.cachedPlanningMutations,
+    )..where((_) => predicate)).go();
     if (deletedRows > 0) {
       _onStorageFootprintChanged?.call();
+      return true;
     }
+    // D3: either nothing was there, or (when expectedRevision was supplied)
+    // a local edit landed after the snapshot that was sent -- not an error.
+    return false;
   }
 
   Future<bool> _upsertRecord({
@@ -728,6 +786,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return false;
     }
 
+    // D1: every local write to this row bumps localRevision, including
+    // folds (recordPlanEdit onto a pending planCreate, etc.) -- this is the
+    // one write path shared by all nine `record*` mutations plus
+    // retryMutation. Reading `existing` here (already done above, for the
+    // no-op short-circuit) and computing the increment in Dart is safe: this
+    // is not a conditional write racing a network round trip (unlike
+    // saveSyncAttemptResult/clearMutation, D2), it is the store's own
+    // single, ordinary write for this aggregate.
     await _database
         .into(_database.cachedPlanningMutations)
         .insertOnConflictUpdate(
@@ -756,6 +822,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             errorMessage: Value(record.errorMessage),
             orderKey: record.orderKey,
             updatedAt: record.updatedAt.toUtc(),
+            localRevision: Value(
+              existing == null ? 1 : existing.localRevision + 1,
+            ),
           ),
         );
     return true;
@@ -932,6 +1001,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       syncStatus: planningMutationSyncStatusFromValue(row.syncStatus),
       orderKey: row.orderKey,
       updatedAt: row.updatedAt.toUtc(),
+      localRevision: row.localRevision,
     );
   }
 

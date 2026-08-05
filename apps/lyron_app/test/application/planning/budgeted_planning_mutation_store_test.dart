@@ -879,7 +879,7 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
       throw UnimplementedError();
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -887,6 +887,7 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) => throw UnimplementedError();
 
   @override
@@ -898,11 +899,12 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) => throw UnimplementedError();
 }
 
@@ -945,10 +947,20 @@ class _InsertCallScript {
   }
 }
 
-/// A [QueryExecutor] decorator that delegates everything except `runInsert`,
-/// which fails on the call numbers named in the shared [_InsertCallScript].
-/// Mirrors `test/support/insert_failing_executor.dart`'s
+/// A [QueryExecutor] decorator that delegates everything except `runInsert`
+/// and `runUpdate`, which fail on the call numbers named in the shared
+/// [_InsertCallScript]. Mirrors `test/support/insert_failing_executor.dart`'s
 /// `InsertFailingExecutor` shape, just with a script instead of a countdown.
+///
+/// Both statement kinds share the SAME counter (not two independent ones):
+/// `saveSyncAttemptResult`'s status write (docs/specs/2026-08-05-sync-
+/// snapshot-identity.md, D2) is a targeted, revision-guarded `UPDATE`, not
+/// the `INSERT ... ON CONFLICT DO UPDATE` upsert every `record*` write uses
+/// -- the atomic WHERE-guarded write the D2 conditional write requires
+/// cannot be expressed as an upsert. The seed write below
+/// (`recordPlanCreate`) is still an INSERT, so it is call #0 either way;
+/// what changed is that the status write under test is now an UPDATE, so
+/// this executor must be able to fail it too.
 class _ScriptedInsertExecutor implements QueryExecutor {
   _ScriptedInsertExecutor(this._delegate, this._script);
 
@@ -976,8 +988,12 @@ class _ScriptedInsertExecutor implements QueryExecutor {
   }
 
   @override
-  Future<int> runUpdate(String statement, List<Object?> args) =>
-      _delegate.runUpdate(statement, args);
+  Future<int> runUpdate(String statement, List<Object?> args) {
+    if (_script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runUpdate(statement, args);
+  }
 
   @override
   Future<int> runDelete(String statement, List<Object?> args) =>
@@ -1037,8 +1053,12 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
   }
 
   @override
-  Future<int> runUpdate(String statement, List<Object?> args) =>
-      _delegate.runUpdate(statement, args);
+  Future<int> runUpdate(String statement, List<Object?> args) {
+    if (_script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runUpdate(statement, args);
+  }
 
   @override
   Future<int> runDelete(String statement, List<Object?> args) =>
@@ -1149,15 +1169,18 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
     if (_isSessionOne(aggregateType, aggregateId)) {
       _sessionKind = null;
+      return true;
     }
+    return false;
   }
 
   @override
@@ -1246,7 +1269,7 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
       throw UnimplementedError();
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -1254,6 +1277,7 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) => throw UnimplementedError();
 
   @override

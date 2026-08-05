@@ -1063,13 +1063,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   PlanningMutationSyncStatus? lastSavedStatus;
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
     clearedAggregateIds.add(aggregateId);
+    return true;
   }
 
   @override
@@ -1214,7 +1216,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -1222,11 +1224,16 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     lastSavedStatus = syncStatus;
     // Mirror the real store: persist the attempt result onto the record so
     // a subsequent readMutation reflects it, the way the Drift-backed store
-    // does.
+    // does. None of the tests in this file exercise the D2 snapshot-identity
+    // race (that is covered end-to-end against the real
+    // DriftPlanningMutationStore in
+    // test/offline/adversarial/planning_sync_snapshot_identity_test.dart),
+    // so this fake applies unconditionally regardless of expectedRevision.
     final index = pending.indexWhere(
       (record) =>
           record.kind.aggregateType == aggregateType &&
@@ -1241,6 +1248,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
         clearErrorMessage: errorMessage == null,
       );
     }
+    return 1;
   }
 }
 
