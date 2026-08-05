@@ -242,6 +242,13 @@ class _SongRowTile extends ConsumerWidget {
       SongSyncStatus.conflict => AppStrings.unifiedSyncSongStateEditedConflict,
       SongSyncStatus.pendingUpdate ||
       SongSyncStatus.synced => AppStrings.unifiedSyncSongStateEdited,
+      // `sending` is only ever a pendingCreate row's in-flight window (D1);
+      // it renders exactly like pendingCreate. `cancelling` is excluded
+      // from readPendingSongs so it should never reach this popup, but the
+      // switch must stay exhaustive -- it renders like pendingDelete, the
+      // closest existing label for "being removed".
+      SongSyncStatus.sending => AppStrings.unifiedSyncSongStateCreated,
+      SongSyncStatus.cancelling => AppStrings.unifiedSyncSongStateRemoved,
     };
   }
 }

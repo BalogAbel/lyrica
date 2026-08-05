@@ -114,6 +114,23 @@ class SupabaseSongMutationRemoteRepository
         SongSyncStatus.synced => throw StateError(
           'Synced songs do not need sync',
         ),
+        // `sending`/`cancelling` are local-only bookkeeping markers
+        // (docs/specs/2026-08-06-in-flight-create-cancellation.md D1/D2):
+        // SongMutationSyncController always sends the pre-send snapshot
+        // record (still carrying its original pendingCreate/pendingUpdate/
+        // pendingDelete status), never a re-read row after it has been
+        // marked `sending`, and a `cancelling` tombstone is never handed to
+        // the remote repository at all. Neither status should ever reach
+        // here.
+        SongSyncStatus.sending => throw StateError(
+          'Records with status sending must not be sent directly -- '
+          'sending is a durable in-flight marker, not a syncable status.',
+        ),
+        SongSyncStatus.cancelling => throw StateError(
+          'Records with status cancelling must not be sent directly -- '
+          'cancelling is a local cancellation tombstone, not a syncable '
+          'status.',
+        ),
       };
 
       final params = <String, dynamic>{

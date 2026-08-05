@@ -262,6 +262,8 @@ class DriftSongMutationStore implements SongMutationStore {
       'pending_delete' => SongSyncStatus.pendingDelete,
       'synced' => SongSyncStatus.synced,
       'conflict' => SongSyncStatus.conflict,
+      'sending' => SongSyncStatus.sending,
+      'cancelling' => SongSyncStatus.cancelling,
       _ => throw ArgumentError.value(
         value,
         'value',

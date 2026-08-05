@@ -12,6 +12,39 @@ enum SongSyncStatus {
   pendingDelete,
   synced,
   conflict,
+
+  /// D1 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): written
+  /// durably to a still-local (`pendingCreate`) song's mutation row
+  /// immediately BEFORE its remote create attempt, mirroring the `accepted`
+  /// marker ADR-019 already writes immediately after a planning mutation's
+  /// remote call. Between the write and the remote response, the create is
+  /// known to be in flight.
+  ///
+  /// Scoped to `pendingCreate` sends only -- see
+  /// `SongCatalogStore.markSongCreateSending` for why `pendingUpdate`/
+  /// `pendingDelete` sends do not need an equivalent marker.
+  ///
+  /// Crash semantics mirror ADR-019/D1: a record left `sending` by a crash
+  /// may or may not have reached the backend, so it is treated as pending
+  /// and resent on the next sync pass (`DriftSongMutationStore
+  /// .readPendingSongs`), not stranded forever.
+  sending,
+
+  /// D2: what a `sending` row becomes when the user deletes it while its
+  /// create is still in flight -- a cancellation tombstone, kept instead of
+  /// being physically collapsed (`SongLibraryService.deleteSong`'s
+  /// `pendingCreate` branch, ADR-028 D10), because the create may already
+  /// have reached the backend and the delete intent would otherwise have no
+  /// local trace once it does. Resolved by `SongMutationSyncController` once
+  /// the in-flight create's outcome is known (D3), via
+  /// `SongCatalogStore.resolveCancelledSongCreate`.
+  ///
+  /// Deliberately hidden from every local-first read
+  /// (`DriftSongCatalogStore._readVisibleSongs` and its slug-lookup
+  /// siblings) and excluded from `readPendingSongs`: the user deleted this
+  /// song, so it must not render as an existing or actionable song while its
+  /// fate is undecided.
+  cancelling,
 }
 
 class LocalSongSlugConflictException implements LocalStorageDomainRejection {
@@ -28,6 +61,8 @@ extension SongSyncStatusX on SongSyncStatus {
     SongSyncStatus.pendingDelete => 'pending_delete',
     SongSyncStatus.synced => 'synced',
     SongSyncStatus.conflict => 'conflict',
+    SongSyncStatus.sending => 'sending',
+    SongSyncStatus.cancelling => 'cancelling',
   };
 }
 
@@ -38,6 +73,8 @@ SongSyncStatus _songSyncStatusFromValue(String value) {
     'pending_delete' => SongSyncStatus.pendingDelete,
     'synced' => SongSyncStatus.synced,
     'conflict' => SongSyncStatus.conflict,
+    'sending' => SongSyncStatus.sending,
+    'cancelling' => SongSyncStatus.cancelling,
     _ => throw ArgumentError.value(value, 'value', 'Unknown song sync status'),
   };
 }

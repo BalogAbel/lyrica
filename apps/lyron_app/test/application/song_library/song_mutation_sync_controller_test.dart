@@ -825,8 +825,16 @@ class _FakeSongMutationStore implements SongMutationStore {
         (record) => switch (record.syncStatus) {
           SongSyncStatus.pendingCreate ||
           SongSyncStatus.pendingUpdate ||
-          SongSyncStatus.pendingDelete => true,
-          SongSyncStatus.conflict || SongSyncStatus.synced => false,
+          SongSyncStatus.pendingDelete ||
+          // D1: a crash-stranded `sending` row must be resent, not
+          // stranded -- see DriftSongMutationStore.readPendingSongs.
+          SongSyncStatus.sending => true,
+          SongSyncStatus.conflict ||
+          SongSyncStatus.synced ||
+          // D2: a cancellation tombstone is not itself sent -- it is
+          // resolved by SongMutationSyncController once the in-flight
+          // create it is waiting on concludes.
+          SongSyncStatus.cancelling => false,
         },
       )
       .toList(growable: false);

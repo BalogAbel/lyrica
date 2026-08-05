@@ -515,8 +515,11 @@ class _GatedSongMutationStore implements SongMutationStore {
               switch (record.syncStatus) {
                 SongSyncStatus.pendingCreate ||
                 SongSyncStatus.pendingUpdate ||
-                SongSyncStatus.pendingDelete => true,
-                SongSyncStatus.conflict || SongSyncStatus.synced => false,
+                SongSyncStatus.pendingDelete ||
+                SongSyncStatus.sending => true,
+                SongSyncStatus.conflict ||
+                SongSyncStatus.synced ||
+                SongSyncStatus.cancelling => false,
               },
         )
         .toList(growable: false);
