@@ -17,6 +17,37 @@ enum PlanningMutationKind {
 enum PlanningMutationSyncStatus {
   pending,
   accepted,
+
+  /// D1 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): written
+  /// durably to the record immediately BEFORE the remote call, mirroring the
+  /// `accepted` marker ADR-019 already writes immediately after it. Between
+  /// those two writes the record is known to be in flight.
+  ///
+  /// Crash semantics, and why this does not weaken ADR-019: a record left
+  /// `sending` by a crash may or may not have reached the backend -- exactly
+  /// the uncertainty the `accepted` marker exists to bound. On restart a
+  /// `sending` record is treated as pending and resent (see the candidate
+  /// filter in `PlanningMutationSyncController._run`), which is the
+  /// direction ADR-019 already accepts for a crash before acceptance: the
+  /// marker narrows the in-flight window, it does not widen it.
+  sending,
+
+  /// D2 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): what a
+  /// `sessionCreate`/`sessionItemCreateSong` row becomes when it is deleted
+  /// while `sending` -- a cancellation tombstone, kept instead of physically
+  /// collapsed, because the create may already have reached the backend and
+  /// the delete intent would otherwise have no local trace once it does.
+  ///
+  /// The `kind` field is left untouched (still the *Create kind) so
+  /// `PlanningMutationSyncController._run` can recognise which delete-kind
+  /// to convert it to (D3) once the in-flight create's outcome is known --
+  /// see `DriftPlanningMutationStore.resolveCancelledCreate`. Deliberately
+  /// excluded from `_run`'s candidate filter (nothing to send until that
+  /// outcome resolves it) and from `readActionableMutations` (the user
+  /// deleted it; it must not render as an existing session/item while its
+  /// fate is undecided).
+  cancelling,
+
   failedAuthorization,
   failedDependency,
   failedRemoteDelete,
@@ -61,6 +92,8 @@ extension PlanningMutationSyncStatusX on PlanningMutationSyncStatus {
   String get value => switch (this) {
     PlanningMutationSyncStatus.pending => 'pending',
     PlanningMutationSyncStatus.accepted => 'accepted',
+    PlanningMutationSyncStatus.sending => 'sending',
+    PlanningMutationSyncStatus.cancelling => 'cancelling',
     PlanningMutationSyncStatus.failedAuthorization => 'failed_authorization',
     PlanningMutationSyncStatus.failedDependency => 'failed_dependency',
     PlanningMutationSyncStatus.failedRemoteDelete => 'failed_remote_delete',
@@ -91,6 +124,8 @@ PlanningMutationSyncStatus planningMutationSyncStatusFromValue(String value) {
   return switch (value) {
     'pending' => PlanningMutationSyncStatus.pending,
     'accepted' => PlanningMutationSyncStatus.accepted,
+    'sending' => PlanningMutationSyncStatus.sending,
+    'cancelling' => PlanningMutationSyncStatus.cancelling,
     'failed_authorization' => PlanningMutationSyncStatus.failedAuthorization,
     'failed_dependency' => PlanningMutationSyncStatus.failedDependency,
     'failed_remote_delete' => PlanningMutationSyncStatus.failedRemoteDelete,
