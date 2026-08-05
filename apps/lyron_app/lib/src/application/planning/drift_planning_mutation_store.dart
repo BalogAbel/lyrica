@@ -78,6 +78,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         // unchanged". Folding the edit into a still-pending create must
         // therefore pass the clear flags, or copyWith's `?? this.x` shape
         // would silently keep the pre-edit value.
+        //
+        // ADR-030 known follow-up: `existing` may be `accepted` but not yet
+        // cleared (the ADR-019 durable-marker window -- backend confirmed,
+        // local clear has not run, e.g. LF-1's crash-between-accept-and-
+        // clear). New local intent is unsent by definition, so folding it
+        // in must reset syncStatus to `pending` and drop any stale error
+        // left by a prior attempt -- otherwise a subsequent sync's
+        // accepted-durable-marker branch would skip the remote send and
+        // reconcile this newer, never-sent content as if the backend
+        // already had it.
         await _upsertRecord(
           context: context,
           aggregateType: 'plan',
@@ -88,6 +98,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             scheduledFor: draft.scheduledFor?.toUtc(),
             clearScheduledFor: draft.scheduledFor == null,
             updatedAt: DateTime.now().toUtc(),
+            syncStatus: PlanningMutationSyncStatus.pending,
+            clearErrorCode: true,
+            clearErrorMessage: true,
           ),
         );
         return;
@@ -179,12 +192,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
+        // ADR-030 known follow-up: same shape as the recordPlanEdit fold
+        // above -- `existing` may be `accepted` but not yet cleared, and
+        // this rename is new, unsent local intent, so the fold must reset
+        // syncStatus to `pending` and drop any stale error rather than
+        // carry the row's current status forward untouched.
         await _upsertRecord(
           context: context,
           aggregateType: 'session',
           record: existing!.copyWith(
             name: draft.name,
             updatedAt: DateTime.now().toUtc(),
+            syncStatus: PlanningMutationSyncStatus.pending,
+            clearErrorCode: true,
+            clearErrorMessage: true,
           ),
         );
         return;
@@ -1098,12 +1119,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           .go();
       return;
     }
+    // ADR-030 known follow-up: dropping the deleted session's id changes
+    // this row's content (it is no longer the sibling list the backend may
+    // have already accepted), so -- same as the direct edit folds above --
+    // it must reset syncStatus to `pending` and drop any stale error rather
+    // than carry the row's current status forward via a bare copyWith.
     await _upsertRecord(
       context: context,
       aggregateType: 'session_order',
       record: existing.copyWith(
         orderedSiblingIds: nextIds,
         updatedAt: DateTime.now().toUtc(),
+        syncStatus: PlanningMutationSyncStatus.pending,
+        clearErrorCode: true,
+        clearErrorMessage: true,
       ),
     );
   }
@@ -1140,12 +1169,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           .go();
       return;
     }
+    // ADR-030 known follow-up: same reasoning as
+    // _removeSessionFromPendingReorder above.
     await _upsertRecord(
       context: context,
       aggregateType: 'session_item_order',
       record: existing.copyWith(
         orderedSiblingIds: nextIds,
         updatedAt: DateTime.now().toUtc(),
+        syncStatus: PlanningMutationSyncStatus.pending,
+        clearErrorCode: true,
+        clearErrorMessage: true,
       ),
     );
   }
