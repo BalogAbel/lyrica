@@ -669,6 +669,75 @@ ADR-028 D3 (corrected), D8 and D9 (both extended), and
 `docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`'s
 "Second re-review round" section for the full account.
 
+**Status (2026-08-05, PR #64 sync-snapshot-identity remediation, planning
+half)**:
+
+The same second re-review round also found the most serious defect in this
+phase: `PlanningMutationSyncController._run` reads a snapshot of a pending
+mutation, sends it, and awaits the backend outside the per-context write
+queue (deliberately — holding a local write lock across a network call
+would block every local edit for the duration of a sync). On success it
+writes `saveSyncAttemptResult(..., accepted)` and later `clearMutation`,
+both keyed only by aggregate identity, never checking that the local row is
+still the one that was sent. Because `CachedPlanningMutations` folds
+repeated intent into one row per aggregate, a local edit landing on the
+same aggregate during that remote wait lands in the very row the sync is
+about to mark accepted and delete — the user's later edit is destroyed,
+never sent, with no error, no conflict, and no trace. Confirmed by a test
+against the pre-fix code: the mutation was read back as `null` (deleted
+outright by the unconditional `clearMutation`) after the race, not merely
+stale. `docs/specs/2026-08-05-sync-snapshot-identity.md`, ADR-030.
+
+Closed for the planning half (the song/catalog half of the same spec is a
+separate, not-yet-landed change):
+
+- **D1** — `CachedPlanningMutations` gains a `localRevision` integer column
+  (schemaVersion 5 → 6), incremented by the store on every local write to a
+  row (every `record*` write, `retryMutation`, `saveSyncAttemptResult`).
+  Local bookkeeping only — never sent to the backend, never part of OCC, and
+  unrelated to `baseVersion`/`version`, which track the server's view. Not
+  derived from `updatedAt`: LF-T6 already documents the device clock as
+  unanchored, and two writes in the same millisecond would collide anyway.
+- **D2** — `saveSyncAttemptResult` and `clearMutation` each gained an
+  optional `expectedRevision` parameter. The sync captures a mutation's
+  `localRevision` at snapshot time and passes it back in; both writes are
+  now targeted `UPDATE`/`DELETE` statements with `WHERE localRevision = ?`
+  in the statement itself, not a preceding `SELECT` compared in Dart, which
+  would reopen the same race. Only the accepted-status write and the clears
+  that follow it are gated — the failure-status writes in the same
+  controller never claim the backend accepted anything, so they are out of
+  this specific defect's scope.
+- **D3** — a stale outcome (the row's revision moved) is not an error:
+  `saveSyncAttemptResult` returns the new revision or `null`, `clearMutation`
+  returns `bool`; neither throws, marks a conflict, or retries. The
+  controller checks the return value and moves on — the row is already
+  exactly where it needs to be, since the local write that caused the
+  staleness already reset `syncStatus` to `pending`.
+
+A related but distinct gap surfaced during implementation and was
+deliberately left open, not fixed here: `recordPlanEdit` folding onto a
+`planCreate` row copies forward whatever `syncStatus` that row currently has
+rather than resetting it to `pending`, so an edit landing in the narrow
+window where a `planCreate` mutation is `accepted` but not yet cleared (the
+same window ADR-019's LF-1 already names) keeps the row `accepted` with
+unsent content — the `localRevision` gate still protects the row from
+deletion, but a later sync's durable-marker branch could still reconcile the
+unsent content as if it were server-confirmed. See ADR-030's "Known
+Follow-Up" section.
+
+Pinned by
+`test/offline/adversarial/planning_sync_snapshot_identity_test.dart`
+(the gated-remote-call race, watched failing before the fix, and a
+companion unchanged-case regression check), the
+`PlanningMutationStore.localRevision` group in
+`test/offline/planning/planning_mutation_store_test.dart` (monotonic
+increment across every local write path, including the fold and a status
+write, and the conditional-write contract itself), and an extended
+`planning_migration_test.dart` (a genuine pre-migration v5 database, built
+by hand against the schema Drift generated before this column existed,
+gains it on open with a sane starting value and keeps its pending row
+intact). See ADR-030 for the full account.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

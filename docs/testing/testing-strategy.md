@@ -93,7 +93,33 @@ specific finding:
   `ReconcileFieldError` for a null required-on-create field instead of silently coercing it to
   `''`/`0`, replacing the prior silent-corruption path with an explicit, testable failure.
 - `planning_migration_test.dart` — `LF-T7` (planning half): a pending planning mutation
-  survives a Drift database close/reopen. Validates existing behavior.
+  survives a Drift database close/reopen. Validates existing behavior. Also covers `D1`
+  (`docs/specs/2026-08-05-sync-snapshot-identity.md`, ADR-030): a genuine pre-migration
+  (schemaVersion 5) database, built by hand via raw sqlite3 against the exact `CREATE TABLE`
+  text Drift generated before `localRevision` existed (not through `PlanningLocalDatabase`,
+  which would build the current schema directly via `onCreate` and never exercise
+  `onUpgrade`), gains the column on open with a sane starting value (1) and keeps its
+  pending row intact; a further local write against the migrated row bumps it, proving the
+  column is usable, not just present.
+- `planning_sync_snapshot_identity_test.dart` — the PR #64 re-review finding this spec
+  closes (ADR-030, D1-D3): `PlanningMutationSyncController._run` sends a pending mutation's
+  snapshot and awaits the backend outside the per-context write queue; a local edit landing
+  on the same aggregate during that wait must survive. Drives the real
+  `DriftPlanningMutationStore` (not a hand-rolled fake, since the fix lives inside the
+  storage boundary a fake could too easily paper over) with the remote call gated on a
+  `Completer`: an edit applied while the gate is held is confirmed present, and the mutation
+  is confirmed still `pending` with the newer content after the gate releases and the sync
+  completes — watched failing before the fix, when `saveSyncAttemptResult`/`clearMutation`
+  wrote unconditionally, the mutation was found deleted outright, the edit destroyed with no
+  trace. A second sync is confirmed to send the newer content. A companion test pins that the
+  unchanged (no concurrent edit) case still accepts-then-clears exactly as before.
+  `planning_mutation_store_test.dart`'s `PlanningMutationStore.localRevision` group covers
+  the store contract directly: the revision advances by exactly one on every local write
+  path, including a fold (`planEdit` onto a still-pending `planCreate`, the exact fold the
+  spec's problem statement names) and a status write; a `saveSyncAttemptResult`/
+  `clearMutation` call whose `expectedRevision` still matches the row applies and reports the
+  new revision, while a stale one reports `null`/`false` and leaves the row untouched (D3: a
+  stale conclusion is not an error, so this is never a thrown exception).
 - `song_catalog_migration_test.dart` — `LF-T7` (catalog half): `SongCatalogDatabase` now
   declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
   pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
@@ -202,7 +228,13 @@ specific finding:
     droppable catalog sources, retries once, and surfaces a typed
     `LocalStorageWriteFailure` when the retry also fails; a transient
     failure on the same write recovers on the retry, with the record
-    carrying the new status afterwards.
+    carrying the new status afterwards. Since the sync-snapshot-identity
+    change (ADR-030) rewrote `saveSyncAttemptResult` as a targeted,
+    revision-guarded `UPDATE` rather than the `INSERT ... ON CONFLICT DO
+    UPDATE` upsert every other `record*` write uses, this executor's
+    `runUpdate` fails on the same shared, 0-indexed script as `runInsert`
+    now too — otherwise the injected failure would silently never trigger
+    for the statement kind the write under test actually issues.
   - "The collapse race" test: a fake delegate (Completer-gated, not real
     Drift, so the interleaving is deterministic) pauses `recordSessionDelete`
     between the decorator's own collapse decision and the delegate's
