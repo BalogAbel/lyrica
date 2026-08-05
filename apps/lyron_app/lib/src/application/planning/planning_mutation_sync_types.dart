@@ -608,6 +608,46 @@ abstract interface class PlanningMutationStore {
     required String aggregateId,
     int? expectedRevision,
   });
+
+  /// D3 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): resolves
+  /// the outcome of an in-flight `sessionCreate`/`sessionItemCreateSong`
+  /// whose row may have become a D2 cancellation tombstone
+  /// (`PlanningMutationSyncStatus.cancelling`) while its remote call was in
+  /// flight.
+  ///
+  /// Only acts if the row currently exists AND is a tombstone; any other
+  /// state (no row, or a row whose status is something other than
+  /// `cancelling`) means this call has nothing to do -- either the row was
+  /// never cancelled (an ordinary local edit landed instead, already
+  /// resolved by the caller's own D3 stale-revision handling) or a previous
+  /// call already resolved it -- and this is then a no-op that returns
+  /// `false`. The check and the write happen inside a single storage
+  /// transaction so a concurrent write cannot land in between.
+  ///
+  /// When [created] is `true` the create reached the backend, so the
+  /// tombstone becomes a real pending delete: `kind` flips to the matching
+  /// `*Delete` kind, `syncStatus` resets to `pending`, and `baseVersion` is
+  /// rebased on [acceptedBaseVersion] (the version the backend just
+  /// assigned the created row) so the delete RPC's OCC check targets the
+  /// content that actually exists remotely. The next sync sends it. The
+  /// already-accepted remote create is never undone -- the delete is a
+  /// subsequent operation, which is what the user asked for.
+  ///
+  /// When [created] is `false` the create never reached the backend, so the
+  /// object never existed remotely: the tombstone is discarded outright,
+  /// with no further backend call -- exactly the physical collapse a plain,
+  /// not-in-flight delete would have performed (ADR-028 D10).
+  ///
+  /// Returns `true` if a tombstone was found and resolved, `false`
+  /// otherwise.
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  });
 }
 
 typedef PlanningIdGenerator = String Function();

@@ -773,6 +773,20 @@ void main() {
 /// Only `recordPlanCreate` is hooked; every other member is unused by these
 /// tests and throws if called.
 class _HookedPlanningMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   final Map<String, Future<void> Function()> onRecordPlanCreate = {};
 
   @override
@@ -1108,6 +1122,20 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
 /// `DriftPlanningMutationStore.recordSessionDelete`'s own internal
 /// `existing?.kind == sessionCreate` re-check inside its transaction.
 class _CollapseRaceMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   _CollapseRaceMutationStore({
     required PlanningMutationKind? initialSessionKind,
   }) : _sessionKind = initialSessionKind;

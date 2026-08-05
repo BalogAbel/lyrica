@@ -24,401 +24,390 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 /// reasoning `planning_sync_snapshot_identity_test.dart` documents.
 void main() {
   group('In-flight create cancellation (D1/D2/D3, planning)', () {
-    test(
-      'session: deleting a session while its create is in flight survives '
-      'as a pending delete once the create succeeds',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('session: deleting a session while its create is in flight survives '
+        'as a pending delete once the create succeeds', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        const readContext = ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
 
-        final remote = _GatedPlanningRemote();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
+      final remote = _GatedPlanningRemote();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        final syncFuture = controller.syncPendingMutations(readContext);
+      final syncFuture = controller.syncPendingMutations(readContext);
 
-        // Wait until the remote call for the create has actually been
-        // reached -- the create's send is genuinely in flight.
-        await remote.entered.future;
+      // Wait until the remote call for the create has actually been
+      // reached -- the create's send is genuinely in flight.
+      await remote.entered.future;
 
-        // The user deletes the session while that create is still in
-        // flight.
-        await store.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      // The user deletes the session while that create is still in
+      // flight.
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        // Release the gate: the create succeeds on the backend.
-        remote.gate.complete();
-        await syncFuture;
+      // Release the gate: the create succeeds on the backend.
+      remote.gate.complete();
+      await syncFuture;
 
-        final afterSync = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
 
-        expect(
-          afterSync,
-          isNotNull,
-          reason:
-              'the delete intent must survive -- the session now exists on '
-              'the backend, and nothing will ever delete it if this row is '
-              'lost',
-        );
-        expect(afterSync!.kind, PlanningMutationKind.sessionDelete);
-        expect(afterSync.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(
+        afterSync,
+        isNotNull,
+        reason:
+            'the delete intent must survive -- the session now exists on '
+            'the backend, and nothing will ever delete it if this row is '
+            'lost',
+      );
+      expect(afterSync!.kind, PlanningMutationKind.sessionDelete);
+      expect(afterSync.syncStatus, PlanningMutationSyncStatus.pending);
 
-        // The next sync sends the delete.
-        await controller.syncPendingMutations(readContext);
-        final deleteCalls = remote.calls.where(
-          (record) => record.kind == PlanningMutationKind.sessionDelete,
-        );
-        expect(
-          deleteCalls,
-          hasLength(1),
-          reason: 'the survived delete intent must actually be sent',
-        );
-      },
-    );
+      // The next sync sends the delete.
+      await controller.syncPendingMutations(readContext);
+      final deleteCalls = remote.calls.where(
+        (record) => record.kind == PlanningMutationKind.sessionDelete,
+      );
+      expect(
+        deleteCalls,
+        hasLength(1),
+        reason: 'the survived delete intent must actually be sent',
+      );
+    });
 
-    test(
-      'session item: deleting a session item while its create is in flight '
-      'survives as a pending delete once the create succeeds',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('session item: deleting a session item while its create is in flight '
+        'survives as a pending delete once the create succeeds', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        const readContext = ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionItemCreateSong(
-          context: context,
-          draft: const PlanningSessionItemCreateSongMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            songId: 'song-1',
-            songTitle: 'Song One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song One',
+          position: 1,
+        ),
+      );
 
-        final remote = _GatedPlanningRemote();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
+      final remote = _GatedPlanningRemote();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        final syncFuture = controller.syncPendingMutations(readContext);
-        await remote.entered.future;
+      final syncFuture = controller.syncPendingMutations(readContext);
+      await remote.entered.future;
 
-        await store.recordSessionItemDelete(
-          context: context,
-          draft: const PlanningSessionItemDeleteMutationDraft(
-            sessionItemId: 'item-1',
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await store.recordSessionItemDelete(
+        context: context,
+        draft: const PlanningSessionItemDeleteMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        remote.gate.complete();
-        await syncFuture;
+      remote.gate.complete();
+      await syncFuture;
 
-        final afterSync = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session_item',
-          aggregateId: 'item-1',
-        );
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item',
+        aggregateId: 'item-1',
+      );
 
-        expect(
-          afterSync,
-          isNotNull,
-          reason: 'the delete intent must survive the in-flight create',
-        );
-        expect(afterSync!.kind, PlanningMutationKind.sessionItemDelete);
-        expect(afterSync.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(
+        afterSync,
+        isNotNull,
+        reason: 'the delete intent must survive the in-flight create',
+      );
+      expect(afterSync!.kind, PlanningMutationKind.sessionItemDelete);
+      expect(afterSync.syncStatus, PlanningMutationSyncStatus.pending);
 
-        await controller.syncPendingMutations(readContext);
-        final deleteCalls = remote.calls.where(
-          (record) => record.kind == PlanningMutationKind.sessionItemDelete,
-        );
-        expect(deleteCalls, hasLength(1));
-      },
-    );
+      await controller.syncPendingMutations(readContext);
+      final deleteCalls = remote.calls.where(
+        (record) => record.kind == PlanningMutationKind.sessionItemDelete,
+      );
+      expect(deleteCalls, hasLength(1));
+    });
 
-    test(
-      'session: when the in-flight create fails instead, the tombstone '
-      'resolves locally and no delete is ever sent',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('session: when the in-flight create fails instead, the tombstone '
+        'resolves locally and no delete is ever sent', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        const readContext = ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
 
-        final remote = _GatedPlanningRemote(
-          failFirstWith: const PlanningMutationSyncException(
-            PlanningMutationSyncErrorCode.authorizationDenied,
-          ),
-        );
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
+      final remote = _GatedPlanningRemote(
+        failFirstWith: const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.authorizationDenied,
+        ),
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        final syncFuture = controller.syncPendingMutations(readContext);
-        await remote.entered.future;
+      final syncFuture = controller.syncPendingMutations(readContext);
+      await remote.entered.future;
 
-        await store.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        remote.gate.complete();
-        await syncFuture;
+      remote.gate.complete();
+      await syncFuture;
 
-        final afterSync = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        expect(
-          afterSync,
-          isNull,
-          reason:
-              'the create never reached the backend, so the tombstone must '
-              'resolve locally with no trace left -- exactly like a plain '
-              'collapse',
-        );
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(
+        afterSync,
+        isNull,
+        reason:
+            'the create never reached the backend, so the tombstone must '
+            'resolve locally with no trace left -- exactly like a plain '
+            'collapse',
+      );
 
-        await controller.syncPendingMutations(readContext);
-        final deleteCalls = remote.calls.where(
-          (record) => record.kind == PlanningMutationKind.sessionDelete,
-        );
-        expect(
-          deleteCalls,
-          isEmpty,
-          reason: 'an object that never existed remotely must never be sent '
-              'a delete',
-        );
-      },
-    );
+      await controller.syncPendingMutations(readContext);
+      final deleteCalls = remote.calls.where(
+        (record) => record.kind == PlanningMutationKind.sessionDelete,
+      );
+      expect(
+        deleteCalls,
+        isEmpty,
+        reason:
+            'an object that never existed remotely must never be sent '
+            'a delete',
+      );
+    });
 
-    test(
-      'no regression: deleting a pending create with no sync in flight '
-      'still collapses physically (ADR-028 D10 unchanged)',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('no regression: deleting a pending create with no sync in flight '
+        'still collapses physically (ADR-028 D10 unchanged)', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
 
-        await store.recordSessionDelete(
-          context: context,
-          draft: const PlanningSessionDeleteMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-          ),
-        );
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
 
-        final afterDelete = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        expect(
-          afterDelete,
-          isNull,
-          reason: 'no sync was ever in flight, so this must still be a '
-              'plain physical collapse -- no tombstone',
-        );
-      },
-    );
+      final afterDelete = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(
+        afterDelete,
+        isNull,
+        reason:
+            'no sync was ever in flight, so this must still be a '
+            'plain physical collapse -- no tombstone',
+      );
+    });
 
-    test(
-      'crash recovery: a record left `sending` is treated as pending on a '
-      'fresh pass and resent',
-      () async {
-        final db = PlanningLocalDatabase.inMemory();
-        addTearDown(db.close);
-        final localStore = DriftPlanningLocalStore(db);
-        final store = DriftPlanningMutationStore(
-          database: db,
-          localStore: localStore,
-        );
+    test('crash recovery: a record left `sending` is treated as pending on a '
+        'fresh pass and resent', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
 
-        const context = PlanningMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        const readContext = ActivePlanningReadContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await store.recordSessionCreate(
-          context: context,
-          draft: const PlanningSessionCreateMutationDraft(
-            sessionId: 'session-1',
-            planId: 'plan-1',
-            slug: 'session-one',
-            name: 'Session One',
-            position: 1,
-          ),
-        );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 1,
+        ),
+      );
 
-        // Simulate a crash that happened after a prior run durably wrote
-        // the D1 `sending` marker but never got a response back: the
-        // record is left `sending` with no in-flight call actually alive
-        // anymore.
-        final beforeCrash = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        await store.saveSyncAttemptResult(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-          syncStatus: PlanningMutationSyncStatus.sending,
-          expectedRevision: beforeCrash!.localRevision,
-        );
+      // Simulate a crash that happened after a prior run durably wrote
+      // the D1 `sending` marker but never got a response back: the
+      // record is left `sending` with no in-flight call actually alive
+      // anymore.
+      final beforeCrash = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+        expectedRevision: beforeCrash!.localRevision,
+      );
 
-        final remote = _GatedPlanningRemote();
-        remote.gate.complete();
-        final controller = PlanningMutationSyncController(
-          mutationStore: () => store,
-          remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
-          reconcileAcceptedMutation: (_, _) async {},
-        );
+      final remote = _GatedPlanningRemote();
+      remote.gate.complete();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
 
-        await controller.syncPendingMutations(readContext);
+      await controller.syncPendingMutations(readContext);
 
-        expect(
-          remote.calls,
-          hasLength(1),
-          reason: 'a record left `sending` by a crash must be resent, not '
-              'stranded forever',
-        );
-        expect(remote.calls.single.kind, PlanningMutationKind.sessionCreate);
+      expect(
+        remote.calls,
+        hasLength(1),
+        reason:
+            'a record left `sending` by a crash must be resent, not '
+            'stranded forever',
+      );
+      expect(remote.calls.single.kind, PlanningMutationKind.sessionCreate);
 
-        final afterSync = await store.readMutation(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          aggregateType: 'session',
-          aggregateId: 'session-1',
-        );
-        expect(
-          afterSync,
-          isNull,
-          reason: 'once resent and accepted, it clears normally, exactly '
-              'like an ordinary pending record',
-        );
-      },
-    );
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(
+        afterSync,
+        isNull,
+        reason:
+            'once resent and accepted, it clears normally, exactly '
+            'like an ordinary pending record',
+      );
+    });
   });
 }
 

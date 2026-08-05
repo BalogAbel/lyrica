@@ -64,7 +64,16 @@ class PlanningMutationSyncController {
         .where(
           (m) =>
               m.syncStatus == PlanningMutationSyncStatus.pending ||
-              m.syncStatus == PlanningMutationSyncStatus.accepted,
+              m.syncStatus == PlanningMutationSyncStatus.accepted ||
+              // D1 (docs/specs/2026-08-06-in-flight-create-cancellation.md):
+              // a `sending` row is a record a PRIOR run durably marked as
+              // in flight and then crashed before hearing back. That crash
+              // means the same uncertainty the `accepted` marker exists to
+              // bound -- it may or may not have reached the backend -- so it
+              // is treated as pending and resent here, not skipped the way
+              // `accepted` is. Leaving `sending` out of this filter would
+              // strand such a record forever: nothing else ever revisits it.
+              m.syncStatus == PlanningMutationSyncStatus.sending,
         )
         .toList(growable: false);
 
@@ -93,6 +102,32 @@ class PlanningMutationSyncController {
         continue;
       }
 
+      // D1: durably mark this row `sending` BEFORE the remote call --
+      // mirroring the `accepted` marker ADR-019 already writes immediately
+      // AFTER it. Between this write and the accept/failure write below,
+      // the record is known to be in flight: recordSessionDelete /
+      // recordSessionItemDelete read this status to decide whether a
+      // concurrent delete must keep a cancellation tombstone (D2) instead
+      // of physically collapsing the row. Gated on the snapshot revision
+      // the same way the accept-write always has been (D2/D3 of ADR-030):
+      // a `null` result means a local edit landed (or the row vanished,
+      // D4) before this send even started, so there is nothing to send.
+      final sendingRevision = await _mutationStore().saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: mutation.kind.aggregateType,
+        aggregateId: mutation.aggregateId,
+        syncStatus: PlanningMutationSyncStatus.sending,
+        expectedRevision: mutation.localRevision,
+      );
+      if (sendingRevision == null) {
+        continue;
+      }
+
+      final isCancellableCreate =
+          mutation.kind == PlanningMutationKind.sessionCreate ||
+          mutation.kind == PlanningMutationKind.sessionItemCreateSong;
+
       try {
         final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
@@ -100,36 +135,57 @@ class PlanningMutationSyncController {
         );
         // Durable marker: save accepted status immediately (survives
         // crash) -- but only if this row is still the exact content that
-        // was just sent (D2). `expectedRevision` is the revision captured
-        // BEFORE the remote round trip; the store compares it against the
-        // row's CURRENT revision atomically, inside the write itself.
+        // was just sent (D2). `expectedRevision` is the `sending` write's
+        // OWN reported revision, not the pre-send snapshot: that write is
+        // itself a local write and so also advances localRevision (same
+        // reasoning ADR-030 D2 already applies to `clearRevision` below).
         final newRevision = await _mutationStore().saveSyncAttemptResult(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: mutation.kind.aggregateType,
           aggregateId: mutation.aggregateId,
           syncStatus: PlanningMutationSyncStatus.accepted,
-          expectedRevision: mutation.localRevision,
+          expectedRevision: sendingRevision,
         );
         if (newRevision == null) {
-          // D3: a local edit landed on this aggregate during the remote
-          // round trip. Not an error -- the accepted remote write is not
-          // undone (it happened), but this row is no longer that content:
-          // the edit that moved the revision already reset it to `pending`
-          // (every local write does), so it is already exactly where it
-          // needs to be for the next sync to pick it up. Nothing further
-          // to do: don't mark accepted, don't reconcile, don't clear.
+          // D3: the row is no longer the exact content that was just sent.
+          // Two distinct causes land here, and this write is safely gated
+          // against both because it never applies unless the revision still
+          // matches:
           //
-          // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md):
-          // the same `null` also covers the row having vanished entirely
-          // -- the user deleted a still-pending create while this exact
-          // remote call was in flight, and the collapse path physically
-          // removed it. Also not an error, and handled identically: skip
-          // this record and continue the loop with whatever is queued
-          // behind it. No user-facing signal is raised for either cause --
-          // the row is already gone from every list the sync overview
-          // reads (readActionableMutations/readAllMutations), which is
-          // exactly the state a user-initiated delete asked for.
+          // - An ordinary local edit/fold landed on this aggregate during
+          //   the remote round trip (e.g. a rename folded onto the create).
+          //   Not an error -- the edit already reset the row to `pending`
+          //   with the newer content, so it is already exactly where it
+          //   needs to be for the next sync to pick it up. Nothing further
+          //   to do here.
+          // - D2: the row is now a cancellation tombstone -- the user
+          //   deleted this still-`sending` create while this exact remote
+          //   call was in flight. The create that WAS the row just
+          //   succeeded, so the tombstone must become a real pending
+          //   delete (D3) rather than being silently left as-is (a stale
+          //   tombstone would otherwise stay invisible forever --
+          //   `cancelling` is excluded from readActionableMutations -- and
+          //   the object it names would never be deleted). Resolved only
+          //   for the two kinds that can produce a tombstone (D2 is scoped
+          //   to recordSessionDelete/recordSessionItemDelete); a no-op for
+          //   every other kind, and a no-op even for these two when the row
+          //   was not actually a tombstone (the ordinary-edit case above).
+          //
+          // D4: `newRevision == null` also covers the row having vanished
+          // entirely (a delete of a NON-in-flight create racing something
+          // else) -- also not an error, and resolveCancelledCreate no-ops
+          // on a missing row exactly like the ordinary-edit case.
+          if (isCancellableCreate) {
+            await _mutationStore().resolveCancelledCreate(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              aggregateType: mutation.kind.aggregateType,
+              aggregateId: mutation.aggregateId,
+              created: true,
+              acceptedBaseVersion: syncedMutation.baseVersion,
+            );
+          }
           continue;
         }
         acceptedRecords.add((mutation, syncedMutation, newRevision));
@@ -147,27 +203,44 @@ class PlanningMutationSyncController {
           PlanningMutationSyncErrorCode.unknown =>
             PlanningMutationSyncStatus.pending,
         };
-        // Not gated by revision: D2 scopes the snapshot-identity contract
-        // to the ACCEPTED outcome and the clears that follow it, because
-        // only that path can destroy unsynced intent by claiming the
-        // backend accepted something it never received a later edit for.
-        // A failure outcome never claims that, so it is out of scope here.
-        //
-        // D4: if the row has vanished (collapsed by a concurrent delete of
-        // this still-pending create while the failed call above was in
-        // flight), this write simply does not apply -- the return value is
-        // deliberately unchecked, same as always: there is no accepted
-        // outcome or clear to skip for a failure branch either way, and the
-        // loop continues to the next candidate regardless.
-        await _mutationStore().saveSyncAttemptResult(
-          userId: context.userId,
-          organizationId: context.organizationId,
-          aggregateType: mutation.kind.aggregateType,
-          aggregateId: mutation.aggregateId,
-          syncStatus: syncStatus,
-          errorCode: error.code,
-          errorMessage: error.message,
-        );
+        // D2/D3: check for a cancellation tombstone FIRST, before the
+        // unconditional failure-status write below. That write is (and
+        // must stay) ungated by revision -- D2 scopes the snapshot-identity
+        // contract to the ACCEPTED outcome only -- but an ungated write
+        // would otherwise clobber a `cancelling` tombstone's status with a
+        // failure status, stranding it (resolveCancelledCreate only acts on
+        // a row still marked `cancelling`). Resolving first avoids that:
+        // if this WAS a tombstone, the create failed remotely, so the
+        // object never existed on the backend and the tombstone is
+        // discarded outright here -- no failure status is written because
+        // there is no row left to write it onto.
+        var resolvedTombstone = false;
+        if (isCancellableCreate) {
+          resolvedTombstone = await _mutationStore().resolveCancelledCreate(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: mutation.kind.aggregateType,
+            aggregateId: mutation.aggregateId,
+            created: false,
+          );
+        }
+        if (!resolvedTombstone) {
+          // D4: if the row has vanished (collapsed by a concurrent delete
+          // of this still-pending, NOT-in-flight create racing something
+          // else), this write simply does not apply -- the return value is
+          // deliberately unchecked, same as always: there is no accepted
+          // outcome or clear to skip for a failure branch either way, and
+          // the loop continues to the next candidate regardless.
+          await _mutationStore().saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: mutation.kind.aggregateType,
+            aggregateId: mutation.aggregateId,
+            syncStatus: syncStatus,
+            errorCode: error.code,
+            errorMessage: error.message,
+          );
+        }
         if (error.code == PlanningMutationSyncErrorCode.connectivityFailure) {
           break;
         }

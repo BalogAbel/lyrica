@@ -38,10 +38,12 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// straight through, entirely outside the write queue: nothing about them
 /// can race a write in a way that matters here.
 ///
-/// `saveSyncAttemptResult`, `retryMutation` and `clearMutation` are never
+/// `saveSyncAttemptResult`, `retryMutation`, `clearMutation` and
+/// `resolveCancelledCreate` (D3,
+/// docs/specs/2026-08-06-in-flight-create-cancellation.md) are never
 /// budget-guarded -- guarding any of them would turn the budget into a trap
 /// with no recovery path, and `clearMutation` in particular is the only way
-/// out once the store is full. But all three DO go through the same
+/// out once the store is full. But all four DO go through the same
 /// per-context write queue as the `record*` admissions (see `_writeQueue`
 /// below), because a `record*` call's collapse decision
 /// (`_collapsesPendingCreate`) and the delegate's own re-check inside its
@@ -49,13 +51,15 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// shared queue ordering, a `clearMutation` for that aggregate could land in
 /// between them (exactly what sync does immediately after a mutation is
 /// accepted), so the delegate's re-check would find nothing to collapse and
-/// write a brand-new row that never passed a budget check. Only
-/// `saveSyncAttemptResult` additionally goes through the storage-recovery
-/// boundary (see below): it is the one of the three that can grow the
-/// stored record (it adds `errorCode`/`errorMessage`), and it is also the
-/// durable marker `PlanningMutationSyncController._run` writes immediately
-/// after a successful remote send, so a swallowed or unrecovered failure on
-/// it would leave the record `pending` and cause the next sync to resend a
+/// write a brand-new row that never passed a budget check. `saveSyncAttemptResult`
+/// and `resolveCancelledCreate` additionally go through the storage-recovery
+/// boundary (see below): both can grow the stored record (the former adds
+/// `errorCode`/`errorMessage`; the latter rewrites `kind`/`syncStatus`/
+/// `baseVersion` when it turns a tombstone into a real pending delete), and
+/// `saveSyncAttemptResult` is also the durable marker
+/// `PlanningMutationSyncController._run` writes immediately after a
+/// successful remote send, so a swallowed or unrecovered failure on it
+/// would leave the record `pending` and cause the next sync to resend a
 /// mutation the backend already accepted (ADR-019 exactly-once). Neither
 /// `retryMutation` (it clears `errorCode`/`errorMessage` and rebases the
 /// base version -- it does not meaningfully grow the row) nor
@@ -485,6 +489,35 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       aggregateType: aggregateType,
       aggregateId: aggregateId,
       expectedRevision: expectedRevision,
+    ),
+  );
+
+  // Queued through the same storage-recovery boundary as
+  // saveSyncAttemptResult, for the same reason: this can rewrite the row's
+  // content (kind, syncStatus, baseVersion) when it resolves a cancellation
+  // tombstone into a real pending delete (D3,
+  // docs/specs/2026-08-06-in-flight-create-cancellation.md), so a storage
+  // failure on it needs the same evict-and-retry-once treatment. Never
+  // budget-admitted, for the same reason as saveSyncAttemptResult: refusing
+  // it for budget reasons would strand the user's delete intent on the one
+  // write that resolves it.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) => _recoveredWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.resolveCancelledCreate(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+      created: created,
+      acceptedBaseVersion: acceptedBaseVersion,
     ),
   );
 }

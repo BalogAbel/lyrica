@@ -249,18 +249,49 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
-        await (_database.delete(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(context.userId) &
-                  table.organizationId.equals(context.organizationId) &
-                  table.aggregateType.equals('session') &
-                  table.aggregateId.equals(draft.sessionId),
-            ))
-            .go();
-        // The session never reached the backend, so its pending item
-        // mutations can never sync: they would fail dependencyBlocked
-        // forever while consuming the mutation budget. Drop them with the
-        // session, inside the same transaction.
+        // D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+        // `sending` row's create is genuinely in flight to the backend right
+        // now (D1's durable marker, written by
+        // PlanningMutationSyncController._run just before the remote call).
+        // Physically collapsing it here would destroy the only local trace
+        // of this delete before the create's outcome is known -- if it then
+        // succeeds, the object exists on the server and nothing would ever
+        // delete it. Keep the row as a cancellation tombstone instead, at a
+        // bumped revision; resolveCancelledCreate below turns it into a real
+        // pending delete or discards it once the create's remote call
+        // returns.
+        if (existing!.syncStatus == PlanningMutationSyncStatus.sending) {
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session',
+            record: existing.copyWith(
+              syncStatus: PlanningMutationSyncStatus.cancelling,
+              updatedAt: DateTime.now().toUtc(),
+              clearErrorCode: true,
+              clearErrorMessage: true,
+            ),
+          );
+        } else {
+          // Not in flight: physically collapse, exactly as before (ADR-028
+          // D10) -- the create never left the device (or already concluded
+          // with an error), so there is nothing on the backend a delete
+          // would need to reach.
+          await (_database.delete(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(context.userId) &
+                    table.organizationId.equals(context.organizationId) &
+                    table.aggregateType.equals('session') &
+                    table.aggregateId.equals(draft.sessionId),
+              ))
+              .go();
+        }
+        // Either way the session is being cancelled: whether the tombstone
+        // above eventually converts to a real delete or is discarded, a
+        // pending item mutation under it has no reachable destination --
+        // sent to a session that doesn't exist yet (create still pending),
+        // or sent to one about to be deleted (create succeeds and the
+        // tombstone converts). Drop them with the session, inside the same
+        // transaction, same as the pre-existing collapse behaviour.
         await _deletePendingMutationsForSession(
           context: context,
           sessionId: draft.sessionId,
@@ -384,14 +415,31 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionItemId,
       );
       if (existing?.kind == PlanningMutationKind.sessionItemCreateSong) {
-        await (_database.delete(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(context.userId) &
-                  table.organizationId.equals(context.organizationId) &
-                  table.aggregateType.equals('session_item') &
-                  table.aggregateId.equals(draft.sessionItemId),
-            ))
-            .go();
+        // D2: same reasoning as the sessionCreate branch of
+        // recordSessionDelete above -- a `sending` row's create is
+        // genuinely in flight, so keep it as a cancellation tombstone
+        // instead of physically collapsing it.
+        if (existing!.syncStatus == PlanningMutationSyncStatus.sending) {
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session_item',
+            record: existing.copyWith(
+              syncStatus: PlanningMutationSyncStatus.cancelling,
+              updatedAt: DateTime.now().toUtc(),
+              clearErrorCode: true,
+              clearErrorMessage: true,
+            ),
+          );
+        } else {
+          await (_database.delete(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(context.userId) &
+                    table.organizationId.equals(context.organizationId) &
+                    table.aggregateType.equals('session_item') &
+                    table.aggregateId.equals(draft.sessionItemId),
+              ))
+              .go();
+        }
         await _removeSessionItemFromPendingReorder(
           context: context,
           sessionId: draft.sessionId,
@@ -505,6 +553,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                     table.syncStatus.isIn([
                       PlanningMutationSyncStatus.pending.value,
                       PlanningMutationSyncStatus.accepted.value,
+                      // D1: a `sending` row is functionally still pending
+                      // from a reader's point of view -- its content is
+                      // unchanged, only its in-flight bookkeeping differs --
+                      // so it must keep rendering as the pending
+                      // session/item it is. `cancelling` is deliberately
+                      // NOT included: that tombstone represents a session/
+                      // item the user just deleted, and must disappear from
+                      // every merged read immediately, before its eventual
+                      // create outcome is even known (D2/D3).
+                      PlanningMutationSyncStatus.sending.value,
                       PlanningMutationSyncStatus.failedAuthorization.value,
                       PlanningMutationSyncStatus.failedDependency.value,
                       PlanningMutationSyncStatus.failedRemoteDelete.value,
@@ -794,6 +852,91 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     // D3: either nothing was there, or (when expectedRevision was supplied)
     // a local edit landed after the snapshot that was sent -- not an error.
     return false;
+  }
+
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async {
+    return _database.transaction(() async {
+      final row =
+          await (_database.select(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.aggregateType.equals(aggregateType) &
+                    table.aggregateId.equals(aggregateId),
+              ))
+              .getSingleOrNull();
+      if (row == null) {
+        return false;
+      }
+      final existing = _toRecord(row);
+      if (existing.syncStatus != PlanningMutationSyncStatus.cancelling) {
+        // Not a tombstone -- either an ordinary local edit landed on this
+        // aggregate instead (already handled by the caller's D3
+        // stale-revision skip) or a previous call already resolved it.
+        // Nothing to do.
+        return false;
+      }
+
+      if (!created) {
+        // D3: the create never reached the backend, so the object never
+        // existed remotely -- discard the tombstone outright, with no
+        // further backend call. Exactly the physical collapse a plain,
+        // not-in-flight delete would have performed (ADR-028 D10).
+        await (_database.delete(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(aggregateId),
+            ))
+            .go();
+        _onStorageFootprintChanged?.call();
+        return true;
+      }
+
+      // D3: the create succeeded, so the object exists on the server -- the
+      // tombstone becomes a real pending delete and the next sync sends it.
+      // The already-accepted remote create is never undone; this is a
+      // subsequent operation. baseVersion is rebased on the version the
+      // backend just assigned the created row, so the delete RPC's OCC
+      // check targets content that actually exists.
+      final deleteKind = switch (existing.kind) {
+        PlanningMutationKind.sessionCreate =>
+          PlanningMutationKind.sessionDelete,
+        PlanningMutationKind.sessionItemCreateSong =>
+          PlanningMutationKind.sessionItemDelete,
+        _ => throw StateError(
+          'resolveCancelledCreate: unexpected tombstone kind '
+          '${existing.kind} for $aggregateType/$aggregateId -- only '
+          'sessionCreate/sessionItemCreateSong rows can become cancellation '
+          'tombstones (D2).',
+        ),
+      };
+      await _upsertRecord(
+        context: PlanningMutationContext(
+          userId: userId,
+          organizationId: organizationId,
+        ),
+        aggregateType: aggregateType,
+        record: existing.copyWith(
+          kind: deleteKind,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          baseVersion: acceptedBaseVersion ?? existing.baseVersion,
+          updatedAt: DateTime.now().toUtc(),
+          clearErrorCode: true,
+          clearErrorMessage: true,
+        ),
+      );
+      return true;
+    });
   }
 
   Future<bool> _upsertRecord({
