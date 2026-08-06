@@ -103,21 +103,26 @@ Future<ReauthOutcome> resolveReauth({
     pendingCount: count,
   );
 
-  if (promptResult == ReauthPromptResult.superseded || !current()) {
+  if (!current()) {
     return const ReauthSuperseded();
   }
 
-  if (promptResult == ReauthPromptResult.confirmed) {
-    if (!await wipePriorAndProceed()) {
-      return const ReauthSuperseded();
-    }
-    return const ReauthWipedPriorAndProceeded();
-  } else if (promptResult == ReauthPromptResult.cancelled) {
-    if (!await cancelToPriorUser()) {
-      return const ReauthSuperseded();
-    }
-    return const ReauthCancelledKeptPriorUser();
-  }
-
-  return const ReauthSuperseded();
+  // M5 (PR #64 review): exhaustive over the *sealed* ReauthPromptResult
+  // enum, not an if/else-if chain with a trailing catch-all -- the same
+  // argument this file's own doc already makes for the concrete callback
+  // types (top of file) and for switching on the outcome at the call site
+  // (auth_providers.dart, Finding 3). A `ReauthPromptResult` value added
+  // later fails this switch to compile instead of silently falling through
+  // to a return that used to be reachable only by construction.
+  return switch (promptResult) {
+    ReauthPromptResult.superseded => const ReauthSuperseded(),
+    ReauthPromptResult.confirmed =>
+      await wipePriorAndProceed()
+          ? const ReauthWipedPriorAndProceeded()
+          : const ReauthSuperseded(),
+    ReauthPromptResult.cancelled =>
+      await cancelToPriorUser()
+          ? const ReauthCancelledKeptPriorUser()
+          : const ReauthSuperseded(),
+  };
 }
