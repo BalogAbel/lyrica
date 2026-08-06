@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -293,6 +294,82 @@ void main() {
       },
     );
   });
+
+  group('BudgetedPlanningMutationStore shared write-recovery boundary '
+      '(M1, PR #64 review)', () {
+    // ADR-028 and the PR body both claim ONE shared LocalStorageWriteRecovery
+    // boundary across every guarded local write. BudgetedPlanningMutationStore
+    // used to build its own instance internally instead of taking the
+    // provider-supplied one, which made that claim false for the planning
+    // mutation path (and left localStorageWriteRecoveryProvider partly dead
+    // code for it). This is a structural pin, not a behavioural one: it
+    // asserts the decorator calls through the EXACT recovery instance the
+    // provider graph supplies, not one it constructs for itself.
+    test('planningMutationStoreProvider routes a guarded write through the '
+        'localStorageWriteRecoveryProvider instance', () async {
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      addTearDown(songDatabase.close);
+      addTearDown(planningDatabase.close);
+
+      var guardCalls = 0;
+      final container = ProviderContainer(
+        overrides: [
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          localStorageWriteRecoveryProvider.overrideWith((ref) {
+            return _CountingLocalStorageWriteRecovery(
+              evictor: ref.watch(songCatalogEvictorProvider),
+              onGuard: () => guardCalls += 1,
+            );
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(planningMutationStoreProvider)
+          .recordPlanCreate(
+            context: const PlanningMutationContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            draft: const PlanningPlanCreateMutationDraft(
+              planId: 'plan-1',
+              slug: 'weekend-service',
+              name: 'Weekend Service',
+            ),
+          );
+
+      expect(
+        guardCalls,
+        1,
+        reason:
+            'the write must have gone through the recovery instance the '
+            'provider graph supplies -- a store that built its own '
+            'internally would leave this at 0',
+      );
+    });
+  });
+}
+
+/// Subclasses the real [LocalStorageWriteRecovery] (rather than reimplementing
+/// its policy) purely to count [guard] invocations, so the test above can
+/// tell whether `planningMutationStoreProvider`'s store actually called
+/// through THIS instance.
+class _CountingLocalStorageWriteRecovery extends LocalStorageWriteRecovery {
+  _CountingLocalStorageWriteRecovery({
+    required super.evictor,
+    required void Function() onGuard,
+  }) : _onGuard = onGuard;
+
+  final void Function() _onGuard;
+
+  @override
+  Future<T> guard<T>(Future<T> Function() write) {
+    _onGuard();
+    return super.guard(write);
+  }
 }
 
 class _CountingLocalStorageMonitor implements LocalStorageMonitor {

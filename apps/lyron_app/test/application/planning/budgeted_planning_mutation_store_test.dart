@@ -9,6 +9,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -59,7 +60,7 @@ void main() {
       return BudgetedPlanningMutationStore(
         delegate: delegate,
         accountant: accountant,
-        evictor: evictor,
+        recovery: LocalStorageWriteRecovery(evictor: evictor),
         budget: budget,
       );
     }
@@ -333,7 +334,7 @@ void main() {
       final store = BudgetedPlanningMutationStore(
         delegate: delegateFake,
         accountant: accountant,
-        evictor: evictor,
+        recovery: LocalStorageWriteRecovery(evictor: evictor),
         budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
       );
 
@@ -725,7 +726,7 @@ void main() {
       final store = BudgetedPlanningMutationStore(
         delegate: fakeDelegate,
         accountant: accountant,
-        evictor: evictor,
+        recovery: LocalStorageWriteRecovery(evictor: evictor),
         budget: const LocalStorageBudget(mutationRefuseBytes: 1),
       );
 
@@ -819,7 +820,7 @@ void main() {
       final store = BudgetedPlanningMutationStore(
         delegate: delegate,
         accountant: PlanningStorageAccountant(failingDatabase),
-        evictor: recordingEvictor,
+        recovery: LocalStorageWriteRecovery(evictor: recordingEvictor),
         budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
       );
 

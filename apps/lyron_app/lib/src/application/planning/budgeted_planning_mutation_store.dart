@@ -5,7 +5,6 @@ import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
-import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 
 /// Enforces the two storage ladders (LF-T3, LF-T4) around a
 /// [PlanningMutationStore] delegate.
@@ -120,11 +119,11 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   BudgetedPlanningMutationStore({
     required PlanningMutationStore delegate,
     required PlanningStorageAccountant accountant,
-    required SongCatalogEvictor evictor,
+    required LocalStorageWriteRecovery recovery,
     required LocalStorageBudget budget,
   }) : _delegate = delegate,
        _accountant = accountant,
-       _recovery = LocalStorageWriteRecovery(evictor: evictor),
+       _recovery = recovery,
        _budget = budget;
 
   final PlanningMutationStore _delegate;

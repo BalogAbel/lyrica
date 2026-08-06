@@ -122,7 +122,12 @@ final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
       ),
     ),
     accountant: ref.watch(planningStorageAccountantProvider),
-    evictor: ref.watch(songCatalogEvictorProvider),
+    // Shared storage-recovery boundary (D1, ADR-028): the same instance the
+    // song catalog and planning local stores use, so eviction-and-retry
+    // behaves identically regardless of which write triggered it (PR #64
+    // review, M1) -- this class used to build its own, which made ADR-028's
+    // "one shared boundary" claim false for this path.
+    recovery: ref.watch(localStorageWriteRecoveryProvider),
     budget: ref.watch(localStorageBudgetProvider),
   );
 });

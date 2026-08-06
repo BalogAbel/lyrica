@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -57,10 +58,12 @@ void main() {
           localStore: localStore,
         ),
         accountant: PlanningStorageAccountant(database),
-        evictor: SongCatalogEvictor(
-          database: catalogDatabase,
-          accountant: CatalogStorageAccountant(catalogDatabase),
-          onStorageFootprintChanged: () => storageRevisionCount += 1,
+        recovery: LocalStorageWriteRecovery(
+          evictor: SongCatalogEvictor(
+            database: catalogDatabase,
+            accountant: CatalogStorageAccountant(catalogDatabase),
+            onStorageFootprintChanged: () => storageRevisionCount += 1,
+          ),
         ),
         budget: const LocalStorageBudget(),
       );
@@ -139,9 +142,11 @@ void main() {
           localStore: localStore,
         ),
         accountant: PlanningStorageAccountant(database),
-        evictor: SongCatalogEvictor(
-          database: catalogDatabase,
-          accountant: CatalogStorageAccountant(catalogDatabase),
+        recovery: LocalStorageWriteRecovery(
+          evictor: SongCatalogEvictor(
+            database: catalogDatabase,
+            accountant: CatalogStorageAccountant(catalogDatabase),
+          ),
         ),
         budget: const LocalStorageBudget(),
       );
