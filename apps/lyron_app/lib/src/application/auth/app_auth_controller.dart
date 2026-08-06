@@ -112,7 +112,36 @@ class AppAuthController extends ChangeNotifier {
     _pendingReauthCancelSession = priorSession;
     _pendingReauthCancelGeneration = cancelGeneration;
     try {
-      await _repository.signOut();
+      try {
+        await _repository.signOut();
+      } catch (error, stackTrace) {
+        // Finding 2 (PR #64 review): the backend signOut() call failing
+        // (offline, timeout, revoked token, ...) must not leave this cancel
+        // stuck. The convergence below still has to run unconditionally --
+        // both so the state does not silently stay put (still `signedIn` as
+        // the would-be new user) and so the pending record above is not
+        // left "live" for a later, UNRELATED null session event to
+        // misapply (see the class doc): once this method itself converges
+        // to sessionExpired here, a stale pending record consumed by a
+        // later event lands on the exact same state and is a harmless
+        // no-op via _setState's equality check, not a wrong one. Whether
+        // the remote signOut() itself actually completed is a lesser
+        // concern than that local convergence -- ADR-020 never requires
+        // backend confirmation to stay non-destructive -- but it must not
+        // vanish silently just because this is a fire-and-forget auth
+        // listener; report it.
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'AppAuthController',
+            context: ErrorDescription(
+              'cancelReauthToPriorSession: backend signOut() failed; still '
+              'converging local state to sessionExpired as the prior user',
+            ),
+          ),
+        );
+      }
       // If the stream's own null event already arrived and converged on
       // this same target state while we were awaiting (see
       // _handleSessionUpdate), _authGeneration has moved past
