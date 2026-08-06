@@ -167,6 +167,20 @@ void main() {
     },
   );
 
+  test('dispose completes a pending request as superseded instead of leaving '
+      'it hanging forever (N5, PR #64 review)', () async {
+    final controller = ReauthPromptController();
+    final future = controller.requestConfirmation(
+      email: 'prior@example.com',
+      pendingCount: 2,
+    );
+
+    controller.dispose();
+
+    await expectLater(future, completion(ReauthPromptResult.superseded));
+    expect(controller.pending, isNull);
+  });
+
   test('notifies listeners on request and on answer', () {
     final controller = ReauthPromptController();
     var notifications = 0;

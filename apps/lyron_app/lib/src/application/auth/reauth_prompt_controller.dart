@@ -97,4 +97,18 @@ class ReauthPromptController extends ChangeNotifier {
     notifyListeners();
     completer.complete(ReauthPromptResult.superseded);
   }
+
+  /// N5 (PR #64 review): completes a pending completer as superseded before
+  /// disposing, the same outcome [supersedePending] already reports for
+  /// every other kind of obsolescence. This controller is app-scoped (see
+  /// the class doc) and effectively never disposed in production, so the
+  /// hazard this closes -- an awaiting `requestConfirmation` caller hanging
+  /// forever if dispose ran with a request still pending -- is not reachable
+  /// there; fixed anyway because reusing `supersedePending` costs nothing and
+  /// removes the hazard for tests or any future non-app-scoped use.
+  @override
+  void dispose() {
+    supersedePending();
+    super.dispose();
+  }
 }

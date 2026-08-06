@@ -377,6 +377,34 @@ void main() {
       await aFuture.timeout(const Duration(seconds: 2));
     });
 
+    test(
+      'asserts instead of silently deadlocking when a delegate call reenters '
+      'the queue for the SAME context (N4, PR #64 review) -- pins the '
+      "invariant _enqueue's own doc already states in prose",
+      () async {
+        final reentrant = _ReentrantPlanningMutationStore();
+        final store = BudgetedPlanningMutationStore(
+          delegate: reentrant,
+          accountant: accountant,
+          recovery: LocalStorageWriteRecovery(evictor: evictor),
+          budget: const LocalStorageBudget(mutationRefuseBytes: 1000000),
+        );
+        const reentrantDraft = PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        );
+        reentrant.reentrantTarget = store;
+        reentrant.reentrantContext = context;
+        reentrant.reentrantDraft = reentrantDraft;
+
+        await expectLater(
+          () => store.recordPlanCreate(context: context, draft: reentrantDraft),
+          throwsA(isA<AssertionError>()),
+        );
+      },
+    );
+
     test('admits a session delete that collapses a still-pending session '
         'create even at an exhausted budget, and removes the session plus '
         'its pending item and item-order rows', () async {
@@ -887,6 +915,160 @@ void main() {
       expect(record?.syncStatus, PlanningMutationSyncStatus.accepted);
     });
   });
+}
+
+/// A delegate that (incorrectly) calls back into its own owning
+/// [BudgetedPlanningMutationStore] for the SAME context from inside
+/// `recordPlanCreate` -- exactly the self-deadlock `_enqueue`'s class doc
+/// prohibits in prose. Used only to pin the N4 reentrancy assert; every
+/// other member is unused and throws if called.
+class _ReentrantPlanningMutationStore implements PlanningMutationStore {
+  late BudgetedPlanningMutationStore reentrantTarget;
+  late PlanningMutationContext reentrantContext;
+  late PlanningPlanCreateMutationDraft reentrantDraft;
+
+  @override
+  Future<void> recordPlanCreate({
+    required PlanningMutationContext context,
+    required PlanningPlanCreateMutationDraft draft,
+  }) {
+    return reentrantTarget.recordPlanCreate(
+      context: reentrantContext,
+      draft: reentrantDraft,
+    );
+  }
+
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordPlanEdit({
+    required PlanningMutationContext context,
+    required PlanningPlanEditMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionCreate({
+    required PlanningMutationContext context,
+    required PlanningSessionCreateMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionRename({
+    required PlanningMutationContext context,
+    required PlanningSessionRenameMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemCreateSong({
+    required PlanningMutationContext context,
+    required PlanningSessionItemCreateSongMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemDelete({
+    required PlanningMutationContext context,
+    required PlanningSessionItemDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemReorder({
+    required PlanningMutationContext context,
+    required PlanningSessionItemReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readPendingMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readActionableMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<PlanningMutationRecord>> readAllMutations({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<PlanningMutationRecord?> readMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocatePlanSlug({
+    required String userId,
+    required String organizationId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<String> allocateSessionSlug({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required String name,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> hasUnsyncedMutations({required String userId}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int?> saveSyncAttemptResult({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required PlanningMutationSyncStatus syncStatus,
+    PlanningMutationSyncErrorCode? errorCode,
+    String? errorMessage,
+    int? expectedRevision,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> retryMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> clearMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    int? expectedRevision,
+  }) => throw UnimplementedError();
 }
 
 /// Minimal fake delegate for concurrency tests that need direct control over

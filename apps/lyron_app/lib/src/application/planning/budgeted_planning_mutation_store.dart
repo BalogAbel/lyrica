@@ -140,10 +140,11 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   //    call for the same context from measuring the same pre-write
   //    footprint and also passing the check -- overshooting the "at most
   //    one mutation past the threshold" guarantee.
-  // 2. A `record*` collapse decision (`_collapsesPendingCreate`, read
-  //    early, before the queued turn even starts) and the delegate's own
-  //    re-check of the same aggregate (read late, inside its own
-  //    transaction, once the queued turn runs) are two separate reads.
+  // 2. A `record*` collapse decision (`_collapsesPendingCreate`, read via
+  //    the lazy `isCollapse` closure inside `_admitAndWrite`, i.e. already
+  //    inside this call's queued turn, not before it starts) and the
+  //    delegate's own re-check of the same aggregate (read later in that
+  //    same turn, inside its own transaction) are two separate reads.
   //    `clearMutation` is exactly what sync calls, for that same aggregate,
   //    immediately after a mutation is accepted -- if it could run in
   //    between those two reads, the delegate would find nothing left to
@@ -158,8 +159,10 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   // unlike that single-flight map (which coalesces concurrent callers onto
   // ONE shared future), every call here must run its own write and report
   // its own outcome, so callers are chained onto the queue instead of being
-  // handed someone else's future.
-  final Map<String, Future<void>> _writeQueue = {};
+  // handed someone else's future. Keyed by a `(userId, organizationId)`
+  // record rather than a string interpolation: an id containing the
+  // separator can never collide with a different context that way.
+  final Map<(String, String), Future<void>> _writeQueue = {};
 
   /// Chains [task] onto the per-`(userId, organizationId)` write queue and
   /// returns a future for its own outcome. No re-entrancy: [task] (and
@@ -172,16 +175,35 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   /// holds here because `_delegate` is a plain `PlanningMutationStore`
   /// (`DriftPlanningMutationStore` in production) with no reference back to
   /// this decorator, so nothing it does can re-enter the queue.
+  ///
+  /// The assert below turns a violation of that invariant into an immediate
+  /// failure instead of a silent hang: [task] runs inside a zone tagged
+  /// with this instance's own currently-active queue key, and that tag
+  /// survives every `await` inside [task] (zones, unlike a plain flag,
+  /// propagate across async gaps) -- so a reentrant call for the SAME
+  /// context is caught however deep inside [task] it happens, while a call
+  /// for a DIFFERENT context (which cannot deadlock -- different keys never
+  /// share a queue slot) is left alone.
   Future<T> _enqueue<T>(
     PlanningMutationContext context,
     Future<T> Function() task,
   ) {
-    final key = '${context.userId}_${context.organizationId}';
+    final key = (context.userId, context.organizationId);
+    assert(
+      Zone.current[this] != key,
+      'BudgetedPlanningMutationStore._enqueue called reentrantly for '
+      '$key from within its own queued turn -- see the class doc on '
+      '_enqueue for why this deadlocks.',
+    );
+
     final previous = _writeQueue[key] ?? Future<void>.value();
 
     // `previous` is always already-settled-safe (see `tail` below), so
     // chaining onto it just waits for our turn -- it never itself throws.
-    final result = previous.then((_) => task());
+    final result = runZoned(
+      () => previous.then((_) => task()),
+      zoneValues: {this: key},
+    );
 
     // Publish our own completion, success or failure, as the new queue tail
     // so the next call for this context waits for us. Neutralise the error
