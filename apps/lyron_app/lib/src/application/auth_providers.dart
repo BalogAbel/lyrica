@@ -210,8 +210,19 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // count (D4), this is not a guess dressed up as a number -- "unknown"
         // stays representable all the way to the dialog instead of being
         // encoded as a fabricated count.
-        Future<int?> countPriorPendingWork() async {
-          final identity = priorIdentity!;
+        // M4 (PR #64 review): each of these three takes `identity` as a
+        // parameter rather than unwrapping `priorIdentity!` itself. The call
+        // site below only ever builds a closure that calls one of these
+        // (via `() => countPriorPendingWorkFor(identity)` etc.) on the
+        // branch where `priorIdentity` has already been null-checked once,
+        // so the compiler -- not `resolveReauth`'s current branching --
+        // enforces that `identity` is never null here. A future contract
+        // change in `resolveReauth` that called one of these on the
+        // same-user path would now fail to compile instead of crashing on
+        // the destructive wipe path.
+        Future<int?> countPriorPendingWorkFor(
+          LastKnownIdentity identity,
+        ) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             return null;
           }
@@ -228,11 +239,10 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           }
         }
 
-        Future<bool> cancelToPriorUser() async {
+        Future<bool> cancelToPriorUserFor(LastKnownIdentity identity) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             return false;
           }
-          final identity = priorIdentity!;
           final cancellation = authController.cancelReauthToPriorSession(
             AppAuthSession(userId: identity.userId, email: identity.email),
           );
@@ -240,11 +250,11 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           return true;
         }
 
-        Future<bool> wipePriorAndProceed() async {
+        Future<bool> wipePriorAndProceedFor(LastKnownIdentity identity) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             return false;
           }
-          final priorUserId = priorIdentity!.userId;
+          final priorUserId = identity.userId;
           try {
             final songDeletion = ref
                 .read(songCatalogStoreProvider)
@@ -286,7 +296,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             //
             // Chosen recovery: fall back to exactly the state an explicit
             // cancel produces (sessionExpired carrying the PRIOR user's
-            // session), by calling the same cancelToPriorUser used for a
+            // session), by calling the same cancelToPriorUserFor used for a
             // real user cancel. Two other options were weighed and
             // rejected:
             //  - "proceed anyway" (persist the new identity as if the wipe
@@ -307,7 +317,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             //    write to it inside this function is the clear+persist
             //    pair immediately before a successful return), so the
             //    next signedIn edge for this prior user re-attempts the
-            //    wipe cleanly. If cancelToPriorUser's own backend signOut
+            //    wipe cleanly. If cancelToPriorUserFor's own backend signOut
             //    fails too, Finding 2's fix still converges local state
             //    deterministically rather than throwing, so this call is
             //    always safe to await here without a nested try.
@@ -335,25 +345,55 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 ),
               ),
             );
-            await cancelToPriorUser();
+            await cancelToPriorUserFor(identity);
             return false;
           }
         }
 
-        final outcome = await resolveReauth(
-          newUserId: session.userId,
-          priorUserId: priorIdentity?.userId,
-          priorEmail: priorIdentity?.email,
-          priorPendingCount: countPriorPendingWork,
-          flushSameUser: persistNewIdentity,
-          wipePriorAndProceed: wipePriorAndProceed,
-          confirmDifferentUser: ref
-              .read(reauthPromptControllerProvider)
-              .requestConfirmation,
-          cancelToPriorUser: cancelToPriorUser,
-          isCurrent: () =>
-              isCurrent(generation, AppAuthStatus.signedIn, session),
-        );
+        // M4 (PR #64 review): `priorIdentity` is null-checked exactly once,
+        // here, and only the non-null branch builds closures that read it
+        // (via the promoted `identity` local) -- `countPriorPendingWorkFor`,
+        // `wipePriorAndProceedFor`, and `cancelToPriorUserFor` above no
+        // longer unwrap `priorIdentity!` themselves. The null branch's
+        // stand-ins are never actually invoked: resolveReauth only calls
+        // `priorPendingCount`/`wipePriorAndProceed`/`cancelToPriorUser` on
+        // the different-user path, which requires a non-null `priorUserId`
+        // -- but that safety used to depend on resolveReauth's own
+        // branching; a contract change there would now fail to compile
+        // instead of crashing `priorIdentity!` on the destructive wipe path.
+        final ReauthOutcome outcome;
+        final identity = priorIdentity;
+        if (identity == null) {
+          outcome = await resolveReauth(
+            newUserId: session.userId,
+            priorUserId: null,
+            priorEmail: null,
+            priorPendingCount: () async => null,
+            flushSameUser: persistNewIdentity,
+            wipePriorAndProceed: () async => false,
+            confirmDifferentUser: ref
+                .read(reauthPromptControllerProvider)
+                .requestConfirmation,
+            cancelToPriorUser: () async => false,
+            isCurrent: () =>
+                isCurrent(generation, AppAuthStatus.signedIn, session),
+          );
+        } else {
+          outcome = await resolveReauth(
+            newUserId: session.userId,
+            priorUserId: identity.userId,
+            priorEmail: identity.email,
+            priorPendingCount: () => countPriorPendingWorkFor(identity),
+            flushSameUser: persistNewIdentity,
+            wipePriorAndProceed: () => wipePriorAndProceedFor(identity),
+            confirmDifferentUser: ref
+                .read(reauthPromptControllerProvider)
+                .requestConfirmation,
+            cancelToPriorUser: () => cancelToPriorUserFor(identity),
+            isCurrent: () =>
+                isCurrent(generation, AppAuthStatus.signedIn, session),
+          );
+        }
         // Finding 3 (PR #64 review): this used to be a bare `await
         // resolveReauth(...)` with the returned Future<ReauthOutcome>
         // discarded -- the typed-result machinery reauth_resolution.dart's
