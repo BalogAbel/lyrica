@@ -12,6 +12,10 @@
   already landed. See "PR #64 Review Remediation (2026-08-06)" below; closed
   by commits `92692de`/`c2b2835` (Finding 2), `93bbb04`/`0323e57` (Findings 1
   and 3), `2bd1a8c` (M4), `d1d6d5c` (M5).
+- Amended: 2026-08-06 — a second human review found that Round 1's own
+  Finding 1 fix had scoped its `try` too widely and mis-described one of its
+  own failure branches. See "PR #64 Review Remediation, Round 2 (2026-08-06)"
+  below; closed by commits `RED_SHA_A`/`GREEN_SHA_A` (Finding A).
 
 ## Context
 
@@ -278,23 +282,17 @@ unconditionally via `FlutterError.reportError`, not gated on `kDebugMode`
 the way the generic backstop it used to fall through to was, since nothing
 else is queued to retry it automatically.
 
-**Residual window, out of scope.** The fallback converges
-`AppAuthController`'s in-memory state correctly in every case reached by the
-`catch`, but it does not repair `LastKnownIdentityStore` in the one
-sub-case where `identityStore.clear()` itself succeeds and the very next
-step — `persistNewIdentity()`'s write of the new identity — is what throws.
-The `catch` still runs and still calls `cancelToPriorUserFor`, which
-converges `AppAuthController`'s in-memory state to `sessionExpired`/prior
-session, but that call never re-writes `LastKnownIdentityStore` with the
-prior identity — the store is left cleared. A cold restart landing in that
-exact window (after the clear, before or during the following write) resumes
-with no persisted identity at all, neither the prior user's nor the new
-user's. This is inherent to the two-phase clear-then-write shape of
-`persistNewIdentity` — not something this round introduced or was asked to
-close. The live in-memory state is correct for as long as the process stays
-up; the gap is a cold-restart edge case inside an already-narrow failure
-window (a storage write failing immediately after a preceding storage write
-on the same store just succeeded). Recorded here rather than left implicit.
+**Residual window, closed by Finding A below.** The paragraph that originally
+stood here described a sub-case where `identityStore.clear()` succeeds and
+the very next step — `persistNewIdentity()`'s write of the new identity — is
+what throws: the `catch` still ran and still called `cancelToPriorUserFor`,
+converging `AppAuthController`'s in-memory state to `sessionExpired`/prior
+session, without repairing `LastKnownIdentityStore` (left cleared). That
+combination is exactly the misleading state a second human review round
+flagged directly — asserting "offline-authenticated as the prior user" while
+that user's local data had just been confirmed wiped is a false claim, not
+merely an incomplete repair — and is now a compile-and-test-pinned separate
+branch. See "PR #64 Review Remediation, Round 2 (2026-08-06)" below.
 
 ### Finding 2 — `cancelReauthToPriorSession` got stuck on a `signOut()` failure
 
@@ -390,6 +388,103 @@ Behaviorally identical for the three existing values; the guarantee gained
 is compile-time exhaustiveness, which cannot be red/green tested without
 adding a new enum value (out of scope here). Already fully pinned by the
 existing `reauth_resolution_test.dart` suite, unmodified.
+
+## PR #64 Review Remediation, Round 2 (2026-08-06)
+
+A second human review, after the round above had already landed, found that
+one of that round's own fixes carried a defect: `wipePriorAndProceedFor`'s
+`try` was scoped too widely, and the comment describing its failure paths
+was factually wrong on one branch.
+
+### Finding A — the wipe's `try` was scoped too widely, and its comment
+described a branch that could not happen the way it claimed
+
+`wipePriorAndProceedFor`'s `try` used to wrap the destructive part (the song
+and planning deletions, `identityStore.clear()`) **and** the terminal
+`persistNewIdentity()` call in the same block. The comment justified this by
+claiming "the only write to [the prior identity row] inside this function is
+the clear+persist pair immediately before a successful return", so a `catch`
+reached from anywhere in the `try` left the row "exactly as
+wipePriorAndProceed found it". That is false on exactly the branch the
+Round 1 "Residual window" note above already flagged as a gap: if the clear
+succeeds and `persistNewIdentity()` then throws, the identity store is
+**empty**, not as it was found. The consequences the old comment drew from
+its own premise compounded the error: routing that branch through
+`cancelToPriorUserFor` set `sessionExpired` carrying the **prior** user, but
+by that point the prior user's local data had already been wiped — a cold
+restart in that state reads a null identity and yields `signedOut`, never
+the prior user, so the comment's claimed "next signedIn edge re-attempts the
+wipe cleanly" had nothing left to detect. No data was lost on this branch
+(the deletion had genuinely succeeded), but a load-bearing comment asserting
+a false invariant is worse than no comment, and the state it produced
+actively misrepresented what was on disk.
+
+**Fix.** The `try` is now scoped to exactly the destructive part — the two
+deletions and `identityStore.clear()` — matching what the comment always
+claimed it covered. `persistNewIdentity()` runs after the `try`, in its own
+`try`/`catch`, on the reasoning that a failure at that point is
+categorically different from a failure inside the destructive part:
+
+- **Destructive-part failure** (a deletion throws, or `identityStore.clear()`
+  itself throws): the prior identity row is untouched (the only write this
+  narrower `try` makes to the store is the `clear()` itself, so a `catch`
+  reached before it completes leaves the row exactly as found). Falling back
+  to `cancelToPriorUserFor` — `sessionExpired` carrying the prior user — is
+  still truthful here: the prior user's data has not been confirmed wiped,
+  so presenting the app as offline-authenticated as that user while
+  reporting the failure is accurate, and the next real `signedIn` edge for
+  that user retries the wipe cleanly. Unchanged from Round 1's Finding 1.
+- **`persistNewIdentity()`-only failure** (deletions and clear all
+  succeeded; only the new identity's write failed): the prior user's local
+  data and identity row are genuinely gone. Falling back to
+  `cancelToPriorUserFor` here would now be the misleading claim itself —
+  there is no local data left to truthfully return to. Instead: report the
+  failure unconditionally (same reasoning as Finding 1 — nothing else is
+  queued to retry this automatically) and leave `AppAuthController`'s live
+  state untouched. That state was already `signedIn` as the new user, set by
+  the auth stream before this listener ever ran, and stays exactly that —
+  the truthful state, since the new user genuinely is signed in.
+  `LastKnownIdentityStore` is left empty: honest about there being no
+  currently-persisted identity, rather than resurrecting a prior-user row
+  with nothing behind it. This self-heals the same way the rest of this
+  listener does: any later `signedIn` edge for the same new user (a token
+  refresh, a foreground resume, a manual re-sign-in after a cold restart's
+  forced `signedOut`) re-reads a null prior identity and retries
+  `persistNewIdentity()` on its own same-user path.
+
+Both branches were previously indistinguishable from inside the single wide
+`try`; splitting the `try` is what makes the distinction possible at all, not
+merely a refactor for clarity. `resolveReauth`'s `wipePriorAndProceed`
+contract (`Future<bool> Function()`, `false` → `ReauthSuperseded`) already
+had room for this: the persist-only failure returns `false` the same way the
+destructive-part failure's `catch` always has, so the call site's exhaustive
+switch (Finding 3, Round 1) needed no new case — only its `ReauthSuperseded`
+comment updated to name two paths reaching it instead of one.
+
+**Also fixed: the "always safe to await" claim.** The same catch's comment
+justified awaiting `cancelToPriorUserFor` without a nested `try` solely by
+`cancelReauthToPriorSession`'s own `signOut()` failure being handled (Round
+1's Finding 2). That justification was incomplete: `_setState` inside
+`cancelReauthToPriorSession` calls `notifyListeners()`, and a synchronous
+listener exception there is a second, independent way the same await could
+in principle fail. Verified against the vendored Flutter SDK
+(`packages/flutter/lib/src/foundation/change_notifier.dart`,
+`ChangeNotifier.notifyListeners`): each listener is already called inside
+its own `try`/`catch`, with a caught exception reported via
+`FlutterError.reportError` and iteration continuing to the remaining
+listeners — the exception cannot propagate past `notifyListeners()` itself.
+The comment now states both reasons the await is safe (the handled
+`signOut()` failure, and Flutter's own per-listener exception handling)
+instead of citing only the first and being silent about the second.
+
+**Tests.** `identity_persistence_wiring_test.dart` gained "a wipe whose
+deletions and clear succeed but the new-identity write throws leaves the
+store empty and does NOT misrepresent the app as the prior user": watched
+failing against the pre-fix code (`AppAuthStatus.sessionExpired` carrying
+`user-1`, the misleading outcome this finding removes), passing after the
+fix (`AppAuthStatus.signedIn` as `user-2`, the identity store left empty,
+the failure still reported unconditionally). The existing 23-test suite
+(22 plus this one) stayed green.
 
 ## Testing
 

@@ -255,6 +255,23 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             return false;
           }
           final priorUserId = identity.userId;
+          // Finding A (PR #64 review, 2026-08-06 remediation round): this
+          // try USED to also wrap persistNewIdentity() below, on the
+          // reasoning that any failure in this function should fall back to
+          // cancelToPriorUserFor. That reasoning was wrong for exactly this
+          // step: cancelToPriorUserFor converges to sessionExpired carrying
+          // the PRIOR user's session, which is only a truthful fallback
+          // while the prior user's local data (and identity row) might
+          // still be intact -- i.e. while the destructive part below has
+          // not yet fully committed. Once the deletions and the clear have
+          // committed, the prior user's data is genuinely gone, so
+          // "sessionExpired as the prior user" would assert an offline-
+          // authenticated identity for a user this function just erased
+          // every local trace of. The try is scoped to exactly that
+          // destructive part -- the two deletions and the clear -- so only
+          // a failure that can still be truthfully undone by "fall back to
+          // the prior user" takes that path. persistNewIdentity() runs
+          // after the try and is handled on its own terms below.
           try {
             final songDeletion = ref
                 .read(songCatalogStoreProvider)
@@ -278,60 +295,48 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               return false;
             }
             await identityStore.clear();
-            if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
-              return false;
-            }
-            return await persistNewIdentity();
           } catch (error, stackTrace) {
-            // Finding 1 (PR #64 review): none of the above was wrapped, so
-            // any throw -- a song or planning deletion failing, or the
-            // identity-store clear/write failing -- used to rise straight
-            // through resolveReauth to the outer fire-and-forget
-            // catchError, which only prints in kDebugMode. In release that
-            // left a PARTIAL wipe: the identity store still named the
-            // prior user (never cleared), nothing shown to the user, and
-            // the app signed in as the new user with the prior user's
-            // leftover local data still on the device -- precisely the
-            // outcome this slice exists to prevent.
+            // A song/planning deletion failed, or identityStore.clear()
+            // itself failed. Either way the destructive part did not fully
+            // commit: at worst the deletions ran partially, but the clear
+            // never landed, so the identity store still names the prior
+            // user exactly as this function found it (the only write this
+            // try makes to the store is the clear itself -- there is no
+            // earlier write in this try to have landed instead). Falling
+            // back to cancelToPriorUserFor is therefore still truthful
+            // here: the prior user's identity row genuinely still describes
+            // an account whose local data has not been confirmed wiped, so
+            // presenting the app as offline-authenticated as that user
+            // while flagging the failure is accurate, and the next real
+            // signedIn edge for this user retries the wipe cleanly.
             //
-            // Chosen recovery: fall back to exactly the state an explicit
-            // cancel produces (sessionExpired carrying the PRIOR user's
-            // session), by calling the same cancelToPriorUserFor used for a
-            // real user cancel. Two other options were weighed and
-            // rejected:
-            //  - "proceed anyway" (persist the new identity as if the wipe
-            //    had succeeded) is the exact stranding this exists to
-            //    prevent -- rejected outright.
-            //  - "leave the resolution incomplete and retryable" without
-            //    also converging state was rejected as the PRIMARY
-            //    response: the live Supabase session is owned outside
-            //    this listener and keeps presenting the device as the new
-            //    user regardless of what this function does, so doing
-            //    nothing here does not stop that presentation. Falling
-            //    back to cancel does. Retryability is still preserved as
-            //    a property of this choice, not abandoned: the identity
-            //    store has not been cleared (the clear/write above never
-            //    ran, or ran and this catch was reached from a later
-            //    step -- either way the prior identity row is left
-            //    exactly as wipePriorAndProceed found it, since the only
-            //    write to it inside this function is the clear+persist
-            //    pair immediately before a successful return), so the
-            //    next signedIn edge for this prior user re-attempts the
-            //    wipe cleanly. If cancelToPriorUserFor's own backend signOut
-            //    fails too, Finding 2's fix still converges local state
-            //    deterministically rather than throwing, so this call is
-            //    always safe to await here without a nested try.
+            // "Proceed anyway" (persist the new identity as if the wipe had
+            // succeeded) is the exact stranding this exists to prevent --
+            // rejected outright, same as before. "Leave the resolution
+            // incomplete and retryable" without also converging state is
+            // rejected as the PRIMARY response for the same reason as
+            // before: the live Supabase session is owned outside this
+            // listener and keeps presenting the device as the new user
+            // regardless of what this function does, so doing nothing here
+            // does not stop that presentation -- falling back to cancel
+            // does.
             //
-            // A genuine deletion failure is reported the same way as a
-            // reused `false`/[ReauthSuperseded] outcome from
-            // resolveReauth's perspective (nothing claims a wipe that did
-            // not fully happen), but the caller must not mistake this for
-            // benign supersession-by-a-newer-edge: unlike that case,
-            // nothing else is queued to retry automatically here except
-            // the next real signedIn edge, so the failure is reported
-            // unconditionally (not gated on kDebugMode) via
-            // FlutterError.reportError instead of relying on that
-            // generic backstop.
+            // cancelToPriorUserFor's own backend signOut() failing does not
+            // make this await unsafe: Finding 2's fix in
+            // cancelReauthToPriorSession still converges local state to
+            // sessionExpired/prior-session deterministically on that path
+            // rather than throwing. A second, independent way this await
+            // could still fail is _setState's call to notifyListeners() --
+            // but that cannot escape here either: Flutter's own
+            // ChangeNotifier.notifyListeners() (foundation/change_notifier
+            // .dart) already wraps EACH listener call in its own try/catch
+            // and reports a synchronous listener exception via
+            // FlutterError.reportError itself, continuing to notify the
+            // remaining listeners rather than rethrowing past its own call.
+            // Both of this await's failure modes are therefore already
+            // handled before they would reach here, which is what actually
+            // makes it safe to await without a nested try -- not merely
+            // signOut() succeeding.
             FlutterError.reportError(
               FlutterErrorDetails(
                 exception: error,
@@ -346,6 +351,55 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               ),
             );
             await cancelToPriorUserFor(identity);
+            return false;
+          }
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          try {
+            return await persistNewIdentity();
+          } catch (error, stackTrace) {
+            // The destructive part above already committed: the prior
+            // user's local data and identity row are genuinely gone. Only
+            // the terminal write of the NEW identity failed here, so
+            // falling back to cancelToPriorUserFor -- which asserts
+            // sessionExpired as the PRIOR user -- would now be the
+            // misleading claim this finding exists to remove: there is no
+            // local data left to truthfully return to, and a cold restart
+            // in this window reads a null identity and yields signedOut,
+            // never the prior user, so that fallback's implied "next
+            // signedIn edge retries the wipe" has nothing to detect.
+            //
+            // Instead: report the failure unconditionally (the same
+            // reasoning as the destructive-part catch above -- nothing else
+            // is queued to retry this automatically) and leave the live
+            // AppAuthController state untouched. That state was already
+            // set to signedIn as the new user by the auth stream before
+            // this listener ran and stays exactly that -- which is the
+            // truthful state, since the new user genuinely is signed in.
+            // LastKnownIdentityStore is left empty (cleared, never
+            // rewritten): honest about there being no currently-persisted
+            // identity, rather than resurrecting a prior-user row with
+            // nothing behind it. This self-heals the same way the rest of
+            // this listener does -- any later signedIn edge for the same
+            // new user (a token refresh, a foreground resume, a manual
+            // re-sign-in after a cold restart's forced signedOut) re-reads
+            // a null prior identity and retries persistNewIdentity() on its
+            // own same-user path.
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stackTrace,
+                library: 'lastKnownIdentityPersistenceProvider',
+                context: ErrorDescription(
+                  'wipePriorAndProceed: the prior user\'s data was wiped '
+                  'and the identity store cleared, but persisting the new '
+                  'identity failed; leaving the store empty rather than '
+                  'falsely restoring the prior user\'s offline-'
+                  'authenticated state',
+                ),
+              ),
+            );
             return false;
           }
         }
@@ -430,23 +484,26 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             // current, correct prior identity is already queued directly
             // behind this one: nothing here needs to retry it.
             //
-            // The one path that reaches ReauthSuperseded WITHOUT a newer
-            // edge queued behind it is Finding 1's wipe-failure fallback
-            // (wipePriorAndProceed's catch, above): that call site already
-            // both recovered (via cancelToPriorUser) and reported the
-            // failure unconditionally via FlutterError.reportError,
-            // specifically because THIS branch cannot distinguish "benign,
-            // self-healing supersession" (the normal case) from "a genuine
-            // failure that already recovered and already reported itself"
-            // -- reporting again here would either double-report the real
-            // failure or false-alarm on every ordinary overlapping-auth-
-            // edge race, which this architecture treats as a normal,
-            // expected occurrence (ADR-029 D3). A low-severity trace is
-            // still useful for local debugging, so it is logged here
-            // rather than silently dropped -- kDebugMode-gated is
-            // appropriate for this branch specifically (unlike Finding 1's
-            // unconditional report) because every path reaching here is
-            // either already reported for real or genuinely benign.
+            // Two paths reach ReauthSuperseded WITHOUT a newer edge queued
+            // behind it, both inside wipePriorAndProceedFor's two catches
+            // above: Finding 1's destructive-part failure (recovers via
+            // cancelToPriorUser) and Finding A's persistNewIdentity-only
+            // failure (recovers by leaving the live state untouched and the
+            // identity store empty, 2026-08-06 remediation round). Both
+            // call sites already reported their failure unconditionally via
+            // FlutterError.reportError before returning false, specifically
+            // because THIS branch cannot distinguish "benign, self-healing
+            // supersession" (the normal case) from "a genuine failure that
+            // already recovered and already reported itself" -- reporting
+            // again here would either double-report a real failure or
+            // false-alarm on every ordinary overlapping-auth-edge race,
+            // which this architecture treats as a normal, expected
+            // occurrence (ADR-029 D3). A low-severity trace is still useful
+            // for local debugging, so it is logged here rather than
+            // silently dropped -- kDebugMode-gated is appropriate for this
+            // branch specifically (unlike either catch's unconditional
+            // report) because every path reaching here is either already
+            // reported for real or genuinely benign.
             if (kDebugMode) {
               debugPrint(
                 'lastKnownIdentityPersistenceProvider: reauth resolution '
