@@ -810,6 +810,106 @@ actually sent on the next sync rather than skipped by the durable-marker
 shortcut. See ADR-030 (now covering both domains and this follow-up) for the
 full account.
 
+**Status (2026-08-05/06, PR #64 in-flight create cancellation remediation,
+both domains)**:
+
+A follow-up finding on the same PR #64 diff: the `localRevision` gate above
+(sync-snapshot-identity) assumes newer local intent arriving during a remote
+round trip leaves the pending row at a *higher* revision, which holds for an
+edit but not for a delete of a still-pending create, since ADR-028 D10's
+collapse admission physically removes the row instead of bumping it. If the
+create's own send was in flight at the exact moment of that delete, the
+collapse destroyed the only local record of the delete before the create's
+outcome was known — if the create then succeeded, the object existed on the
+server with nothing left locally that would ever delete it. A distinct second
+harm rode along on the planning side: `saveSyncAttemptResult`/`retryMutation`
+threw `StateError` for a row that had vanished this way, and because `Error`
+is rethrown untouched by the storage-recovery boundary (by design), that
+escaped the sync controller's loop uncaught and killed the entire sync pass,
+discarding every unrelated mutation or song queued behind it.
+`docs/specs/2026-08-06-in-flight-create-cancellation.md`.
+
+Closed, across both domains:
+
+- **D1** — the sync now writes a durable `sending` marker to a candidate's
+  row immediately before its remote call, the mirror of the `accepted`
+  marker ADR-030/ADR-019 already write immediately after. Reuses the
+  existing free-text `syncStatus` column, no migration. A record left
+  `sending` by a crash carries the same reach-or-didn't-reach-the-backend
+  uncertainty the `accepted` marker exists to bound, so it is treated as
+  pending and resent on the next pass rather than skipped or stranded.
+- **D2** — deleting a `sending` create (planning: `sessionCreate`/
+  `sessionItemCreateSong`; song: `pendingCreate`) keeps the row as a
+  `cancelling` tombstone at a bumped revision instead of physically
+  collapsing it. Every other state still collapses exactly as before
+  (ADR-028 D10 unchanged). `cancelling` is excluded from every
+  actionable/merged read and from the sync candidate filter, so the
+  tombstone disappears from the UI immediately, before its create's outcome
+  is even known.
+- **D3** — once the in-flight create's remote call concludes, the tombstone
+  resolves in one atomic read-check-write
+  (`DriftPlanningMutationStore.resolveCancelledCreate` /
+  `DriftSongCatalogStore.resolveCancelledSongCreate`): a succeeded create
+  converts it to a real pending delete (rebased on the backend-assigned
+  version) that the next sync sends; a failed create discards it outright
+  with no backend call, exactly as a plain collapse would have. Both
+  controllers resolve the tombstone *before* the unconditional
+  failure-status write that follows a failed call — an ordering trap found
+  while wiring this: that status write is deliberately ungated by revision,
+  so writing it first would clobber `cancelling` and strand the tombstone
+  permanently, since the resolver only acts on a row still marked
+  `cancelling`.
+- **D4** — the vanished-record `StateError`s above are now a non-throwing
+  "did not apply" result, in the vocabulary D3 of ADR-030 already
+  established for a stale revision: `saveSyncAttemptResult` returns
+  `null`/`false`, `retryMutation` returns `Future<bool>` instead of
+  `Future<void>`. The sync loop's existing stale-revision skip now covers a
+  vanished row for free, so the rest of the pass is no longer at risk.
+  `SongLibraryService.deleteSong`/`updateSong` and
+  `SongMutationSyncController._requireSong` deliberately keep throwing for a
+  target absent from local storage — single-record, user-initiated calls
+  with no batch behind them to protect, pinned by regression tests so this
+  scope does not silently widen later.
+
+Two gaps surfaced during implementation, beyond what the spec's Decisions
+section named:
+
+- **The accepted-but-uncleared window (planning only)** — the identical
+  defect one state over: a create already `accepted` (ADR-019's own
+  durable-marker window) but not yet locally cleared has no live remote call
+  to race, so `recordSessionDelete`/`recordSessionItemDelete` convert it
+  straight to a real pending delete with no tombstone needed.
+  `baseVersion` uses the existing `existing.baseVersion ?? draft.baseVersion`
+  fallback every other delete path already uses, deliberately, not as a
+  placeholder: the accept write never persists the backend-assigned version
+  onto the row, so a stale value is left to fail safe into a visible,
+  recoverable `conflict` on the backend's own version guard rather than the
+  code guessing. Verified absent on the song side (`reconcileSyncedSong` has
+  no accept-then-clear step for a delete to land between), not assumed.
+- **The `updateSong` fold gap (known limitation, not fixed)** —
+  `SongLibraryService.updateSong`'s status ternary does not treat `sending`
+  as create-like the way it treats `pendingCreate`, so an edit landing during
+  the `sending` window becomes `pendingUpdate` rather than folding into the
+  create. Traced, not merely suspected: not data loss
+  (`resolveCancelledSongCreate` no-ops on a non-tombstone row, so the edit
+  survives and syncs next round), only an extra create-then-update round
+  trip where planning's fold handling would have carried it in one create.
+  Left deliberately out of scope, recorded rather than fixed.
+
+Pinned by `test/offline/adversarial/planning_in_flight_create_cancellation_test.dart`
+and `test/offline/adversarial/song_in_flight_create_cancellation_test.dart`
+(the tombstone-survives/converts/resolves-locally/no-regression/crash-recovery
+shapes for both domains, plus the accepted-window case for planning, all
+driven against the real Drift stores with the remote call gated on a
+`Completer`); `test/offline/adversarial/planning_vanished_record_sync_test.dart`
+and `test/offline/adversarial/song_vanished_record_sync_test.dart` (D4,
+watched failing pre-fix with the exact predicted `StateError` escaping the
+sync loop and aborting records/songs queued behind the vanished one); the D4
+store-level "row not found" coverage in `planning_mutation_store_test.dart`
+and `song_catalog_store_test.dart`; and the deliberate-scope regression tests
+in `song_library_service_test.dart`. See ADR-030's in-flight create
+cancellation follow-up for the full account.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

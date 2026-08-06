@@ -160,6 +160,53 @@ specific finding:
   text Drift generated before `localRevision` existed (not through `SongCatalogDatabase`, which
   would build the current schema directly via `onCreate` and never exercise `onUpgrade`), gains
   the column on open with a sane starting value (1) and keeps its pending row intact.
+- `planning_in_flight_create_cancellation_test.dart` and
+  `song_in_flight_create_cancellation_test.dart` —
+  `docs/specs/2026-08-06-in-flight-create-cancellation.md` D1-D3: the
+  `localRevision` gate above assumes newer intent during a remote round trip
+  leaves a pending row at a *higher* revision, which holds for an edit but not
+  for a delete of a still-pending create, since ADR-028 D10's collapse
+  physically removes the row instead. Driven against the real
+  `DriftPlanningMutationStore`/`DriftSongCatalogStore` with the remote call
+  gated on a `Completer`, for both the session and session-item shapes on the
+  planning side and the equivalent song shape: deleting a `sending`
+  create keeps a `cancelling` tombstone instead of collapsing the row —
+  watched failing pre-fix with the row lost entirely (expected a pending
+  delete after the create succeeded, got `null`, the exact loss the spec
+  names); releasing the gate with the create **succeeding** converts the
+  tombstone to a real pending delete that a following sync actually sends;
+  releasing it with the create **failing** resolves the tombstone locally
+  with no delete ever sent; a no-regression case confirms deleting a pending
+  create with no sync in flight still physically collapses, with no
+  tombstone and no backend call (ADR-028 D10 unchanged); and a record left
+  `sending` by a crash is confirmed treated as pending and resent on a fresh
+  pass. The planning suite additionally covers the accepted-but-uncleared
+  window unique to that domain (see ADR-030): deleting a session/session-item
+  whose create is `accepted` but not yet locally cleared converts straight to
+  a real pending delete with no tombstone, a following sync sends it, and a
+  session's pending item/item-order mutations are dropped under this branch
+  the same as under the tombstone and physical-collapse branches.
+- `planning_vanished_record_sync_test.dart` and
+  `song_vanished_record_sync_test.dart` — D4 of the same spec: several
+  pending records/songs queued, the first one's remote call gated, that row
+  deleted directly through the store mid-flight (simulating the collapse
+  above happening to a *different*, not-in-flight record), then the gate
+  released. Watched failing pre-fix with exactly the predicted `StateError`
+  (`DriftPlanningMutationStore`/`DriftSongMutationStore`
+  `saveSyncAttemptResult`) escaping `PlanningMutationSyncController._run`/
+  `SongMutationSyncController._runSync` uncaught and aborting the pass before
+  it reached the records/songs queued behind the vanished one; passing after
+  the fix, with those later records/songs confirmed synced. Store-level
+  companion coverage lives in `planning_mutation_store_test.dart` and
+  `song_catalog_store_test.dart`: a `saveSyncAttemptResult`/`retryMutation`
+  call against a row that no longer exists returns `null`/`false` instead of
+  throwing, and the existing-record path is unchanged by the signature
+  change. `song_library_service_test.dart` pins the deliberate scope boundary
+  on the other side of D4: `SongLibraryService.updateSong`/`deleteSong`
+  against a song absent from local storage entirely still throw
+  `StateError`, since those are single-record, user-initiated calls with no
+  sync loop and no queued sibling work to protect — not the vanished-record
+  case D4 closes.
 - `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
   (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
   and eviction policy have landed (ADR-028). Drives the full chain against a

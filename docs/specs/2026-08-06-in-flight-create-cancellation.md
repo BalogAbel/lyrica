@@ -1,6 +1,78 @@
 # In-Flight Create Cancellation
 
-> Status: Draft
+> Status: Implemented
+
+## Implementation
+
+Commits, in landed order:
+
+- `ac0e237` test(sync): red -- a vanished record aborts the whole sync pass
+- `7e393da` fix(sync): green -- report vanished record as did-not-apply (D4)
+- `2c33864` test(planning): red -- in-flight create delete loses intent (D1/D2/D3)
+- `0fbf43d` fix(planning): green -- keep in-flight create deletes as tombstones (D1/D2/D3)
+- `28afaca` test(planning): pin item/item-order cleanup for cancelled in-flight creates
+- `5798129` test(planning): red -- accepted-but-uncleared delete still collapses
+- `7860978` fix(planning): green -- accepted-but-uncleared delete becomes real pending delete
+- `fe59e74` test(catalog): red -- in-flight create delete loses intent (D1/D2/D3)
+- `baf3c23` fix(catalog): green -- keep in-flight create deletes as tombstones (D1/D2/D3)
+
+D4 landed first because it removes the one failure mode (an unrelated
+`StateError` killing the whole sync pass) that would otherwise have made the
+D1-D3 work harder to isolate and test in each domain. Planning's D1-D3 landed
+before the song/catalog mirror; the song-side store layer (`markSongCreateSending`/
+`resolveCancelledSongCreate` on `DriftSongCatalogStore`) was implemented
+alongside planning's but its two call sites (`SongLibraryService.deleteSong`,
+`SongMutationSyncController._runSync`) were wired in the final commit.
+
+### What the spec did not anticipate
+
+**The ordering trap.** The spec's D3 describes resolving a tombstone once the
+in-flight create's remote call concludes, but does not say *when* relative to
+the controller's other post-call writes. Both controllers already had an
+unconditional failure-status write on the error path (deliberately ungated by
+revision, since it never claims backend acceptance — out of D2's
+snapshot-identity scope). Writing that status *after* attempting tombstone
+resolution is fine; writing it *before* is not: an ungated write landing
+first would overwrite `cancelling` with a failure status, and
+`resolveCancelledCreate`/`resolveCancelledSongCreate` only act on a row still
+marked `cancelling` — so the tombstone would be permanently stranded, invisible
+(`cancelling` is excluded from every merged read) and never converted or
+discarded. Both controllers resolve the tombstone first, specifically to avoid
+this. Caught during implementation by reasoning through call order before
+writing the code, not by a failing test that first demonstrated the strand —
+worth flagging precisely because a future refactor that reorders these two
+writes would reintroduce it silently, with no existing test positioned to
+catch a reorder rather than a missing tombstone.
+
+**The accepted-but-uncleared window.** The spec's Decisions and Testing
+sections describe only the `sending`/in-flight case (D1-D3) and the ordinary
+not-in-flight collapse (Testing #5). They do not name the third state a
+still-pending create's mutation row can be in when a delete arrives:
+`accepted` — ADR-019's own durable-marker window, where the backend has
+already confirmed the create but the local clear has not run yet (the exact
+crash-between-accept-and-clear scenario ADR-030's fold-status follow-up
+documents, here reached without a crash — the accept write and the clear are
+simply two separate writes with a delete able to land between them). This
+state has the identical failure shape as D1-D3 (a physical collapse would
+still lose the delete intent for an object the backend already has) but a
+simpler fix: since the create's fate is already known, there is no live
+remote call to race, so the row converts straight to a real pending delete
+with no tombstone and no `resolveCancelledCreate` step. Found while
+implementing D1-D3 for planning (`5798129`/`7860978`), before the song/catalog
+mirror was written — confirmed absent on the song side, not merely assumed
+absent, because `reconcileSyncedSong` has no separate accept-then-clear write
+for a delete to land between.
+
+**The `updateSong` fold gap.** Tracing through the song/catalog mirror
+surfaced that `SongLibraryService.updateSong`'s status ternary treats only
+`pendingCreate` as create-like when deciding whether an edit should stay
+folded into the create; a `sending` row (D1's marker) falls through to
+`pendingUpdate` instead. This is not data loss — `resolveCancelledSongCreate`
+no-ops on a non-tombstone row, so the edited content survives and syncs on
+the next round — but it costs an extra create-then-update round trip where
+planning's content-fold handling would have carried the edit in one create.
+Left as a known limitation, out of this spec's scope; recorded in ADR-030's
+in-flight create cancellation follow-up rather than fixed here.
 
 ## Goal
 

@@ -2,12 +2,15 @@
 
 - Status: Accepted
 - Date: 2026-08-05
-- Spec: `docs/specs/2026-08-05-sync-snapshot-identity.md`
+- Spec: `docs/specs/2026-08-05-sync-snapshot-identity.md`,
+  `docs/specs/2026-08-06-in-flight-create-cancellation.md`
 - Relates to: ADR-019 (exactly-once planning mutation sync)
 - Scope: both halves of the spec — planning (`PlanningMutationSyncController`)
   and song/catalog (`SongMutationSyncController`/`reconcileSyncedSong`) — plus
   the fold-status follow-up flagged when this ADR was first written and
-  resolved in a later change on the same branch.
+  resolved in a later change on the same branch, and the in-flight create
+  cancellation follow-up (the `sending` marker, the `cancelling` tombstone,
+  the accepted-window case, and D4) resolved in a later change still.
 
 ## Context
 
@@ -249,6 +252,191 @@ this follow-up closes does not exist on the song/catalog side — there is no
 status a song mutation row can hold that means "the backend confirmed this,
 but the local row has not been cleared yet."
 
+## In-Flight Create Cancellation Follow-Up (resolved)
+
+Spec: `docs/specs/2026-08-06-in-flight-create-cancellation.md`.
+
+D1-D3's `localRevision` gate protects an edit against a concurrent sync by
+assuming that newer local intent arriving during a remote round trip always
+leaves a **higher-revision pending row**. That holds for an edit. It does not
+hold for a delete of a still-pending create: ADR-028 D10 deliberately admits
+physically collapsing a still-pending create's row on delete, which *removes*
+the row instead of bumping its revision. If the create's own remote send was
+in flight at the exact moment of that delete, the collapse destroyed the only
+local record of the delete's intent before the create's outcome was known --
+if the create then succeeded, the object existed on the server and nothing
+would ever delete it.
+
+### The `sending` marker
+
+The sync now writes a durable `sending` marker to a candidate's mutation row
+immediately **before** the remote call, the mirror of the `accepted` marker
+D1-D3 above already write immediately **after** it. `sending` reuses the
+existing free-text `syncStatus` column -- the same choice this ADR made for
+`accepted` -- so no schema migration is needed. The write is gated on the
+pre-send `localRevision`, exactly like every other conditional write D2
+established: a local edit or delete that already landed on the row before the
+send even started leaves it unmarked and the send does not proceed.
+
+**Why this does not weaken exactly-once.** A record left `sending` by a crash
+carries the identical uncertainty the `accepted` marker exists to bound: it
+may or may not have reached the backend before the crash. The two markers
+resolve that uncertainty in opposite, and both correct, directions --
+`accepted` means the backend confirmed receipt, so a resend is skipped (this
+ADR's D2/D3 decision); `sending` means the backend's answer is unknown, so the
+record is treated as pending and resent on the next pass
+(`PlanningMutationSyncController._run`'s candidate filter now includes
+`sending` alongside `pending`/`accepted`, and the song side's
+`readPendingSongs` does the same). Resending on unresolved crash uncertainty
+is the direction this ADR already accepts for a crash before acceptance;
+`sending` narrows the window in which that ambiguity is invisible (a durable
+in-flight signal now exists where none did before) rather than widening any
+window this ADR closed.
+
+### The cancellation tombstone and its resolution
+
+Deleting a `sending` `sessionCreate`/`sessionItemCreateSong` (planning) or
+`pendingCreate` song no longer physically collapses the row (ADR-028 D10's
+collapse still applies, unchanged, to every other state). It rewrites the row
+to a `cancelling` tombstone at a bumped revision instead -- the user's delete
+intent, held until the in-flight create's fate is known. `cancelling` is
+excluded from every actionable/merged read (`readActionableMutations`, the
+song catalog's merged visible-row computation) and from the sync candidate
+filter, so the tombstone disappears from the UI immediately, before its
+create's outcome is even known, and is never itself sent to the backend.
+
+`DriftPlanningMutationStore.resolveCancelledCreate` /
+`DriftSongCatalogStore.resolveCancelledSongCreate` resolve the tombstone in
+one atomic read-check-write once the in-flight create's remote call
+concludes, called from the sync controller on both outcomes:
+
+- **create succeeded** -- the object now exists on the server, so the
+  tombstone becomes a real pending delete (`kind` flips to the matching
+  `*Delete` kind; `baseVersion` is rebased on the backend-assigned version
+  returned in the create's own RPC response), and the very next sync sends
+  it. The already-accepted remote create is never undone; the delete is
+  expressed as a subsequent operation, which is what the user actually asked
+  for.
+- **create failed** -- the object never existed remotely, so the tombstone is
+  discarded outright, with no further backend call -- exactly the physical
+  collapse a plain, not-in-flight delete would have performed.
+
+Both controllers resolve the tombstone **before** the unconditional
+failure-status write that follows a failed remote call. Wiring this found an
+ordering bug: that failure-status write is deliberately ungated by revision
+(it never claims backend acceptance, so it stays out of D2's
+snapshot-identity scope), and an ungated write landing after tombstone
+resolution would clobber the `cancelling` status with a failure status,
+stranding the tombstone forever (`resolveCancelledCreate`/
+`resolveCancelledSongCreate` only act on a row still marked `cancelling`).
+Resolving the tombstone first closes that trap.
+
+A session's (or session item's) pending item and item-order mutations are
+still dropped in every branch that deletes the parent -- tombstone, physical
+collapse, or the accepted-window real delete below -- because the session is
+going away one way or another and they have no reachable destination: sent to
+a session that doesn't exist yet, or sent to one about to be deleted.
+
+### The accepted-but-uncleared window (planning only)
+
+The same defect exists one state over, and closing it needed no tombstone.
+`accepted` is this ADR's own durable-marker window (D2/D3 above; the
+crash-between-accept-and-clear scenario the Fold-Status Follow-Up below also
+documents): the backend has *already confirmed* the create, only the local
+clear has not run yet. Unlike `sending`, there is no live remote call to race
+-- the create's fate is already known -- so `recordSessionDelete`/
+`recordSessionItemDelete` convert an `accepted` row straight into a real
+pending delete, with no tombstone and no `resolveCancelledCreate` step.
+
+`baseVersion` for that delete uses `existing.baseVersion ?? draft.baseVersion`
+-- the same fallback every other delete path in `DriftPlanningMutationStore`
+already uses. This is a deliberate choice, not an oversight left for later:
+`existing.baseVersion` was captured for the *create's* own OCC check and is
+never updated by the accept write (`saveSyncAttemptResult` only ever touches
+`syncStatus`/`errorCode`/`errorMessage`/`localRevision`), so it is not
+guaranteed to carry the version the backend assigned as a side effect of
+accepting the create -- confirmed against `create_song_session_item`, which
+bumps the session's version and returns the new value only in the RPC
+response, never persisted back onto the row. Rather than invent that number,
+the code reuses the pre-accept value and lets the backend's own version guard
+(`delete_empty_session`/`delete_session_item`) reject a wrong precondition
+into a visible, recoverable `conflict` instead of silently deleting against
+the wrong version or guessing one. That is the honest fail-safe choice this
+decision makes deliberately.
+
+This window does not exist on the song side -- verified, not assumed, the
+same way the Fold-Status Follow-Up below verified song has no
+`accepted`-but-uncleared status at all: `reconcileSyncedSong` is one atomic
+delete-plus-upsert, so "backend confirmed but not locally cleared" is not a
+representable state for a song mutation row. Song's tombstone path above is
+therefore the complete fix on that side, with no second branch.
+
+### A vanished record is not a programming error (D4)
+
+`DriftPlanningMutationStore.saveSyncAttemptResult`/`retryMutation` and
+`DriftSongMutationStore.saveSyncAttemptResult` used to throw `StateError`
+when the row a sync attempt was concluding had disappeared. With the
+tombstone above in place that row is normally still there, but a genuinely
+vanished record -- collapsed by an ordinary, not-in-flight delete racing
+something else -- is an ordinary concurrent-world outcome, not a defect.
+Because `Error` is rethrown untouched by the storage-recovery boundary (by
+design: `Error` signals a programming defect the boundary should not paper
+over), a thrown `StateError` here escaped
+`PlanningMutationSyncController._run`/`SongMutationSyncController._runSync`
+uncaught and **killed the entire sync pass**, discarding every unrelated
+mutation or song queued behind the vanished one.
+
+These now report "did not apply" in the vocabulary D3 above already
+established for a stale revision: `saveSyncAttemptResult` returns
+`null`/`false` instead of throwing; `retryMutation` returns `Future<bool>`
+(`true` = reset, `false` = row gone) instead of `Future<void>`. The existing
+`if (newRevision == null) continue;` in `PlanningMutationSyncController._run`
+(D3) covers this case for free; the song controller's failure branch already
+discarded the return value, so it needed no logic change either, only updated
+comments. No new user-facing signal is raised: the row is already gone from
+every list the sync overview reads, exactly the state a user-initiated delete
+asked for.
+
+**Deliberately out of scope.** `SongLibraryService.deleteSong`/`updateSong`
+and `SongMutationSyncController._requireSong` (the single-record lookup
+behind `keepMine`/discard-style calls) throw the same-looking `StateError`
+for a target absent from local storage entirely, and keep doing so. Those are
+single-record, user-initiated calls with no sync loop and no queued sibling
+work behind them to protect -- converting them would not close any
+silent-failure window the way D4 closes one for the two sync controllers.
+Pinned by regression tests in `song_library_service_test.dart` so a future
+change does not silently widen D4's scope to cover them.
+
+### Domain shape difference: why song's `sending` marker is create-only
+
+Planning's `sending` marker is written before every mutation kind's send.
+Song's `markSongCreateSending` is deliberately scoped to `pendingCreate` rows
+only: the song domain has no separate `kind` field the way planning does --
+the sync status *is* the operation type -- and only a create can be raced by
+a physical row collapse (`SongLibraryService.deleteSong`'s `pendingCreate`
+branch). A delete of an already-synced song racing its own in-flight
+`pendingUpdate`/`pendingDelete` send is already race-safe via
+`reconcileSyncedSong`'s pre-existing `localRevision` gate (D2 (song/catalog)
+above): those kinds never physically collapse the row, so an unconditional
+overwrite plus that gate is sufficient, and no in-flight marker is needed for
+them.
+
+### Known limitation: `SongLibraryService.updateSong` does not fold onto `sending`
+
+`updateSong`'s status ternary
+(`existing.syncStatus == SongSyncStatus.pendingCreate ? pendingCreate :
+pendingUpdate`) does not treat `sending` as create-like the way it treats
+`pendingCreate`. An edit landing on a song during its create's `sending`
+window becomes `pendingUpdate` rather than folding into the create. This is
+traced, not merely suspected, and is **not** data loss: `resolveCancelledSongCreate`
+no-ops on a row that is not a tombstone, so the edited content survives
+untouched and syncs on the next round. The cost is purely an extra
+create-then-update round trip, where planning's content-fold handling (the
+Fold-Status Follow-Up below) would have carried the edited content in a
+single create. Deliberately left out of
+`docs/specs/2026-08-06-in-flight-create-cancellation.md`'s scope; recorded
+here so it is not mistaken for an oversight later.
+
 ## Validation
 
 Watched failing before the fix, against the real `DriftPlanningMutationStore`
@@ -321,3 +509,45 @@ the fix (`a98c496`), fixed by it (`8f45988`):
   sync (`remote.syncedDescriptions` carries the edited content), proving the
   durable-marker shortcut in `PlanningMutationSyncController._run` no longer
   skips it.
+
+In-flight create cancellation (`docs/specs/2026-08-06-in-flight-create-cancellation.md`),
+watched failing before each fix, against the real Drift stores throughout (never a
+hand-rolled fake, for the same reason as the suites above):
+
+- `apps/lyron_app/test/offline/adversarial/planning_in_flight_create_cancellation_test.dart`
+  — session and session-item variants of: deleting a `sending` create survives as a
+  `cancelling` tombstone and, once the gated remote call is released with the create
+  **succeeding**, converts to a real pending delete that a following sync actually sends
+  (watched failing pre-fix with the row lost entirely — expected a pending delete, got
+  `null`); the same setup with the create **failing** instead resolves the tombstone
+  locally with no delete ever sent; a no-regression check that deleting a pending create
+  with no sync in flight still physically collapses, with no tombstone and no backend
+  call (ADR-028 D10 unchanged); the accepted-but-uncleared window converts straight to a
+  real pending delete with no tombstone, and a following sync sends it; a session's
+  pending item and item-order mutations are dropped under both the `sending`-tombstone
+  and the accepted-window branches; and crash recovery — a record left `sending` is
+  treated as pending on a fresh pass and resent.
+- `apps/lyron_app/test/offline/adversarial/song_in_flight_create_cancellation_test.dart`
+  — the song/catalog mirror: deleting a `pendingCreate` song while its create is in
+  flight survives as a `cancelling` tombstone and converts to a real `pendingDelete` once
+  the create succeeds; the create-fails case resolves the tombstone locally with no
+  delete sent; a no-regression check that deleting a `pendingCreate` song with no sync in
+  flight still collapses exactly as before; and crash recovery for a `sending` song row.
+  Song has no accepted-but-uncleared case to cover (see the ADR text above).
+- `apps/lyron_app/test/offline/adversarial/planning_vanished_record_sync_test.dart` and
+  `apps/lyron_app/test/offline/adversarial/song_vanished_record_sync_test.dart` — D4:
+  several pending records/songs queued, the first one's remote call gated, the row
+  deleted directly through the store mid-flight (simulating the collapse), then the gate
+  released. Watched failing pre-fix with exactly the predicted `StateError` (`Bad state:
+  Planning mutation record not found: plan-1` /
+  `Bad state: Song mutation record not found: song-1`) escaping the sync loop; passing
+  after the fix, with the records/songs queued behind the vanished one still synced.
+- `apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart` and
+  `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart` — store-level
+  D4 coverage: a `saveSyncAttemptResult`/`retryMutation` call against a row that does not
+  exist returns `null`/`false` rather than throwing, and the existing-record path behaves
+  exactly as before the signature change.
+- `apps/lyron_app/test/application/song_library/song_library_service_test.dart` — pins
+  the deliberate D4 scope boundary: `updateSong`/`deleteSong` against a song absent from
+  local storage entirely still throw `StateError`, so a future change does not silently
+  widen D4 to cover these single-record, user-initiated calls.
