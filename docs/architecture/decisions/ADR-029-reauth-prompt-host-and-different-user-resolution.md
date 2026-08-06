@@ -15,7 +15,7 @@
 - Amended: 2026-08-06 — a second human review found that Round 1's own
   Finding 1 fix had scoped its `try` too widely and mis-described one of its
   own failure branches. See "PR #64 Review Remediation, Round 2 (2026-08-06)"
-  below; closed by commits `RED_SHA_A`/`GREEN_SHA_A` (Finding A).
+  below; closed by commits `7e68c78`/`6734244` (Finding A).
 
 ## Context
 

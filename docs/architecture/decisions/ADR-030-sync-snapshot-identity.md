@@ -21,7 +21,7 @@
   remote-exception catch and the `ReconcileFieldError` catch) and
   `SongMutationSyncController._runSync`'s remote-exception catch are now
   revision-gated, narrowing the "not gated" Non-Goal below. Closed by
-  commits `RED_SHA_B`/`GREEN_SHA_B`. See "Failure-Status Write Gating
+  commits `d298013`/`659c1a6`. See "Failure-Status Write Gating
   Follow-Up (resolved)" below.
 
 ## Context
