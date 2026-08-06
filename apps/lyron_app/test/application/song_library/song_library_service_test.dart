@@ -336,6 +336,31 @@ void main() {
 
 class _FakeSongRepository
     implements SongCatalogReadRepository, SongMutationStore {
+  // Stubs for docs/specs/2026-08-06-in-flight-create-cancellation.md
+  // (D1/D3): none of these tests exercise the in-flight-create-cancellation
+  // sending marker or tombstone path (SongLibraryService.deleteSong's own
+  // `sending` -> `cancelling` branch is covered directly against this fake
+  // via upsertSong; the full race is covered against the real
+  // DriftSongCatalogStore/DriftSongMutationStore in
+  // test/offline/adversarial/song_in_flight_create_cancellation_test.dart).
+  // Applied unconditionally, ignoring expectedRevision.
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async => expectedRevision + 1;
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async => false;
+
   String? requestedSongId;
   SongMutationRecord? songById;
   int referencingSessionItems = 0;

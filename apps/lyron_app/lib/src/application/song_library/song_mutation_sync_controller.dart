@@ -117,12 +117,73 @@ class SongMutationSyncController {
     );
 
     for (final record in pendingSongs) {
+      // D1 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+      // record is a create -- either freshly `pendingCreate`, or `sending`
+      // because a prior run crashed after writing the marker below but
+      // before hearing back (readPendingSongs resends a `sending` row) --
+      // iff its status is one of these two. `pendingUpdate`/`pendingDelete`
+      // never carry this marker; see SongCatalogStore.markSongCreateSending
+      // for why only creates need one.
+      final isCreate =
+          record.syncStatus == SongSyncStatus.pendingCreate ||
+          record.syncStatus == SongSyncStatus.sending;
+
+      var expectedRevision = record.localRevision;
+      if (isCreate) {
+        // D1: durably mark this row `sending` BEFORE the remote call, so a
+        // concurrent delete (SongLibraryService.deleteSong) can tell this
+        // create is genuinely in flight and keep a cancellation tombstone
+        // (D2) instead of physically collapsing the row. Gated on the
+        // snapshot revision the same way every other conditional write in
+        // this controller is: a `null` result means a local edit or delete
+        // landed on this song (or the row vanished, D4) before this send
+        // even started, so there is nothing to send.
+        final sendingRevision = await _store.markCreateSending(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          songId: record.id,
+          expectedRevision: record.localRevision,
+        );
+        if (sendingRevision == null) {
+          continue;
+        }
+        expectedRevision = sendingRevision;
+      }
+
       try {
         final syncedRecord = await _remoteRepository.syncSong(
           organizationId: context.organizationId,
           record: record,
         );
-        await _applySuccessfulSync(context, syncedRecord, original: record);
+        final applied = await _applySuccessfulSync(
+          context,
+          syncedRecord,
+          original: record,
+          expectedRevision: expectedRevision,
+        );
+        if (!applied && isCreate) {
+          // D3: the row is no longer the exact content that was just sent.
+          // Two distinct causes land here, both safe because this call
+          // never acts unless the row is actually a tombstone:
+          // - An ordinary local edit landed on this song during the remote
+          //   round trip -- not a tombstone, so resolveCancelledSongCreate
+          //   finds the row isn't `cancelling` and no-ops. The edit already
+          //   reset the row to pending with the newer content, so the next
+          //   sync picks it up.
+          // - D2: the row IS a cancellation tombstone -- the user deleted
+          //   this still-`sending` create while this exact remote call was
+          //   in flight. The create that WAS the row just succeeded, so the
+          //   tombstone must become a real pending delete (D3) rather than
+          //   being left invisible forever (`cancelling` is excluded from
+          //   every local-first read and from readPendingSongs).
+          await _store.resolveCancelledSongCreate(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: record.id,
+            created: true,
+            acceptedVersion: syncedRecord.version,
+          );
+        }
       } on SongMutationSyncException catch (error) {
         final effectiveSyncStatus = record.effectiveSyncStatus;
         if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
@@ -134,25 +195,54 @@ class SongMutationSyncController {
           );
           continue;
         }
-        // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
-        // `false` return means the song's row vanished while this remote
-        // attempt for it was in flight (a concurrent delete of a
-        // still-pending create). Deliberately unchecked: there is nothing
-        // to write the failure status onto, and this loop iteration was
-        // already done regardless -- the next song in `pendingSongs` is
-        // attempted normally either way.
-        await _store.saveSyncAttemptResult(
-          userId: context.userId,
-          organizationId: context.organizationId,
-          songId: record.id,
-          syncStatus:
-              error.code == SongMutationSyncErrorCode.conflict ||
-                  error.code == SongMutationSyncErrorCode.remoteDeleted
-              ? SongSyncStatus.conflict
-              : record.syncStatus,
-          errorCode: error.code,
-          errorMessage: error.message,
-        );
+
+        // D2/D3: check for a cancellation tombstone FIRST, before the
+        // unconditional failure-status write below. That write must stay
+        // ungated by revision (D2/D2(song/catalog) of
+        // docs/specs/2026-08-05-sync-snapshot-identity.md scope the
+        // snapshot-identity contract to the ACCEPTED outcome only), but an
+        // ungated write would otherwise clobber a `cancelling` tombstone's
+        // status with a failure status, stranding it
+        // (resolveCancelledSongCreate only acts on a row still marked
+        // `cancelling`). Resolving first avoids that: if this WAS a
+        // tombstone, the create failed remotely, so the song never existed
+        // on the backend and the tombstone is discarded outright here -- no
+        // failure status is written because there is no row left to write
+        // it onto.
+        var resolvedTombstone = false;
+        if (isCreate) {
+          resolvedTombstone = await _store.resolveCancelledSongCreate(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: record.id,
+            created: false,
+          );
+        }
+        if (!resolvedTombstone) {
+          // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+          // `false` return means the song's row vanished while this remote
+          // attempt for it was in flight (a concurrent delete of a
+          // still-pending, not-in-flight create or update/delete racing
+          // something else). Deliberately unchecked: there is nothing to
+          // write the failure status onto, and this loop iteration was
+          // already done regardless -- the next song in `pendingSongs` is
+          // attempted normally either way. When this WAS a create, the
+          // fallback status is `pendingCreate` rather than `record.syncStatus`
+          // (which may be `sending`, a marker with no live call to justify
+          // it once this catch block is reached).
+          await _store.saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            songId: record.id,
+            syncStatus:
+                error.code == SongMutationSyncErrorCode.conflict ||
+                    error.code == SongMutationSyncErrorCode.remoteDeleted
+                ? SongSyncStatus.conflict
+                : (isCreate ? SongSyncStatus.pendingCreate : record.syncStatus),
+            errorCode: error.code,
+            errorMessage: error.message,
+          );
+        }
         if (error.code == SongMutationSyncErrorCode.connectivityFailure) {
           break;
         }
@@ -194,7 +284,16 @@ class SongMutationSyncController {
         organizationId: context.organizationId,
         record: record,
       );
-      await _applySuccessfulSync(context, syncedRecord, original: record);
+      // keepMine never touches the D1 `sending` marker (it does not call
+      // markCreateSending), so the pre-send snapshot's own localRevision is
+      // still the correct gate here -- unaffected by the create-cancellation
+      // work above.
+      await _applySuccessfulSync(
+        context,
+        syncedRecord,
+        original: record,
+        expectedRevision: record.localRevision,
+      );
     } on SongMutationSyncException catch (error) {
       if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
           record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
@@ -345,10 +444,11 @@ class SongMutationSyncController {
     return song;
   }
 
-  Future<void> _applySuccessfulSync(
+  Future<bool> _applySuccessfulSync(
     SongMutationContext context,
     SongMutationRecord syncedRecord, {
     required SongMutationRecord original,
+    required int expectedRevision,
   }) async {
     final effectiveOriginalSyncStatus =
         original.conflictSourceSyncStatus ?? original.syncStatus;
@@ -359,19 +459,23 @@ class SongMutationSyncController {
         organizationId: context.organizationId,
         songId: original.id,
       );
-      return;
+      return true;
     }
 
-    // D2/D3 (docs/specs/2026-08-05-sync-snapshot-identity.md): `original` was
-    // read BEFORE the remote round trip (either from the sync's pending-songs
-    // snapshot, or by `keepMine`'s own pre-send read), so its localRevision is
-    // the exact content this response concludes. Passing it as
-    // expectedRevision lets the store atomically detect a local edit that
-    // landed on this song during the remote wait. A `false` return means
-    // exactly that happened -- not an error, nothing further to do here: the
-    // edit already reset the row to pending with the newer content, so the
-    // next sync sends it.
-    await _store.reconcileSyncedSong(
+    // D2/D3 (docs/specs/2026-08-05-sync-snapshot-identity.md): [expectedRevision]
+    // is the exact content this response concludes -- the pre-send snapshot's
+    // own localRevision for an ordinary pendingUpdate/pendingDelete sync or
+    // keepMine's pre-send read, or (docs/specs/2026-08-06-in-flight-create-
+    // cancellation.md D1) the `sending` write's own reported revision for a
+    // create, which is itself a local write and so has already advanced
+    // localRevision past the pre-send snapshot value. Passing it lets the
+    // store atomically detect a local edit -- or, for a create, a D2
+    // cancellation tombstone -- that landed on this song during the remote
+    // wait. A `false` return means exactly that happened -- not an error:
+    // for an ordinary edit, nothing further to do here (the edit already
+    // reset the row to pending with the newer content, so the next sync
+    // sends it); for a create, the caller resolves the tombstone (D3).
+    return _store.reconcileSyncedSong(
       userId: context.userId,
       organizationId: context.organizationId,
       record: syncedRecord.copyWith(
@@ -380,7 +484,7 @@ class SongMutationSyncController {
         clearErrorMessage: true,
         clearConflictSourceSyncStatus: true,
       ),
-      expectedRevision: original.localRevision,
+      expectedRevision: expectedRevision,
     );
   }
 }

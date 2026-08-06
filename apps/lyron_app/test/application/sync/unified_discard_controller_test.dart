@@ -435,6 +435,51 @@ class _FakeSongStore implements SongMutationStore {
     return true;
   }
 
+  // docs/specs/2026-08-06-in-flight-create-cancellation.md (D1/D3): none of
+  // the tests in this file drive a pendingCreate song far enough through
+  // syncPendingSongs to exercise the sending marker or tombstone path
+  // (every song used here is pendingUpdate) -- that race is covered against
+  // the real DriftSongCatalogStore/DriftSongMutationStore in
+  // test/offline/adversarial/song_in_flight_create_cancellation_test.dart.
+  // Applied unconditionally, ignoring expectedRevision, like
+  // reconcileSyncedSong above.
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async {
+    final existing = _mutations[songId];
+    if (existing == null) return null;
+    final updated = existing.copyWith(syncStatus: SongSyncStatus.sending);
+    _mutations[songId] = updated;
+    return updated.localRevision;
+  }
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async {
+    final existing = _mutations[songId];
+    if (existing == null || existing.syncStatus != SongSyncStatus.cancelling) {
+      return false;
+    }
+    if (!created) {
+      _mutations.remove(songId);
+    } else {
+      _mutations[songId] = existing.copyWith(
+        syncStatus: SongSyncStatus.pendingDelete,
+        baseVersion: acceptedVersion ?? existing.baseVersion,
+      );
+    }
+    return true;
+  }
+
   @override
   Future<bool> saveSyncAttemptResult({
     required String userId,

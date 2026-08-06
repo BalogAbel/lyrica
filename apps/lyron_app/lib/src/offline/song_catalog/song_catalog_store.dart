@@ -205,6 +205,77 @@ abstract interface class SongCatalogStore {
     required String songId,
   });
 
+  /// D1 (docs/specs/2026-08-06-in-flight-create-cancellation.md): durably
+  /// marks a still-local (`pendingCreate`) song's mutation row `sending`
+  /// immediately before its remote create attempt -- the song/catalog
+  /// mirror of the marker `PlanningMutationSyncController._run` writes
+  /// before every send. Gated on [expectedRevision] via the same UPDATE
+  /// statement's own WHERE clause (the D2 pattern `reconcileSyncedSong`
+  /// already established above) -- never a preceding SELECT compared in
+  /// Dart, which would reopen the race this closes.
+  ///
+  /// Deliberately scoped to `pendingCreate` rows only, unlike planning's
+  /// marker (written before every mutation kind's send): a delete of an
+  /// already-synced song (`pendingUpdate`/`pendingDelete`) racing its own
+  /// in-flight send is already race-safe via `reconcileSyncedSong`'s
+  /// existing `localRevision` gate above (D2,
+  /// docs/specs/2026-08-05-sync-snapshot-identity.md) -- an unconditional
+  /// overwrite plus that gate is enough, because those kinds never
+  /// physically collapse the row the way ADR-028 D10 admits for a still-
+  /// local create. Only a `pendingCreate` send can be raced by a physical
+  /// collapse (`SongLibraryService.deleteSong`'s `pendingCreate` branch),
+  /// so only that case needs a durable in-flight marker to race against.
+  ///
+  /// Returns the row's new `localRevision` if it applied, or `null` if the
+  /// row no longer exists (D4,
+  /// docs/specs/2026-08-06-in-flight-create-cancellation.md) or its
+  /// revision had already moved (D3: not an error -- a local edit or
+  /// delete landed on this song since the caller's snapshot).
+  Future<int?> markSongCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  });
+
+  /// D3 (docs/specs/2026-08-06-in-flight-create-cancellation.md): resolves
+  /// the outcome of an in-flight `pendingCreate` song whose row may have
+  /// become a D2 cancellation tombstone (`SongSyncStatus.cancelling`) while
+  /// its remote create was in flight.
+  ///
+  /// Only acts if the row currently exists AND is a tombstone; any other
+  /// state (no row, or a row whose status is something other than
+  /// `cancelling`) means this call has nothing to do -- either the row was
+  /// never cancelled (an ordinary local edit landed instead, already
+  /// resolved by the caller's own D3 stale-revision handling on
+  /// `reconcileSyncedSong`) or a previous call already resolved it -- and
+  /// this is then a no-op that returns `false`. The check and the write
+  /// happen inside a single storage transaction so a concurrent write
+  /// cannot land in between.
+  ///
+  /// When [created] is `true` the create reached the backend, so the
+  /// tombstone becomes a real `pendingDelete`: `baseVersion` is rebased on
+  /// [acceptedVersion] (the version the backend just assigned the created
+  /// row) so the delete RPC's OCC check targets content that actually
+  /// exists remotely. The next sync sends it. The already-accepted remote
+  /// create is never undone -- the delete is a subsequent operation, which
+  /// is what the user actually asked for.
+  ///
+  /// When [created] is `false` the create never reached the backend, so the
+  /// song never existed remotely: the tombstone is discarded outright, with
+  /// no further backend call -- exactly the physical collapse a plain,
+  /// not-in-flight delete would have performed (ADR-028 D10).
+  ///
+  /// Returns `true` if a tombstone was found and resolved, `false`
+  /// otherwise.
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  });
+
   Future<void> deleteCatalogsForUser({required String userId});
 
   Future<void> deleteCatalog({
@@ -634,6 +705,12 @@ class DriftSongCatalogStore implements SongCatalogStore {
                   table.slug.equals(songSlug) &
                   table.syncStatus
                       .equals(SongSyncStatus.pendingDelete.value)
+                      .not() &
+                  // D2: a `cancelling` tombstone is being removed just like
+                  // a `pendingDelete` row -- it must not reserve its slug
+                  // either.
+                  table.syncStatus
+                      .equals(SongSyncStatus.cancelling.value)
                       .not(),
             ))
             .getSingleOrNull();
@@ -838,6 +915,139 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
+  Future<int?> markSongCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) => _guarded(
+    () => _markSongCreateSending(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      expectedRevision: expectedRevision,
+    ),
+  );
+
+  Future<int?> _markSongCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async {
+    // D1/D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): the
+    // gating condition lives entirely in the WHERE clause of this single
+    // UPDATE, not as a read-then-decide in Dart -- the same discipline
+    // reconcileSyncedSong's D2 gate above already established. There is no
+    // preceding SELECT to go stale between the check and the write.
+    final newRevision = expectedRevision + 1;
+    final rowsUpdated =
+        await (_database.update(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(songId) &
+                  table.localRevision.equals(expectedRevision),
+            ))
+            .write(
+              CachedCatalogSongMutationsCompanion(
+                syncStatus: Value(SongSyncStatus.sending.value),
+                localRevision: Value(newRevision),
+              ),
+            );
+    if (rowsUpdated == 0) {
+      // D3/D4: either the row's revision had already moved (a local edit or
+      // delete landed on this song since the caller's snapshot) or the row
+      // is gone entirely. Both collapse to the same "did not apply" outcome
+      // -- not an error either way.
+      return null;
+    }
+    _onStorageFootprintChanged?.call();
+    return newRevision;
+  }
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) => _database.transaction(
+    () => _resolveCancelledSongCreate(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      created: created,
+      acceptedVersion: acceptedVersion,
+    ),
+  );
+
+  Future<bool> _resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async {
+    final row = await readSongMutationBySongId(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    );
+    if (row == null ||
+        _songSyncStatusFromValue(row.syncStatus) != SongSyncStatus.cancelling) {
+      // Not a tombstone -- either an ordinary local edit/delete landed on
+      // this song instead (already handled by the caller's own D3
+      // stale-revision skip on reconcileSyncedSong) or a previous call
+      // already resolved it. Nothing to do.
+      return false;
+    }
+
+    if (!created) {
+      // D3: the create never reached the backend, so the song never
+      // existed remotely -- discard the tombstone outright, with no
+      // further backend call. Exactly the physical collapse a plain,
+      // not-in-flight delete would have performed (ADR-028 D10).
+      await (_database.delete(_database.cachedCatalogSongMutations)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.songId.equals(songId),
+          ))
+          .go();
+      _onStorageFootprintChanged?.call();
+      return true;
+    }
+
+    // D3: the create succeeded, so the song exists on the server -- the
+    // tombstone becomes a real pendingDelete and the next sync sends it.
+    // The already-accepted remote create is never undone; this is a
+    // subsequent operation. baseVersion is rebased on the version the
+    // backend just assigned the created row, so the delete RPC's OCC check
+    // targets content that actually exists.
+    await _database
+        .into(_database.cachedCatalogSongMutations)
+        .insertOnConflictUpdate(
+          CachedCatalogSongMutationsCompanion.insert(
+            userId: userId,
+            organizationId: organizationId,
+            songId: songId,
+            slug: row.slug,
+            title: row.title,
+            source: row.source,
+            version: row.version,
+            syncStatus: SongSyncStatus.pendingDelete.value,
+            baseVersion: Value(acceptedVersion ?? row.baseVersion),
+            syncErrorContext: const Value(null),
+            localRevision: Value(row.localRevision + 1),
+          ),
+        );
+    _onStorageFootprintChanged?.call();
+    return true;
+  }
+
+  @override
   Future<void> clearSongMutation({
     required String userId,
     required String organizationId,
@@ -1027,7 +1237,12 @@ class DriftSongCatalogStore implements SongCatalogStore {
 
     for (final row in mutationRows) {
       final status = _songSyncStatusFromValue(row.syncStatus);
-      if (status == SongSyncStatus.pendingDelete) {
+      // D2: a `cancelling` tombstone is the user's delete intent for a song
+      // that never (yet) existed remotely -- it must vanish from every
+      // local-first read immediately, the same as a `pendingDelete` row,
+      // before its create's outcome is even known (D3).
+      if (status == SongSyncStatus.pendingDelete ||
+          status == SongSyncStatus.cancelling) {
         _removeVisibleRowsBySlug(
           visibleRows,
           slugOwners: slugOwners,
@@ -1131,7 +1346,9 @@ class DriftSongCatalogStore implements SongCatalogStore {
               table.syncStatus
                   .equals(SongSyncStatus.pendingDelete.value)
                   .not() &
-              table.syncStatus.equals(SongSyncStatus.synced.value).not(),
+              table.syncStatus.equals(SongSyncStatus.synced.value).not() &
+              // D2: a `cancelling` tombstone must not be visible either.
+              table.syncStatus.equals(SongSyncStatus.cancelling.value).not(),
         ))
         .getSingleOrNull();
   }
@@ -1149,7 +1366,9 @@ class DriftSongCatalogStore implements SongCatalogStore {
               table.syncStatus
                   .equals(SongSyncStatus.pendingDelete.value)
                   .not() &
-              table.syncStatus.equals(SongSyncStatus.synced.value).not(),
+              table.syncStatus.equals(SongSyncStatus.synced.value).not() &
+              // D2: a `cancelling` tombstone must not be visible either.
+              table.syncStatus.equals(SongSyncStatus.cancelling.value).not(),
         ))
         .getSingleOrNull();
   }

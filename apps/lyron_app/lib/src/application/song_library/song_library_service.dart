@@ -159,6 +159,27 @@ class SongLibraryService {
       throw SongConflictResolutionRequiredException(songId);
     }
 
+    if (existing.syncStatus == SongSyncStatus.sending) {
+      // D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): this
+      // create's remote call is genuinely in flight right now (D1's durable
+      // marker, written by SongMutationSyncController._runSync just before
+      // the send). Physically collapsing the row here, as the plain
+      // pendingCreate branch below does, would destroy the only local trace
+      // of this delete before the create's outcome is known -- if it then
+      // succeeds, the song exists on the server and nothing would ever
+      // delete it. Keep the row as a cancellation tombstone instead, at a
+      // bumped revision; SongMutationSyncController resolves it into a real
+      // pending delete or discards it once the in-flight create's remote
+      // call returns (D3).
+      final tombstone = existing.copyWith(
+        syncStatus: SongSyncStatus.cancelling,
+        clearErrorCode: true,
+        clearErrorMessage: true,
+      );
+      await mutationStore.upsertSong(userId: context.userId, record: tombstone);
+      return tombstone.copyWith(syncStatus: SongSyncStatus.pendingDelete);
+    }
+
     if (existing.syncStatus == SongSyncStatus.pendingCreate) {
       await mutationStore.deleteSong(
         userId: context.userId,

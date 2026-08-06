@@ -103,6 +103,23 @@ class _FakeSongStore implements SongMutationStore {
   }) => throw UnimplementedError();
 
   @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) => throw UnimplementedError();
+
+  @override
   Future<void> clearSongMutation({
     required String userId,
     required String organizationId,

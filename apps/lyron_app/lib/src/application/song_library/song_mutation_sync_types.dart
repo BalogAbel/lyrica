@@ -221,6 +221,40 @@ abstract interface class SongMutationStore {
     required String songId,
   });
 
+  /// D1 (docs/specs/2026-08-06-in-flight-create-cancellation.md): durably
+  /// marks a still-local (`pendingCreate`) song `sending` immediately
+  /// before its remote create attempt. See
+  /// `SongCatalogStore.markSongCreateSending` for the full contract and for
+  /// why this is scoped to creates only, unlike planning's equivalent
+  /// marker (written before every mutation kind's send).
+  ///
+  /// Returns the row's new `localRevision` if it applied, or `null` if it
+  /// did not -- either because the row no longer exists (D4) or because
+  /// [expectedRevision] no longer matched (D3: not an error, a local edit
+  /// or delete landed on this song since the caller's snapshot).
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  });
+
+  /// D3 (docs/specs/2026-08-06-in-flight-create-cancellation.md): resolves
+  /// the outcome of an in-flight `pendingCreate` song whose row may have
+  /// become a D2 cancellation tombstone while its remote create was in
+  /// flight. See `SongCatalogStore.resolveCancelledSongCreate` for the full
+  /// contract.
+  ///
+  /// Returns `true` if a tombstone was found and resolved, `false`
+  /// otherwise (nothing to do -- see the store-level contract for why).
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  });
+
   Future<bool> hasUnsyncedChanges({required String userId});
 }
 

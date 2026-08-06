@@ -165,9 +165,49 @@ class DriftSongMutationStore implements SongMutationStore {
         SongSyncStatus.pendingCreate,
         SongSyncStatus.pendingUpdate,
         SongSyncStatus.pendingDelete,
+        // D1: a `sending` row is functionally still pending from a
+        // reader's point of view -- its content is unchanged, only its
+        // in-flight bookkeeping differs -- so a record left `sending` by a
+        // crash is resent rather than stranded forever. `cancelling` is
+        // deliberately NOT included: that tombstone must not be sent
+        // directly, only resolved once the create it is waiting on
+        // concludes (D3).
+        SongSyncStatus.sending,
       ],
     );
     return rows.map(_toRecord).toList(growable: false);
+  }
+
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) {
+    return _songCatalogStore.markSongCreateSending(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) {
+    return _songCatalogStore.resolveCancelledSongCreate(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      created: created,
+      acceptedVersion: acceptedVersion,
+    );
   }
 
   @override

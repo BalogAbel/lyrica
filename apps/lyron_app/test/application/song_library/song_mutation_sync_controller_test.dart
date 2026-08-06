@@ -925,6 +925,59 @@ class _FakeSongMutationStore implements SongMutationStore {
     _mutations.remove(songId);
   }
 
+  // docs/specs/2026-08-06-in-flight-create-cancellation.md (D1/D3): mirrors
+  // production shape (a `sending` write bumps the row, resolving a
+  // tombstone either discards it or turns it into a pendingDelete) but,
+  // like reconcileSyncedSong above, applies unconditionally regardless of
+  // expectedRevision -- the revision gate itself is proven only against the
+  // real DriftSongCatalogStore/DriftSongMutationStore in
+  // test/offline/adversarial/song_in_flight_create_cancellation_test.dart.
+  // None of the tests in this file drive a pendingCreate record far enough
+  // through syncPendingSongs to exercise this (the one connectivity-break
+  // test whose second record is pendingCreate never reaches it -- the break
+  // happens first), so this is a faithful default rather than something
+  // these tests currently assert on.
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async {
+    final existing = _mutations[songId];
+    if (existing == null) return null;
+    final updated = existing.copyWith(
+      syncStatus: SongSyncStatus.sending,
+      localRevision: existing.localRevision + 1,
+    );
+    _mutations[songId] = updated;
+    return updated.localRevision;
+  }
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async {
+    final existing = _mutations[songId];
+    if (existing == null || existing.syncStatus != SongSyncStatus.cancelling) {
+      return false;
+    }
+    if (!created) {
+      _mutations.remove(songId);
+    } else {
+      _mutations[songId] = existing.copyWith(
+        syncStatus: SongSyncStatus.pendingDelete,
+        baseVersion: acceptedVersion ?? existing.baseVersion,
+        localRevision: existing.localRevision + 1,
+      );
+    }
+    return true;
+  }
+
   @override
   Future<bool> hasUnsyncedChanges({required String userId}) async => false;
 
