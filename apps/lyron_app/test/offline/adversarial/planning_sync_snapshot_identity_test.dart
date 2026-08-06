@@ -271,6 +271,190 @@ void main() {
         reason: 'once actually sent and accepted, the row clears normally',
       );
     });
+
+    test('a local edit folded in during a remote call that then fails leaves '
+        'the row pending with the newer content, not buried under a failure '
+        'status the next sync never resends -- Finding B, 2026-08-06 '
+        'remediation round', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      final remote = _GatedFailingPlanningRemote(
+        PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.conflict,
+          message: 'version mismatch',
+        ),
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final syncFuture = controller.syncPendingMutations(readContext);
+
+      // Wait until the remote call has actually been reached -- the
+      // controller already durably marked the row `sending` at the
+      // pre-send revision before this.
+      await remote.entered.future;
+
+      // The user keeps typing while the remote call for the OLD content
+      // is in flight -- the edit folds onto the same row, resetting it to
+      // `pending` at a bumped revision (ADR-030's fold rule).
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited while syncing',
+        ),
+      );
+
+      // Now the remote call for the OLD content returns a conflict.
+      remote.gate.complete();
+      await syncFuture;
+
+      final afterFirstSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      expect(
+        afterFirstSync,
+        isNotNull,
+        reason: 'the newer edit must not be silently discarded',
+      );
+      expect(
+        afterFirstSync!.syncStatus,
+        PlanningMutationSyncStatus.pending,
+        reason:
+            'the ungated failure-status write must not clobber the fold: '
+            'a stale conflict/failure write must leave the row pending '
+            '(the state the fold itself already left it in), not carry '
+            'the OLD content\'s failure status onto the NEW content',
+      );
+      expect(
+        afterFirstSync.description,
+        'Edited while syncing',
+        reason: 'the row must carry the newer content, not the synced one',
+      );
+      expect(
+        afterFirstSync.errorCode,
+        isNull,
+        reason:
+            'the newer, never-sent content must not carry an error code '
+            'from a failure that concluded the OLD content\'s send',
+      );
+
+      // The next sync must actually pick up and send the newer content --
+      // `conflict`/`failed*` are excluded from the candidate filter, so
+      // if the row were left in one of those statuses this would resend
+      // nothing.
+      await controller.syncPendingMutations(readContext);
+
+      expect(
+        remote.syncedDescriptions,
+        hasLength(2),
+        reason: 'the second sync must resend the never-accepted content',
+      );
+      expect(remote.syncedDescriptions.last, 'Edited while syncing');
+    });
+
+    test('the unchanged conflict case still stamps the failure status when '
+        'nothing edits the aggregate during the failed remote call', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Untouched description',
+        ),
+      );
+
+      final remote = _GatedFailingPlanningRemote(
+        PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.conflict,
+          message: 'version mismatch',
+        ),
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      // No concurrent edit this time -- release the gate immediately.
+      remote.gate.complete();
+      await controller.syncPendingMutations(readContext);
+
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(
+        afterSync,
+        isNotNull,
+        reason: 'the ordinary conflict path must still be visible',
+      );
+      expect(
+        afterSync!.syncStatus,
+        PlanningMutationSyncStatus.conflict,
+        reason:
+            'gating on revision must not stop the ordinary, unchanged-row '
+            'case from stamping the failure status exactly as before',
+      );
+      expect(afterSync.errorCode, PlanningMutationSyncErrorCode.conflict);
+    });
   });
 }
 
@@ -288,6 +472,39 @@ class _GatedPlanningRemote implements PlanningMutationRemoteRepository {
     if (!entered.isCompleted) {
       entered.complete();
       await gate.future;
+    }
+    return record.copyWith(syncStatus: PlanningMutationSyncStatus.accepted);
+  }
+}
+
+/// Like [_GatedPlanningRemote], but the FIRST call throws [failure] once the
+/// gate releases instead of returning a synced record -- used to race a
+/// local edit against a remote call that concludes in a failure rather than
+/// an accept (Finding B, 2026-08-06 remediation round). Only the first call
+/// gates and fails; a second call (the resend a passing fix triggers) closes
+/// the loop as an ordinary immediate accept.
+class _GatedFailingPlanningRemote implements PlanningMutationRemoteRepository {
+  _GatedFailingPlanningRemote(this.failure);
+
+  final PlanningMutationSyncException failure;
+  final Completer<void> gate = Completer<void>();
+  final Completer<void> entered = Completer<void>();
+  final List<String?> syncedDescriptions = [];
+  var _calls = 0;
+
+  @override
+  Future<PlanningMutationRecord> syncMutation({
+    required String organizationId,
+    required PlanningMutationRecord record,
+  }) async {
+    syncedDescriptions.add(record.description);
+    _calls += 1;
+    if (_calls == 1) {
+      if (!entered.isCompleted) {
+        entered.complete();
+      }
+      await gate.future;
+      throw failure;
     }
     return record.copyWith(syncStatus: PlanningMutationSyncStatus.accepted);
   }

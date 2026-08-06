@@ -190,6 +190,183 @@ void main() {
       );
       expect(summary, isNotNull);
     });
+
+    test('a local edit folded in during a remote call that then fails leaves '
+        'the row pending with the newer content, not buried under a failure '
+        'status the next sync never resends -- Finding B, 2026-08-06 '
+        'remediation round (song/catalog side)', () async {
+      final songDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(songDatabase.close);
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      addTearDown(planningDatabase.close);
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: songStore,
+        planningLocalStore: DriftPlanningLocalStore(planningDatabase),
+      );
+
+      const context = SongMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await mutationStore.upsertSong(
+        userId: 'user-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 1,
+          baseVersion: null,
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final remote = _GatedFailingSongRemote(
+        const SongMutationSyncException(
+          SongMutationSyncErrorCode.conflict,
+          message: 'version mismatch',
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: mutationStore,
+        remoteRepository: remote,
+      );
+
+      final syncFuture = controller.syncPendingSongs(context);
+
+      // Wait until the remote call has actually been reached -- the
+      // controller already durably marked the row `sending` at the
+      // pre-send revision before this.
+      await remote.entered.future;
+
+      // The user keeps typing while the remote call for the OLD content
+      // is in flight -- the edit lands on the same row, bumping its
+      // revision past the `sending` write's captured value.
+      await mutationStore.upsertSong(
+        userId: 'user-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Edited while syncing}',
+          version: 1,
+          baseVersion: null,
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      // Now the remote call for the OLD content returns a conflict.
+      remote.gate.complete();
+      await syncFuture;
+
+      final afterFirstSync = await songStore.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+
+      expect(
+        afterFirstSync,
+        isNotNull,
+        reason: 'the newer edit must not be silently discarded',
+      );
+      expect(
+        afterFirstSync!.syncStatus,
+        SongSyncStatus.pendingCreate.value,
+        reason:
+            'the ungated failure-status write must not clobber the edit: '
+            'a stale conflict/failure write must leave the row exactly '
+            'as the concurrent edit left it, not carry the OLD content\'s '
+            'failure status onto the NEW content',
+      );
+      expect(
+        afterFirstSync.source,
+        '{title: Edited while syncing}',
+        reason: 'the row must carry the newer content, not the synced one',
+      );
+      expect(
+        afterFirstSync.syncErrorContext,
+        isNull,
+        reason:
+            'the newer, never-sent content must not carry an error from '
+            'a failure that concluded the OLD content\'s send',
+      );
+
+      // The next sync must actually pick up and send the newer content --
+      // `conflict` is excluded from readPendingSongs' candidate filter, so
+      // if the row were left in that status this would resend nothing.
+      await controller.syncPendingSongs(context);
+
+      expect(
+        remote.syncedSources,
+        hasLength(2),
+        reason: 'the second sync must resend the never-accepted content',
+      );
+      expect(remote.syncedSources.last, '{title: Edited while syncing}');
+    });
+
+    test('the unchanged conflict case still stamps the failure status when '
+        'nothing edits the song during the failed remote call', () async {
+      final songDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(songDatabase.close);
+      final songStore = DriftSongCatalogStore(songDatabase);
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      addTearDown(planningDatabase.close);
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: songStore,
+        planningLocalStore: DriftPlanningLocalStore(planningDatabase),
+      );
+
+      const context = SongMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await mutationStore.upsertSong(
+        userId: 'user-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Untouched}',
+          version: 1,
+          baseVersion: null,
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final remote = _GatedFailingSongRemote(
+        const SongMutationSyncException(
+          SongMutationSyncErrorCode.conflict,
+          message: 'version mismatch',
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: mutationStore,
+        remoteRepository: remote,
+      );
+
+      // No concurrent edit this time -- release the gate immediately.
+      remote.gate.complete();
+      await controller.syncPendingSongs(context);
+
+      final afterSync = await songStore.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(
+        afterSync,
+        isNotNull,
+        reason: 'the ordinary conflict path must still be visible',
+      );
+      expect(afterSync!.syncStatus, SongSyncStatus.conflict.value);
+    });
   });
 }
 
@@ -207,6 +384,55 @@ class _GatedSongRemote implements SongMutationRemoteRepository {
     if (!entered.isCompleted) {
       entered.complete();
       await gate.future;
+    }
+    return record.copyWith(syncStatus: SongSyncStatus.synced);
+  }
+
+  @override
+  Future<SongMutationRecord> overwriteSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<SongMutationRecord> fetchSong({
+    required String organizationId,
+    required String songId,
+  }) {
+    throw UnimplementedError();
+  }
+}
+
+/// Like [_GatedSongRemote], but the FIRST call throws [failure] once the gate
+/// releases instead of returning a synced record -- used to race a local
+/// edit against a remote call that concludes in a failure rather than a
+/// success (Finding B, 2026-08-06 remediation round). Only the first call
+/// gates and fails; a second call (the resend a passing fix triggers) closes
+/// the loop as an ordinary immediate success.
+class _GatedFailingSongRemote implements SongMutationRemoteRepository {
+  _GatedFailingSongRemote(this.failure);
+
+  final SongMutationSyncException failure;
+  final Completer<void> gate = Completer<void>();
+  final Completer<void> entered = Completer<void>();
+  final List<String?> syncedSources = [];
+  var _calls = 0;
+
+  @override
+  Future<SongMutationRecord> syncSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) async {
+    syncedSources.add(record.chordproSource);
+    _calls += 1;
+    if (_calls == 1) {
+      if (!entered.isCompleted) {
+        entered.complete();
+      }
+      await gate.future;
+      throw failure;
     }
     return record.copyWith(syncStatus: SongSyncStatus.synced);
   }
