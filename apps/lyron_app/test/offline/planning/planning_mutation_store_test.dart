@@ -1577,5 +1577,116 @@ void main() {
       expect(afterFold.errorMessage, isNull);
       expect(afterFold.description, 'Edited after failure');
     });
+
+    test('saveSyncAttemptResult transitioning to accepted clears a stale error '
+        'left by a prior failed attempt, even with no content fold in between '
+        '(M3, PR #64 review)', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+
+      // Retried and accepted -- exactly the shape
+      // PlanningMutationSyncController._run's accepted-marker write uses:
+      // no errorCode/errorMessage argument at all.
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      final record = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record!.syncStatus, PlanningMutationSyncStatus.accepted);
+      expect(record.errorCode, isNull);
+      expect(record.errorMessage, isNull);
+    });
+
+    test(
+      'two concurrent saveSyncAttemptResult calls with no expectedRevision '
+      'do not lose an increment to a stale Dart-side read (M2, PR #64 '
+      'review) -- this exercises DriftPlanningMutationStore directly, '
+      'without the BudgetedPlanningMutationStore queue that serialises it '
+      'in production, because the atomicity must not depend on that caller',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+
+        // Both calls are the ungated shape the sync controller's
+        // failure-status write uses (no expectedRevision): a Dart-side
+        // read-then-write would let both read the same pre-write revision
+        // and each apply their own +1 on top of it, silently discarding one
+        // of the two increments (or worse, regressing the counter if a
+        // third write had already landed in between).
+        await Future.wait([
+          store.saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            errorCode: PlanningMutationSyncErrorCode.dependencyBlocked,
+          ),
+          store.saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+            syncStatus: PlanningMutationSyncStatus.pending,
+          ),
+        ]);
+
+        final record = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        );
+        expect(
+          record!.localRevision,
+          3,
+          reason:
+              'started at 1 (the create); two concurrent unguarded status '
+              'writes must both be reflected, landing on 3 -- not 2, which '
+              'would mean one write silently lost its increment to a stale '
+              'Dart-side read',
+        );
+      },
+    );
   });
 }

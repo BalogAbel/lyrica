@@ -791,36 +791,22 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     String? errorMessage,
     int? expectedRevision,
   }) async {
-    final existing =
-        await (_database.select(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.aggregateType.equals(aggregateType) &
-                  table.aggregateId.equals(aggregateId),
-            ))
-            .getSingleOrNull();
-    if (existing == null) {
-      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): the
-      // row this sync attempt was concluding is gone -- an ordinary
-      // concurrent-world outcome (the user deleted a still-pending create
-      // while its remote call was in flight, and the collapse path
-      // physically removed the row; ADR-028 D10), not a defect. Reporting
-      // it the same way D3 reports a stale revision ("did not apply", not
-      // an exception) is what lets PlanningMutationSyncController._run
-      // move on to the records queued behind this one instead of dying.
-      return null;
-    }
-
     // D2: the gating condition lives in the WHERE clause of this single
-    // UPDATE, not as a read-then-decide in Dart. `existing` above is read
-    // only to raise the not-found error and to know the pre-write revision
-    // for computing the new one -- it is NEVER used to decide whether the
-    // write applies. That decision is `expectedRevision`, captured by the
-    // CALLER at snapshot time, before the remote round trip; comparing it
-    // against the row's revision atomically, inside the same statement, is
-    // what closes the race a Dart-side read-then-write would reopen.
-    final newRevision = (expectedRevision ?? existing.localRevision) + 1;
+    // UPDATE ... RETURNING, not as a read-then-decide in Dart -- there is
+    // no preceding SELECT of the row at all. That decision is
+    // `expectedRevision`, captured by the CALLER at snapshot time, before
+    // the remote round trip; comparing it against the row's revision
+    // atomically, inside the same statement, is what closes the race a
+    // Dart-side read-then-write would reopen.
+    //
+    // The new revision is likewise computed IN THE STATEMENT, as
+    // `local_revision + 1`, rather than from a prior Dart-side read (PR #64
+    // review, M2): this class is usable directly as a delegate with no
+    // queue above it, so two concurrent callers racing the SAME row (e.g.
+    // both with `expectedRevision: null`, the ungated shape the sync
+    // controller's failure-status write uses) must never both read the same
+    // pre-write revision and each apply their own +1 on top of it, losing
+    // one of the two increments to a classic lost-update race.
     var predicate =
         _database.cachedPlanningMutations.userId.equals(userId) &
         _database.cachedPlanningMutations.organizationId.equals(
@@ -835,35 +821,46 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             expectedRevision,
           );
     }
-    final rowsUpdated =
+    final updated =
         await (_database.update(
           _database.cachedPlanningMutations,
-        )..where((_) => predicate)).write(
-          CachedPlanningMutationsCompanion(
-            syncStatus: Value(syncStatus.value),
-            // Matches the pre-existing copyWith-based semantics this method
-            // used to go through: a null errorCode/errorMessage argument
-            // leaves the stored value untouched (Value.absent), it does not
-            // clear it. Value.absent() also happens to be exactly what
-            // "don't touch this column" means for a targeted UPDATE.
-            errorCode: errorCode == null
-                ? const Value.absent()
-                : Value(errorCode.name),
-            errorMessage: errorMessage == null
-                ? const Value.absent()
-                : Value(errorMessage),
-            localRevision: Value(newRevision),
+        )..where((_) => predicate)).writeReturning(
+          CachedPlanningMutationsCompanion.custom(
+            syncStatus: Constant(syncStatus.value),
+            // Always set, never left absent (PR #64 review, M3): a null
+            // errorCode/errorMessage argument means CLEAR, matching the
+            // `clearErrorCode`/`clearErrorMessage` semantics `copyWith`'s
+            // fold paths already use for the same reason -- a record that
+            // failed and later succeeds (e.g. PlanningMutationSyncController
+            // ._run's accepted-marker write, which never passes an error)
+            // must not carry the old error forward. `Constant(null)` is the
+            // "custom" companion's way of writing SQL NULL, as opposed to
+            // omitting the field entirely (which would mean "don't touch
+            // this column").
+            errorCode: Constant(errorCode?.name),
+            errorMessage: Constant(errorMessage),
+            localRevision:
+                _database.cachedPlanningMutations.localRevision +
+                const Constant(1),
           ),
         );
 
-    if (rowsUpdated == 0) {
-      // D3: the row's revision moved past what the caller expected -- a
-      // local edit landed on this aggregate after the snapshot that was
-      // sent. Not an error: leave the row exactly as the edit left it.
+    if (updated.isEmpty) {
+      // D3/D4: no row matched. Either the row's revision moved past what
+      // the caller expected -- a local edit landed on this aggregate after
+      // the snapshot that was sent (D3) -- or the row is gone entirely: the
+      // still-pending create it belonged to was deleted while this sync
+      // attempt was in flight (D4,
+      // docs/specs/2026-08-06-in-flight-create-cancellation.md; ADR-028
+      // D10 collapse). Both are ordinary concurrent-world outcomes, not
+      // defects, and both are reported identically as "did not apply" (not
+      // an exception) -- that vocabulary is what lets
+      // PlanningMutationSyncController._run move on to the records queued
+      // behind this one instead of dying.
       return null;
     }
     _onStorageFootprintChanged?.call();
-    return newRevision;
+    return updated.single.localRevision;
   }
 
   @override

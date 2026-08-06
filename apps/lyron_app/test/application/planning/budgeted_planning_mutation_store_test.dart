@@ -1264,20 +1264,32 @@ class _InsertCallScript {
   }
 }
 
-/// A [QueryExecutor] decorator that delegates everything except `runInsert`
-/// and `runUpdate`, which fail on the call numbers named in the shared
-/// [_InsertCallScript]. Mirrors `test/support/insert_failing_executor.dart`'s
+/// Whether [statement] is the `UPDATE ... RETURNING ...` Drift generates for
+/// `saveSyncAttemptResult` (M2, PR #64 review): that statement returns rows
+/// (the new `local_revision`), so -- unlike a plain `UPDATE` -- Drift's
+/// [QueryExecutor] contract requires it to be dispatched through [runSelect],
+/// not [runUpdate]. A prefix check is enough to tell it apart from the
+/// store's ordinary reads (budget measurement, `readMutation`, ...), none of
+/// which are `UPDATE` statements.
+bool _looksLikeUpdateReturning(String statement) =>
+    statement.trimLeft().toUpperCase().startsWith('UPDATE');
+
+/// A [QueryExecutor] decorator that delegates everything except `runInsert`,
+/// `runUpdate`, and the `UPDATE ... RETURNING` subset of `runSelect`
+/// ([_looksLikeUpdateReturning]), which fail on the call numbers named in the
+/// shared [_InsertCallScript]. Mirrors `test/support/insert_failing_executor.dart`'s
 /// `InsertFailingExecutor` shape, just with a script instead of a countdown.
 ///
-/// Both statement kinds share the SAME counter (not two independent ones):
+/// All three share the SAME counter (not independent ones):
 /// `saveSyncAttemptResult`'s status write (docs/specs/2026-08-05-sync-
-/// snapshot-identity.md, D2) is a targeted, revision-guarded `UPDATE`, not
-/// the `INSERT ... ON CONFLICT DO UPDATE` upsert every `record*` write uses
-/// -- the atomic WHERE-guarded write the D2 conditional write requires
-/// cannot be expressed as an upsert. The seed write below
-/// (`recordPlanCreate`) is still an INSERT, so it is call #0 either way;
-/// what changed is that the status write under test is now an UPDATE, so
-/// this executor must be able to fail it too.
+/// snapshot-identity.md, D2) is a targeted, revision-guarded `UPDATE ...
+/// RETURNING`, not the `INSERT ... ON CONFLICT DO UPDATE` upsert every
+/// `record*` write uses -- the atomic WHERE-guarded write the D2 conditional
+/// write requires cannot be expressed as an upsert, and the `RETURNING`
+/// clause (needed so the new `local_revision` is read atomically with the
+/// write itself, M2) is why it goes through `runSelect` rather than
+/// `runUpdate`. The seed write below (`recordPlanCreate`) is still an
+/// INSERT, so it is call #0 either way.
 class _ScriptedInsertExecutor implements QueryExecutor {
   _ScriptedInsertExecutor(this._delegate, this._script);
 
@@ -1294,7 +1306,12 @@ class _ScriptedInsertExecutor implements QueryExecutor {
   Future<List<Map<String, Object?>>> runSelect(
     String statement,
     List<Object?> args,
-  ) => _delegate.runSelect(statement, args);
+  ) {
+    if (_looksLikeUpdateReturning(statement) && _script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runSelect(statement, args);
+  }
 
   @override
   Future<int> runInsert(String statement, List<Object?> args) {
@@ -1359,7 +1376,12 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
   Future<List<Map<String, Object?>>> runSelect(
     String statement,
     List<Object?> args,
-  ) => _delegate.runSelect(statement, args);
+  ) {
+    if (_looksLikeUpdateReturning(statement) && _script.shouldFail()) {
+      throw StorageQuotaSimulatedException();
+    }
+    return _delegate.runSelect(statement, args);
+  }
 
   @override
   Future<int> runInsert(String statement, List<Object?> args) {
