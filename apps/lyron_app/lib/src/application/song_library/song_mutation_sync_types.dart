@@ -164,15 +164,31 @@ abstract interface class SongMutationStore {
   /// Writes the outcome of a remote sync attempt onto the song's mutation
   /// row.
   ///
-  /// Returns `true` if the row existed and was updated, or `false` if it
-  /// did not (D4,
-  /// `docs/specs/2026-08-06-in-flight-create-cancellation.md`: an ordinary
-  /// concurrent-world outcome -- the user deleted a still-pending create
-  /// while this exact remote attempt for it was in flight, and the
-  /// collapse branch in `SongLibraryService.deleteSong` removed the row;
-  /// not a defect). The caller must treat `false` the same as any other
-  /// "did not apply" outcome: there is nothing left to write the status
-  /// onto, and whatever else the sync pass was doing carries on.
+  /// Returns `true` if the row existed AND (when [expectedRevision] is
+  /// supplied) its `localRevision` still matched it, or `false` if either
+  /// condition failed:
+  /// - D4 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): the
+  ///   row is gone -- an ordinary concurrent-world outcome (the user deleted
+  ///   a still-pending create while this exact remote attempt for it was in
+  ///   flight, and the collapse branch in `SongLibraryService.deleteSong`
+  ///   removed the row), not a defect;
+  /// - Finding B (PR #64 review, 2026-08-06 remediation round): the row's
+  ///   revision has already moved past [expectedRevision] -- a local edit
+  ///   landed on this song during the remote round trip and reset the row
+  ///   to a pending status with newer, never-sent content. Gated the same
+  ///   way as `reconcileSyncedSong`/`markSongCreateSending` (D2 of
+  ///   `docs/specs/2026-08-05-sync-snapshot-identity.md`): the condition is
+  ///   the WHERE clause of a single UPDATE, never a preceding SELECT
+  ///   compared in Dart.
+  ///
+  /// The caller must treat `false` the same as any other "did not apply"
+  /// outcome either way: there is nothing left to write the status onto (or
+  /// the row is already exactly where the concurrent write left it), and
+  /// whatever else the sync pass was doing carries on. Omitting
+  /// [expectedRevision] always applies unconditionally (the shape every
+  /// caller used before this parameter existed, still used by callers that
+  /// never captured a pre-send snapshot revision to gate against, e.g.
+  /// `SongMutationSyncController.keepMine`).
   Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
@@ -180,6 +196,7 @@ abstract interface class SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   });
 
   Future<int> countReferencingSessionItems({

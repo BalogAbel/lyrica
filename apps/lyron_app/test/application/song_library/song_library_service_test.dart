@@ -484,6 +484,7 @@ class _FakeSongRepository
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async => true;
 
   SongMutationRecord? lastUpsertedRecord;

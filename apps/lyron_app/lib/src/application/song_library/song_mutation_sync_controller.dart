@@ -197,18 +197,10 @@ class SongMutationSyncController {
         }
 
         // D2/D3: check for a cancellation tombstone FIRST, before the
-        // unconditional failure-status write below. That write must stay
-        // ungated by revision (D2/D2(song/catalog) of
-        // docs/specs/2026-08-05-sync-snapshot-identity.md scope the
-        // snapshot-identity contract to the ACCEPTED outcome only), but an
-        // ungated write would otherwise clobber a `cancelling` tombstone's
-        // status with a failure status, stranding it
-        // (resolveCancelledSongCreate only acts on a row still marked
-        // `cancelling`). Resolving first avoids that: if this WAS a
-        // tombstone, the create failed remotely, so the song never existed
-        // on the backend and the tombstone is discarded outright here -- no
-        // failure status is written because there is no row left to write
-        // it onto.
+        // failure-status write below. If this WAS a tombstone, the create
+        // failed remotely, so the song never existed on the backend and the
+        // tombstone is discarded outright here -- no failure status is
+        // written because there is no row left to write it onto.
         var resolvedTombstone = false;
         if (isCreate) {
           resolvedTombstone = await _store.resolveCancelledSongCreate(
@@ -219,15 +211,36 @@ class SongMutationSyncController {
           );
         }
         if (!resolvedTombstone) {
-          // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
-          // `false` return means the song's row vanished while this remote
-          // attempt for it was in flight (a concurrent delete of a
-          // still-pending, not-in-flight create or update/delete racing
-          // something else). Deliberately unchecked: there is nothing to
-          // write the failure status onto, and this loop iteration was
-          // already done regardless -- the next song in `pendingSongs` is
-          // attempted normally either way. When this WAS a create, the
-          // fallback status is `pendingCreate` rather than `record.syncStatus`
+          // Finding B (PR #64 review, 2026-08-06 remediation round): this
+          // write USED to be unconditional -- deliberately ungated, on the
+          // reasoning that D2/D2(song/catalog) of
+          // docs/specs/2026-08-05-sync-snapshot-identity.md scope the
+          // snapshot-identity contract to the ACCEPTED outcome only. That
+          // reasoning stopped once resolveCancelledSongCreate above started
+          // running first: gating on [expectedRevision] (the exact revision
+          // this send's `sending` marker captured, or the pre-send snapshot
+          // for a non-create) cannot reintroduce the tombstone-clobber the
+          // original ungating was protecting against -- a tombstone is
+          // already fully handled by the branch above, either resolved (row
+          // gone, this write already skipped by `!resolvedTombstone`) or
+          // never a tombstone to begin with. What gating DOES fix: an
+          // ordinary local edit landing on this song during the remote
+          // round trip bumps localRevision past [expectedRevision]. An
+          // ungated write here would stamp `conflict` (the one status this
+          // branch can write that `readPendingSongs`' candidate filter
+          // excludes) straight onto that newer, never-sent content,
+          // silently burying it -- not deleted, but never resent either,
+          // visible only if the user checks the sync UI. Gated, the write
+          // is a no-op when the revision has moved, leaving the row exactly
+          // as the edit left it for the next sync to send. D4
+          // (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+          // `null` return also covers the row having vanished entirely (a
+          // concurrent delete of a still-pending, not-in-flight create or
+          // update/delete racing something else) -- deliberately
+          // unchecked, same as always: there is nothing to write the
+          // failure status onto either way, and this loop iteration was
+          // already done regardless. When this WAS a create, the fallback
+          // status is `pendingCreate` rather than `record.syncStatus`
           // (which may be `sending`, a marker with no live call to justify
           // it once this catch block is reached).
           await _store.saveSyncAttemptResult(
@@ -241,6 +254,7 @@ class SongMutationSyncController {
                 : (isCreate ? SongSyncStatus.pendingCreate : record.syncStatus),
             errorCode: error.code,
             errorMessage: error.message,
+            expectedRevision: expectedRevision,
           );
         }
         if (error.code == SongMutationSyncErrorCode.connectivityFailure) {

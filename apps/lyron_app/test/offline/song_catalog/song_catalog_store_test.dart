@@ -1690,6 +1690,109 @@ void main() {
             'just the mutation-row delete',
       );
     });
+
+    test('a conditional saveSyncAttemptResult that matches applies and returns '
+        'the new revision; a stale one does not apply and leaves the row '
+        'untouched -- Finding B, 2026-08-06 remediation round', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+
+      // Matching expectedRevision: applies.
+      final applied = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        errorMessage: 'version mismatch',
+        expectedRevision: 1,
+      );
+      expect(applied, isTrue);
+      final afterApplied = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterApplied!.syncStatus, SongSyncStatus.conflict.value);
+      expect(afterApplied.localRevision, 2);
+
+      // A second song, edited once more after the revision a sync attempt
+      // would have captured: a status write keyed to the STALE revision
+      // must not apply.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta edited}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final stale = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        errorMessage: 'version mismatch',
+        expectedRevision: 1,
+      );
+      expect(stale, isFalse);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+      );
+      expect(
+        record,
+        isNotNull,
+        reason: 'the stale attempt must not have deleted the row',
+      );
+      expect(record!.localRevision, 2);
+      expect(
+        record.syncStatus,
+        SongSyncStatus.pendingCreate.value,
+        reason: 'the stale attempt must not have overwritten the status',
+      );
+      expect(
+        record.source,
+        '{title: Beta edited}',
+        reason: 'the stale attempt must not have overwritten the content',
+      );
+      expect(
+        record.syncErrorContext,
+        isNull,
+        reason: 'the stale attempt must not have written an error either',
+      );
+    });
   });
 
   group('DriftSongMutationStore missing-record handling (D4, in-flight '

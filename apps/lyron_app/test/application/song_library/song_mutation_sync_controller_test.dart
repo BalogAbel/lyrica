@@ -847,6 +847,12 @@ class _FakeSongMutationStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    // Ignored: this fake applies unconditionally regardless of
+    // expectedRevision -- the storage-boundary gating fix (Finding B,
+    // 2026-08-06 remediation round) is pinned against the real
+    // DriftSongCatalogStore in song_sync_snapshot_identity_test.dart, not
+    // here.
+    int? expectedRevision,
   }) async {
     lastSavedStatus = syncStatus;
     lastSavedErrorCode = errorCode;

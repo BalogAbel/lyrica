@@ -204,16 +204,10 @@ class PlanningMutationSyncController {
             PlanningMutationSyncStatus.pending,
         };
         // D2/D3: check for a cancellation tombstone FIRST, before the
-        // unconditional failure-status write below. That write is (and
-        // must stay) ungated by revision -- D2 scopes the snapshot-identity
-        // contract to the ACCEPTED outcome only -- but an ungated write
-        // would otherwise clobber a `cancelling` tombstone's status with a
-        // failure status, stranding it (resolveCancelledCreate only acts on
-        // a row still marked `cancelling`). Resolving first avoids that:
-        // if this WAS a tombstone, the create failed remotely, so the
-        // object never existed on the backend and the tombstone is
-        // discarded outright here -- no failure status is written because
-        // there is no row left to write it onto.
+        // failure-status write below. If this WAS a tombstone, the create
+        // failed remotely, so the object never existed on the backend and
+        // the tombstone is discarded outright here -- no failure status is
+        // written because there is no row left to write it onto.
         var resolvedTombstone = false;
         if (isCancellableCreate) {
           resolvedTombstone = await _mutationStore().resolveCancelledCreate(
@@ -225,12 +219,40 @@ class PlanningMutationSyncController {
           );
         }
         if (!resolvedTombstone) {
-          // D4: if the row has vanished (collapsed by a concurrent delete
-          // of this still-pending, NOT-in-flight create racing something
-          // else), this write simply does not apply -- the return value is
+          // Finding B (PR #64 review, 2026-08-06 remediation round): this
+          // write USED to be unconditional -- deliberately ungated,
+          // reasoning that D2 scopes the snapshot-identity contract to the
+          // ACCEPTED outcome only. That reasoning stopped once
+          // resolveCancelledCreate above started running first: gating on
+          // `sendingRevision` (the exact revision this send's `sending`
+          // marker captured) cannot reintroduce the tombstone-clobber the
+          // original ungating was protecting against, because a tombstone
+          // is already fully handled by the branch above -- either resolved
+          // (row gone, this write is skipped by `!resolvedTombstone`
+          // already) or never a tombstone to begin with. What gating DOES
+          // fix: an ordinary local edit/fold landing on this aggregate
+          // during the remote round trip bumps localRevision past
+          // `sendingRevision` and resets `syncStatus` back to `pending`
+          // with the newer content (the same fold ADR-030's D3 already
+          // relies on for the accepted-outcome case). An ungated write here
+          // would stamp this call's failure status -- `conflict` and every
+          // `failed*` status are NOT in the `pending || accepted ||
+          // sending` candidate filter above -- straight onto that newer,
+          // never-sent content, silently burying it: not deleted (unlike
+          // the D1-D3 defect this ADR closes), but never resent either,
+          // visible only if the user happens to check the sync UI. Gating
+          // on `sendingRevision` makes this write a no-op when the
+          // revision has moved, leaving the row exactly as the fold left
+          // it -- pending, with the newer content -- which the very next
+          // sync already sends. When the row is unchanged since the
+          // `sending` write, gating changes nothing: the write applies
+          // exactly as it always did. D4: if the row has vanished
+          // (collapsed by a concurrent delete of this still-pending,
+          // NOT-in-flight create racing something else), the gated write
+          // simply does not apply either way -- the return value is
           // deliberately unchecked, same as always: there is no accepted
-          // outcome or clear to skip for a failure branch either way, and
-          // the loop continues to the next candidate regardless.
+          // outcome or clear to skip for a failure branch, and the loop
+          // continues to the next candidate regardless.
           await _mutationStore().saveSyncAttemptResult(
             userId: context.userId,
             organizationId: context.organizationId,
@@ -239,6 +261,7 @@ class PlanningMutationSyncController {
             syncStatus: syncStatus,
             errorCode: error.code,
             errorMessage: error.message,
+            expectedRevision: sendingRevision,
           );
         }
         if (error.code == PlanningMutationSyncErrorCode.connectivityFailure) {
@@ -282,8 +305,24 @@ class PlanningMutationSyncController {
           // and visible (LF-4 sync UI) instead, and leave it un-cleared so
           // it can be inspected/discarded. failedDependency is not in the
           // pending||accepted candidate filter above, so it will not be
-          // auto-resent and loop forever. Not revision-gated, same reason
-          // as the other failure-status write above.
+          // auto-resent and loop forever.
+          //
+          // Finding B (PR #64 review, 2026-08-06 remediation round):
+          // revision-gated on `clearRevision`, the same value `clearMutation`
+          // below is gated on -- the revision the accept-write itself just
+          // landed on (D2's table). There is no tombstone concept to
+          // protect here (this branch only runs on already-`accepted`
+          // records; `accepted` never becomes a `cancelling` tombstone --
+          // see ADR-030's "accepted-but-uncleared window" section), so
+          // gating has nothing to reintroduce a race against. What it does
+          // fix is the identical shape as the other failure-status write
+          // above: a local edit/fold landing on this aggregate between the
+          // accept-write and this reconcile attempt resets the row to
+          // `pending` with newer, never-sent content. An ungated write
+          // would stamp `failedDependency` -- excluded from the candidate
+          // filter -- straight onto that content, burying it. Gated, the
+          // write simply no-ops when the revision has moved, leaving the
+          // row exactly as the fold left it for the next sync to send.
           await _mutationStore().saveSyncAttemptResult(
             userId: context.userId,
             organizationId: context.organizationId,
@@ -292,6 +331,7 @@ class PlanningMutationSyncController {
             syncStatus: PlanningMutationSyncStatus.failedDependency,
             errorCode: PlanningMutationSyncErrorCode.unknown,
             errorMessage: error.toString(),
+            expectedRevision: clearRevision,
           );
           continue;
         }

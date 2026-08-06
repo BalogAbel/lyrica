@@ -2413,6 +2413,7 @@ class _ReaderFakeSongRepository
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async => true;
 
   @override

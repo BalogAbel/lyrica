@@ -276,6 +276,31 @@ abstract interface class SongCatalogStore {
     int? acceptedVersion,
   });
 
+  /// Writes [syncStatus]/[syncErrorContext] onto a song's mutation row --
+  /// the store-level primitive `DriftSongMutationStore.saveSyncAttemptResult`
+  /// sits on top of.
+  ///
+  /// Finding B (PR #64 review, 2026-08-06 remediation round): gated on
+  /// [expectedRevision] exactly like [markSongCreateSending] above -- the
+  /// condition lives in the WHERE clause of a single UPDATE, never a
+  /// preceding SELECT compared in Dart. Returns the row's new
+  /// `localRevision` if it applied, or `null` if the row no longer exists or
+  /// its revision had already moved (not an error either way -- a local
+  /// edit landed on this song since the caller's snapshot, or the row is
+  /// gone; the row is left exactly as that concurrent write left it).
+  /// Omitting [expectedRevision] always applies unconditionally, computing
+  /// the new revision as `localRevision + 1` inside the same statement --
+  /// the shape callers that never captured a pre-send snapshot revision use
+  /// (e.g. `SongMutationSyncController.keepMine`'s failure write).
+  Future<int?> saveSongMutationStatus({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required String syncStatus,
+    String? syncErrorContext,
+    int? expectedRevision,
+  });
+
   Future<void> deleteCatalogsForUser({required String userId});
 
   Future<void> deleteCatalog({
@@ -964,6 +989,80 @@ class DriftSongCatalogStore implements SongCatalogStore {
     }
     _onStorageFootprintChanged?.call();
     return newRevision;
+  }
+
+  @override
+  Future<int?> saveSongMutationStatus({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required String syncStatus,
+    String? syncErrorContext,
+    int? expectedRevision,
+  }) => _guarded(
+    () => _saveSongMutationStatus(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      syncStatus: syncStatus,
+      syncErrorContext: syncErrorContext,
+      expectedRevision: expectedRevision,
+    ),
+  );
+
+  Future<int?> _saveSongMutationStatus({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required String syncStatus,
+    String? syncErrorContext,
+    int? expectedRevision,
+  }) async {
+    // Finding B (PR #64 review, 2026-08-06 remediation round): the same
+    // discipline as _markSongCreateSending/_reconcileSyncedSong above -- the
+    // gating condition lives entirely in the WHERE clause of this single
+    // UPDATE ... RETURNING, never a preceding SELECT compared in Dart. The
+    // new revision is computed IN THE STATEMENT, as `local_revision + 1`
+    // (not a literal `expectedRevision + 1` the way _markSongCreateSending
+    // computes it): unlike that call, [expectedRevision] here can be `null`
+    // (every caller before this parameter existed had no pre-send snapshot
+    // to gate against), so there is no literal old value to add 1 to in
+    // Dart -- the database must compute it from whatever the row's current
+    // value actually is.
+    var predicate =
+        _database.cachedCatalogSongMutations.userId.equals(userId) &
+        _database.cachedCatalogSongMutations.organizationId.equals(
+          organizationId,
+        ) &
+        _database.cachedCatalogSongMutations.songId.equals(songId);
+    if (expectedRevision != null) {
+      predicate =
+          predicate &
+          _database.cachedCatalogSongMutations.localRevision.equals(
+            expectedRevision,
+          );
+    }
+    final updated =
+        await (_database.update(
+          _database.cachedCatalogSongMutations,
+        )..where((_) => predicate)).writeReturning(
+          CachedCatalogSongMutationsCompanion.custom(
+            syncStatus: Constant(syncStatus),
+            syncErrorContext: Constant(syncErrorContext),
+            localRevision:
+                _database.cachedCatalogSongMutations.localRevision +
+                const Constant(1),
+          ),
+        );
+    if (updated.isEmpty) {
+      // Either the row's revision had already moved (a local edit landed on
+      // this song since the caller's snapshot) or the row is gone entirely.
+      // Both collapse to the same "did not apply" outcome -- not an error
+      // either way, same as every other conditional write in this class.
+      return null;
+    }
+    _onStorageFootprintChanged?.call();
+    return updated.single.localRevision;
   }
 
   @override

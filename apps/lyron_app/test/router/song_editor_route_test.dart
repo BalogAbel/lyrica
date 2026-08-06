@@ -847,6 +847,7 @@ class _RecordingSongMutationStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async => true;
 
   @override

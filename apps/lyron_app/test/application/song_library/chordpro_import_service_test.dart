@@ -326,6 +326,7 @@ class _FakeRepo implements SongCatalogReadRepository, SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async => true;
 
   @override

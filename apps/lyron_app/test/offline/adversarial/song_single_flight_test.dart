@@ -533,6 +533,7 @@ class _GatedSongMutationStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async => true;
 
   @override

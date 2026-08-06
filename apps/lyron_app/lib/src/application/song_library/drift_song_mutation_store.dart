@@ -218,6 +218,7 @@ class DriftSongMutationStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     final existing = await readById(
       userId: userId,
@@ -237,19 +238,35 @@ class DriftSongMutationStore implements SongMutationStore {
       return false;
     }
 
-    await upsertSong(
+    // Finding B (PR #64 review, 2026-08-06 remediation round): this read is
+    // used ONLY to compute the content of the write below
+    // (conflictSourceSyncStatus, folded into the encoded syncErrorContext)
+    // -- never to decide whether the write applies. That decision is made
+    // entirely by saveSongMutationStatus's own WHERE clause against
+    // [expectedRevision], inside the same statement. If the row's revision
+    // moved between this read and that write, the write's WHERE clause
+    // simply matches nothing and this computed value is never persisted --
+    // so a stale read here cannot reintroduce the race D2
+    // (docs/specs/2026-08-05-sync-snapshot-identity.md) closes, the same
+    // carve-out that ADR already makes for a SELECT used only to raise
+    // "record not found".
+    final conflictSourceSyncStatus = syncStatus == SongSyncStatus.conflict
+        ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
+        : null;
+
+    final newRevision = await _songCatalogStore.saveSongMutationStatus(
       userId: userId,
-      record: existing.copyWith(
-        syncStatus: syncStatus,
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-        conflictSourceSyncStatus: syncStatus == SongSyncStatus.conflict
-            ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
-            : null,
-        clearConflictSourceSyncStatus: syncStatus != SongSyncStatus.conflict,
+      organizationId: organizationId,
+      songId: songId,
+      syncStatus: syncStatus.value,
+      syncErrorContext: _encodeError(
+        code: errorCode,
+        message: errorMessage,
+        conflictSourceSyncStatus: conflictSourceSyncStatus,
       ),
+      expectedRevision: expectedRevision,
     );
-    return true;
+    return newRevision != null;
   }
 
   @override

@@ -469,6 +469,7 @@ class _FakeSongStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     final existing = _mutations[songId];
     if (existing != null) {

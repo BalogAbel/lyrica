@@ -78,6 +78,7 @@ class _FakeSongStore implements SongMutationStore {
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) => throw UnimplementedError();
 
   @override

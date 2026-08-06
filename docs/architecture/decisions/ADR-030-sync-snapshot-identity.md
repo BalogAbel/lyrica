@@ -16,6 +16,13 @@
   inside the storage boundary, and a stale `errorCode`/`errorMessage` no
   longer surviving an unrelated status write. See "Atomic Revision Write and
   Stale-Error Clearing Follow-Up (resolved)" below.
+- Amended: 2026-08-06 — a second PR #64 review round, Finding B: the
+  failure-status writes in `PlanningMutationSyncController._run` (both the
+  remote-exception catch and the `ReconcileFieldError` catch) and
+  `SongMutationSyncController._runSync`'s remote-exception catch are now
+  revision-gated, narrowing the "not gated" Non-Goal below. Closed by
+  commits `RED_SHA_B`/`GREEN_SHA_B`. See "Failure-Status Write Gating
+  Follow-Up (resolved)" below.
 
 ## Context
 
@@ -136,10 +143,16 @@ writes D2 conditions.
 Only the accepted-status write and the clears that follow it are gated. The
 failure-status writes in the same controller (marking `failedAuthorization`,
 `conflict`, etc. after a remote error, and the `failedDependency` write for
-a corrupt reconcile) are out of this contract's scope: they never claim the
-backend accepted anything, so they cannot manufacture the specific silent
-loss this ADR closes. Widening the gate to every status write is a
-plausible future hardening, not something this change claims.
+a corrupt reconcile) are out of this contract's original scope: they never
+claim the backend accepted anything, so they cannot manufacture the specific
+*deletion* this ADR closes (D1-D3's defect: the row vanishes outright).
+Widening the gate to every status write was flagged here as "a plausible
+future hardening, not something this change claims" -- that hardening was
+done by a PR #64 review Finding B (2026-08-06); see "Failure-Status Write
+Gating Follow-Up (resolved)" below for why "never claims acceptance" turned
+out not to be the same property as "cannot lose content": a failure status
+excluded from the candidate filter buries newer content just as effectively
+as a deletion would, only less visibly.
 
 ### D2 (song/catalog) — one combined write, gated as a whole
 
@@ -204,9 +217,17 @@ moving on.
   bookkeeping and never leaves the device.
 - Holding the per-context write queue across the remote call.
 - Any change to what the backend authorizes.
-- Gating the failure-status writes in `PlanningMutationSyncController._run`
+- ~~Gating the failure-status writes in `PlanningMutationSyncController._run`
   or `SongMutationSyncController._applySuccessfulSync` by revision (see D2
-  and D2 (song/catalog)).
+  and D2 (song/catalog)).~~ Narrowed by a PR #64 review Finding B
+  (2026-08-06): see "Failure-Status Write Gating Follow-Up (resolved)"
+  below. The two writes that DO conclude a remote-accepted content sync
+  (`saveSyncAttemptResult(accepted)`/`clearMutation`,
+  `reconcileSyncedSong`) were always gated (D2 above); this follow-up
+  extends gating to the writes that report a remote-REJECTED attempt
+  instead, which this Non-Goal originally exempted. The reasoning for
+  exempting them ("they never claim the backend accepted anything") turned
+  out to prove less than it was read to prove -- see the follow-up for why.
 - Riverpod 3, web offline E2E, or any Phase 5 item.
 
 ## Fold-Status Follow-Up (resolved)
@@ -508,6 +529,139 @@ content fold in between, asserting the stored `errorCode`/`errorMessage` are
 existing caller of it, are unchanged by either fix — D2 and D3 above still
 describe the contract accurately. Only how the new revision is computed, and
 how a `null` error argument is interpreted, changed.
+
+## Failure-Status Write Gating Follow-Up (resolved)
+
+Found and closed during a human review of PR #64, commit `b6796c5`'s own
+successors — a second review round after the Atomic Revision Write follow-up
+above had already landed. No dedicated spec — a review finding against D2's
+original scoping decision, not a new scenario.
+
+D2 above states the failure-status writes are deliberately ungated: "they
+never claim the backend accepted anything, so they cannot manufacture the
+specific silent loss this ADR closes." That reasoning conflated two
+different failure modes. D1-D3's defect is the row being *deleted* outright
+by an unconditional `clearMutation`/`reconcileSyncedSong` after a successful
+accept — content gone, full stop. An ungated *failure*-status write cannot
+do that (it does not delete anything). But it can do something adjacent and
+just as effective at losing the content: `PlanningMutationSyncController
+._run`'s candidate filter (`pending || accepted || sending`) and the song
+side's `readPendingSongs` filter (`pendingCreate || pendingUpdate ||
+pendingDelete || sending`) both exclude the terminal failure statuses
+(`conflict`, `failedAuthorization`, `failedDependency`, `failedRemoteDelete`
+for planning; `conflict` for song). A row is never deleted by these writes,
+but if one lands on top of newer, never-sent content that a concurrent local
+edit folded in during the remote round trip, the row is left in a status the
+next sync will never pick up — buried, not deleted. Milder than D1-D3's
+defect (the row is still visible in the sync UI, and — for the statuses that
+support it — manually retryable), but the same shape one door over, and
+still a silent loss of the specific edit that raced the remote call.
+
+**The scenario.** Both controllers durably mark a row `sending` before the
+remote send (the In-Flight Create Cancellation Follow-Up's D1 above), gated
+on the pre-send revision the caller captured at snapshot time. That capture
+value is available at every call site that can reach a failure-status write.
+The sequence: `sending` write lands at revision R+1; the remote call is
+awaited (no queue turn held across it, by design — see the Context section
+above); a local edit folds onto the same row during that wait, resetting
+`syncStatus` to a pending-family status at revision R+2 (ADR-030's own
+fold rule, established above); the remote call returns a rejection
+(`conflict`, `authorizationDenied`, ...); the failure-status write — keyed
+only by aggregate/song identity, same shape D1-D3 already diagnosed for the
+accept-write — stamps the failure status onto that row regardless of which
+content it currently holds.
+
+**Fix.** Gate the failure-status writes on the exact revision the `sending`
+write reported (`sendingRevision` for planning's `PlanningMutationSyncException`
+catch; the local `expectedRevision` — `sendingRevision` for a create,
+the pre-send snapshot for a non-create — for song's `SongMutationSyncException`
+catch), the same `WHERE localRevision = ?` discipline D2 already established
+for the accept-write, never a preceding SELECT compared in Dart. When the
+write does not apply (the revision moved), the row is left exactly as the
+fold left it — pending, with the newer content — and the next sync sends it,
+identically to how D3 already describes the accept-write's stale-revision
+outcome. When nothing edited the row, gating changes nothing: the write
+applies exactly as it always did (pinned by a dedicated regression test
+alongside each new one below).
+
+Planning's `ReconcileFieldError` catch (the LF-8 corrupt-reconcile path,
+inside the *accepted*-records loop, not the remote-exception loop) gets the
+same treatment, gated on `clearRevision` — the same value `clearMutation`
+immediately below it is already gated on, being the accept-write's own
+reported post-write revision. There is no tombstone concept to protect on
+this path (a row only reaches it once already `accepted`, and `accepted`
+never becomes a `cancelling` tombstone — see the "accepted-but-uncleared
+window" section above), so gating here has no tombstone-clobber trap to
+reintroduce.
+
+**Why gating does not reopen the tombstone-clobber trap the original
+ungating was protecting against.** The In-Flight Create Cancellation
+Follow-Up above records that `resolveCancelledCreate`/
+`resolveCancelledSongCreate` must run — and, since that follow-up landed,
+does run — *before* the failure-status write, specifically so an ungated
+write cannot clobber a `cancelling` tombstone's status. That ordering is
+unchanged by this follow-up. Gating the write that runs after tombstone
+resolution cannot reintroduce a clobber the resolution step already
+prevented: either the row was a tombstone (already resolved, this write is
+already skipped by the existing `if (!resolvedTombstone)` guard, gated or
+not) or it was not (nothing to reintroduce). What gating protects against is
+a *different* concurrent writer — an ordinary content edit, not a delete —
+which the tombstone-resolution step was never meant to guard against in the
+first place.
+
+**Song side, verified rather than assumed.** `SongMutationSyncController
+._runSync`'s `SongMutationSyncException` catch has the identical shape to
+planning's, and shares the bug: it stamps `conflict` (excluded from
+`readPendingSongs`) unconditionally. Unlike planning, `SongMutationStore
+.saveSyncAttemptResult` had no `expectedRevision` parameter at all before
+this follow-up — every prior caller (`keepMine`'s own unconditional failure
+write, deliberately left out of this follow-up's scope: it operates on a
+single song with no pre-send snapshot revision to gate against, the same
+reason the D1 `sending` marker is scoped to creates only) had never needed
+one. Closing the gap required a new storage-layer primitive,
+`SongCatalogStore.saveSongMutationStatus`, gated the same way
+`markSongCreateSending`/`reconcileSyncedSong` already are — a single
+`UPDATE ... RETURNING`, the new revision computed as `local_revision + 1`
+inside the statement (not a literal `expectedRevision + 1` the way
+`markSongCreateSending` computes it, because `saveSongMutationStatus` must
+also support the ungated `expectedRevision: null` shape `keepMine` uses,
+which has no prior literal value to add 1 to in Dart). `DriftSongMutationStore
+.saveSyncAttemptResult` still performs a read first, but — the same carve-out
+D2 above already makes for a SELECT used only to raise "record not found" —
+that read is used only to compute the write's *content*
+(`conflictSourceSyncStatus`, folded into the encoded `syncErrorContext`
+string song packs error state into, unlike planning's separate columns),
+never to decide whether the write applies. If the row's revision moved
+between that read and the gated write, the write's own `WHERE` clause
+matches nothing and the computed content is never persisted, so a stale read
+here cannot reopen the race D2 closes.
+
+**Tests.** Each finding needed a test that failed against the pre-fix code,
+driven against the real store (not a hand-rolled fake), per this ADR's own
+established practice:
+
+- `apps/lyron_app/test/offline/adversarial/planning_sync_snapshot_identity_test.dart`
+  — a `sending` create's remote call gated, a `recordPlanEdit` folded onto
+  the same row while the gate is held, the remote call released returning a
+  `conflict`: watched failing pre-fix with the row landing on `conflict`
+  (excluded from the candidate filter, the edit buried); passing after the
+  fix (`pending`, the edited content, no stale `errorCode`, and an actual
+  resend on the next sync). A companion "unchanged conflict case" test pins
+  that an ordinary, non-concurrent conflict still stamps the failure status
+  exactly as before.
+- `apps/lyron_app/test/offline/adversarial/song_sync_snapshot_identity_test.dart`
+  — the song/catalog mirror: a `pendingCreate`'s remote call gated, a
+  concurrent `upsertSong` landing while the gate is held, the remote call
+  released returning a `conflict`. Same failing-then-passing shape, plus the
+  same unchanged-case companion test.
+- `apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart`
+  (`SongCatalogStore.localRevision` group) — a conditional
+  `saveSyncAttemptResult` at the store level: a matching `expectedRevision`
+  applies and reports the new revision; a stale one reports `false` and
+  leaves the row's status, content, and error context all untouched — the
+  store-level counterpart to `reconcileSyncedSong`'s existing test in the
+  same group, proving the new `UPDATE ... RETURNING` gate directly rather
+  than only through the controller.
 
 ## Validation
 
