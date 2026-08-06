@@ -228,39 +228,6 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           }
         }
 
-        Future<bool> wipePriorAndProceed() async {
-          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
-            return false;
-          }
-          final priorUserId = priorIdentity!.userId;
-          final songDeletion = ref
-              .read(songCatalogStoreProvider)
-              .deleteCatalogsForUser(userId: priorUserId);
-          final planningDeletion = ref
-              .read(planningLocalStoreProvider)
-              .deletePlanningDataForUser(userId: priorUserId);
-          await Future.wait([songDeletion, planningDeletion]);
-          // Being superseded from here on returns false even though the
-          // deletion above already happened, so the reported outcome
-          // understates what ran rather than overstating it. That is the
-          // safe direction and it self-heals: the identity store still
-          // holds the prior identity, so the superseding resolution reads
-          // the same prior user, counts zero remaining work, and completes
-          // the wipe-and-proceed path itself.
-          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
-            // Same reasoning as persistNewIdentity's check, but ahead of
-            // the clear that precedes it: don't let a superseded
-            // resolution's clear-and-write race a concurrently firing
-            // verified-empty cleanup for the same store -- see Finding 3.
-            return false;
-          }
-          await identityStore.clear();
-          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
-            return false;
-          }
-          return persistNewIdentity();
-        }
-
         Future<bool> cancelToPriorUser() async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             return false;
@@ -273,7 +240,107 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           return true;
         }
 
-        await resolveReauth(
+        Future<bool> wipePriorAndProceed() async {
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          final priorUserId = priorIdentity!.userId;
+          try {
+            final songDeletion = ref
+                .read(songCatalogStoreProvider)
+                .deleteCatalogsForUser(userId: priorUserId);
+            final planningDeletion = ref
+                .read(planningLocalStoreProvider)
+                .deletePlanningDataForUser(userId: priorUserId);
+            await Future.wait([songDeletion, planningDeletion]);
+            // Being superseded from here on returns false even though the
+            // deletion above already happened, so the reported outcome
+            // understates what ran rather than overstating it. That is the
+            // safe direction and it self-heals: the identity store still
+            // holds the prior identity, so the superseding resolution reads
+            // the same prior user, counts zero remaining work, and completes
+            // the wipe-and-proceed path itself.
+            if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+              // Same reasoning as persistNewIdentity's check, but ahead of
+              // the clear that precedes it: don't let a superseded
+              // resolution's clear-and-write race a concurrently firing
+              // verified-empty cleanup for the same store -- see Finding 3.
+              return false;
+            }
+            await identityStore.clear();
+            if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+              return false;
+            }
+            return await persistNewIdentity();
+          } catch (error, stackTrace) {
+            // Finding 1 (PR #64 review): none of the above was wrapped, so
+            // any throw -- a song or planning deletion failing, or the
+            // identity-store clear/write failing -- used to rise straight
+            // through resolveReauth to the outer fire-and-forget
+            // catchError, which only prints in kDebugMode. In release that
+            // left a PARTIAL wipe: the identity store still named the
+            // prior user (never cleared), nothing shown to the user, and
+            // the app signed in as the new user with the prior user's
+            // leftover local data still on the device -- precisely the
+            // outcome this slice exists to prevent.
+            //
+            // Chosen recovery: fall back to exactly the state an explicit
+            // cancel produces (sessionExpired carrying the PRIOR user's
+            // session), by calling the same cancelToPriorUser used for a
+            // real user cancel. Two other options were weighed and
+            // rejected:
+            //  - "proceed anyway" (persist the new identity as if the wipe
+            //    had succeeded) is the exact stranding this exists to
+            //    prevent -- rejected outright.
+            //  - "leave the resolution incomplete and retryable" without
+            //    also converging state was rejected as the PRIMARY
+            //    response: the live Supabase session is owned outside
+            //    this listener and keeps presenting the device as the new
+            //    user regardless of what this function does, so doing
+            //    nothing here does not stop that presentation. Falling
+            //    back to cancel does. Retryability is still preserved as
+            //    a property of this choice, not abandoned: the identity
+            //    store has not been cleared (the clear/write above never
+            //    ran, or ran and this catch was reached from a later
+            //    step -- either way the prior identity row is left
+            //    exactly as wipePriorAndProceed found it, since the only
+            //    write to it inside this function is the clear+persist
+            //    pair immediately before a successful return), so the
+            //    next signedIn edge for this prior user re-attempts the
+            //    wipe cleanly. If cancelToPriorUser's own backend signOut
+            //    fails too, Finding 2's fix still converges local state
+            //    deterministically rather than throwing, so this call is
+            //    always safe to await here without a nested try.
+            //
+            // A genuine deletion failure is reported the same way as a
+            // reused `false`/[ReauthSuperseded] outcome from
+            // resolveReauth's perspective (nothing claims a wipe that did
+            // not fully happen), but the caller must not mistake this for
+            // benign supersession-by-a-newer-edge: unlike that case,
+            // nothing else is queued to retry automatically here except
+            // the next real signedIn edge, so the failure is reported
+            // unconditionally (not gated on kDebugMode) via
+            // FlutterError.reportError instead of relying on that
+            // generic backstop.
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stackTrace,
+                library: 'lastKnownIdentityPersistenceProvider',
+                context: ErrorDescription(
+                  'wipePriorAndProceed failed while resolving a '
+                  'different-user sign-in; falling back to '
+                  'cancelToPriorUser so the device does not present as '
+                  'the new user with the prior user\'s data unresolved',
+                ),
+              ),
+            );
+            await cancelToPriorUser();
+            return false;
+          }
+        }
+
+        final outcome = await resolveReauth(
           newUserId: session.userId,
           priorUserId: priorIdentity?.userId,
           priorEmail: priorIdentity?.email,
@@ -287,6 +354,66 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           isCurrent: () =>
               isCurrent(generation, AppAuthStatus.signedIn, session),
         );
+        // Finding 3 (PR #64 review): this used to be a bare `await
+        // resolveReauth(...)` with the returned Future<ReauthOutcome>
+        // discarded -- the typed-result machinery reauth_resolution.dart's
+        // own doc argues for at length ("must fail to compile rather than
+        // silently") therefore had zero production effect; only tests ever
+        // read it. Switching on it here, exhaustively over the *sealed*
+        // ReauthOutcome, is what gives it one: a future outcome added to
+        // the sealed class fails this switch to compile instead of
+        // silently falling through unhandled, the same guarantee the
+        // sealed class already gave the type system, now extended to this
+        // call site.
+        switch (outcome) {
+          case ReauthProceededSameUser():
+          case ReauthWipedPriorAndProceeded():
+          case ReauthCancelledKeptPriorUser():
+            // Each of these three already fully applied its effect INSIDE
+            // the callback resolveReauth awaited before returning it here
+            // (persistNewIdentity / wipePriorAndProceed / cancelToPriorUser
+            // respectively): the identity store, and for a wipe or cancel
+            // AppAuthController's status too, are already exactly where
+            // they need to be by the time this line runs. There is nothing
+            // further to apply -- this branch is the deliberate,
+            // compile-checked acknowledgement of that, not the value being
+            // dropped on the floor.
+            break;
+          case ReauthSuperseded():
+            // A superseded resolution means a newer signedIn edge advanced
+            // the epoch (and, if a dialog was open, completed it with
+            // `.superseded`) before this resolution finished acting.
+            // scheduleIdentityResolution enqueues that newer edge's own
+            // persistIdentity call onto the SAME serial resolutionChain
+            // before this resolution's future even settles (see its class
+            // doc), so in the ordinary case a resolution that will see the
+            // current, correct prior identity is already queued directly
+            // behind this one: nothing here needs to retry it.
+            //
+            // The one path that reaches ReauthSuperseded WITHOUT a newer
+            // edge queued behind it is Finding 1's wipe-failure fallback
+            // (wipePriorAndProceed's catch, above): that call site already
+            // both recovered (via cancelToPriorUser) and reported the
+            // failure unconditionally via FlutterError.reportError,
+            // specifically because THIS branch cannot distinguish "benign,
+            // self-healing supersession" (the normal case) from "a genuine
+            // failure that already recovered and already reported itself"
+            // -- reporting again here would either double-report the real
+            // failure or false-alarm on every ordinary overlapping-auth-
+            // edge race, which this architecture treats as a normal,
+            // expected occurrence (ADR-029 D3). A low-severity trace is
+            // still useful for local debugging, so it is logged here
+            // rather than silently dropped -- kDebugMode-gated is
+            // appropriate for this branch specifically (unlike Finding 1's
+            // unconditional report) because every path reaching here is
+            // either already reported for real or genuinely benign.
+            if (kDebugMode) {
+              debugPrint(
+                'lastKnownIdentityPersistenceProvider: reauth resolution '
+                'for ${session.userId} was superseded before it could act',
+              );
+            }
+        }
     }
   }
 
