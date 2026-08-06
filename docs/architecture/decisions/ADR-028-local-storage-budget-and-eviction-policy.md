@@ -12,6 +12,13 @@
 - Amended: 2026-08-04 — same spec, "What implementation found" closed by a
   second, more targeted re-review round (commits `ba62067`, `dc6a401`,
   `2b84978`, `39da44f`): corrects D3, extends D8 and D9
+- Amended: 2026-08-06 — Spec:
+  `docs/specs/2026-08-06-in-flight-create-cancellation.md`. Corrects D10's
+  rationale: the in-flight-create-cancellation work (see ADR-030's follow-up
+  of the same name) split the delete-collapses-pending-create case into
+  three branches, only one of which still shrinks the store. D10's
+  admission itself is unchanged; only the stated reason is restated to
+  match what the three branches actually do.
 
 ## Context
 
@@ -352,9 +359,10 @@ that context — can run until it finishes, so the collapse decision and the
 delegate's re-check can no longer be separated by an intervening write for
 that context.
 
-### D10 — Admit writes that provably shrink the store
+### D10 — Admit deletes that collapse a pending create's row
 
-**Amendment, 2026-08-04, closing P2 from the PR #64 review.**
+**Amendment, 2026-08-04, closing P2 from the PR #64 review. Rationale
+corrected, 2026-08-06 — see the note at the end of this section.**
 `recordSessionDelete` and `recordSessionItemDelete` were budget-guarded
 like every other `record*` write, even though both can *shrink* the store:
 when the aggregate they target still holds a still-pending create (a
@@ -384,6 +392,39 @@ This is decided from store state, not from the method name: a
 (including one with no local mutation at all, or one folded into a pending
 edit/rename) genuinely adds a delete row and stays subject to the budget
 exactly like any other write.
+
+**Correction, 2026-08-06** (`docs/specs/2026-08-06-in-flight-create-cancellation.md`;
+see ADR-030's "In-Flight Create Cancellation Follow-Up" for the mechanism).
+The in-flight-create-cancellation work split what this section describes as
+a single collapse into three branches on the existing row's `syncStatus`,
+only one of which still shrinks the store:
+
+1. **pending, not in flight** — the row is physically removed, exactly as
+   described above. This one shrinks.
+2. **`sending`** (the create's own remote send is in flight right now) —
+   the row is kept and rewritten as a `cancelling` tombstone, holding the
+   delete intent until the create's outcome is known. No shrink: one row
+   is replaced by one row.
+3. **`accepted`-but-uncleared** (the backend already confirmed the create;
+   the local clear has not run yet) — the row is kept and rewritten as a
+   real pending delete. No shrink, for the same reason.
+
+`_collapsesPendingCreate`'s `kind`-only check still admits all three,
+unchanged — a `kind` match is exactly the right condition for all three. It
+is the *reason* for the admission that this section's original title
+overstated: "admitted because it provably shrinks the store" only ever
+described branch 1. Branches 2 and 3 are admitted because refusing a
+delete in the `sending` or `accepted` window at an exhausted budget would
+strand exactly the delete intent the in-flight-create-cancellation work
+exists to preserve — a far worse outcome than the handful of bytes a
+same-row rewrite may add — and because a rewrite in place cannot grow the
+store meaningfully either way, since it replaces one row with one row. So,
+restated: this write is admitted regardless of budget because refusing it
+would either strand user intent (branches 2 and 3) or block the only way
+to drain a full store (branch 1), and in no case can it grow the store
+meaningfully. The admission mechanism did not change; only the rationale
+above is corrected to match what the code has done since the in-flight
+work landed.
 
 ### D4 — Protection order
 

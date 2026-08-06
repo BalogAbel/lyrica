@@ -547,6 +547,126 @@ void main() {
       },
     );
 
+    test('admits a session delete against a `sending` pending create even at '
+        'an exhausted budget, rewriting it as a cancellation tombstone rather '
+        'than a fresh row (ADR-028 D10: this does not shrink the store -- it '
+        'is admitted because refusing it would strand the delete intent for '
+        'a create already in flight to the backend)', () async {
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 0,
+        ),
+      );
+      final created = await permissive.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      // Simulate the sync's D1 durable marker, written immediately before
+      // the remote call (docs/specs/2026-08-06-in-flight-create-cancellation.md).
+      await permissive.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+        expectedRevision: created!.localRevision,
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      // Must not throw PlanningMutationBudgetExceededException, even
+      // though rewriting the row in place cannot shrink the store the
+      // way a physical collapse does.
+      await exhausted.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+
+      final afterDelete = await exhausted.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(afterDelete, isNotNull);
+      expect(afterDelete!.kind, PlanningMutationKind.sessionCreate);
+      expect(afterDelete.syncStatus, PlanningMutationSyncStatus.cancelling);
+    });
+
+    test('admits a session delete against an accepted-but-uncleared pending '
+        'create even at an exhausted budget, converting it to a real pending '
+        'delete rather than a fresh row (ADR-028 D10: this does not shrink '
+        'the store either -- it is admitted because the backend already has '
+        'the create, so refusing it would strand a delete the user can no '
+        'longer express any other way)', () async {
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 0,
+        ),
+      );
+      final created = await permissive.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      // Simulate the accepted-but-uncleared window: the backend confirmed
+      // the create, but the sync's own clearMutation has not run yet.
+      await permissive.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        expectedRevision: created!.localRevision,
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      await exhausted.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+
+      final afterDelete = await exhausted.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect(afterDelete, isNotNull);
+      expect(afterDelete!.kind, PlanningMutationKind.sessionDelete);
+      expect(afterDelete.syncStatus, PlanningMutationSyncStatus.pending);
+    });
+
     test('saveSyncAttemptResult is never refused for budget reasons, even '
         'with the budget exhausted', () async {
       await storeWithBudget(

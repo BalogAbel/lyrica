@@ -67,14 +67,33 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// need the same ordering.
 ///
 /// `recordSessionDelete` and `recordSessionItemDelete` are budget-guarded
-/// like every other `record*` write EXCEPT when the write itself would
-/// shrink the store: if the aggregate they target still holds a pending
-/// create (a session or session item that never reached the backend), the
-/// delete collapses that create rather than adding a row, and is admitted
-/// regardless of budget. That decision is read from the store, not inferred
-/// from the method name -- a delete against an aggregate that is not a
-/// pending create genuinely grows the store and stays subject to the
-/// budget. See `_collapsesPendingCreate`.
+/// like every other `record*` write EXCEPT when the aggregate they target
+/// still holds a pending create (a session or session item that never
+/// reached the backend, in any `syncStatus`), in which case the write is
+/// admitted regardless of budget. That is not always because it shrinks the
+/// store (ADR-028 D10): `DriftPlanningMutationStore` branches on the
+/// existing row's `syncStatus` into three outcomes, only one of which
+/// shrinks --
+///
+/// - pending, not in flight: the row is physically removed. This one
+///   shrinks.
+/// - `sending` (the create's remote call is in flight right now): the row
+///   is kept and rewritten as a `cancelling` tombstone
+///   (docs/specs/2026-08-06-in-flight-create-cancellation.md D2). No
+///   shrink -- one row is replaced by one row.
+/// - `accepted`-but-uncleared (the backend already confirmed the create;
+///   the local clear has not run yet): the row is kept and rewritten as a
+///   real pending delete. No shrink, for the same reason.
+///
+/// All three are admitted regardless of budget, because refusing the
+/// `sending` or `accepted` case would strand exactly the delete intent the
+/// in-flight-create-cancellation work exists to preserve -- a far worse
+/// outcome than the handful of bytes a same-row rewrite may add -- and a
+/// rewrite in place cannot grow the store meaningfully either way, since it
+/// replaces one row with one row. The admission decision is read from the
+/// store, not inferred from the method name -- a delete against an
+/// aggregate that is not a pending create genuinely grows the store and
+/// stays subject to the budget. See `_collapsesPendingCreate`.
 ///
 /// The measure-check-write sequence for each `record*` call, and every
 /// `saveSyncAttemptResult`/`retryMutation`/`clearMutation` call, is
@@ -243,9 +262,22 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     await _recovery.guard(write);
   }
 
-  /// Whether a delete targeting `(aggregateType, aggregateId)` would
-  /// collapse a still-pending create rather than grow the store -- i.e. the
-  /// existing mutation row at that aggregate key is [pendingCreateKind].
+  /// Whether a delete targeting `(aggregateType, aggregateId)` should be
+  /// admitted regardless of budget -- i.e. the existing mutation row at that
+  /// aggregate key is [pendingCreateKind].
+  ///
+  /// A `kind` match does not always mean the write shrinks the store
+  /// (ADR-028 D10): `DriftPlanningMutationStore.recordSessionDelete` /
+  /// `recordSessionItemDelete` branch further, on the existing row's
+  /// `syncStatus`, into physical collapse (shrinks), a `cancelling`
+  /// tombstone rewrite for a `sending` in-flight create (does not shrink),
+  /// or a real-pending-delete rewrite for an `accepted`-but-uncleared
+  /// create (does not shrink either). All three are admitted here: the two
+  /// that merely rewrite the row in place would either strand the delete
+  /// intent the in-flight-create-cancellation work exists to preserve, or
+  /// cannot meaningfully grow the store anyway since they replace one row
+  /// with one row. A `kind` match is exactly the right condition for all
+  /// three -- see the class doc for the full breakdown.
   ///
   /// This must decide from store state, not from the calling method's name:
   /// a delete against an aggregate with no pending create (including one
