@@ -69,6 +69,11 @@ Reauth prompt and different-user resolution coverage (ADR-029) includes:
 - The uncertain-count hazard regression test: a pending-work count that fails to read takes the confirm path, never the wipe path.
 - `AppAuthController.cancelReauthToPriorSession` unit tests: it returns `sessionExpired` carrying the *prior* user's session (not `signedOut`, not the cancelled new user), and it converges on that same state even when the auth stream also emits `null` as a side effect of the sign-out call, so the outcome does not depend on which of the two arrives first.
 
+PR #64 human-review remediation on the same destructive path (2026-08-06), after the coverage above already existed:
+
+- `app_auth_controller_test.dart` — Finding 2: when the backend `signOut()` call inside `cancelReauthToPriorSession` throws, the state still converges to `sessionExpired` carrying the prior user's session (not left `signedIn` as the would-be new user) and the failure is reported via `FlutterError.reportError`, exactly as the success path already required; a companion test proves a later, unrelated `null` session event after that failure is a true no-op — no listener notification fires — rather than misapplying the lingering pending-cancel record. Both fail against the pre-fix code, where the uncaught `signOut()` error stopped the convergence block below it from ever running.
+- `identity_persistence_wiring_test.dart` — Finding 1: a wipe whose song deletion throws (via a `SongCatalogStore` decorator that forwards every call except a scriptable-failure `deleteCatalogsForUser`) falls back to `cancelToPriorUserFor` instead of stranding the prior user's data while presenting as the new user: state converges to `sessionExpired` carrying the prior session, the identity store is confirmed still naming the prior user (not cleared, not overwritten), and the failure is reported via `FlutterError.reportError`. Finding 3: a resolution superseded before its pending-count read can resolve (blocked on a `Completer`, released after a newer `signedIn` edge supersedes it) is confirmed to log a `kDebugMode` trace containing "superseded" — proving `resolveReauth`'s returned outcome now has a real, observable effect at its call site instead of being discarded. Both fail against the pre-fix code.
+
 ### Adversarial Offline/Sync Validation
 
 The local-first-validation slice (`docs/specs/2026-06-29-local-first-validation.md`,
@@ -152,6 +157,20 @@ specific finding:
   the next sync rather than silently skipped by the durable-marker shortcut. `retryMutation` and
   `saveSyncAttemptResult` are deliberately untouched and uncovered by this group — they compute
   `syncStatus` as their own purpose, not a side effect of carrying content forward.
+- `planning_mutation_store_test.dart` (2026-08-06, PR #64 review M2/M3, ADR-030's "Atomic
+  Revision Write and Stale-Error Clearing Follow-Up") — two concurrent, unguarded
+  `saveSyncAttemptResult` calls (no `expectedRevision`, the shape the sync controller's
+  failure-status write uses) against the same freshly created row do not lose an increment to a
+  stale Dart-side read: the fix computes `local_revision + 1` inside a single
+  `UPDATE ... RETURNING` rather than a preceding `SELECT` plus a separate `UPDATE` — watched
+  failing at revision 2, passing at revision 3 (M2). A second test writes a `conflict` status
+  carrying an `errorCode`/`errorMessage`, then an unrelated `accepted` status with no error
+  argument and no content fold in between, and confirms the stored error fields are `null`
+  afterward — matching the `clearErrorCode`/`clearErrorMessage` semantics `copyWith`'s fold paths
+  already use, rather than the prior `Value.absent()` behavior that left a stale error in place
+  (M3). Because the `UPDATE ... RETURNING` Drift generates dispatches through `runSelect` rather
+  than `runUpdate`, the fault-injection executors in `budgeted_planning_mutation_store_test.dart`
+  were extended to fail that statement shape too, on the same shared, call-numbered script.
 - `song_catalog_migration_test.dart` — `LF-T7` (catalog half): `SongCatalogDatabase` now
   declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
   pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
@@ -333,6 +352,14 @@ specific finding:
     (D3: neither can grow the store, so there is nothing for D8 to recover
     from) — only their queue ordering is covered, via the collapse-race test
     above.
+- `test/application/storage/footprint_production_wiring_test.dart` (2026-08-06, ADR-028 D8, PR
+  #64 review M1) — `planningMutationStoreProvider`'s store calls through the exact
+  `localStorageWriteRecoveryProvider` instance the provider graph supplies, not one it builds for
+  itself: a counting subclass of `LocalStorageWriteRecovery` is installed via a provider override
+  and confirmed to observe a `recordPlanCreate` write. Fails against the pre-fix code, which built
+  its own `LocalStorageWriteRecovery` internally from an injected evictor and never called the
+  provider-supplied instance — the count stays 0. This closes the gap between ADR-028 D8's "one
+  shared boundary" claim and what production wiring actually did for the planning mutation path.
 - Committed-storage revision coverage (ADR-028 D7), spread across
   `test/application/sync/unified_sync_providers_test.dart`,
   `test/application/storage/song_catalog_evictor_test.dart`,

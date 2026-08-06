@@ -19,6 +19,11 @@
   three branches, only one of which still shrinks the store. D10's
   admission itself is unchanged; only the stated reason is restated to
   match what the three branches actually do.
+- Amended: 2026-08-06 — PR #64 review finding M1 (commit `431a051`):
+  corrects D8's "one recovery boundary, shared by every growing local
+  write" claim, which was concretely false for the planning mutation path
+  until this commit, not merely narrower than stated the way the earlier
+  P1a amendment above was.
 
 ## Context
 
@@ -230,6 +235,32 @@ already is (D7): an optional, nullable constructor parameter, always
 supplied by `core_providers.dart`/`planning_providers.dart`/
 `song_catalog_providers.dart` in production, `null` where a test constructs
 a store directly — in which case the write runs unguarded.
+
+**Correction, 2026-08-06 (PR #64 review, M1, commit `431a051`).** This
+section's own heading claims one recovery boundary shared by every growing
+local write. That was false for `BudgetedPlanningMutationStore`:
+rather than taking the provider-supplied `LocalStorageWriteRecovery`
+instance the way `DriftPlanningLocalStore` and `DriftSongCatalogStore`
+already did, its constructor built its own internally from an injected
+`SongCatalogEvictor` (`_recovery = LocalStorageWriteRecovery(evictor:
+evictor)`). Production wiring in `planning_providers.dart` never routed
+planning mutation writes through `localStorageWriteRecoveryProvider` at
+all — the provider was registered and consumed by the other two stores, but
+partly dead code for this one. `BudgetedPlanningMutationStore` now takes an
+injected `LocalStorageWriteRecovery recovery` parameter in place of the
+evictor, and `planning_providers.dart` passes
+`ref.watch(localStorageWriteRecoveryProvider)` — the exact same instance
+every other guarded store already shares. There is no behavioral difference
+for a single instance today (the two `LocalStorageWriteRecovery`s were
+constructed identically, so `guard`'s policy was identical either way) —
+which is why this is a structural correction, not a behavioral one — but
+the *claim itself* was concretely false until this commit, not merely
+narrower than stated the way the P1a amendment above was. Pinned by a new
+test in `footprint_production_wiring_test.dart` asserting
+`planningMutationStoreProvider`'s store calls through the exact
+`localStorageWriteRecoveryProvider` instance the provider graph supplies,
+using a counting subclass rather than a mock so the assertion is "this
+instance was called," not merely "some instance was called."
 
 **Which writes are guarded, and the rule that decides it.** Every local
 write that can increase stored bytes:
@@ -731,6 +762,15 @@ a focused emission test — is guarded separately by
   that a `clearMutation` concurrent with a collapsing `recordSessionDelete`
   never results in a new delete row admitted without a budget check (D9).
 
+- `test/application/storage/footprint_production_wiring_test.dart`
+  (2026-08-06, M1) — `planningMutationStoreProvider` routes a guarded write
+  through the `localStorageWriteRecoveryProvider` instance: a counting
+  subclass of `LocalStorageWriteRecovery` overrides `guard` and is installed
+  via the provider override, and a `recordPlanCreate` call is confirmed to
+  invoke it. This test fails against the pre-fix code, which built its own
+  `LocalStorageWriteRecovery` internally and never called the provider's
+  instance at all — the guard count stays 0.
+
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
 
@@ -777,3 +817,8 @@ adversarial suite.
   landing between a `record*` call's collapse decision and the delegate's
   own re-check could grow the store with a write that never passed a budget
   check (D9).
+- (2026-08-06 amendment) `BudgetedPlanningMutationStore` now takes an
+  injected `LocalStorageWriteRecovery` instead of building its own from an
+  evictor, so D8's "one shared boundary" claim is now actually true for the
+  planning mutation path — before this commit it was concretely false for
+  that path, not merely narrower than stated (M1).

@@ -910,6 +910,147 @@ and `song_catalog_store_test.dart`; and the deliberate-scope regression tests
 in `song_library_service_test.dart`. See ADR-030's in-flight create
 cancellation follow-up for the full account.
 
+**Status (2026-08-06, PR #64 human-review remediation round)**:
+
+A human review of the offline-durability-phase4 slice — distinct from the
+automated re-review rounds recorded above — found three serious defects, all
+on the destructive different-user auth path (ADR-029), plus five medium
+findings and five nits spread across the planning storage boundary and the
+same auth path. Closed by commits `92692de`, `c2b2835`, `93bbb04`, `0323e57`,
+`431a051`, `c4a8212`, `b6796c5`, `2bd1a8c`, `d1d6d5c`.
+
+Three serious findings, all on `wipePriorAndProceed`/`cancelReauthToPriorSession`/
+`resolveReauth` (ADR-029's decision logic, D1-D5 above; the ADR's own status was
+already `Accepted` when these were found):
+
+- **Finding 1** — `wipePriorAndProceed` had no failure path at all: the song
+  deletion, planning deletion, `identityStore.clear()`, and terminal identity
+  write ran with none of it inside a `try`. A throw rose straight through
+  `resolveReauth` to the outer fire-and-forget `catchError`, which only
+  prints in `kDebugMode` — in a release build, a partial wipe, the identity
+  store never cleared, nothing shown to the user, and the device left
+  presenting as the new user with the prior user's data still on disk.
+  Exactly the stranding ADR-029/ADR-020 exist to prevent. Fixed by falling
+  back to the same cancel path a real user cancel uses, converging to
+  `sessionExpired` carrying the *prior* session, and reporting the failure
+  unconditionally rather than in debug only. "Proceed anyway" was rejected
+  as the stranding itself; "leave it incomplete and retryable" was rejected
+  as the primary response because the live backend session keeps presenting
+  the device as the new user regardless. Retryability still falls out of the
+  fix: the identity store still names the prior user whenever the failure is
+  reached before the terminal write, so the next real `signedIn` edge
+  retries the wipe cleanly. A residual, out-of-scope window remains: if
+  `identityStore.clear()` succeeds but the following identity write throws,
+  a cold restart in that exact window has no persisted identity to resume
+  from — inherent to the two-phase clear-then-write design, recorded rather
+  than hidden.
+- **Finding 2** — `cancelReauthToPriorSession` got stuck on a `signOut()`
+  error: if the backend call threw, the state-convergence block after it
+  never ran, so Cancel silently did nothing and left the pending-cancel
+  record set for a later, unrelated `null` session event to misapply. Fixed
+  by running the convergence unconditionally on both the success and
+  failure path — the same target state either way, so a stray later event
+  lands on it as a harmless no-op — and reporting the error unconditionally.
+- **Finding 3** — `resolveReauth`'s `Future<bool>` return value was
+  discarded entirely at its call site: the typed-result machinery
+  `reauth_resolution.dart`'s own doc argues for at length had zero
+  production effect. Fixed by consuming the outcome in an exhaustive switch
+  over the sealed `ReauthOutcome`, so a future outcome variant fails to
+  compile. The three applied outcomes are documented no-ops (each already
+  applied its effect inside the callback `resolveReauth` awaited);
+  `ReauthSuperseded` traces at `kDebugMode`, deliberately not error
+  severity, since the ordinary case is benign self-healing and the one path
+  reaching it without a newer edge already queued (Finding 1's fallback) has
+  already reported itself.
+
+Five medium findings and five nits:
+
+- **M1** — `BudgetedPlanningMutationStore` built its own
+  `LocalStorageWriteRecovery` internally instead of taking the
+  provider-supplied instance, so ADR-028 D8's "one shared boundary" claim was
+  concretely false for the planning mutation path (the provider was
+  registered and used by the other two guarded stores, but not this one).
+  Fixed by injecting the recovery instance; see ADR-028's 2026-08-06
+  amendment for the corrected claim.
+- **M2** — `DriftPlanningMutationStore.saveSyncAttemptResult` computed its
+  new `localRevision` from a Dart-side read (`existing.localRevision + 1`)
+  rather than atomically inside the write, so two concurrent unguarded
+  callers (the shape the sync controller's failure-status write uses) could
+  both read the same pre-write revision and lose an increment to a
+  lost-update race. Fixed by computing `local_revision + 1` inside a single
+  `UPDATE ... RETURNING`. See ADR-030's "Atomic Revision Write and
+  Stale-Error Clearing Follow-Up."
+- **M3** — the same write left a stale `errorCode`/`errorMessage` in place
+  whenever the caller passed `null`, instead of clearing it — inconsistent
+  with the `clearErrorCode`/`clearErrorMessage` semantics the fold paths
+  already used for the same reason. Fixed in the same statement as M2:
+  `errorCode`/`errorMessage` are now always written, so `null` clears them.
+- **M4** — `countPriorPendingWork`, `wipePriorAndProceed`, and
+  `cancelToPriorUser` each unwrapped `priorIdentity!` internally, safe only
+  because of how `resolveReauth` currently branches. Fixed by moving the
+  null-check to a single point at the call site and renaming each to
+  `*For(LastKnownIdentity identity)`, so a future contract change fails to
+  compile instead of crashing on the destructive path.
+- **M5** — `resolveReauth`'s different-user branch decided on
+  `ReauthPromptResult` with an if/else-if chain ending in a trailing
+  catch-all reachable only by a new enum value, not enforced by the
+  compiler. Fixed with an exhaustive `switch` over the sealed enum.
+- **Nits (`c4a8212`)** — the write-queue key is now a `(userId,
+  organizationId)` record rather than a string join (removes a theoretical
+  separator collision); a stale comment on `_enqueue`'s collapse-decision
+  timing was corrected to match the code, which was already right;
+  `PendingLocalWorkCounter.count` reads its two sources in parallel via
+  `Future.wait` instead of serially, and its doc now correctly attributes
+  "a storage failure never authorises a wipe" to propagation *plus* the
+  production caller turning the failure into `null` (which `resolveReauth`'s
+  D5 never treats as zero), not to propagation alone; `_enqueue`'s
+  self-deadlock prohibition, previously stated only in a comment, gained a
+  zone-tagged `assert` that catches a reentrant call however deep inside the
+  queued task it happens; `ReauthPromptController.dispose` now completes a
+  pending prompt as superseded before disposing, the same outcome every
+  other kind of obsolescence already produces.
+
+**Correction to ADR-028, not merely an extension.** M1 is a correction to a
+claim ADR-028 itself already made, not a new decision: D8's heading ("one
+recovery boundary, shared by every growing local write") and the PR body
+both asserted a single shared instance, and that assertion was false for the
+planning mutation path until this commit. Recorded plainly in ADR-028's
+2026-08-06 amendment rather than folded silently into the "narrower than
+stated" framing the earlier P1a amendment used, because the difference
+matters: P1a's original text was imprecise about scope; M1's was simply
+wrong about what the code did.
+
+**Comment-density follow-up, deliberately not fixed here.** The reviewer
+separately noted the comment-to-code ratio in this area runs 5-10:1 in
+places, and that at least one comment (N2 above) had gone stale against its
+own code — arguing that long rationale belongs in ADRs, with short
+references from the code, rather than restating the reasoning inline every
+time. No sweeping comment pass was done at closeout: a large mechanical diff
+across `auth_providers.dart`, `budgeted_planning_mutation_store.dart`, and
+`drift_planning_mutation_store.dart` carries more risk (of silently changing
+behavior while "just" editing comments, or of a bad find-and-replace) than
+the density itself poses today, and none of the three serious findings
+above were caused by the density — N2 was a single stale comment, found and
+fixed as a one-line nit, not a symptom of a systemic problem requiring a
+broad rewrite. This is recorded here, not in `docs/deferred/`: the
+`docs/deferred/README.md` convention scopes that directory to items
+affecting "correctness, sync semantics, authorization boundaries, or other
+durable product behavior" that need to "influence future planning" — a
+prose-density cleanup is a code-hygiene concern with no behavioral stake and
+no bearing on what a future slice plan should prioritize, so it does not
+meet that bar. It belongs here, as a follow-up worth doing opportunistically
+the next time one of these three files is touched for a substantive reason,
+not as a tracked, triggerable deferred item in its own right.
+
+Pinned by `app_auth_controller_test.dart` (Finding 2's two new tests),
+`identity_persistence_wiring_test.dart` (Finding 1's failing-song-deletion
+test and Finding 3's superseded-outcome-is-logged test),
+`planning_mutation_store_test.dart` (M2's concurrent-write race and M3's
+stale-error test), and `footprint_production_wiring_test.dart` (M1's
+provider-instance wiring test). See ADR-029's "PR #64 Review Remediation
+(2026-08-06)" section and ADR-030's "Atomic Revision Write and Stale-Error
+Clearing Follow-Up (resolved)" section for the full account.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

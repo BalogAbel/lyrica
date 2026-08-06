@@ -7,6 +7,11 @@
 - Spec: `docs/specs/2026-07-30-recovery-actions-that-outlive-their-widget.md`
 - Plan: `docs/plans/2026-07-30-recovery-actions-that-outlive-their-widget.md`
 - Closes: `docs/deferred/2026-06-28-reauth-different-user-live-wiring.md`
+- Amended: 2026-08-06 — a human review of PR #64 found three defects on the
+  destructive wipe path this ADR governs, after the D1–D5 decisions below had
+  already landed. See "PR #64 Review Remediation (2026-08-06)" below; closed
+  by commits `92692de`/`c2b2835` (Finding 2), `93bbb04`/`0323e57` (Findings 1
+  and 3), `2bd1a8c` (M4), `d1d6d5c` (M5).
 
 ## Context
 
@@ -223,6 +228,168 @@ dialog shows an explicit "the exact number could not be determined" message
 Zero still skips the prompt entirely (nothing to lose, nothing to confirm);
 unknown never skips it; a number is only ever shown when one was actually
 read.
+
+## PR #64 Review Remediation (2026-08-06)
+
+A human review of this PR, after D1–D5 above had already landed and this ADR's
+status was `Accepted`, found three defects concentrated on exactly the
+destructive wipe path D5 says is the one place this ADR deliberately crosses
+ADR-020's non-destructive boundary. All three are decision-logic gaps in the
+failure paths around that boundary, not in the boundary's placement itself.
+
+### Finding 1 — `wipePriorAndProceed` had no failure path
+
+Before this round, `wipePriorAndProceed`'s body — the song and planning
+deletions, `identityStore.clear()`, and the terminal identity write — ran
+with none of it inside a `try`. A throw from any step (a `SongCatalogStore`
+or `PlanningLocalStore` deletion failing, or the identity-store clear/write
+failing) rose straight through `resolveReauth` to the outer fire-and-forget
+`catchError`, which only prints in `kDebugMode`. In a release build this
+meant a **partial wipe**: the identity store never cleared, nothing shown to
+the user, and — because the live Supabase session is owned outside this
+listener — the device left presenting as the new user
+(`AppAuthStatus.signedIn`) with the prior user's leftover local data still on
+disk. That is precisely the stranding this ADR exists to prevent, reached
+through a storage/deletion failure instead of a decision-logic bug.
+
+`wipePriorAndProceedFor` (renamed by M4 below) now wraps its body in
+`try`/`catch`. On any failure it falls back to exactly the state an explicit
+cancel produces — `sessionExpired` carrying the **prior** user's session —
+by calling the same `cancelToPriorUserFor` a real user cancel uses. Two other
+responses were weighed and rejected:
+
+- **Proceed as if the wipe had succeeded.** This is the stranding itself, not
+  a mitigation of it — rejected outright.
+- **Leave the resolution incomplete and retryable, without converging
+  state.** Rejected as the *primary* response — not because retryability is
+  unwanted, but because the live backend session is owned outside this
+  listener and keeps presenting the device as the new user regardless of
+  what this function does; doing nothing here does not stop that
+  presentation, while falling back to cancel does.
+
+Retryability still falls out of the chosen fallback as a property, not the
+goal: the only write `wipePriorAndProceedFor` ever makes to
+`LastKnownIdentityStore` is the `clear()` + `persistNewIdentity()` pair
+immediately before a successful return, so whenever the `catch` is reached
+before that pair completes, the store is left exactly as it was found —
+still naming the prior user — and the next real `signedIn` edge for that
+user retries the wipe cleanly. The failure itself is reported
+unconditionally via `FlutterError.reportError`, not gated on `kDebugMode`
+the way the generic backstop it used to fall through to was, since nothing
+else is queued to retry it automatically.
+
+**Residual window, out of scope.** The fallback converges
+`AppAuthController`'s in-memory state correctly in every case reached by the
+`catch`, but it does not repair `LastKnownIdentityStore` in the one
+sub-case where `identityStore.clear()` itself succeeds and the very next
+step — `persistNewIdentity()`'s write of the new identity — is what throws.
+The `catch` still runs and still calls `cancelToPriorUserFor`, which
+converges `AppAuthController`'s in-memory state to `sessionExpired`/prior
+session, but that call never re-writes `LastKnownIdentityStore` with the
+prior identity — the store is left cleared. A cold restart landing in that
+exact window (after the clear, before or during the following write) resumes
+with no persisted identity at all, neither the prior user's nor the new
+user's. This is inherent to the two-phase clear-then-write shape of
+`persistNewIdentity` — not something this round introduced or was asked to
+close. The live in-memory state is correct for as long as the process stays
+up; the gap is a cold-restart edge case inside an already-narrow failure
+window (a storage write failing immediately after a preceding storage write
+on the same store just succeeded). Recorded here rather than left implicit.
+
+### Finding 2 — `cancelReauthToPriorSession` got stuck on a `signOut()` failure
+
+If `AuthRepository.signOut()` threw inside `cancelReauthToPriorSession`, the
+state-convergence block after that `await` never ran: the state stayed
+`signedIn` as the would-be new user instead of converging to
+`sessionExpired` carrying the prior user's session, and
+`_pendingReauthCancelSession` was left set — "live" for a later,
+**unrelated** `null` session event to misapply, exactly the record Hazard 2
+above (D3) says must not be misapplied.
+
+The backend `signOut()` call is now wrapped in its own `try`/`catch` inside
+`cancelReauthToPriorSession`, so the convergence block below it always runs,
+whether the call succeeded or failed. `_pendingReauthCancelSession` is
+deliberately left lingering exactly as before — Hazard 2's late-emission
+convergence design is unchanged — but is now harmless if a later event
+consumes it: this method converges to the *same target state* on both the
+success and failure paths, so a stray later event lands on a state a real
+failure had already reached, never one it never reached. The `signOut()`
+error itself is reported via `FlutterError.reportError` rather than
+vanishing once `_isSigningOut` resets in `finally`. Local recovery is chosen
+over depending on the backend call succeeding because ADR-020 never requires
+a live backend confirmation to stay non-destructive — convergence has to
+hold locally regardless of connectivity.
+
+### Finding 3 — `resolveReauth`'s outcome was discarded
+
+The call site in `auth_providers.dart` used to be a bare `await
+resolveReauth(...)`, with the returned `Future<ReauthOutcome>` discarded
+entirely. The typed-result machinery `reauth_resolution.dart`'s own doc
+argues for at length — concrete callback types instead of generic ones,
+specifically so a callback that cannot report whether it ran fails to
+compile — had zero production effect once it reached this call site: only
+tests ever read the return value.
+
+The outcome is now captured and switched on exhaustively over the *sealed*
+`ReauthOutcome`, so a future outcome variant fails this switch to compile
+instead of silently doing nothing. What each case causes in production:
+
+- `ReauthProceededSameUser`, `ReauthWipedPriorAndProceeded`,
+  `ReauthCancelledKeptPriorUser` — each is a deliberate no-op at this
+  switch. All three already applied their full effect *inside* the callback
+  `resolveReauth` awaited before returning them (`persistNewIdentity` /
+  `wipePriorAndProceedFor` / `cancelToPriorUserFor` respectively) — the
+  identity store, and for a wipe or cancel `AppAuthController`'s status too,
+  are already exactly where they need to be by the time the switch runs. The
+  branch is the compile-checked acknowledgement of that, not the value being
+  dropped on the floor.
+- `ReauthSuperseded` — traces at `kDebugMode`, deliberately not at error
+  severity. The ordinary path to this case is benign self-healing: a newer
+  `signedIn` edge advanced the generation and superseded the open prompt
+  before this resolution finished acting, and `scheduleIdentityResolution`
+  already enqueues that newer edge's own resolution directly behind this one
+  on the same serial chain (D3 above), so nothing here needs to retry it.
+  The one path that reaches `ReauthSuperseded` *without* a newer edge queued
+  behind it is Finding 1's wipe-failure fallback — and that call site has
+  already recovered (via `cancelToPriorUserFor`) and already reported the
+  failure unconditionally via `FlutterError.reportError`. This switch cannot
+  distinguish the two cases, so reporting again here would either
+  double-report a real failure or false-alarm on every ordinary
+  overlapping-auth-edge race — which this architecture treats as normal
+  (D3). A debug-only trace is still useful for local debugging, so it is
+  logged rather than silently dropped.
+
+### M4 — compiler-enforced non-null identity in the destructive closures
+
+`countPriorPendingWork`, `wipePriorAndProceed`, and `cancelToPriorUser` each
+used to unwrap `priorIdentity!` internally — safe only because of how
+`resolveReauth` branches today (these three are only ever invoked on the
+different-user path, which requires a non-null `priorUserId`). A future
+contract change in `resolveReauth` routing one of them onto the same-user
+path would have been a runtime crash on the destructive wipe path, not a
+compile error. Renamed to `*For(LastKnownIdentity identity)`, with the
+null-check moved to a single point at the `resolveReauth` call site (`final
+identity = priorIdentity;` followed by an if/else that only builds the
+non-null branch's closures over the promoted `identity`); the null branch
+passes trivial stand-ins `resolveReauth` never actually calls on that
+branch. No `priorIdentity!` remains in the file. Structural, not
+behavioral — the existing 22-test `identity_persistence_wiring_test.dart`
+suite stayed green unmodified.
+
+### M5 — exhaustive switch inside `resolveReauth` itself
+
+The different-user branch inside `resolveReauth` used to decide on
+`ReauthPromptResult` with an if/else-if chain ending in a trailing `return
+const ReauthSuperseded();` reachable only if a new enum value appeared —
+true today, not enforced by the compiler the same way the file's own doc
+already argues for the concrete callback types and Finding 3's outcome
+switch above. Replaced with a `switch` expression exhaustive over the sealed
+`ReauthPromptResult` enum, so a value added later fails this switch to
+compile instead of silently falling through to the old catch-all.
+Behaviorally identical for the three existing values; the guarantee gained
+is compile-time exhaustiveness, which cannot be red/green tested without
+adding a new enum value (out of scope here). Already fully pinned by the
+existing `reauth_resolution_test.dart` suite, unmodified.
 
 ## Testing
 

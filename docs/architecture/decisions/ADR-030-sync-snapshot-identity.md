@@ -11,6 +11,11 @@
   resolved in a later change on the same branch, and the in-flight create
   cancellation follow-up (the `sending` marker, the `cancelling` tombstone,
   the accepted-window case, and D4) resolved in a later change still.
+- Amended: 2026-08-06 — PR #64 human review findings M2/M3 (commit
+  `b6796c5`): `saveSyncAttemptResult`'s new-revision computation made atomic
+  inside the storage boundary, and a stale `errorCode`/`errorMessage` no
+  longer surviving an unrelated status write. See "Atomic Revision Write and
+  Stale-Error Clearing Follow-Up (resolved)" below.
 
 ## Context
 
@@ -437,6 +442,73 @@ single create. Deliberately left out of
 `docs/specs/2026-08-06-in-flight-create-cancellation.md`'s scope; recorded
 here so it is not mistaken for an oversight later.
 
+## Atomic Revision Write and Stale-Error Clearing Follow-Up (resolved)
+
+Found and closed during a human review of PR #64, commit `b6796c5`. No
+dedicated spec — a review finding against D2's own implementation, not a new
+scenario.
+
+D2 states the post-sync writes are gated by a `WHERE localRevision = ?`
+clause on the same statement that performs the write. What D2's original
+text did not scrutinize closely enough was how the *new* revision value
+being written was computed: `DriftPlanningMutationStore.saveSyncAttemptResult`
+read the row's `localRevision` in Dart via a preceding `SELECT`, then wrote
+`existing.localRevision + 1` in a separate `UPDATE`. Two concurrent,
+**unguarded** callers of that method — exactly the shape
+`PlanningMutationSyncController._run`'s failure-status write uses, with no
+`expectedRevision` at all — could both read the same pre-write revision and
+each independently apply their own `+ 1`, losing one increment (or, on an
+unlucky interleaving, having the second write's `+ 1` land on top of the
+first's already-written value and silently absorb it) to a classic
+lost-update race. `BudgetedPlanningMutationStore`'s per-context write queue
+(ADR-028 D9) serialises every call to this method in production, but
+`DriftPlanningMutationStore` is a plain `PlanningMutationStore`, usable
+directly as a delegate with no queue above it — D1's monotonic-counter
+guarantee cannot depend on a caller that is not guaranteed to sit in front of
+it (M2).
+
+**Fix.** The increment is now computed inside the statement itself —
+`local_revision + 1` in SQL — via a single `UPDATE ... RETURNING`, replacing
+the preceding `SELECT` entirely. D3's "stale revision" case and D4's "row is
+gone" case (see the In-Flight Create Cancellation Follow-Up's D4 above)
+already returned `null` identically before this change, so removing the
+`SELECT` needed no separate existence check to preserve that behavior.
+`RETURNING` dispatches through Drift's `runSelect` rather than `runUpdate` —
+a `QueryExecutor` can only return rows from a SELECT-shaped call — which the
+fault-injection executors in `budgeted_planning_mutation_store_test.dart`
+account for by also failing an `UPDATE ... RETURNING` routed through
+`runSelect`, on the same shared, call-numbered script used for every other
+guarded write.
+
+The same statement closes a second, independent gap (M3): `errorCode`/
+`errorMessage` used to be written as `Value.absent()` whenever the caller
+passed `null`, and `Value.absent()` means "leave the stored value
+untouched," not "clear it." A record that failed once — carrying a
+conflict's `errorCode`/`errorMessage` — and was later retried and accepted
+(the exact shape `PlanningMutationSyncController._run`'s accepted-marker
+write uses, which never passes an error argument) kept the stale error
+forever, even though `syncStatus` correctly moved to `accepted`. This was
+inconsistent with the `clearErrorCode`/`clearErrorMessage` semantics
+`copyWith`'s content-fold paths already use for exactly the same reason (see
+the Fold-Status Follow-Up above — a record must not carry a stale outcome
+signal forward once the row has moved past it). `errorCode`/`errorMessage`
+are now always written — `Constant(errorCode?.name)`/`Constant(errorMessage)`
+inside the `UPDATE ... RETURNING`'s custom companion — so a `null` argument
+clears the column instead of leaving it untouched.
+
+Both are behavioral changes, each pinned by a red-before-green test: M2 by
+two concurrent, unguarded `saveSyncAttemptResult` calls against a freshly
+created row landing on revision 2 before the fix (one increment lost to the
+race) and 3 after; M3 by a test that writes a `conflict` status carrying an
+error, then an unrelated `accepted` status with no error argument and no
+content fold in between, asserting the stored `errorCode`/`errorMessage` are
+`null` afterward.
+
+`saveSyncAttemptResult`'s `Future<int?>` return-value contract, and every
+existing caller of it, are unchanged by either fix — D2 and D3 above still
+describe the contract accurately. Only how the new revision is computed, and
+how a `null` error argument is interpreted, changed.
+
 ## Validation
 
 Watched failing before the fix, against the real `DriftPlanningMutationStore`
@@ -457,6 +529,15 @@ gate released and the sync completed.
   Context section names and a status write; a matching `expectedRevision`
   applies and reports the new revision, a stale one reports `null`/`false`
   and leaves the row untouched.
+- `apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart`
+  (2026-08-06, M2/M3 follow-up above) — two concurrent, unguarded
+  `saveSyncAttemptResult` calls against the same freshly created row do not
+  lose an increment to a stale Dart-side read: watched failing pre-fix at
+  revision 2, passing at revision 3. A second test writes a `conflict`
+  status carrying an error, then an unrelated `accepted` status with no
+  error argument, and confirms the stored `errorCode`/`errorMessage` are
+  `null` afterward — matching the `clearErrorCode`/`clearErrorMessage`
+  semantics the fold paths already use.
 - `apps/lyron_app/test/offline/adversarial/planning_migration_test.dart` — a
   genuine pre-migration (schemaVersion 5) database, built by hand against the
   exact schema Drift generated before this column existed, gains
