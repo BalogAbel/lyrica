@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
@@ -606,6 +607,68 @@ void main() {
       expect(authController.state.session?.userId, 'user-2');
     });
 
+    test('a wipe whose song deletion throws falls back to cancel instead of '
+        'stranding the prior data while presenting as the new user -- '
+        'Finding 1, PR #64 review', () async {
+      await seedPriorUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      final failingSongStore = _FailingDeleteSongCatalogStore(songStore)
+        ..failDeleteCatalogsForUser = true;
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogStoreProvider.overrideWithValue(failingSongStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final reportedErrors = <Object>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => reportedErrors.add(details.exception);
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      // The device must not be left presenting as the new user (user-2)
+      // while the prior user's data sits stranded with no signal: the
+      // failed wipe falls back to exactly the state an explicit cancel
+      // produces.
+      expect(authController.state.status, AppAuthStatus.sessionExpired);
+      expect(authController.state.lastKnownSession?.userId, 'user-1');
+      expect(authController.state.session, isNull);
+      // The identity store must still name the PRIOR user so a later
+      // signedIn edge retries the wipe -- not cleared, not overwritten
+      // with the new user, as a half-finished wipe would otherwise do.
+      expect(identityStore.clearCount, 0);
+      expect(identityStore.writes, isEmpty);
+      final stillStored = await identityStore.read();
+      expect(stillStored?.userId, 'user-1');
+      // The failure must be observable, not silently dropped in release.
+      expect(reportedErrors, isNotEmpty);
+      // No prompt was ever needed for this path (zero pending count):
+      // confirm the failure is in the direct-wipe branch, not the
+      // confirm-dialog branch.
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+    });
+
     test('outcome 4: cancel signs the new session out, deletes nothing, and '
         'leaves the app offline-authenticated as the prior user', () async {
       await seedPriorUserData();
@@ -881,6 +944,73 @@ void main() {
       expect(identityStore.writes, isEmpty);
       expect(await priorSongsStillPresent(), isTrue);
       expect(await priorPlanningProjectionStillPresent(), isTrue);
+    });
+
+    test("resolveReauth's ReauthSuperseded outcome is consumed and logged, not "
+        'silently dropped, when a resolution is superseded before it can act '
+        '-- Finding 3, PR #64 review', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      final blockedCount = Completer<int>();
+      final counter = PendingLocalWorkCounter(
+        readPlanningPendingWorkCount: ({required userId}) =>
+            blockedCount.future,
+        readSongPendingWorkCount: ({required userId}) async => 0,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          pendingLocalWorkCounterProvider.overrideWithValue(counter),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final messages = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        messages.add(message ?? '');
+      };
+      addTearDown(() => debugPrint = originalDebugPrint);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      // A newer signedIn edge supersedes this resolution before its
+      // pending-count read (still blocked on blockedCount) can resolve.
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+      );
+      await pump(2);
+      blockedCount.complete(0);
+      await pump();
+
+      // resolveReauth's outcome must be consumed, not just awaited and
+      // discarded: the superseded resolution's outcome is observable
+      // here as a logged trace, proving the return value had a real
+      // effect in production rather than only being read by tests.
+      expect(
+        messages.any((message) => message.contains('superseded')),
+        isTrue,
+        reason:
+            'a superseded resolution outcome must be consumed and '
+            'logged, not silently dropped',
+      );
     });
 
     test(
@@ -1163,4 +1293,222 @@ class _RecordingReauthPromptController extends ReauthPromptController {
     unawaited(future.then(results.add));
     return future;
   }
+}
+
+/// Forwards every call to a real [DriftSongCatalogStore] except
+/// [deleteCatalogsForUser], which can be made to fail on demand -- models a
+/// storage failure partway through `wipePriorAndProceed` (Finding 1, PR #64
+/// review) without hand-rolling every other method on the interface. The
+/// failure surfaces as a rejected Future (the method is `async`), matching
+/// how a real Drift query failure would actually propagate, rather than a
+/// synchronous throw that would prevent the concurrent planning deletion
+/// from ever starting.
+class _FailingDeleteSongCatalogStore implements SongCatalogStore {
+  _FailingDeleteSongCatalogStore(this._inner);
+
+  final SongCatalogStore _inner;
+  bool failDeleteCatalogsForUser = false;
+
+  @override
+  Future<void> deleteCatalogsForUser({required String userId}) async {
+    if (failDeleteCatalogsForUser) {
+      throw StateError('storage failure: deleteCatalogsForUser');
+    }
+    return _inner.deleteCatalogsForUser(userId: userId);
+  }
+
+  @override
+  Future<void> replaceActiveSnapshot({
+    required String userId,
+    required String organizationId,
+    required List<SongSummary> summaries,
+    required List<SongSource> sources,
+    required DateTime refreshedAt,
+  }) => _inner.replaceActiveSnapshot(
+    userId: userId,
+    organizationId: organizationId,
+    summaries: summaries,
+    sources: sources,
+    refreshedAt: refreshedAt,
+  );
+
+  @override
+  Future<List<SongSummary>> readActiveSummaries({
+    required String userId,
+    required String organizationId,
+  }) => _inner.readActiveSummaries(
+    userId: userId,
+    organizationId: organizationId,
+  );
+
+  @override
+  Future<SongSummary?> readActiveSummaryBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) => _inner.readActiveSummaryBySlug(
+    userId: userId,
+    organizationId: organizationId,
+    songSlug: songSlug,
+  );
+
+  @override
+  Future<SongSummary?> readActiveSummaryById({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => _inner.readActiveSummaryById(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+  );
+
+  @override
+  Future<SongSource?> readActiveSource({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => _inner.readActiveSource(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+  );
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({required String userId}) =>
+      _inner.readLatestCachedOrganizationId(userId: userId);
+
+  @override
+  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) =>
+      _inner.saveSongMutation(mutation);
+
+  @override
+  Future<bool> hasUnsyncedSongMutations({required String userId}) =>
+      _inner.hasUnsyncedSongMutations(userId: userId);
+
+  @override
+  Future<List<CachedCatalogSongMutation>> readSongMutations({
+    required String userId,
+    required String organizationId,
+    List<SongSyncStatus>? syncStatuses,
+  }) => _inner.readSongMutations(
+    userId: userId,
+    organizationId: organizationId,
+    syncStatuses: syncStatuses,
+  );
+
+  @override
+  Future<CachedCatalogSongMutation?> readSongMutationBySongId({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => _inner.readSongMutationBySongId(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+  );
+
+  @override
+  Future<CachedCatalogSongMutation?> readSongMutationBySlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) => _inner.readSongMutationBySlug(
+    userId: userId,
+    organizationId: organizationId,
+    songSlug: songSlug,
+  );
+
+  @override
+  Future<bool> hasVisibleSongSlug({
+    required String userId,
+    required String organizationId,
+    required String songSlug,
+  }) => _inner.hasVisibleSongSlug(
+    userId: userId,
+    organizationId: organizationId,
+    songSlug: songSlug,
+  );
+
+  @override
+  Future<String> allocateAvailableSongSlug({
+    required String userId,
+    required String organizationId,
+    required String title,
+  }) => _inner.allocateAvailableSongSlug(
+    userId: userId,
+    organizationId: organizationId,
+    title: title,
+  );
+
+  @override
+  Future<void> deleteSong({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => _inner.deleteSong(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+  );
+
+  @override
+  Future<bool> reconcileSyncedSong({
+    required String userId,
+    required String organizationId,
+    required SongSummary summary,
+    required SongSource source,
+    int? expectedRevision,
+  }) => _inner.reconcileSyncedSong(
+    userId: userId,
+    organizationId: organizationId,
+    summary: summary,
+    source: source,
+    expectedRevision: expectedRevision,
+  );
+
+  @override
+  Future<void> clearSongMutation({
+    required String userId,
+    required String organizationId,
+    required String songId,
+  }) => _inner.clearSongMutation(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+  );
+
+  @override
+  Future<int?> markSongCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) => _inner.markSongCreateSending(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+    expectedRevision: expectedRevision,
+  );
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) => _inner.resolveCancelledSongCreate(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+    created: created,
+    acceptedVersion: acceptedVersion,
+  );
+
+  @override
+  Future<void> deleteCatalog({
+    required String userId,
+    required String organizationId,
+  }) => _inner.deleteCatalog(userId: userId, organizationId: organizationId);
 }
