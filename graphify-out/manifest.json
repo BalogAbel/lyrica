@@ -5,8 +5,8 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1786011701.0064375,
-    "ast_hash": "ebd32f58fbdf7927416e7fe2d131c667",
+    "mtime": 1786011741.8925467,
+    "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
   "apps/lyron_app/android/app/src/main/kotlin/com/lyron/lyron_app/MainActivity.kt": {
@@ -95,8 +95,8 @@
     "semantic_hash": "f584f15faa1d543b0abed1f48e003661"
   },
   "apps/lyron_app/lib/src/application/auth/app_auth_controller.dart": {
-    "mtime": 1785697260.7638767,
-    "ast_hash": "97624bc392e7b8db2bc713fd0177a4b8",
+    "mtime": 1786033463.0894144,
+    "ast_hash": "958978a98c964bd925edbef38f9b59de",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/app_auth_state.dart": {
@@ -145,8 +145,8 @@
     "semantic_hash": "33f3bd7b619ae4a1b9c7b52a8ae665ba"
   },
   "apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart": {
-    "mtime": 1785933179.8874593,
-    "ast_hash": "77e23b20a7337164d6e9284faf09aea6",
+    "mtime": 1786036374.3162599,
+    "ast_hash": "046d1c0fb1c89900db948da8ee2f602a",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_data_revision.dart": {
@@ -935,8 +935,8 @@
     "semantic_hash": "78a9e5fc3421961bb5c5fa3e3208ecbb"
   },
   "apps/lyron_app/test/application/auth/app_auth_controller_test.dart": {
-    "mtime": 1785697233.4105728,
-    "ast_hash": "5e3acd7a15dbba611f41356bbd891688",
+    "mtime": 1786033916.9785419,
+    "ast_hash": "838c28069665f81a29291e4c44f84fcd",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/capability_resolver_test.dart": {
@@ -1210,8 +1210,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart": {
-    "mtime": 1785930896.790977,
-    "ast_hash": "07f39789822ad33617af5225eebf7de5",
+    "mtime": 1786036374.3174202,
+    "ast_hash": "a076883ea98c98762ec7fca379acb5a5",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart": {
@@ -2455,8 +2455,8 @@
     "semantic_hash": "b6dfaff2d7cc0023ffc4fbc9029cd7e6"
   },
   "docs/testing/testing-strategy.md": {
-    "mtime": 1786010825.6892993,
-    "ast_hash": "7f0d6e751044ac1452af8487cf004059",
+    "mtime": 1786037051.6414707,
+    "ast_hash": "596e0eb224511fa424fc1914eb558f45",
     "semantic_hash": ""
   },
   "docs/workflows/ai-development.md": {
@@ -2635,8 +2635,8 @@
     "semantic_hash": "1962ead0111d2720face580e80a4155c"
   },
   "apps/lyron_app/lib/src/application/auth/reauth_resolution.dart": {
-    "mtime": 1785760591.474382,
-    "ast_hash": "375328ca67a18becd2a06f7e0ad49e25",
+    "mtime": 1786036447.9158201,
+    "ast_hash": "3fbed7c43993d6d5b1d1473bb4d5222f",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_reconciler.dart": {
@@ -2700,8 +2700,8 @@
     "semantic_hash": "99427a24f5e748ad430cf640a2ca9f43"
   },
   "apps/lyron_app/test/application/auth/identity_persistence_wiring_test.dart": {
-    "mtime": 1785744668.5373867,
-    "ast_hash": "bb6be7aace7dc1f053f67f35f84c1dca",
+    "mtime": 1786033900.8595285,
+    "ast_hash": "16c21ebacf6f8488f9936c64079a0f2b",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/last_known_identity_store_test.dart": {
@@ -2815,8 +2815,8 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1786010895.1095133,
-    "ast_hash": "ae8bdabbb0c612091bab1a1006df76da",
+    "mtime": 1786037182.4861693,
+    "ast_hash": "ec157bed37fe1e3143c81e2843699928",
     "semantic_hash": ""
   },
   "docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md": {
@@ -2875,8 +2875,8 @@
     "semantic_hash": "b6bb538b9f77fd32496dc0e0e9cd6210"
   },
   "apps/lyron_app/lib/src/application/auth_providers.dart": {
-    "mtime": 1785766302.914257,
-    "ast_hash": "b995d852658fc60e2a46c2863d75467a",
+    "mtime": 1786036420.1731658,
+    "ast_hash": "656c7f49b8f4f6cc451a11cc973dd86c",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/core_providers.dart": {
@@ -2885,8 +2885,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning_providers.dart": {
-    "mtime": 1785835162.7963972,
-    "ast_hash": "9f47d30db95cb33f83d8f4003ab7f541",
+    "mtime": 1786036175.591308,
+    "ast_hash": "942272242c6e20463d5981dfb1494334",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_catalog_providers.dart": {
@@ -3340,18 +3340,18 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/pending_local_work_counter.dart": {
-    "mtime": 1785743113.9059558,
-    "ast_hash": "049564fd048792a65c95597724a7fd85",
+    "mtime": 1786036283.899027,
+    "ast_hash": "40af9da663742ae1ea26798b25da9c2c",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/reauth_prompt_controller.dart": {
-    "mtime": 1785745299.8717358,
-    "ast_hash": "a8b75c88b47331734ea6daf5025ea0c4",
+    "mtime": 1786036283.8993604,
+    "ast_hash": "a9569aa95651131a544b394aca42fd4c",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
-    "mtime": 1786011361.870804,
-    "ast_hash": "a30b42dc78c3a79ffbe9af2fed5fe58c",
+    "mtime": 1786036283.8997147,
+    "ast_hash": "dc66364d0784259b734d434da231a253",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart": {
@@ -3405,13 +3405,13 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/reauth_prompt_controller_test.dart": {
-    "mtime": 1785744162.2552536,
-    "ast_hash": "7562e0c5935153f05a317966beff4c8a",
+    "mtime": 1786036283.900495,
+    "ast_hash": "071744b5ffcce96e70185505c47e46a1",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1786011525.7919495,
-    "ast_hash": "e858d468bd5116c2079afb758b770327",
+    "mtime": 1786036374.317001,
+    "ast_hash": "48165d777b113e5664bd0bd85990e8bc",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
@@ -3445,8 +3445,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/storage_pressure_contract_test.dart": {
-    "mtime": 1785752479.9423437,
-    "ast_hash": "3ab65a3375ec32d68f8ae25fb9933faa",
+    "mtime": 1786036175.5927844,
+    "ast_hash": "1f176b0623263bfd754b173ec789d2c6",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/auth/reauth_prompt_host_test.dart": {
@@ -3460,13 +3460,13 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-028-local-storage-budget-and-eviction-policy.md": {
-    "mtime": 1786011455.6137795,
-    "ast_hash": "1aeb618e828e7fcf845c9913cd487f8f",
+    "mtime": 1786036985.9521978,
+    "ast_hash": "c176196aea1a9e4e5f7f77e052fbcd06",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md": {
-    "mtime": 1785746657.1182964,
-    "ast_hash": "644fd404074849206f7ca88ef25228e1",
+    "mtime": 1786036943.7330966,
+    "ast_hash": "c0bcb25201ea77345724ffd7087d5e6e",
     "semantic_hash": ""
   },
   "docs/deferred/2026-07-31-occ-divergence-lf-t5.md": {
@@ -3520,8 +3520,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/footprint_production_wiring_test.dart": {
-    "mtime": 1785759878.179683,
-    "ast_hash": "120c55fe4cd715dc4b662b6d28164aa1",
+    "mtime": 1786036175.5922961,
+    "ast_hash": "fec8d309bd74120f307a42e913e58c3e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/auth/drift_pending_local_work_reader_test.dart": {
@@ -3755,8 +3755,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-030-sync-snapshot-identity.md": {
-    "mtime": 1786010798.307573,
-    "ast_hash": "4ea40c85bcc38d43181ad903a12c6485",
+    "mtime": 1786037023.1161711,
+    "ast_hash": "6e6c5ac164b2e757932e8508959e21f3",
     "semantic_hash": ""
   },
   "docs/specs/2026-08-05-sync-snapshot-identity.md": {
