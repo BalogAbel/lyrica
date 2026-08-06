@@ -669,6 +669,80 @@ void main() {
       expect(container.read(reauthPromptControllerProvider).pending, isNull);
     });
 
+    test('a wipe whose deletions and clear succeed but the new-identity write '
+        'throws leaves the store empty and does NOT misrepresent the app as '
+        'the prior user -- Finding A, 2026-08-06 remediation round', () async {
+      await seedPriorUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      // Zero pending count (default, real reader against empty tables, as
+      // in outcome 2 above): the wipe runs directly, no confirm dialog.
+      identityStore.throwOnWrite = true;
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final reportedErrors = <Object>[];
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) => reportedErrors.add(details.exception);
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      // The deletions and the clear genuinely succeeded: the prior user's
+      // local data is really gone, and the identity store was really
+      // cleared.
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(await priorPlanningProjectionStillPresent(), isFalse);
+      expect(identityStore.clearCount, 1);
+      // The terminal write for the NEW identity never landed (it threw),
+      // and -- unlike a failure in the destructive part above -- nothing
+      // here re-writes the PRIOR identity back either: the store is left
+      // genuinely empty, honestly reflecting that neither identity is
+      // currently persisted, rather than resurrecting a prior-user row
+      // that no longer has any data behind it.
+      expect(identityStore.writes, isEmpty);
+      final stillStored = await identityStore.read();
+      expect(stillStored, isNull);
+      // The failure must still be observable, not silently dropped.
+      expect(reportedErrors, isNotEmpty);
+      // The live app state is untouched by this failure: it was already
+      // signedIn as user-2 (the real, live backend session) before this
+      // listener ran, and stays that way. The OLD behavior -- routing
+      // this failure through the same fallback as a destructive-part
+      // failure -- would have forced sessionExpired/user-1 here, which is
+      // exactly the misleading outcome this test exists to rule out: the
+      // prior user's data is actually gone, so presenting the app as
+      // "offline-authenticated as user-1" would be a lie, and a cold
+      // restart in this state reads a null identity and yields
+      // signedOut anyway, never user-1 -- there is nothing for the
+      // fallback's implied "next signedIn edge retries the wipe" to
+      // detect.
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+    });
+
     test('outcome 4: cancel signs the new session out, deletes nothing, and '
         'leaves the app offline-authenticated as the prior user', () async {
       await seedPriorUserData();
@@ -1187,6 +1261,14 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   Completer<void>? _clearStarted;
   Completer<void>? _clearGate;
 
+  /// Finding A (2026-08-06 remediation round): makes the NEXT [write] throw
+  /// instead of applying, to model a storage failure that hits only the
+  /// terminal identity write -- after a wipe's deletions and
+  /// [identityStore.clear] have already succeeded. Thrown before touching
+  /// [writes]/[_current], so a throwing write leaves both exactly as [clear]
+  /// left them (empty), never recorded as if it had applied.
+  bool throwOnWrite = false;
+
   Future<void> get clearStarted => _clearStarted!.future;
 
   void blockNextClear() {
@@ -1219,6 +1301,9 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
 
   @override
   Future<void> write(LastKnownIdentity identity) async {
+    if (throwOnWrite) {
+      throw StateError('storage failure: write');
+    }
     callLog.add('write:${identity.userId}');
     writes.add(identity);
     _current = identity;
@@ -1488,6 +1573,23 @@ class _FailingDeleteSongCatalogStore implements SongCatalogStore {
     userId: userId,
     organizationId: organizationId,
     songId: songId,
+    expectedRevision: expectedRevision,
+  );
+
+  @override
+  Future<int?> saveSongMutationStatus({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required String syncStatus,
+    String? syncErrorContext,
+    int? expectedRevision,
+  }) => _inner.saveSongMutationStatus(
+    userId: userId,
+    organizationId: organizationId,
+    songId: songId,
+    syncStatus: syncStatus,
+    syncErrorContext: syncErrorContext,
     expectedRevision: expectedRevision,
   );
 
