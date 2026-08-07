@@ -157,6 +157,16 @@ abstract interface class SongCatalogStore {
 
   Future<String?> readLatestCachedOrganizationId({required String userId});
 
+  /// The store's one write path for a song mutation row's content.
+  ///
+  /// N1 (PR #64 review, second remediation round): throws
+  /// [LocalSongTombstoneConflictException] if the row currently exists and
+  /// is a `cancelling` cancellation tombstone (D2,
+  /// docs/specs/2026-08-06-in-flight-create-cancellation.md) and [mutation]
+  /// does not itself carry `SongSyncStatus.cancelling` -- only
+  /// [resolveCancelledSongCreate] may move a row off `cancelling`. The
+  /// read-check-write is atomic (wrapped in a storage transaction), so this
+  /// cannot be bypassed by a write interleaved from a different call.
   Future<void> saveSongMutation(SongCatalogMutationDraft mutation);
 
   Future<bool> hasUnsyncedSongMutations({required String userId});
@@ -286,6 +296,13 @@ abstract interface class SongCatalogStore {
   ///
   /// Returns `true` if a tombstone was found and resolved, `false`
   /// otherwise.
+  ///
+  /// N1 (PR #64 review, second remediation round): also goes through the
+  /// storage-recovery boundary (write-recovery evict-and-retry-once, D1 of
+  /// `docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md`)
+  /// like every other growing write in this class, matching the planning
+  /// twin's `resolveCancelledCreate` (wrapped by `BudgetedPlanningMutationStore
+  /// ._recoveredWrite`).
   Future<bool> resolveCancelledSongCreate({
     required String userId,
     required String organizationId,
@@ -616,45 +633,83 @@ class DriftSongCatalogStore implements SongCatalogStore {
       throw const LocalSongSlugConflictException();
     }
 
-    final existing = await readSongMutationBySongId(
-      userId: mutation.userId,
-      organizationId: mutation.organizationId,
-      songId: mutation.songId,
-    );
-    if (existing != null && _matchesSongMutation(existing, mutation)) {
-      return;
-    }
+    // N1 (PR #64 review, second remediation round): the existing-row read
+    // and the write used to be two separate top-level statements with no
+    // transaction spanning them -- exactly the shape M2 (ADR-030) already
+    // proved lets an unrelated write for the SAME row interleave in the
+    // gap. The only writer that can legitimately race this one for a
+    // `cancelling` tombstone row is `resolveCancelledSongCreate` (also
+    // transactional, D3 below) -- wrapping this read-check-write in the
+    // same `_database.transaction()` discipline means whichever of the two
+    // reaches the row first now runs to completion before the other's
+    // transaction can even begin (Drift serialises all statements against a
+    // single connection while any transaction is open), so the guard below
+    // always sees a value that is still current, never one made stale by an
+    // interleaved commit.
+    final changed = await _database.transaction(() async {
+      final existing = await readSongMutationBySongId(
+        userId: mutation.userId,
+        organizationId: mutation.organizationId,
+        songId: mutation.songId,
+      );
+      if (existing != null && _matchesSongMutation(existing, mutation)) {
+        return false;
+      }
 
-    // D1 (docs/specs/2026-08-05-sync-snapshot-identity.md): every local
-    // write to this row bumps localRevision, including a fold onto an
-    // already-pending row (e.g. a second edit before the first ever
-    // synced) -- this is the store's one write path for the mutation
-    // table's content, shared by every caller of saveSongMutation. Reading
-    // `existing` here (already done above, for the no-op short-circuit)
-    // and computing the increment in Dart is safe: this is not a
-    // conditional write racing a network round trip (unlike
-    // reconcileSyncedSong, D2), it is the store's own single, ordinary
-    // write for this song.
-    await _database
-        .into(_database.cachedCatalogSongMutations)
-        .insertOnConflictUpdate(
-          CachedCatalogSongMutationsCompanion.insert(
-            userId: mutation.userId,
-            organizationId: mutation.organizationId,
-            songId: mutation.songId,
-            slug: mutation.slug,
-            title: mutation.title,
-            source: mutation.source,
-            version: mutation.version,
-            syncStatus: mutation.syncStatus.value,
-            baseVersion: Value(mutation.baseVersion),
-            syncErrorContext: Value(mutation.syncErrorContext),
-            localRevision: Value(
-              existing == null ? 1 : existing.localRevision + 1,
+      // D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+      // `cancelling` tombstone is the user's already-confirmed delete
+      // intent for a song whose create is still being resolved -- it must
+      // never be silently resurrected by an ordinary write reaching this
+      // shared path (for example a stale-reference `SongLibraryService
+      // .updateSong` call against a songId the UI opened before the
+      // tombstone existed). Only `resolveCancelledSongCreate` may move a
+      // row off `cancelling` (into a real `pendingDelete` or discarded
+      // entirely); every other caller of this shared write path is refused
+      // outright rather than allowed to bury the delete intent under a
+      // normal update with no error, no trace.
+      if (existing != null &&
+          _songSyncStatusFromValue(existing.syncStatus) ==
+              SongSyncStatus.cancelling &&
+          mutation.syncStatus != SongSyncStatus.cancelling) {
+        throw const LocalSongTombstoneConflictException();
+      }
+
+      // D1 (docs/specs/2026-08-05-sync-snapshot-identity.md): every local
+      // write to this row bumps localRevision, including a fold onto an
+      // already-pending row (e.g. a second edit before the first ever
+      // synced) -- this is the store's one write path for the mutation
+      // table's content, shared by every caller of saveSongMutation. Reading
+      // `existing` here (already done above, for the no-op short-circuit)
+      // and computing the increment in Dart is safe: this is not a
+      // conditional write racing a network round trip (unlike
+      // reconcileSyncedSong, D2), it is the store's own single, ordinary
+      // write for this song, now made atomic with its own read (N1) so the
+      // tombstone guard just above cannot be bypassed by an interleaved
+      // write from a different call.
+      await _database
+          .into(_database.cachedCatalogSongMutations)
+          .insertOnConflictUpdate(
+            CachedCatalogSongMutationsCompanion.insert(
+              userId: mutation.userId,
+              organizationId: mutation.organizationId,
+              songId: mutation.songId,
+              slug: mutation.slug,
+              title: mutation.title,
+              source: mutation.source,
+              version: mutation.version,
+              syncStatus: mutation.syncStatus.value,
+              baseVersion: Value(mutation.baseVersion),
+              syncErrorContext: Value(mutation.syncErrorContext),
+              localRevision: Value(
+                existing == null ? 1 : existing.localRevision + 1,
+              ),
             ),
-          ),
-        );
-    _onStorageFootprintChanged?.call();
+          );
+      return true;
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
   }
 
   @override
@@ -1080,9 +1135,32 @@ class DriftSongCatalogStore implements SongCatalogStore {
       return null;
     }
     _onStorageFootprintChanged?.call();
+    // N5 (PR #64 review, second remediation round): `.single` throws a
+    // StateError if more than one row matched -- a new throwing path where
+    // an earlier version of this method used a plain row count. Left as
+    // `.single`, deliberately, rather than made total (e.g. `.first`): the
+    // WHERE clause above always includes the full composite primary key
+    // (userId, organizationId, songId -- see CachedCatalogSongMutations
+    // .primaryKey), so more than one row matching is not a reachable
+    // runtime state, it is a schema invariant violation -- the same class
+    // of defect `Error` subtypes exist to signal (LocalStorageWriteRecovery
+    // .guard's own documented policy: an Error means a programming defect
+    // and must propagate, never be papered over as if it were storage
+    // pressure or a stale-revision outcome).
     return updated.single.localRevision;
   }
 
+  // N1 (PR #64 review, second remediation round): guarded like the other
+  // growing writes in this class (saveSongMutation, markSongCreateSending,
+  // saveSongMutationStatus, reconcileSyncedSong) and like the planning
+  // twin's resolveCancelledCreate (BudgetedPlanningMutationStore's
+  // _recoveredWrite) -- the created:true branch below grows the row back
+  // from a tombstone into a full pendingDelete record, so a storage-layer
+  // failure on it needs the same evict-and-retry-once treatment every other
+  // comparable write in this class already gets. Before this fix, a
+  // transient storage failure here surfaced a raw, unrecovered exception
+  // instead of the typed LocalStorageWriteFailure every sibling growing
+  // write produces.
   @override
   Future<bool> resolveCancelledSongCreate({
     required String userId,
@@ -1090,8 +1168,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required String songId,
     required bool created,
     int? acceptedVersion,
-  }) => _database.transaction(
-    () => _resolveCancelledSongCreate(
+  }) => _guarded(
+    () => _resolveCancelledSongCreateGuarded(
       userId: userId,
       organizationId: organizationId,
       songId: songId,
@@ -1099,6 +1177,34 @@ class DriftSongCatalogStore implements SongCatalogStore {
       acceptedVersion: acceptedVersion,
     ),
   );
+
+  // The footprint callback is fired here, AFTER `await
+  // _database.transaction(...)` returns -- i.e. after the transaction has
+  // actually committed -- mirroring `_reconcileSyncedSong`'s pattern above
+  // rather than firing from inside the transaction callback itself. Nothing
+  // in this class may claim the footprint changed before that change is
+  // durably committed.
+  Future<bool> _resolveCancelledSongCreateGuarded({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async {
+    final changed = await _database.transaction(
+      () => _resolveCancelledSongCreate(
+        userId: userId,
+        organizationId: organizationId,
+        songId: songId,
+        created: created,
+        acceptedVersion: acceptedVersion,
+      ),
+    );
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+    return changed;
+  }
 
   Future<bool> _resolveCancelledSongCreate({
     required String userId,
@@ -1133,7 +1239,6 @@ class DriftSongCatalogStore implements SongCatalogStore {
                 table.songId.equals(songId),
           ))
           .go();
-      _onStorageFootprintChanged?.call();
       return true;
     }
 
@@ -1143,24 +1248,43 @@ class DriftSongCatalogStore implements SongCatalogStore {
     // subsequent operation. baseVersion is rebased on the version the
     // backend just assigned the created row, so the delete RPC's OCC check
     // targets content that actually exists.
-    await _database
-        .into(_database.cachedCatalogSongMutations)
-        .insertOnConflictUpdate(
-          CachedCatalogSongMutationsCompanion.insert(
-            userId: userId,
-            organizationId: organizationId,
-            songId: songId,
-            slug: row.slug,
-            title: row.title,
-            source: row.source,
-            version: row.version,
-            syncStatus: SongSyncStatus.pendingDelete.value,
-            baseVersion: Value(acceptedVersion ?? row.baseVersion),
-            syncErrorContext: const Value(null),
-            localRevision: Value(row.localRevision + 1),
-          ),
-        );
-    _onStorageFootprintChanged?.call();
+    //
+    // N1 (PR #64 review, second remediation round): this is now a targeted
+    // UPDATE guarded by `syncStatus = cancelling` in its own WHERE clause,
+    // not the unconditional insertOnConflictUpdate upsert every other
+    // `record*`-shaped write in this class uses -- matching the D2/D3
+    // discipline established elsewhere in this file ("the WHERE clause is
+    // the sole arbiter of whether a write applies, never a preceding SELECT
+    // compared in Dart alone"). Content columns (slug/title/source/version)
+    // are left untouched: this transition never changes them, only the
+    // status/baseVersion/error/revision. A dedicated regression test proves
+    // the enclosing `_database.transaction()` already makes the `if` check
+    // above and this write atomic against any other write on this
+    // connection (nothing can change the row in between), so `rowsUpdated
+    // == 0` is unreachable today -- this guard is defense in depth: if a
+    // future change ever weakens that transaction boundary, this write
+    // fails safe (reports "did not apply", D3's existing vocabulary)
+    // instead of silently reopening the exact race this discipline exists
+    // to close.
+    final rowsUpdated =
+        await (_database.update(_database.cachedCatalogSongMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.songId.equals(songId) &
+                  table.syncStatus.equals(SongSyncStatus.cancelling.value),
+            ))
+            .write(
+              CachedCatalogSongMutationsCompanion(
+                syncStatus: Value(SongSyncStatus.pendingDelete.value),
+                baseVersion: Value(acceptedVersion ?? row.baseVersion),
+                syncErrorContext: const Value(null),
+                localRevision: Value(row.localRevision + 1),
+              ),
+            );
+    if (rowsUpdated == 0) {
+      return false;
+    }
     return true;
   }
 
