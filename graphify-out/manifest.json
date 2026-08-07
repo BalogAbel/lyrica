@@ -5,7 +5,7 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1786112032.585746,
+    "mtime": 1786128752.0681956,
     "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart": {
-    "mtime": 1786112231.4994967,
-    "ast_hash": "ff42b06ffd8b53acdef10a16b8bef278",
+    "mtime": 1786128746.431274,
+    "ast_hash": "fe143235c63228eaff1a84c4f60305fa",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
@@ -255,13 +255,13 @@
     "semantic_hash": "79eb3a37ae117568cdd55b488984b210"
   },
   "apps/lyron_app/lib/src/application/song_library/song_library_service.dart": {
-    "mtime": 1786010244.317966,
-    "ast_hash": "e60a3c4811dd243bb50f7a86f7ecc8ca",
+    "mtime": 1786128738.5864358,
+    "ast_hash": "3b2ca1245ab4b92a506a6397b14f5858",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_mutation_sync_controller.dart": {
-    "mtime": 1786112115.031878,
-    "ast_hash": "f8f61712b5517b648115f87814a3a573",
+    "mtime": 1786128729.1268275,
+    "ast_hash": "5f9e38726f7987da9205111e26b574ce",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_mutation_sync_types.dart": {
@@ -2815,8 +2815,8 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1786112377.2263641,
-    "ast_hash": "5866b0ce0540ab88d95cf88d3c63fbf2",
+    "mtime": 1786128859.064945,
+    "ast_hash": "d376f04bc54c6cde0941823437ab415f",
     "semantic_hash": ""
   },
   "docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md": {
@@ -3755,8 +3755,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-030-sync-snapshot-identity.md": {
-    "mtime": 1786112345.9857194,
-    "ast_hash": "68a0ab34b02da7c954a7fdd54faf17bc",
+    "mtime": 1786128846.799361,
+    "ast_hash": "647ac17a25d8ab3dff6912667f0cf33f",
     "semantic_hash": ""
   },
   "docs/specs/2026-08-05-sync-snapshot-identity.md": {
