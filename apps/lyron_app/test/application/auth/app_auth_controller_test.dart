@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -15,6 +16,8 @@ class _FakeAuthRepository implements AuthRepository {
   bool magicLinkCalled = false;
   bool signOutCalled = false;
   bool deleteCalled = false;
+  bool emitNullOnSignOut = false;
+  Object? signOutError;
 
   @override
   Future<AppAuthSession?> restoreSession() async => currentSession;
@@ -41,6 +44,16 @@ class _FakeAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     signOutCalled = true;
+    // Models the real Supabase client: calling signOut() also drives the
+    // auth-state-change stream to emit null as a side effect, at a time
+    // relative to the caller's `await` that this fake does not pin down.
+    if (emitNullOnSignOut) {
+      _controller.add(null);
+    }
+    final error = signOutError;
+    if (error != null) {
+      throw error;
+    }
   }
 
   @override
@@ -239,4 +252,157 @@ void main() {
     expect(repo.deleteCalled, isTrue);
     expect(controller.state.status, AppAuthStatus.signedOut);
   });
+
+  test('cancelReauthToPriorSession signs out the new session and returns to '
+      "sessionExpired carrying the PRIOR user's session -- not signedOut, and "
+      'not the cancelled new user', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+
+    expect(repo.signOutCalled, isTrue);
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.session, isNull);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.lastKnownSession?.email, 'u1@example.com');
+  });
+
+  test('cancelReauthToPriorSession converges on the prior session even when '
+      'the auth stream also emits null as a side effect of the sign-out call '
+      '-- this must not be lucky about which one wins', () async {
+    final repo = _FakeAuthRepository()..emitNullOnSignOut = true;
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+    // Let any additional microtask from the stream-driven path settle.
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.session, isNull);
+  });
+
+  test('cancelReauthToPriorSession stays offline-authenticated as the prior '
+      "user even when the auth stream's null side effect is delivered LATE "
+      '-- after the cancel call has already returned, not during its await '
+      '-- because _repository.signOut() resolving does not guarantee its '
+      'own stream side effect has been delivered yet', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+
+    // The stream's null event arrives only now -- well after
+    // cancelReauthToPriorSession has returned and its `finally` has already
+    // run. Falling through to the ordinary null-session mapping here would
+    // read _state.status as sessionExpired (not signedIn) and return
+    // signedOut, discarding lastKnownSession and the offline-authenticated
+    // state cancel exists to preserve.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.lastKnownSession?.email, 'u1@example.com');
+    expect(controller.state.session, isNull);
+  });
+
+  test('cancelReauthToPriorSession still converges to sessionExpired carrying '
+      "the PRIOR user's session and reports the failure when the backend "
+      'signOut() call throws -- Finding 2, PR #64 review: the state must not '
+      'silently stay put', () async {
+    final repo = _FakeAuthRepository()
+      ..signOutError = StateError('offline: signOut unreachable');
+    repo.currentSession = const AppAuthSession(
+      userId: 'u2',
+      email: 'u2@example.com',
+    );
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    final reportedErrors = <Object>[];
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) => reportedErrors.add(details.exception);
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    await controller.cancelReauthToPriorSession(
+      const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+    );
+
+    expect(repo.signOutCalled, isTrue);
+    // The state must not silently stay put -- it converges exactly as it
+    // does when the backend signOut() call succeeds.
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.session, isNull);
+    // The failure must be observable, not silently dropped.
+    expect(reportedErrors, isNotEmpty);
+    expect(reportedErrors.single, isA<StateError>());
+  });
+
+  test(
+    'a later, unrelated null session event does not misapply the pending '
+    'cancel record after a failed cancelReauthToPriorSession -- Finding 2, '
+    'PR #64 review: the record must not linger able to be wrongly consumed',
+    () async {
+      final repo = _FakeAuthRepository()
+        ..signOutError = StateError('offline: signOut unreachable');
+      repo.currentSession = const AppAuthSession(
+        userId: 'u2',
+        email: 'u2@example.com',
+      );
+      final controller = AppAuthController(repo);
+      await controller.restoreSession();
+
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (_) {};
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      await controller.cancelReauthToPriorSession(
+        const AppAuthSession(userId: 'u1', email: 'u1@example.com'),
+      );
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u1');
+
+      // A later, UNRELATED null event (nothing to do with the failed
+      // cancel above) must not be misapplied via a lingering pending
+      // record. State has already converged, so this must be a true no-op
+      // -- not a state change driven by stale bookkeeping -- proven here by
+      // asserting no listener notification fires at all.
+      var notified = false;
+      controller.addListener(() => notified = true);
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notified, isFalse);
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u1');
+    },
+  );
 }

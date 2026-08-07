@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/presentation/auth/reauth_prompt_host.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -32,6 +33,8 @@ class _LyronAppState extends ConsumerState<LyronApp> {
       title: AppStrings.appName,
       theme: buildAppTheme(),
       routerConfig: router,
+      builder: (context, child) =>
+          ReauthPromptHost(child: child ?? const SizedBox.shrink()),
     );
   }
 }

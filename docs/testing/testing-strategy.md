@@ -21,10 +21,13 @@ Cover:
 - ChordPro parsing and metadata mapping rules
 - Song repository boundary behavior and backend summary/source mapping
 - Song CRUD orchestration behavior, including authorization-failure handling, OCC conflict branching, slug reconciliation, and `pending_delete` filtering
-- Song CRUD remote-delete convergence behavior, including persisted remote-deletion classification, same-id recreate routing, delete-sourced accepted convergence, and no-fetch discard when the canonical row is gone
-- Planning repository boundary behavior, including plan ordering and plan-detail mapping
+- Song CRUD remote-delete convergence behavior, including persisted remote-deletion classification, same-id recreate routing, and delete-sourced accepted convergence
+- Song CRUD offline-discard behavior (LF-7): `discardMine` never calls the backend before touching local storage; a pending create or a remote-deleted conflict deletes the local song, any other state (pending update, pending delete, conflict) clears the mutation so the read falls back to the cached catalog snapshot, discard never writes `SongSyncStatus.conflict`, and a best-effort post-discard catalog refresh that throws does not undo the already-completed discard. The acceptance boundary is the durable local clear/delete, with no compensating remote write and no requirement that refresh succeed
+- Song sync/discard ownership regression coverage: ownership is keyed by both user and organization; sync and discard are mutually exclusive only within that context; discard during owned sync immediately returns typed `SongDiscardResult.syncInProgress`, performs no local read/change/refresh, and another organization can still proceed; the discard lease is acquired before the record snapshot and held through best-effort refresh; concurrent sync calls coalesce both during an active sync and while queued behind discard, wait for lease release before reading pending work, and never send the discarded mutation
+- Unified **Discard All** ownership coverage: it acquires the song-context lease before invoking either domain; same-context sync yields typed `UnifiedDiscardResult.syncInProgress` and neither song nor planning discard starts; an admitted operation releases its lease even after failure. Tests must assert atomic admission rejection without claiming rollback or a transaction across song and planning stores
+- Planning repository boundary behavior, including plan ordering, plan-detail mapping, and slug resolution (LF-9): `getPlanSummaryBySlug`/`getPlanDetailBySlug` read the actionable mutation set exactly once per call, resolve the slug against pending `planCreate` mutations before falling back to the store's indexed slug lookup so a plan created offline (whose slug exists only in its pending mutation) stays findable, and never fall back to a full plan listing. This path currently has no live caller, so the coverage establishes repository-interface correctness rather than a measured performance win
 - Planning write orchestration behavior, including optimistic-concurrency base-version capture, provisional slug allocation, retryable failed mutations, empty-session delete enforcement, and session/session-item collection-edit compaction
-- Planning sync-correctness regression coverage: exactly-once accepted-marker (already-accepted mutation reconciled/cleared, not re-sent), single-flight coalescing of concurrent `syncPendingMutations`, one batch refresh for N mutations (and zero refresh when none accepted), offline discard/retry of stuck mutations, actionable-merge keeping failed/conflict planEdits visible without blanking unset fields, and `PlanningMutationReconciler` characterization tests across all mutation kinds
+- Planning sync-correctness regression coverage: exactly-once accepted-marker (already-accepted mutation reconciled/cleared, not re-sent), single-flight coalescing of concurrent `syncPendingMutations`, one batch refresh for N mutations (and zero refresh when none accepted), offline discard/retry of stuck mutations, actionable-merge keeping failed/conflict planEdits visible without blanking unset fields, `PlanningMutationReconciler` characterization tests across all mutation kinds, and an explicit user-initiated retry (LF-7) that surfaces a connectivity failure to the caller when the backend is unreachable instead of returning as if the retry had run, while background `syncPendingMutations` keeps swallowing connectivity failures as routine
 - Slug-routing boundary behavior for route resolution, including explicit not-found surfaces for missing song, plan, and session slugs
 - Slug-routing boundary behavior for scoped reader song resolution within a session, including the assumption that a song appears at most once per session
 - Slug-routing boundary behavior for route generation, including canonical slug URLs and no id-based fallback when the canonical song slug is unavailable at the presentation edge
@@ -43,14 +46,33 @@ Unified sync coverage includes:
 - `OnlineTransitionDetector` unit tests for catalog and planning offline-to-online transitions, including `triggerWhenClean=false` suppression when no unsynced work exists.
 - `ForegroundSyncListener` unit test for resume-only firing.
 - Header sync control widget tests for green/yellow/red label and color, and popup widget tests for empty state, song row + plan conflict row rendering, `Sync now` button, and specific reason chips for `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, and `sync_failed`.
+- Popup recovery widget tests for the typed sync/discard contention path: per-row discard and **Discard All** show the dedicated “Sync is in progress. Try again after it finishes.” guidance, leave the expected path out of generic exception/failure messaging, and preserve both domains unchanged when Discard All admission is rejected.
 - Sign-out warning routing through `unifiedSyncOverviewProvider.hasUnsyncedWork` instead of the legacy per-domain providers.
 - Refresh-failure preservation test confirming a failed catalog refresh keeps the header green and surfaces `stale` freshness without changing the primary header color.
+- `UnifiedRowRecoveryController` unit tests driving the controller directly through its provider, with no widget in the picture: `keepMine` and `discardMine` complete their mutation and their `songMutationEntriesProvider`/`songLibraryListProvider` invalidations even when the caller that started them is gone, and `applyToGroup` performs all of its post-work — the `planningDataRevisionProvider` bump (asserted explicitly, since it is the only thing that reaches the three planning slug/detail *family* providers, which are never invalidated directly) plus the `planningMutationEntriesProvider`/`planningPlanListProvider` invalidations. These fail against the prior `context.mounted`-guarded popup code.
 
 Active local-first regression coverage includes:
 
 - Song session-expiry cache policy regression coverage for active catalog context clearing, cached read blocking, persisted cache row retention, and re-sign-in restoration.
 - Provider/local-store accepted-write fallback regression coverage for planning mutations when remote refresh fails.
 - Song pending mutation persistence across Drift reopen for pending create, pending update, pending delete, and overlay replay behavior.
+
+Reauth prompt and different-user resolution coverage (ADR-029) includes:
+
+- `PendingLocalWorkCounter` and Drift-reader unit tests: the two required user-wide integer readers sum all actionable planning statuses and every unsynced/conflict song status across organizations for the prior user, exclude synced and other-user rows, and propagate either reader's failure rather than silently counting it as zero, since an undercount would understate what a user-wide wipe destroys.
+- `ReauthPromptController` unit tests: `requestConfirmation` publishes a prompt with a stable request id, prior email, and known or `null` pending count; current-token answers produce typed confirmed/cancelled results; obsolete-token answers cannot complete a newer request; and synchronous `supersedePending` clears the prompt and completes the displaced future with the typed superseded result.
+- `ReauthPromptHost` widget tests: renders its child unchanged with no prompt pending; `listenManual(..., fireImmediately: true)` captures a prompt already current at host attachment and post-frame delivery presents it exactly once across rebuilds; current dialogs answer by request id; obsolete dialog completion cannot answer a newer request; and cancel or barrier dismissal remains non-confirming.
+- `resolveReauth` unit tests cover the user-visible outcomes plus typed `ReauthSuperseded` as a pure, UI-agnostic coordinator. They pin that a superseded prompt or failed side-effect currentness report invokes no destructive or cancel callback and never claims an effect that did not occur; a `null` pending count is never treated as zero; and `wipePriorAndProceed` is never called before a current confirmation resolves true.
+- `showReauthDifferentUserDialog` widget tests for confirm, cancel, and barrier-dismissal-returns-`false`, the known-count message, and the unknown-count message shown when `pendingCount` is `null` (cancel still returns `false` in the unknown case).
+- `identity_persistence_wiring_test.dart` covers the live `signedIn` edge: same-user flush; user-wide work in the active or another retained organization preventing silent cleanup; confirmed different-user cleanup; and cancel preserving the prior user's offline-authenticated state. Supersession regressions require every notification to synchronously claim its generation and supersede the old prompt before queueing, require currentness to include generation plus live signed-in `userId`/`email`, and prove that stale work cannot delete song/planning data, sign out the backend session, clear identity, or write identity after user-controlled waits.
+- The ordering-hazard regression test: the prior identity's read is the first call the resolution's store call log records on the `signedIn` edge, and that read is proven to have actually driven a real different-user wipe rather than merely having happened before some unrelated write — this fails if `lastKnownIdentityPersistenceProvider`'s prior overwrite-first behavior ever regresses.
+- The uncertain-count hazard regression test: a pending-work count that fails to read takes the confirm path, never the wipe path.
+- `AppAuthController.cancelReauthToPriorSession` unit tests: it returns `sessionExpired` carrying the *prior* user's session (not `signedOut`, not the cancelled new user), and it converges on that same state even when the auth stream also emits `null` as a side effect of the sign-out call, so the outcome does not depend on which of the two arrives first.
+
+PR #64 human-review remediation on the same destructive path (2026-08-06), after the coverage above already existed:
+
+- `app_auth_controller_test.dart` — Finding 2: when the backend `signOut()` call inside `cancelReauthToPriorSession` throws, the state still converges to `sessionExpired` carrying the prior user's session (not left `signedIn` as the would-be new user) and the failure is reported via `FlutterError.reportError`, exactly as the success path already required; a companion test proves a later, unrelated `null` session event after that failure is a true no-op — no listener notification fires — rather than misapplying the lingering pending-cancel record. Both fail against the pre-fix code, where the uncaught `signOut()` error stopped the convergence block below it from ever running.
+- `identity_persistence_wiring_test.dart` — Finding 1: a wipe whose song deletion throws (via a `SongCatalogStore` decorator that forwards every call except a scriptable-failure `deleteCatalogsForUser`) falls back to `cancelToPriorUserFor` instead of stranding the prior user's data while presenting as the new user: state converges to `sessionExpired` carrying the prior session, the identity store is confirmed still naming the prior user (not cleared, not overwritten), and the failure is reported via `FlutterError.reportError`. Finding 3: a resolution superseded before its pending-count read can resolve (blocked on a `Completer`, released after a newer `signedIn` edge supersedes it) is confirmed to log a `kDebugMode` trace containing "superseded" — proving `resolveReauth`'s returned outcome now has a real, observable effect at its call site instead of being discarded. Both fail against the pre-fix code.
 
 ### Adversarial Offline/Sync Validation
 
@@ -76,15 +98,336 @@ specific finding:
   `ReconcileFieldError` for a null required-on-create field instead of silently coercing it to
   `''`/`0`, replacing the prior silent-corruption path with an explicit, testable failure.
 - `planning_migration_test.dart` — `LF-T7` (planning half): a pending planning mutation
-  survives a Drift database close/reopen. Validates existing behavior.
+  survives a Drift database close/reopen. Validates existing behavior. Also covers `D1`
+  (`docs/specs/2026-08-05-sync-snapshot-identity.md`, ADR-030): a genuine pre-migration
+  (schemaVersion 5) database, built by hand via raw sqlite3 against the exact `CREATE TABLE`
+  text Drift generated before `localRevision` existed (not through `PlanningLocalDatabase`,
+  which would build the current schema directly via `onCreate` and never exercise
+  `onUpgrade`), gains the column on open with a sane starting value (1) and keeps its
+  pending row intact; a further local write against the migrated row bumps it, proving the
+  column is usable, not just present.
+- `planning_sync_snapshot_identity_test.dart` — the PR #64 re-review finding this spec
+  closes (ADR-030, D1-D3): `PlanningMutationSyncController._run` sends a pending mutation's
+  snapshot and awaits the backend outside the per-context write queue; a local edit landing
+  on the same aggregate during that wait must survive. Drives the real
+  `DriftPlanningMutationStore` (not a hand-rolled fake, since the fix lives inside the
+  storage boundary a fake could too easily paper over) with the remote call gated on a
+  `Completer`: an edit applied while the gate is held is confirmed present, and the mutation
+  is confirmed still `pending` with the newer content after the gate releases and the sync
+  completes — watched failing before the fix, when `saveSyncAttemptResult`/`clearMutation`
+  wrote unconditionally, the mutation was found deleted outright, the edit destroyed with no
+  trace. A second sync is confirmed to send the newer content. A companion test pins that the
+  unchanged (no concurrent edit) case still accepts-then-clears exactly as before.
+  `planning_mutation_store_test.dart`'s `PlanningMutationStore.localRevision` group covers
+  the store contract directly: the revision advances by exactly one on every local write
+  path, including a fold (`planEdit` onto a still-pending `planCreate`, the exact fold the
+  spec's problem statement names) and a status write; a `saveSyncAttemptResult`/
+  `clearMutation` call whose `expectedRevision` still matches the row applies and reports the
+  new revision, while a stale one reports `null`/`false` and leaves the row untouched (D3: a
+  stale conclusion is not an error, so this is never a thrown exception).
+- `song_sync_snapshot_identity_test.dart` — the song/catalog half of the same finding (ADR-030,
+  D2 (song/catalog)/D3): `SongMutationSyncController._runSync` sends a pending song's snapshot
+  and awaits the backend; a local edit landing on the same song during that wait must survive.
+  Drives the real `DriftSongCatalogStore`/`DriftSongMutationStore` (not a fake, for the same
+  reason as the planning suite) with the remote call gated on a `Completer`: the edited song is
+  confirmed still `pendingCreate` with the newer content after the gate releases, and a second
+  sync is confirmed to resend it — watched failing before the fix, when `reconcileSyncedSong`
+  wrote unconditionally, the mutation was found deleted outright. A companion test pins that the
+  unchanged (no concurrent edit) case still reconciles-then-clears exactly as before.
+  `song_catalog_store_test.dart`'s `SongCatalogStore.localRevision` group covers the store
+  contract directly: the revision advances by exactly one on every local write through the
+  single `saveSongMutation` path (a fold onto a still-pending row, and the status write
+  `DriftSongMutationStore.saveSyncAttemptResult` makes through it); a `reconcileSyncedSong` call
+  whose `expectedRevision` still matches applies and returns `true`, while a stale one returns
+  `false` and leaves both the mutation row and the snapshot tables untouched — proving the skip
+  covers the summary/source upsert too, not only the mutation-row delete.
+- `planning_mutation_store_test.dart`'s `PlanningMutationStore content folds reset status
+  (ADR-030 follow-up)` group and `planning_sync_snapshot_identity_test.dart`'s controller-level
+  companion test — the fold-status defect ADR-030 flagged as a known follow-up and then closed
+  (`a98c496`/`8f45988`): a fold that carries an existing mutation row forward with `copyWith`
+  must not carry the row's current `syncStatus` along with it, or a row `accepted` but not yet
+  cleared (the ADR-019 durable-marker window, e.g. LF-1's crash-between-accept-and-clear) stays
+  labelled `accepted` after new, unsent content lands in it. Store-level tests cover all four
+  fold paths that carry a row forward — `recordPlanEdit` onto a pending `planCreate`,
+  `recordSessionRename` onto a pending `sessionCreate`, and both reorder-trim folds
+  (`_removeSessionFromPendingReorder`/`_removeSessionItemFromPendingReorder`) — resetting to
+  `pending` with the new content, plus that a stale `errorCode`/`errorMessage` from a prior
+  failed attempt does not survive a content fold either. The controller-level test proves the
+  practical consequence: an edit folded onto an accepted-but-uncleared row is actually sent on
+  the next sync rather than silently skipped by the durable-marker shortcut. `retryMutation` and
+  `saveSyncAttemptResult` are deliberately untouched and uncovered by this group — they compute
+  `syncStatus` as their own purpose, not a side effect of carrying content forward.
+- `planning_mutation_store_test.dart` (2026-08-06, PR #64 review M2/M3, ADR-030's "Atomic
+  Revision Write and Stale-Error Clearing Follow-Up") — two concurrent, unguarded
+  `saveSyncAttemptResult` calls (no `expectedRevision`, the shape the sync controller's
+  failure-status write uses) against the same freshly created row do not lose an increment to a
+  stale Dart-side read: the fix computes `local_revision + 1` inside a single
+  `UPDATE ... RETURNING` rather than a preceding `SELECT` plus a separate `UPDATE` — watched
+  failing at revision 2, passing at revision 3 (M2). A second test writes a `conflict` status
+  carrying an `errorCode`/`errorMessage`, then an unrelated `accepted` status with no error
+  argument and no content fold in between, and confirms the stored error fields are `null`
+  afterward — matching the `clearErrorCode`/`clearErrorMessage` semantics `copyWith`'s fold paths
+  already use, rather than the prior `Value.absent()` behavior that left a stale error in place
+  (M3). Because the `UPDATE ... RETURNING` Drift generates dispatches through `runSelect` rather
+  than `runUpdate`, the fault-injection executors in `budgeted_planning_mutation_store_test.dart`
+  were extended to fail that statement shape too, on the same shared, call-numbered script.
 - `song_catalog_migration_test.dart` — `LF-T7` (catalog half): `SongCatalogDatabase` now
   declares an explicit `MigrationStrategy` (previously `schemaVersion 2` with none) and a
   pending song mutation is confirmed to survive close/reopen. This is a hardening fix, not
-  just a validation.
-- `storage_pressure_probe_test.dart` — `LF-T4` probe. Confirms a storage write failure
-  propagates as an exception instead of being silently swallowed. Characterizes current
-  behavior; the full size-monitor/eviction policy remains deferred
-  (`docs/deferred/2026-06-29-storage-eviction-policy-lf-t4.md`).
+  just a validation. Also covers `D1` (ADR-030, song/catalog half): a genuine pre-migration
+  (schemaVersion 2) database, built by hand via raw `sqlite3` against the exact `CREATE TABLE`
+  text Drift generated before `localRevision` existed (not through `SongCatalogDatabase`, which
+  would build the current schema directly via `onCreate` and never exercise `onUpgrade`), gains
+  the column on open with a sane starting value (1) and keeps its pending row intact.
+- `planning_in_flight_create_cancellation_test.dart` and
+  `song_in_flight_create_cancellation_test.dart` —
+  `docs/specs/2026-08-06-in-flight-create-cancellation.md` D1-D3: the
+  `localRevision` gate above assumes newer intent during a remote round trip
+  leaves a pending row at a *higher* revision, which holds for an edit but not
+  for a delete of a still-pending create, since ADR-028 D10's collapse
+  physically removes the row instead. Driven against the real
+  `DriftPlanningMutationStore`/`DriftSongCatalogStore` with the remote call
+  gated on a `Completer`, for both the session and session-item shapes on the
+  planning side and the equivalent song shape: deleting a `sending`
+  create keeps a `cancelling` tombstone instead of collapsing the row —
+  watched failing pre-fix with the row lost entirely (expected a pending
+  delete after the create succeeded, got `null`, the exact loss the spec
+  names); releasing the gate with the create **succeeding** converts the
+  tombstone to a real pending delete that a following sync actually sends;
+  releasing it with the create **failing** resolves the tombstone locally
+  with no delete ever sent; a no-regression case confirms deleting a pending
+  create with no sync in flight still physically collapses, with no
+  tombstone and no backend call (ADR-028 D10 unchanged); and a record left
+  `sending` by a crash is confirmed treated as pending and resent on a fresh
+  pass. The planning suite additionally covers the accepted-but-uncleared
+  window unique to that domain (see ADR-030): deleting a session/session-item
+  whose create is `accepted` but not yet locally cleared converts straight to
+  a real pending delete with no tombstone, a following sync sends it, and a
+  session's pending item/item-order mutations are dropped under this branch
+  the same as under the tombstone and physical-collapse branches.
+- `planning_vanished_record_sync_test.dart` and
+  `song_vanished_record_sync_test.dart` — D4 of the same spec: several
+  pending records/songs queued, the first one's remote call gated, that row
+  deleted directly through the store mid-flight (simulating the collapse
+  above happening to a *different*, not-in-flight record), then the gate
+  released. Watched failing pre-fix with exactly the predicted `StateError`
+  (`DriftPlanningMutationStore`/`DriftSongMutationStore`
+  `saveSyncAttemptResult`) escaping `PlanningMutationSyncController._run`/
+  `SongMutationSyncController._runSync` uncaught and aborting the pass before
+  it reached the records/songs queued behind the vanished one; passing after
+  the fix, with those later records/songs confirmed synced. Store-level
+  companion coverage lives in `planning_mutation_store_test.dart` and
+  `song_catalog_store_test.dart`: a `saveSyncAttemptResult`/`retryMutation`
+  call against a row that no longer exists returns `null`/`false` instead of
+  throwing, and the existing-record path is unchanged by the signature
+  change. `song_library_service_test.dart` pins the deliberate scope boundary
+  on the other side of D4: `SongLibraryService.updateSong`/`deleteSong`
+  against a song absent from local storage entirely still throw
+  `StateError`, since those are single-record, user-initiated calls with no
+  sync loop and no queued sibling work to protect — not the vanished-record
+  case D4 closes.
+- `song_tombstone_resolution_atomicity_test.dart` — finding N1 of the third PR #64 human
+  review round (ADR-030, "Third Review Round: Tombstone Write-Path Atomicity and Retry
+  Signal"). The finding as written — no transaction around
+  `_resolveCancelledSongCreate`'s read and write — was checked against the code and does
+  not hold (`resolveCancelledSongCreate` has wrapped that read-check-write in
+  `_database.transaction()` since `baf3c23`); the file's header records that verification
+  so the next reader does not re-derive it. What the finding *did* surface, and understated:
+  `saveSongMutation`, the store's one content-write path, was neither transactional nor
+  aware of `cancelling`, so an ordinary edit reaching a tombstoned `songId` — a stale UI
+  reference, **no concurrency needed** — silently replaced the user's confirmed delete
+  intent with a `pendingUpdate`, after which nothing would ever delete the song the backend
+  was about to confirm. Watched failing pre-fix ("emitted `<null>`" where a rejection was
+  expected, tombstone gone); passing after, with the row still `cancelling`, its source
+  untouched, and its own resolution afterwards still reaching a real `pendingDelete`. A
+  companion test pins that a non-`cancelling` row is unaffected — the guard is scoped to
+  tombstones. The second group covers N1b: an `UPDATE`-failing `QueryExecutor` (a sibling of
+  `test/support/insert_failing_executor.dart`, needed because the `created: true` write is
+  no longer an insert) proves `resolveCancelledSongCreate` now goes through the
+  storage-recovery boundary — droppable sources evicted exactly once, a typed
+  `LocalStorageWriteFailure` carrying the original cause — where pre-fix a raw
+  `StorageQuotaSimulatedException` escaped. Both halves of the fix were reverted
+  individually and the matching test re-run, so neither passes for the other's reason.
+- `planning_retry_mutation_failure_observer_test.dart` — finding N3 of the same round.
+  `retryMutation` decided whether to throw `connectivityFailure` by re-reading the record's
+  `errorCode` after `syncPendingMutations` returned; a local edit folding onto the same
+  aggregate during the retry's own remote round trip makes the (revision-gated)
+  failure-status write no-op, clearing `errorCode`, so the re-read reported "no failure" for
+  a call that genuinely got one and the retry returned as if it had worked. The remote call
+  is gated on a `Completer`, a `recordPlanEdit` applied while the gate is held, and a
+  `connectivityFailure` released: watched failing pre-fix with `retryMutation` emitting
+  `null` instead of throwing. The unchanged (no concurrent edit) case passes in both
+  directions. The fourth review round added two more tests to the same file for the
+  remaining silent-success gaps (ADR-030, "Fourth Review Round: Retry Silent-Success
+  Gaps"): a connectivity failure on an *earlier* candidate breaks `_run`'s loop, so the
+  retried aggregate is never sent at all — the test asserts both that the retry throws
+  and that the aggregate was genuinely never attempted, so it cannot pass vacuously; and
+  a competing, observer-less run installed in the window `retryMutation`'s single
+  in-flight wait leaves open, which the retry used to coalesce onto, dropping its only
+  failure signal. Both watched failing with `emitted <null>`, and each fix reverted
+  individually so neither test passes for the other's reason.
+- `song_keep_mine_failure_gating_test.dart` — the fourth round's one new finding.
+  `SongMutationSyncController.keepMine` gated its success write on the pre-send
+  `localRevision` and left its failure write ungated, the same asymmetry the
+  failure-status gating work closed everywhere else. The remote call is gated on a
+  `Completer`, a local write lands on the song while it is held, and the row is
+  confirmed still `pendingUpdate` with the newer content rather than stamped `conflict`
+  (excluded from `readPendingSongs`, so never resent) — watched failing with `conflict`.
+  The write is made through the store directly because `SongLibraryService` refuses to
+  edit a `conflict` row at all: **no application path reaches this burial today**, so
+  this is a store-level contract test pinning an invariant that would otherwise rest on
+  a guard two layers up in a different file, not a reproduction of a live defect. The
+  test header and the ADR both say so rather than letting the suite imply otherwise.
+- `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
+  (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
+  and eviction policy have landed (ADR-028). Drives the full chain against a
+  `QueryExecutor` decorator that fails every INSERT: storage failure → droppable catalog
+  sources evicted → one retry → a typed `LocalStorageWriteFailure` propagates; the failed
+  mutation is confirmed absent from a subsequent read, ruling out a partial commit.
+- `planning_squash_contract_test.dart` — `LF-T3`. Pins that folding repeated intent into
+  one row per aggregate preserves exactly-once sync (ADR-019) and OCC base-version
+  semantics: a squashed record keeps the base version and origin snapshot captured by the
+  *first* local edit, not a later one (fixing a prior inconsistency where the reorder paths
+  already did this but `planEdit`/`sessionRename`/`sessionDelete`/`sessionItemDelete` let a
+  later draft rebase the stored base version, which would have silently suppressed a real
+  conflict). Also pins that collapsing a still-pending `sessionCreate` deletes that
+  session's pending `session_item` and `session_item_order` mutations in the same
+  transaction, so nothing is left behind that could only ever fail `dependencyBlocked`.
+- `test/application/storage/local_storage_budget_test.dart`,
+  `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
+  content-derived footprint and pressure-classification contracts behind ADR-028: bytes
+  grow with mutation/projection content and shrink on `clearMutation`, pressure classifies
+  `ok`/`warning`/`critical` at the mutation and total thresholds independently, and
+  measurement is scoped per `(userId, organizationId)`.
+- `test/application/storage/song_catalog_evictor_test.dart` — the eviction protection
+  contracts: droppable sources (no pending song mutation) are freed and the freed byte
+  estimate matches the before/after delta; a source backing a pending song mutation is
+  never dropped; summaries and pending song mutations are never dropped; eviction is
+  idempotent (a second pass frees nothing); and the multi-tenant case — a different
+  `(userId, organizationId)` owner's droppable source is evicted independently of another
+  owner's protected one, so eviction cannot cross tenant boundaries.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart` — the enforcement
+  decorator: writes below the refuse threshold succeed; a write at or above it is refused
+  with `PlanningMutationBudgetExceededException` and triggers no eviction (catalog eviction
+  cannot relieve the mutation budget); a refusal leaves existing pending mutations untouched
+  and `clearMutation` still drains a full store; a refused **fold** — an edit that would
+  have merged into an already-pending aggregate — leaves that pending aggregate completely
+  intact rather than partially applying or destroying it; a domain rejection
+  (`LocalPlanningSlugConflictException`) propagates without eviction or retry. Eviction is
+  triggered only from this write-failure branch: `LocalStorageMonitor` (exercised by
+  `local_storage_monitor_test.dart`) holds no reference to `SongCatalogEvictor` at all, so a
+  critical measured pressure cannot call the evictor even in principle — it can only change
+  the classification the sync overview displays (ADR-028 D1/D6).
+- `test/application/storage/local_storage_write_recovery_test.dart` (ADR-028
+  D8) — unit tests of the shared `LocalStorageWriteRecovery.guard` boundary
+  itself, independent of any concrete store: success returns without
+  touching the evictor; a `LocalStorageDomainRejection` and an `Error` both
+  rethrow untouched with no eviction or retry attempted; a plain
+  `Exception` evicts droppable catalog sources once and retries the write
+  once, returning the retry result; a second failure wraps as
+  `LocalStorageWriteFailure` carrying the retry error and the freed byte
+  count; and when eviction itself throws, the write is never retried and
+  the *original* write error is the failure's cause with
+  `bytesFreedByEviction: 0`.
+- `test/offline/planning/planning_local_store_test.dart` (`DriftPlanningLocalStore
+  storage recovery (D1)` group) and `test/offline/song_catalog/song_catalog_store_test.dart`
+  (`DriftSongCatalogStore storage recovery (D1)` group) (ADR-028 D8) — the
+  recovery boundary widened past the planning-mutation path to every other
+  local write that can grow stored bytes. Reuses the fault-injection shape
+  `storage_pressure_contract_test.dart` pioneered (extracted to
+  `test/support/insert_failing_executor.dart`), driven against a second,
+  unwrapped `SongCatalogDatabase` backing the evictor so eviction
+  reads/deletes never contend with the failing guarded database. Covers a
+  failed `replaceActiveProjection`, `upsertSyncedPlan`, `upsertSyncedSession`,
+  and `upsertSyncedSessionItem` (planning) and failed `saveSongMutation`,
+  `replaceActiveSnapshot`, and `reconcileSyncedSong` (catalog): evict
+  droppable sources, retry once, surface a typed `LocalStorageWriteFailure`,
+  and confirm the failed write never landed on a subsequent read.
+  `replaceActiveProjection` and `saveSongMutation` are each also covered for
+  the retry-succeeds case, and `PlanningProjectionAbortedException` (a
+  cooperative-cancellation signal from a superseded refresh, not a failure)
+  and a song slug-conflict domain rejection are each confirmed to pass
+  through untouched with zero evictions — pinning that both implement
+  `LocalStorageDomainRejection`. Every write path guarded by D1 now has a
+  dedicated fault-injection recovery test here.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (ADR-028 D9/D10 additions) — the budget-admission concurrency and
+  collapse contracts: three concurrent `record*` calls for different
+  aggregates in the same context, against a budget that admits only one,
+  land exactly one success and two refusals (this test fails against the
+  pre-amendment unserialised guard, which lands all three); concurrent
+  writes for two different `(userId, organizationId)` contexts do not block
+  each other, shaped with a `Completer` so it would deadlock forever if
+  serialisation were keyed globally instead of per context; at an
+  exhausted budget, `recordSessionDelete` against a pending `sessionCreate`
+  succeeds and removes the session plus its pending item and item-order
+  rows, and `recordSessionItemDelete` against a pending
+  `sessionItemCreateSong` succeeds and removes it; and `recordSessionDelete`
+  against a session that is **not** a pending create is still refused at an
+  exhausted budget, proving the admission decision is read from store
+  state rather than inferred from the method name.
+- `test/application/planning/budgeted_planning_mutation_store_test.dart`
+  (ADR-028 D3/D8/D9, second PR #64 re-review round, commits `ba62067`,
+  `dc6a401`, `2b84978`, `39da44f`) — four contracts a more targeted
+  re-review found missing from the D8/D9 coverage above:
+  - `saveSyncAttemptResult` is never refused for budget reasons even with
+    the budget exhausted, and its written status is confirmed to actually
+    persist — the ADR-019 "already accepted" marker must survive a full
+    store.
+  - A `saveSyncAttemptResult` recovery group, driven by a scripted
+    insert-failure executor (`_ScriptedInsertExecutor`/
+    `_ScriptedInsertTransactionExecutor`) that fails by 0-indexed call
+    number rather than a countdown, so a seed write can succeed before the
+    write under test fails: a storage failure on the status write evicts
+    droppable catalog sources, retries once, and surfaces a typed
+    `LocalStorageWriteFailure` when the retry also fails; a transient
+    failure on the same write recovers on the retry, with the record
+    carrying the new status afterwards. Since the sync-snapshot-identity
+    change (ADR-030) rewrote `saveSyncAttemptResult` as a targeted,
+    revision-guarded `UPDATE` rather than the `INSERT ... ON CONFLICT DO
+    UPDATE` upsert every other `record*` write uses, this executor's
+    `runUpdate` fails on the same shared, 0-indexed script as `runInsert`
+    now too — otherwise the injected failure would silently never trigger
+    for the statement kind the write under test actually issues.
+  - "The collapse race" test: a fake delegate (Completer-gated, not real
+    Drift, so the interleaving is deterministic) pauses `recordSessionDelete`
+    between the decorator's own collapse decision and the delegate's
+    internal re-check of the same aggregate, then issues a concurrent
+    `clearMutation` for that aggregate while it is paused — reproducing what
+    `PlanningMutationSyncController` does immediately after a mutation is
+    accepted. Watched failing before the fix: the resumed write landed a
+    brand-new `sessionDelete` row that had never passed a budget check.
+    After the fix (queuing `clearMutation` behind the same per-context turn
+    as `recordSessionDelete`), the outcome is always the collapse, never a
+    grown row.
+  - `retryMutation` and `clearMutation` are not separately recovery-tested
+    (D3: neither can grow the store, so there is nothing for D8 to recover
+    from) — only their queue ordering is covered, via the collapse-race test
+    above.
+- `test/application/storage/footprint_production_wiring_test.dart` (2026-08-06, ADR-028 D8, PR
+  #64 review M1) — `planningMutationStoreProvider`'s store calls through the exact
+  `localStorageWriteRecoveryProvider` instance the provider graph supplies, not one it builds for
+  itself: a counting subclass of `LocalStorageWriteRecovery` is installed via a provider override
+  and confirmed to observe a `recordPlanCreate` write. Fails against the pre-fix code, which built
+  its own `LocalStorageWriteRecovery` internally from an injected evictor and never called the
+  provider-supplied instance — the count stays 0. This closes the gap between ADR-028 D8's "one
+  shared boundary" claim and what production wiring actually did for the planning mutation path.
+- Committed-storage revision coverage (ADR-028 D7), spread across
+  `test/application/sync/unified_sync_providers_test.dart`,
+  `test/application/storage/song_catalog_evictor_test.dart`,
+  `test/offline/planning/planning_local_store_test.dart`,
+  `test/offline/song_catalog/song_catalog_store_test.dart`,
+  `test/offline/planning/planning_mutation_store_test.dart`, and
+  `storage_pressure_contract_test.dart`: a mounted `localStorageFootprintProvider`
+  remeasures and its classification changes once the shared revision provider advances;
+  every concrete storage commit path (planning mutation record/retry/result/clear,
+  planning projection replace/upsert/delete/order/cleanup, catalog snapshot
+  replace/mutation-save/delete/reconcile/clear/cleanup, and a droppable-source eviction
+  that actually removed rows) invokes its injected callback after its own commit, never
+  before it, never after a throw, and never for a persisted-payload-identical upsert;
+  delete/clear paths key the callback off affected-row counts; eviction still advances the
+  revision when the guarded write's later retry fails, and rows an outer batch already
+  committed still advance the revision when a later operation in that batch fails.
 - `clock_skew_probe_test.dart` — `LF-T6` probe. Adds an injectable clock seam to
   `PlanningMutationReconciler` (default wall-clock behavior unchanged) and confirms an
   injected skewed clock flows straight through into reconciled timestamps uncorrected. A

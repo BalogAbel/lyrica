@@ -18,6 +18,11 @@ The unified manual sync must:
 - leave domain-specific recovery actions visible for conflicts, authorization denials, and dependency-blocked mutations
 - not hide failed or conflicted work behind a single generic error state
 
+Song sync requests for the same authenticated user and active organization
+coalesce into one run. If a request arrives while discard owns that context, it
+queues behind the discard and coalesces with any other waiting sync request;
+the run takes its mutation snapshot only after discard completes.
+
 ## Header Sync Control
 
 Authenticated non-reader workspaces show one consistent sync status control in the header. This replaces separate screen-specific top-level sync banners.
@@ -91,6 +96,20 @@ Plan rows expose group-level recovery actions for all mutations belonging to tha
 - Pending severity: no per-row action.
 
 The popup header also exposes a **Discard all** action (destructive, styled with the error color) when `hasUnsyncedWork` is true. Tapping opens a confirmation dialog naming the count of affected songs and plans. On confirm, all local song and planning mutations for the active organization are discarded. The scope matches `Sync now`.
+
+Song sync and discard are mutually exclusive for the active `(userId,
+organizationId)` context. A per-row song discard attempted while sync owns that
+context returns immediately with no local change. **Discard all** must acquire
+the song-context discard lease before either song or planning discard begins;
+if sync already owns it, the whole request is rejected before either domain
+changes. This is an atomic admission rule, not a promise of transactional
+rollback after an admitted multi-domain discard starts.
+
+The expected rejection has dedicated guidance: **“Sync is in progress. Try
+again after it finishes.”** It must not show the generic “action could not be
+completed” or “some changes could not be discarded” message. Generic failure
+copy is reserved for unexpected failures after admission, not the typed
+`syncInProgress` result (the typed sync in progress outcome).
 
 The popup does not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
 

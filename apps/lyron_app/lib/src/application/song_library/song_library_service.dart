@@ -159,6 +159,27 @@ class SongLibraryService {
       throw SongConflictResolutionRequiredException(songId);
     }
 
+    if (existing.syncStatus == SongSyncStatus.sending) {
+      // D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): this
+      // create's remote call is genuinely in flight right now (D1's durable
+      // marker, written by SongMutationSyncController._runSync just before
+      // the send). Physically collapsing the row here, as the plain
+      // pendingCreate branch below does, would destroy the only local trace
+      // of this delete before the create's outcome is known -- if it then
+      // succeeds, the song exists on the server and nothing would ever
+      // delete it. Keep the row as a cancellation tombstone instead, at a
+      // bumped revision; SongMutationSyncController resolves it into a real
+      // pending delete or discards it once the in-flight create's remote
+      // call returns (D3).
+      final tombstone = existing.copyWith(
+        syncStatus: SongSyncStatus.cancelling,
+        clearErrorCode: true,
+        clearErrorMessage: true,
+      );
+      await mutationStore.upsertSong(userId: context.userId, record: tombstone);
+      return tombstone.copyWith(syncStatus: SongSyncStatus.pendingDelete);
+    }
+
     if (existing.syncStatus == SongSyncStatus.pendingCreate) {
       await mutationStore.deleteSong(
         userId: context.userId,
@@ -168,6 +189,20 @@ class SongLibraryService {
       return existing.copyWith(syncStatus: SongSyncStatus.pendingDelete);
     }
 
+    // Fifth PR #64 review round: there is deliberately no `cancelling`
+    // branch above. A row that is already a cancellation tombstone falls
+    // through to this ordinary delete, and the store refuses it with
+    // `LocalSongTombstoneConflictException` (N1) rather than burying the
+    // tombstone under a `pendingDelete` that `resolveCancelledSongCreate`
+    // would then no-op on, leaving nothing to ever delete the song the
+    // backend is about to confirm.
+    //
+    // Unreachable today: `cancelling` is excluded from every local-first
+    // read, so no UI surface can offer a delete for such a song. Left to
+    // fail loudly anyway rather than given a quiet early return. A silent
+    // no-op would look identical to success from here, so if a future
+    // change does make this reachable, the rejection is what surfaces it;
+    // an early return would hide exactly the case worth knowing about.
     final deleted = existing.copyWith(
       baseVersion: existing.version,
       syncStatus: SongSyncStatus.pendingDelete,

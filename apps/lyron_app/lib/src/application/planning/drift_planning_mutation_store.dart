@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -10,11 +11,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   const DriftPlanningMutationStore({
     required PlanningLocalDatabase database,
     required PlanningLocalStore localStore,
+    LocalStorageFootprintChanged? onStorageFootprintChanged,
   }) : _database = database,
-       _localStore = localStore;
+       _localStore = localStore,
+       _onStorageFootprintChanged = onStorageFootprintChanged;
 
   final PlanningLocalDatabase _database;
   final PlanningLocalStore _localStore;
+  final LocalStorageFootprintChanged? _onStorageFootprintChanged;
 
   @override
   Future<void> recordPlanCreate({
@@ -51,6 +55,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -73,6 +78,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         // unchanged". Folding the edit into a still-pending create must
         // therefore pass the clear flags, or copyWith's `?? this.x` shape
         // would silently keep the pre-edit value.
+        //
+        // ADR-030 known follow-up: `existing` may be `accepted` but not yet
+        // cleared (the ADR-019 durable-marker window -- backend confirmed,
+        // local clear has not run, e.g. LF-1's crash-between-accept-and-
+        // clear). New local intent is unsent by definition, so folding it
+        // in must reset syncStatus to `pending` and drop any stale error
+        // left by a prior attempt -- otherwise a subsequent sync's
+        // accepted-durable-marker branch would skip the remote send and
+        // reconcile this newer, never-sent content as if the backend
+        // already had it.
         await _upsertRecord(
           context: context,
           aggregateType: 'plan',
@@ -83,6 +98,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             scheduledFor: draft.scheduledFor?.toUtc(),
             clearScheduledFor: draft.scheduledFor == null,
             updatedAt: DateTime.now().toUtc(),
+            syncStatus: PlanningMutationSyncStatus.pending,
+            clearErrorCode: true,
+            clearErrorMessage: true,
           ),
         );
         return;
@@ -106,11 +124,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           name: draft.name,
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          // OCC: keep the base version captured by the FIRST local edit.
+          // draft.baseVersion comes from the locally merged read, which
+          // shows the user their own pending overlay rather than a
+          // refreshed remote state -- so a later local edit did not
+          // actually observe a newer remote version. Rebasing to it here
+          // would assert a base the user never saw and silently suppress a
+          // real conflict. Explicit, user-initiated rebasing happens in
+          // retryMutation via _currentBaseVersionFor.
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -149,6 +176,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -164,12 +192,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
+        // ADR-030 known follow-up: same shape as the recordPlanEdit fold
+        // above -- `existing` may be `accepted` but not yet cleared, and
+        // this rename is new, unsent local intent, so the fold must reset
+        // syncStatus to `pending` and drop any stale error rather than
+        // carry the row's current status forward untouched.
         await _upsertRecord(
           context: context,
           aggregateType: 'session',
           record: existing!.copyWith(
             name: draft.name,
             updatedAt: DateTime.now().toUtc(),
+            syncStatus: PlanningMutationSyncStatus.pending,
+            clearErrorCode: true,
+            clearErrorMessage: true,
           ),
         );
         return;
@@ -183,7 +219,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           organizationId: context.organizationId,
           planId: draft.planId,
           name: draft.name,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionRename,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
@@ -197,6 +233,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -212,14 +249,108 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionId,
       );
       if (existing?.kind == PlanningMutationKind.sessionCreate) {
-        await (_database.delete(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(context.userId) &
-                  table.organizationId.equals(context.organizationId) &
-                  table.aggregateType.equals('session') &
-                  table.aggregateId.equals(draft.sessionId),
-            ))
-            .go();
+        // D2 (docs/specs/2026-08-06-in-flight-create-cancellation.md): a
+        // `sending` row's create is genuinely in flight to the backend right
+        // now (D1's durable marker, written by
+        // PlanningMutationSyncController._run just before the remote call).
+        // Physically collapsing it here would destroy the only local trace
+        // of this delete before the create's outcome is known -- if it then
+        // succeeds, the object exists on the server and nothing would ever
+        // delete it. Keep the row as a cancellation tombstone instead, at a
+        // bumped revision; resolveCancelledCreate below turns it into a real
+        // pending delete or discards it once the create's remote call
+        // returns.
+        if (existing!.syncStatus == PlanningMutationSyncStatus.sending) {
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session',
+            record: existing.copyWith(
+              syncStatus: PlanningMutationSyncStatus.cancelling,
+              updatedAt: DateTime.now().toUtc(),
+              clearErrorCode: true,
+              clearErrorMessage: true,
+            ),
+          );
+        } else if (existing.syncStatus == PlanningMutationSyncStatus.accepted) {
+          // Gap closed (docs/specs/2026-08-06-in-flight-create-cancellation.md,
+          // the variant D1-D3 left open): `accepted` is ADR-019's own
+          // durable-marker window -- the backend has ALREADY confirmed this
+          // create; only the local clear has not run yet (e.g. a crash
+          // between PlanningMutationSyncController._run's accept write and
+          // its batch clear -- the exact LF-1 scenario ADR-030's
+          // fold-status follow-up documents). Unlike `sending`, there is no
+          // live remote call to race here: the create's fate is already
+          // known, not in flight. That makes this simpler than the
+          // `sending` branch above -- no tombstone, no resolveCancelledCreate
+          // step -- the delete can become a real pending delete directly.
+          // Falling through to the physical-collapse branch below would
+          // still lose the delete intent for an object the backend already
+          // has, one state over from the gap D1-D3 closed.
+          //
+          // baseVersion: `existing.baseVersion` is whatever was captured
+          // for the CREATE's own OCC check and was never updated by the
+          // accept write (saveSyncAttemptResult only ever touches
+          // syncStatus/errorCode/errorMessage/localRevision) -- it is not
+          // guaranteed to be the version the backend assigned as a result
+          // of accepting this create. `draft.baseVersion`, supplied by the
+          // caller from today's local merged read, is the best
+          // complementary source but is not guaranteed to carry that
+          // post-create version either, for the same reason
+          // resolveCancelledCreate's D3 branch is handed
+          // `acceptedBaseVersion` explicitly from the RPC response instead
+          // of recomputing it locally -- that response is long gone by the
+          // time a delete can land here. Rather than invent a number, this
+          // uses `existing.baseVersion ?? draft.baseVersion`, the exact
+          // same fallback the genuine (non-create) delete path below
+          // already uses for every other kind of delete. If it happens to
+          // be correct, the delete's OCC check on the backend passes
+          // normally. If it is stale, the backend's own
+          // `delete_empty_session`/`delete_session_item` version guard
+          // rejects the RPC into a visible, recoverable `conflict` (or, if
+          // no version is known at all, a deterministic rejection) rather
+          // than this code silently guessing -- the fail-safe outcome.
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session',
+            record: PlanningMutationRecord(
+              aggregateId: draft.sessionId,
+              organizationId: context.organizationId,
+              planId: draft.planId,
+              baseVersion: existing.baseVersion ?? draft.baseVersion,
+              kind: PlanningMutationKind.sessionDelete,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: existing.orderKey,
+              updatedAt: DateTime.now().toUtc(),
+              originSnapshot: existing.originSnapshot ?? draft.originSnapshot,
+            ),
+          );
+        } else {
+          // Not in flight and not accepted: physically collapse, exactly
+          // as before (ADR-028 D10) -- the create never left the device
+          // (or already concluded with an error), so there is nothing on
+          // the backend a delete would need to reach.
+          await (_database.delete(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(context.userId) &
+                    table.organizationId.equals(context.organizationId) &
+                    table.aggregateType.equals('session') &
+                    table.aggregateId.equals(draft.sessionId),
+              ))
+              .go();
+        }
+        // Whichever of the three branches above ran, the session is being
+        // deleted one way or another: a tombstone that will eventually
+        // convert to a real delete or be discarded, an immediate physical
+        // collapse, or (the branch closed by this change) an immediate real
+        // pending delete. Either way a pending item mutation under it has
+        // no reachable destination -- sent to a session that doesn't exist
+        // yet, or sent to one that is being deleted for real. Drop them
+        // with the session, inside the same transaction, same as the
+        // pre-existing collapse behaviour.
+        await _deletePendingMutationsForSession(
+          context: context,
+          sessionId: draft.sessionId,
+        );
         await _removeSessionFromPendingReorder(
           context: context,
           planId: draft.planId,
@@ -235,7 +366,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           aggregateId: draft.sessionId,
           organizationId: context.organizationId,
           planId: draft.planId,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
@@ -254,6 +385,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         sessionId: draft.sessionId,
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -290,6 +422,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -321,6 +454,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -336,14 +470,71 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         aggregateId: draft.sessionItemId,
       );
       if (existing?.kind == PlanningMutationKind.sessionItemCreateSong) {
-        await (_database.delete(_database.cachedPlanningMutations)..where(
-              (table) =>
-                  table.userId.equals(context.userId) &
-                  table.organizationId.equals(context.organizationId) &
-                  table.aggregateType.equals('session_item') &
-                  table.aggregateId.equals(draft.sessionItemId),
-            ))
-            .go();
+        // D2: same reasoning as the sessionCreate branch of
+        // recordSessionDelete above -- a `sending` row's create is
+        // genuinely in flight, so keep it as a cancellation tombstone
+        // instead of physically collapsing it.
+        if (existing!.syncStatus == PlanningMutationSyncStatus.sending) {
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session_item',
+            record: existing.copyWith(
+              syncStatus: PlanningMutationSyncStatus.cancelling,
+              updatedAt: DateTime.now().toUtc(),
+              clearErrorCode: true,
+              clearErrorMessage: true,
+            ),
+          );
+        } else if (existing.syncStatus == PlanningMutationSyncStatus.accepted) {
+          // Gap closed (docs/specs/2026-08-06-in-flight-create-cancellation.md,
+          // the variant D1-D3 left open): same reasoning as the accepted
+          // branch of recordSessionDelete above -- `accepted` means the
+          // backend already confirmed this create and only the local clear
+          // has not run yet, so there is no live remote call to race and no
+          // need for the tombstone/resolve dance `sending` uses. Convert
+          // straight into a real pending delete.
+          //
+          // baseVersion: `existing.baseVersion` was captured for the
+          // create's own OCC check (the session's version BEFORE this item
+          // was added) and was never updated by the accept write. The
+          // backend's `create_song_session_item` bumps the session's
+          // version by one as a side effect of accepting the create, and
+          // that new value is only ever returned in the RPC response --
+          // never persisted back onto this row -- so it is not available
+          // here. `draft.baseVersion` (from today's merged read) carries
+          // the same pre-create value for the same reason, not the
+          // post-create one. Rather than invent the "+1" this create is
+          // known to have caused, this uses `existing.baseVersion ??
+          // draft.baseVersion`, the same fallback the genuine delete path
+          // below already uses. A stale value fails safe: the backend's
+          // `delete_session_item` version guard rejects it into a visible,
+          // recoverable `conflict` instead of this code silently guessing.
+          await _upsertRecord(
+            context: context,
+            aggregateType: 'session_item',
+            record: PlanningMutationRecord(
+              aggregateId: draft.sessionItemId,
+              organizationId: context.organizationId,
+              planId: draft.planId,
+              sessionId: draft.sessionId,
+              baseVersion: existing.baseVersion ?? draft.baseVersion,
+              kind: PlanningMutationKind.sessionItemDelete,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: existing.orderKey,
+              updatedAt: DateTime.now().toUtc(),
+              originSnapshot: existing.originSnapshot ?? draft.originSnapshot,
+            ),
+          );
+        } else {
+          await (_database.delete(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(context.userId) &
+                    table.organizationId.equals(context.organizationId) &
+                    table.aggregateType.equals('session_item') &
+                    table.aggregateId.equals(draft.sessionItemId),
+              ))
+              .go();
+        }
         await _removeSessionItemFromPendingReorder(
           context: context,
           sessionId: draft.sessionId,
@@ -360,7 +551,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           organizationId: context.organizationId,
           planId: draft.planId,
           sessionId: draft.sessionId,
-          baseVersion: draft.baseVersion ?? existing?.baseVersion,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionItemDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
           orderKey:
@@ -379,6 +570,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         sessionItemId: draft.sessionItemId,
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -416,6 +608,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         ),
       );
     });
+    _onStorageFootprintChanged?.call();
   }
 
   @override
@@ -455,6 +648,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                     table.syncStatus.isIn([
                       PlanningMutationSyncStatus.pending.value,
                       PlanningMutationSyncStatus.accepted.value,
+                      // D1: a `sending` row is functionally still pending
+                      // from a reader's point of view -- its content is
+                      // unchanged, only its in-flight bookkeeping differs --
+                      // so it must keep rendering as the pending
+                      // session/item it is. `cancelling` is deliberately
+                      // NOT included: that tombstone represents a session/
+                      // item the user just deleted, and must disappear from
+                      // every merged read immediately, before its eventual
+                      // create outcome is even known (D2/D3).
+                      PlanningMutationSyncStatus.sending.value,
                       PlanningMutationSyncStatus.failedAuthorization.value,
                       PlanningMutationSyncStatus.failedDependency.value,
                       PlanningMutationSyncStatus.failedRemoteDelete.value,
@@ -578,7 +781,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -586,32 +789,82 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
-    final existing = await readMutation(
-      userId: userId,
-      organizationId: organizationId,
-      aggregateType: aggregateType,
-      aggregateId: aggregateId,
-    );
-    if (existing == null) {
-      throw StateError('Planning mutation record not found: $aggregateId');
+    // D2: the gating condition lives in the WHERE clause of this single
+    // UPDATE ... RETURNING, not as a read-then-decide in Dart -- there is
+    // no preceding SELECT of the row at all. That decision is
+    // `expectedRevision`, captured by the CALLER at snapshot time, before
+    // the remote round trip; comparing it against the row's revision
+    // atomically, inside the same statement, is what closes the race a
+    // Dart-side read-then-write would reopen.
+    //
+    // The new revision is likewise computed IN THE STATEMENT, as
+    // `local_revision + 1`, rather than from a prior Dart-side read (PR #64
+    // review, M2): this class is usable directly as a delegate with no
+    // queue above it, so two concurrent callers racing the SAME row (e.g.
+    // both with `expectedRevision: null`, the ungated shape the sync
+    // controller's failure-status write uses) must never both read the same
+    // pre-write revision and each apply their own +1 on top of it, losing
+    // one of the two increments to a classic lost-update race.
+    var predicate =
+        _database.cachedPlanningMutations.userId.equals(userId) &
+        _database.cachedPlanningMutations.organizationId.equals(
+          organizationId,
+        ) &
+        _database.cachedPlanningMutations.aggregateType.equals(aggregateType) &
+        _database.cachedPlanningMutations.aggregateId.equals(aggregateId);
+    if (expectedRevision != null) {
+      predicate =
+          predicate &
+          _database.cachedPlanningMutations.localRevision.equals(
+            expectedRevision,
+          );
     }
-    await _upsertRecord(
-      context: PlanningMutationContext(
-        userId: userId,
-        organizationId: organizationId,
-      ),
-      aggregateType: aggregateType,
-      record: existing.copyWith(
-        syncStatus: syncStatus,
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-      ),
-    );
+    final updated =
+        await (_database.update(
+          _database.cachedPlanningMutations,
+        )..where((_) => predicate)).writeReturning(
+          CachedPlanningMutationsCompanion.custom(
+            syncStatus: Constant(syncStatus.value),
+            // Always set, never left absent (PR #64 review, M3): a null
+            // errorCode/errorMessage argument means CLEAR, matching the
+            // `clearErrorCode`/`clearErrorMessage` semantics `copyWith`'s
+            // fold paths already use for the same reason -- a record that
+            // failed and later succeeds (e.g. PlanningMutationSyncController
+            // ._run's accepted-marker write, which never passes an error)
+            // must not carry the old error forward. `Constant(null)` is the
+            // "custom" companion's way of writing SQL NULL, as opposed to
+            // omitting the field entirely (which would mean "don't touch
+            // this column").
+            errorCode: Constant(errorCode?.name),
+            errorMessage: Constant(errorMessage),
+            localRevision:
+                _database.cachedPlanningMutations.localRevision +
+                const Constant(1),
+          ),
+        );
+
+    if (updated.isEmpty) {
+      // D3/D4: no row matched. Either the row's revision moved past what
+      // the caller expected -- a local edit landed on this aggregate after
+      // the snapshot that was sent (D3) -- or the row is gone entirely: the
+      // still-pending create it belonged to was deleted while this sync
+      // attempt was in flight (D4,
+      // docs/specs/2026-08-06-in-flight-create-cancellation.md; ADR-028
+      // D10 collapse). Both are ordinary concurrent-world outcomes, not
+      // defects, and both are reported identically as "did not apply" (not
+      // an exception) -- that vocabulary is what lets
+      // PlanningMutationSyncController._run move on to the records queued
+      // behind this one instead of dying.
+      return null;
+    }
+    _onStorageFootprintChanged?.call();
+    return updated.single.localRevision;
   }
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -624,7 +877,11 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       aggregateId: aggregateId,
     );
     if (existing == null) {
-      throw StateError('Planning mutation record not found: $aggregateId');
+      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): same
+      // reasoning as saveSyncAttemptResult above -- the row is gone, an
+      // ordinary concurrent-world outcome, not a defect. There is nothing
+      // left to retry.
+      return false;
     }
 
     final rebasedBaseVersion = await _currentBaseVersionFor(
@@ -632,7 +889,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       userId: userId,
       organizationId: organizationId,
     );
-    await _upsertRecord(
+    final changed = await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
         organizationId: organizationId,
@@ -646,31 +903,167 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         updatedAt: DateTime.now().toUtc(),
       ),
     );
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+    return true;
   }
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) {
-    return (_database.delete(_database.cachedPlanningMutations)..where(
-          (table) =>
-              table.userId.equals(userId) &
-              table.organizationId.equals(organizationId) &
-              table.aggregateType.equals(aggregateType) &
-              table.aggregateId.equals(aggregateId),
-        ))
-        .go();
+    int? expectedRevision,
+  }) async {
+    // D2: same shape as saveSyncAttemptResult -- the revision check is part
+    // of the DELETE's own WHERE clause, atomically, not a preceding read
+    // that could go stale before the delete runs.
+    var predicate =
+        _database.cachedPlanningMutations.userId.equals(userId) &
+        _database.cachedPlanningMutations.organizationId.equals(
+          organizationId,
+        ) &
+        _database.cachedPlanningMutations.aggregateType.equals(aggregateType) &
+        _database.cachedPlanningMutations.aggregateId.equals(aggregateId);
+    if (expectedRevision != null) {
+      predicate =
+          predicate &
+          _database.cachedPlanningMutations.localRevision.equals(
+            expectedRevision,
+          );
+    }
+    final deletedRows = await (_database.delete(
+      _database.cachedPlanningMutations,
+    )..where((_) => predicate)).go();
+    if (deletedRows > 0) {
+      _onStorageFootprintChanged?.call();
+      return true;
+    }
+    // D3: either nothing was there, or (when expectedRevision was supplied)
+    // a local edit landed after the snapshot that was sent -- not an error.
+    return false;
   }
 
-  Future<void> _upsertRecord({
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async {
+    return _database.transaction(() async {
+      final row =
+          await (_database.select(_database.cachedPlanningMutations)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.aggregateType.equals(aggregateType) &
+                    table.aggregateId.equals(aggregateId),
+              ))
+              .getSingleOrNull();
+      if (row == null) {
+        return false;
+      }
+      final existing = _toRecord(row);
+      if (existing.syncStatus != PlanningMutationSyncStatus.cancelling) {
+        // Not a tombstone -- either an ordinary local edit landed on this
+        // aggregate instead (already handled by the caller's D3
+        // stale-revision skip) or a previous call already resolved it.
+        // Nothing to do.
+        return false;
+      }
+
+      if (!created) {
+        // D3: the create never reached the backend, so the object never
+        // existed remotely -- discard the tombstone outright, with no
+        // further backend call. Exactly the physical collapse a plain,
+        // not-in-flight delete would have performed (ADR-028 D10).
+        await (_database.delete(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(aggregateId),
+            ))
+            .go();
+        _onStorageFootprintChanged?.call();
+        return true;
+      }
+
+      // D3: the create succeeded, so the object exists on the server -- the
+      // tombstone becomes a real pending delete and the next sync sends it.
+      // The already-accepted remote create is never undone; this is a
+      // subsequent operation. baseVersion is rebased on the version the
+      // backend just assigned the created row, so the delete RPC's OCC
+      // check targets content that actually exists.
+      final deleteKind = switch (existing.kind) {
+        PlanningMutationKind.sessionCreate =>
+          PlanningMutationKind.sessionDelete,
+        PlanningMutationKind.sessionItemCreateSong =>
+          PlanningMutationKind.sessionItemDelete,
+        _ => throw StateError(
+          'resolveCancelledCreate: unexpected tombstone kind '
+          '${existing.kind} for $aggregateType/$aggregateId -- only '
+          'sessionCreate/sessionItemCreateSong rows can become cancellation '
+          'tombstones (D2).',
+        ),
+      };
+      await _upsertRecord(
+        context: PlanningMutationContext(
+          userId: userId,
+          organizationId: organizationId,
+        ),
+        aggregateType: aggregateType,
+        record: existing.copyWith(
+          kind: deleteKind,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          baseVersion: acceptedBaseVersion ?? existing.baseVersion,
+          updatedAt: DateTime.now().toUtc(),
+          clearErrorCode: true,
+          clearErrorMessage: true,
+        ),
+      );
+      return true;
+    });
+  }
+
+  Future<bool> _upsertRecord({
     required PlanningMutationContext context,
     required String aggregateType,
     required PlanningMutationRecord record,
-  }) {
-    return _database
+  }) async {
+    final existing =
+        await (_database.select(_database.cachedPlanningMutations)..where(
+              (table) =>
+                  table.userId.equals(context.userId) &
+                  table.organizationId.equals(context.organizationId) &
+                  table.aggregateType.equals(aggregateType) &
+                  table.aggregateId.equals(record.aggregateId),
+            ))
+            .getSingleOrNull();
+    if (existing != null &&
+        _matchesPersistedRecord(
+          existing,
+          context: context,
+          aggregateType: aggregateType,
+          record: record,
+        )) {
+      return false;
+    }
+
+    // D1: every local write to this row bumps localRevision, including
+    // folds (recordPlanEdit onto a pending planCreate, etc.) -- this is the
+    // one write path shared by all nine `record*` mutations plus
+    // retryMutation. Reading `existing` here (already done above, for the
+    // no-op short-circuit) and computing the increment in Dart is safe: this
+    // is not a conditional write racing a network round trip (unlike
+    // saveSyncAttemptResult/clearMutation, D2), it is the store's own
+    // single, ordinary write for this aggregate.
+    await _database
         .into(_database.cachedPlanningMutations)
         .insertOnConflictUpdate(
           CachedPlanningMutationsCompanion.insert(
@@ -698,8 +1091,44 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             errorMessage: Value(record.errorMessage),
             orderKey: record.orderKey,
             updatedAt: record.updatedAt.toUtc(),
+            localRevision: Value(
+              existing == null ? 1 : existing.localRevision + 1,
+            ),
           ),
         );
+    return true;
+  }
+
+  bool _matchesPersistedRecord(
+    CachedPlanningMutation existing, {
+    required PlanningMutationContext context,
+    required String aggregateType,
+    required PlanningMutationRecord record,
+  }) {
+    return existing.userId == context.userId &&
+        existing.organizationId == context.organizationId &&
+        existing.aggregateType == aggregateType &&
+        existing.aggregateId == record.aggregateId &&
+        existing.mutationKind == record.kind.value &&
+        existing.syncStatus == record.syncStatus.value &&
+        existing.planId == record.planId &&
+        existing.sessionId == record.sessionId &&
+        existing.slug == record.slug &&
+        existing.name == record.name &&
+        existing.description == record.description &&
+        existing.scheduledFor?.toUtc() == record.scheduledFor?.toUtc() &&
+        existing.position == record.position &&
+        existing.songId == record.songId &&
+        existing.songTitle == record.songTitle &&
+        existing.orderedSiblingIds ==
+            _encodeJsonValue(record.orderedSiblingIds) &&
+        existing.baseVersion == record.baseVersion &&
+        existing.originSnapshotJson ==
+            _encodeJsonValue(record.originSnapshot) &&
+        existing.errorCode == record.errorCode?.name &&
+        existing.errorMessage == record.errorMessage &&
+        existing.orderKey == record.orderKey &&
+        existing.updatedAt.toUtc() == record.updatedAt.toUtc();
   }
 
   Future<int> _nextOrderKey({
@@ -841,6 +1270,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       syncStatus: planningMutationSyncStatusFromValue(row.syncStatus),
       orderKey: row.orderKey,
       updatedAt: row.updatedAt.toUtc(),
+      localRevision: row.localRevision,
     );
   }
 
@@ -883,6 +1313,28 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     return decoded.map((key, value) => MapEntry(key.toString(), value));
   }
 
+  Future<void> _deletePendingMutationsForSession({
+    required PlanningMutationContext context,
+    required String sessionId,
+  }) async {
+    await (_database.delete(_database.cachedPlanningMutations)..where(
+          (table) =>
+              table.userId.equals(context.userId) &
+              table.organizationId.equals(context.organizationId) &
+              table.aggregateType.equals('session_item') &
+              table.sessionId.equals(sessionId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedPlanningMutations)..where(
+          (table) =>
+              table.userId.equals(context.userId) &
+              table.organizationId.equals(context.organizationId) &
+              table.aggregateType.equals('session_item_order') &
+              table.aggregateId.equals(sessionId),
+        ))
+        .go();
+  }
+
   Future<void> _removeSessionFromPendingReorder({
     required PlanningMutationContext context,
     required String planId,
@@ -915,12 +1367,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           .go();
       return;
     }
+    // ADR-030 known follow-up: dropping the deleted session's id changes
+    // this row's content (it is no longer the sibling list the backend may
+    // have already accepted), so -- same as the direct edit folds above --
+    // it must reset syncStatus to `pending` and drop any stale error rather
+    // than carry the row's current status forward via a bare copyWith.
     await _upsertRecord(
       context: context,
       aggregateType: 'session_order',
       record: existing.copyWith(
         orderedSiblingIds: nextIds,
         updatedAt: DateTime.now().toUtc(),
+        syncStatus: PlanningMutationSyncStatus.pending,
+        clearErrorCode: true,
+        clearErrorMessage: true,
       ),
     );
   }
@@ -957,12 +1417,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           .go();
       return;
     }
+    // ADR-030 known follow-up: same reasoning as
+    // _removeSessionFromPendingReorder above.
     await _upsertRecord(
       context: context,
       aggregateType: 'session_item_order',
       record: existing.copyWith(
         orderedSiblingIds: nextIds,
         updatedAt: DateTime.now().toUtc(),
+        syncStatus: PlanningMutationSyncStatus.pending,
+        clearErrorCode: true,
+        clearErrorMessage: true,
       ),
     );
   }

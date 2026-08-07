@@ -6,11 +6,14 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
+import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 
@@ -29,6 +32,27 @@ T _safeWatch<T>(T Function() read, T fallback) {
     return fallback;
   }
 }
+
+/// Local storage footprint (LF-T4) for the active planning context.
+///
+/// A [FutureProvider] because measuring runs real queries against the
+/// planning and catalog databases; the aggregator below reads it through
+/// `.valueOrNull`, the same pattern already used for [planningPlanListProvider]
+/// via [planningPlanTitlesProvider].
+final localStorageFootprintProvider =
+    FutureProvider.autoDispose<LocalStorageFootprint>((ref) async {
+      ref.watch(localStorageFootprintRevisionProvider);
+      final context = ref.watch(activePlanningContextProvider);
+      if (context == null) {
+        return const LocalStorageFootprint.empty();
+      }
+      return ref
+          .watch(localStorageMonitorProvider)
+          .measure(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          );
+    });
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,
@@ -61,6 +85,16 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     () => ref.watch(unifiedManualSyncControllerProvider).isRunning,
     false,
   );
+  final storageFootprint = _safeWatch(
+    () =>
+        ref.watch(localStorageFootprintProvider).valueOrNull ??
+        const LocalStorageFootprint.empty(),
+    const LocalStorageFootprint.empty(),
+  );
+  final storagePressure = _safeWatch(
+    () => ref.watch(localStorageBudgetProvider).classify(storageFootprint),
+    LocalStoragePressure.ok,
+  );
 
   // Drive the offline-to-online detector from changes seen by the overview
   // itself. This keeps the trigger wiring on the same active-organization
@@ -77,7 +111,7 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
     // trigger plumbing; widget rendering must not depend on it.
   }
 
-  return computeUnifiedSyncOverview(
+  final base = computeUnifiedSyncOverview(
     UnifiedSyncOverviewInputs(
       catalog: catalog,
       songEntries: songEntries,
@@ -87,6 +121,18 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
       songSyncing: isRunning,
       planningSyncing: isRunning,
     ),
+  );
+
+  return UnifiedSyncOverview(
+    headerStatus: base.headerStatus,
+    activity: base.activity,
+    connectivity: base.connectivity,
+    freshness: base.freshness,
+    songRows: base.songRows,
+    planRows: base.planRows,
+    hasUnsyncedWork: base.hasUnsyncedWork,
+    storagePressure: storagePressure,
+    pendingMutationCount: storageFootprint.mutationCount,
   );
 });
 
@@ -169,26 +215,35 @@ final unifiedDiscardControllerProvider =
       return UnifiedDiscardController(
         activeContextReader: () {
           final c = ref.read(activeCatalogContextProvider);
+          // A null catalog context here is what makes discardAll()'s
+          // null-context branch return `discarded` (see that method's
+          // doc): no active user/organization means nothing was pending
+          // for this caller, so reporting "no work owed" as success is
+          // intentional, not a swallowed failure.
           if (c == null) return null;
           return UnifiedDiscardContext(
             userId: c.userId,
             organizationId: c.organizationId,
           );
         },
-        discardSongs: (ctx) async {
+        acquireSongDiscardLease: (ctx) => ref
+            .read(songMutationSyncControllerProvider)
+            .acquireDiscardLease(
+              SongMutationContext(
+                userId: ctx.userId,
+                organizationId: ctx.organizationId,
+              ),
+            ),
+        discardSongsWhileOwned: (ctx, lease) async {
           final link = ref.keepAlive();
           try {
             final entries = await ref.read(songMutationEntriesProvider.future);
-            final controller = ref.read(songMutationSyncControllerProvider);
-            final songContext = SongMutationContext(
-              userId: ctx.userId,
-              organizationId: ctx.organizationId,
-            );
             for (final entry in entries) {
               try {
-                await controller.discardMine(songContext, songId: entry.id);
+                await lease.discardMine(songId: entry.id);
               } catch (_) {
-                // best-effort: continue discarding remaining entries
+                // Ownership is already held, so entry failures remain
+                // best-effort without exposing a partial batch to sync.
               }
             }
             ref.invalidate(songMutationEntriesProvider);
@@ -224,6 +279,108 @@ final unifiedDiscardControllerProvider =
             ref.read(planningDataRevisionProvider.notifier).state += 1;
             ref.invalidate(planningMutationEntriesProvider);
             ref.invalidate(planningPlanListProvider);
+          } finally {
+            link.close();
+          }
+        },
+      );
+    });
+
+/// The `ref` half of the popup's per-row keep/discard/apply-to-group
+/// actions -- see UnifiedRowRecoveryController's doc comment. Each step
+/// takes `ref.keepAlive()` before its first `await` and releases it in a
+/// `finally`, exactly like unifiedDiscardControllerProvider above, so the
+/// mutation, the revision bump and the invalidations all still happen even
+/// if the popup that started them has since closed.
+final unifiedRowRecoveryControllerProvider =
+    Provider.autoDispose<UnifiedRowRecoveryController>((ref) {
+      return UnifiedRowRecoveryController(
+        keepMineStep: (songId) async {
+          final link = ref.keepAlive();
+          try {
+            final activeContext = ref.read(activeCatalogContextProvider);
+            if (activeContext == null) return false;
+            final songContext = SongMutationContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            );
+            var hadFailure = false;
+            try {
+              await ref
+                  .read(songMutationSyncControllerProvider)
+                  .keepMine(songContext, songId: songId);
+            } catch (_) {
+              hadFailure = true;
+            }
+            ref.invalidate(songMutationEntriesProvider);
+            ref.invalidate(songLibraryListProvider);
+            return hadFailure;
+          } finally {
+            link.close();
+          }
+        },
+        discardMineStep: (songId) async {
+          final link = ref.keepAlive();
+          try {
+            final activeContext = ref.read(activeCatalogContextProvider);
+            if (activeContext == null) {
+              return UnifiedRowDiscardResult.discarded;
+            }
+            final songContext = SongMutationContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            );
+            try {
+              final result = await ref
+                  .read(songMutationSyncControllerProvider)
+                  .discardMine(songContext, songId: songId);
+              ref.invalidate(songMutationEntriesProvider);
+              ref.invalidate(songLibraryListProvider);
+              return switch (result) {
+                SongDiscardResult.discarded =>
+                  UnifiedRowDiscardResult.discarded,
+                SongDiscardResult.syncInProgress =>
+                  UnifiedRowDiscardResult.syncInProgress,
+              };
+            } catch (_) {
+              ref.invalidate(songMutationEntriesProvider);
+              ref.invalidate(songLibraryListProvider);
+              return UnifiedRowDiscardResult.failed;
+            }
+          } finally {
+            link.close();
+          }
+        },
+        applyToGroupStep: (refs, {required retry}) async {
+          final link = ref.keepAlive();
+          try {
+            final planningContext = ref.read(activePlanningContextProvider);
+            if (planningContext == null) return false;
+            final controller = ref.read(planningMutationSyncControllerProvider);
+            var hadFailure = false;
+            for (final mref in refs) {
+              try {
+                if (retry) {
+                  await controller.retryMutation(
+                    planningContext,
+                    aggregateType: mref.aggregateType,
+                    aggregateId: mref.aggregateId,
+                  );
+                } else {
+                  await controller.discardMutation(
+                    planningContext,
+                    aggregateType: mref.aggregateType,
+                    aggregateId: mref.aggregateId,
+                  );
+                }
+              } catch (_) {
+                hadFailure = true;
+              }
+            }
+            ref.read(planningDataRevisionProvider.notifier).state += 1;
+            ref.invalidate(planningMutationEntriesProvider);
+            ref.invalidate(planningPlanListProvider);
+            return hadFailure;
           } finally {
             link.close();
           }

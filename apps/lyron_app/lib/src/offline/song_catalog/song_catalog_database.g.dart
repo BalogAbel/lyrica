@@ -1295,6 +1295,18 @@ class $CachedCatalogSongMutationsTable extends CachedCatalogSongMutations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _localRevisionMeta = const VerificationMeta(
+    'localRevision',
+  );
+  @override
+  late final GeneratedColumn<int> localRevision = GeneratedColumn<int>(
+    'local_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -1307,6 +1319,7 @@ class $CachedCatalogSongMutationsTable extends CachedCatalogSongMutations
     syncStatus,
     baseVersion,
     syncErrorContext,
+    localRevision,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1405,6 +1418,15 @@ class $CachedCatalogSongMutationsTable extends CachedCatalogSongMutations
         ),
       );
     }
+    if (data.containsKey('local_revision')) {
+      context.handle(
+        _localRevisionMeta,
+        localRevision.isAcceptableOrUnknown(
+          data['local_revision']!,
+          _localRevisionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1461,6 +1483,10 @@ class $CachedCatalogSongMutationsTable extends CachedCatalogSongMutations
         DriftSqlType.string,
         data['${effectivePrefix}sync_error_context'],
       ),
+      localRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_revision'],
+      )!,
     );
   }
 
@@ -1482,6 +1508,7 @@ class CachedCatalogSongMutation extends DataClass
   final String syncStatus;
   final int? baseVersion;
   final String? syncErrorContext;
+  final int localRevision;
   const CachedCatalogSongMutation({
     required this.userId,
     required this.organizationId,
@@ -1493,6 +1520,7 @@ class CachedCatalogSongMutation extends DataClass
     required this.syncStatus,
     this.baseVersion,
     this.syncErrorContext,
+    required this.localRevision,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1511,6 +1539,7 @@ class CachedCatalogSongMutation extends DataClass
     if (!nullToAbsent || syncErrorContext != null) {
       map['sync_error_context'] = Variable<String>(syncErrorContext);
     }
+    map['local_revision'] = Variable<int>(localRevision);
     return map;
   }
 
@@ -1530,6 +1559,7 @@ class CachedCatalogSongMutation extends DataClass
       syncErrorContext: syncErrorContext == null && nullToAbsent
           ? const Value.absent()
           : Value(syncErrorContext),
+      localRevision: Value(localRevision),
     );
   }
 
@@ -1549,6 +1579,7 @@ class CachedCatalogSongMutation extends DataClass
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
       syncErrorContext: serializer.fromJson<String?>(json['syncErrorContext']),
+      localRevision: serializer.fromJson<int>(json['localRevision']),
     );
   }
   @override
@@ -1565,6 +1596,7 @@ class CachedCatalogSongMutation extends DataClass
       'syncStatus': serializer.toJson<String>(syncStatus),
       'baseVersion': serializer.toJson<int?>(baseVersion),
       'syncErrorContext': serializer.toJson<String?>(syncErrorContext),
+      'localRevision': serializer.toJson<int>(localRevision),
     };
   }
 
@@ -1579,6 +1611,7 @@ class CachedCatalogSongMutation extends DataClass
     String? syncStatus,
     Value<int?> baseVersion = const Value.absent(),
     Value<String?> syncErrorContext = const Value.absent(),
+    int? localRevision,
   }) => CachedCatalogSongMutation(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -1592,6 +1625,7 @@ class CachedCatalogSongMutation extends DataClass
     syncErrorContext: syncErrorContext.present
         ? syncErrorContext.value
         : this.syncErrorContext,
+    localRevision: localRevision ?? this.localRevision,
   );
   CachedCatalogSongMutation copyWithCompanion(
     CachedCatalogSongMutationsCompanion data,
@@ -1615,6 +1649,9 @@ class CachedCatalogSongMutation extends DataClass
       syncErrorContext: data.syncErrorContext.present
           ? data.syncErrorContext.value
           : this.syncErrorContext,
+      localRevision: data.localRevision.present
+          ? data.localRevision.value
+          : this.localRevision,
     );
   }
 
@@ -1630,7 +1667,8 @@ class CachedCatalogSongMutation extends DataClass
           ..write('version: $version, ')
           ..write('syncStatus: $syncStatus, ')
           ..write('baseVersion: $baseVersion, ')
-          ..write('syncErrorContext: $syncErrorContext')
+          ..write('syncErrorContext: $syncErrorContext, ')
+          ..write('localRevision: $localRevision')
           ..write(')'))
         .toString();
   }
@@ -1647,6 +1685,7 @@ class CachedCatalogSongMutation extends DataClass
     syncStatus,
     baseVersion,
     syncErrorContext,
+    localRevision,
   );
   @override
   bool operator ==(Object other) =>
@@ -1661,7 +1700,8 @@ class CachedCatalogSongMutation extends DataClass
           other.version == this.version &&
           other.syncStatus == this.syncStatus &&
           other.baseVersion == this.baseVersion &&
-          other.syncErrorContext == this.syncErrorContext);
+          other.syncErrorContext == this.syncErrorContext &&
+          other.localRevision == this.localRevision);
 }
 
 class CachedCatalogSongMutationsCompanion
@@ -1676,6 +1716,7 @@ class CachedCatalogSongMutationsCompanion
   final Value<String> syncStatus;
   final Value<int?> baseVersion;
   final Value<String?> syncErrorContext;
+  final Value<int> localRevision;
   final Value<int> rowid;
   const CachedCatalogSongMutationsCompanion({
     this.userId = const Value.absent(),
@@ -1688,6 +1729,7 @@ class CachedCatalogSongMutationsCompanion
     this.syncStatus = const Value.absent(),
     this.baseVersion = const Value.absent(),
     this.syncErrorContext = const Value.absent(),
+    this.localRevision = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedCatalogSongMutationsCompanion.insert({
@@ -1701,6 +1743,7 @@ class CachedCatalogSongMutationsCompanion
     required String syncStatus,
     this.baseVersion = const Value.absent(),
     this.syncErrorContext = const Value.absent(),
+    this.localRevision = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -1721,6 +1764,7 @@ class CachedCatalogSongMutationsCompanion
     Expression<String>? syncStatus,
     Expression<int>? baseVersion,
     Expression<String>? syncErrorContext,
+    Expression<int>? localRevision,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1734,6 +1778,7 @@ class CachedCatalogSongMutationsCompanion
       if (syncStatus != null) 'sync_status': syncStatus,
       if (baseVersion != null) 'base_version': baseVersion,
       if (syncErrorContext != null) 'sync_error_context': syncErrorContext,
+      if (localRevision != null) 'local_revision': localRevision,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1749,6 +1794,7 @@ class CachedCatalogSongMutationsCompanion
     Value<String>? syncStatus,
     Value<int?>? baseVersion,
     Value<String?>? syncErrorContext,
+    Value<int>? localRevision,
     Value<int>? rowid,
   }) {
     return CachedCatalogSongMutationsCompanion(
@@ -1762,6 +1808,7 @@ class CachedCatalogSongMutationsCompanion
       syncStatus: syncStatus ?? this.syncStatus,
       baseVersion: baseVersion ?? this.baseVersion,
       syncErrorContext: syncErrorContext ?? this.syncErrorContext,
+      localRevision: localRevision ?? this.localRevision,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1799,6 +1846,9 @@ class CachedCatalogSongMutationsCompanion
     if (syncErrorContext.present) {
       map['sync_error_context'] = Variable<String>(syncErrorContext.value);
     }
+    if (localRevision.present) {
+      map['local_revision'] = Variable<int>(localRevision.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1818,6 +1868,7 @@ class CachedCatalogSongMutationsCompanion
           ..write('syncStatus: $syncStatus, ')
           ..write('baseVersion: $baseVersion, ')
           ..write('syncErrorContext: $syncErrorContext, ')
+          ..write('localRevision: $localRevision, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2546,6 +2597,7 @@ typedef $$CachedCatalogSongMutationsTableCreateCompanionBuilder =
       required String syncStatus,
       Value<int?> baseVersion,
       Value<String?> syncErrorContext,
+      Value<int> localRevision,
       Value<int> rowid,
     });
 typedef $$CachedCatalogSongMutationsTableUpdateCompanionBuilder =
@@ -2560,6 +2612,7 @@ typedef $$CachedCatalogSongMutationsTableUpdateCompanionBuilder =
       Value<String> syncStatus,
       Value<int?> baseVersion,
       Value<String?> syncErrorContext,
+      Value<int> localRevision,
       Value<int> rowid,
     });
 
@@ -2619,6 +2672,11 @@ class $$CachedCatalogSongMutationsTableFilterComposer
 
   ColumnFilters<String> get syncErrorContext => $composableBuilder(
     column: $table.syncErrorContext,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2681,6 +2739,11 @@ class $$CachedCatalogSongMutationsTableOrderingComposer
     column: $table.syncErrorContext,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedCatalogSongMutationsTableAnnotationComposer
@@ -2727,6 +2790,11 @@ class $$CachedCatalogSongMutationsTableAnnotationComposer
 
   GeneratedColumn<String> get syncErrorContext => $composableBuilder(
     column: $table.syncErrorContext,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
     builder: (column) => column,
   );
 }
@@ -2787,6 +2855,7 @@ class $$CachedCatalogSongMutationsTableTableManager
                 Value<String> syncStatus = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
                 Value<String?> syncErrorContext = const Value.absent(),
+                Value<int> localRevision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSongMutationsCompanion(
                 userId: userId,
@@ -2799,6 +2868,7 @@ class $$CachedCatalogSongMutationsTableTableManager
                 syncStatus: syncStatus,
                 baseVersion: baseVersion,
                 syncErrorContext: syncErrorContext,
+                localRevision: localRevision,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2813,6 +2883,7 @@ class $$CachedCatalogSongMutationsTableTableManager
                 required String syncStatus,
                 Value<int?> baseVersion = const Value.absent(),
                 Value<String?> syncErrorContext = const Value.absent(),
+                Value<int> localRevision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSongMutationsCompanion.insert(
                 userId: userId,
@@ -2825,6 +2896,7 @@ class $$CachedCatalogSongMutationsTableTableManager
                 syncStatus: syncStatus,
                 baseVersion: baseVersion,
                 syncErrorContext: syncErrorContext,
+                localRevision: localRevision,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

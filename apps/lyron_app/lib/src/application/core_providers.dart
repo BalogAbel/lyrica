@@ -1,6 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
+import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/application/sync/sync_overview.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -45,6 +52,61 @@ final planningLocalDatabaseProvider = Provider<PlanningLocalDatabase>((ref) {
   // Match the song catalog lifecycle so provider/container churn does not
   // create overlapping Drift database instances in tests.
   return _sharedPlanningLocalDatabase ??= PlanningLocalDatabase.local();
+});
+
+final localStorageBudgetProvider = Provider<LocalStorageBudget>((ref) {
+  return const LocalStorageBudget();
+});
+
+/// Monotonic invalidation seam for SQL-derived local-storage measurements.
+final localStorageFootprintRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// The shared production callback injected into every concrete storage
+/// boundary that can change the SQL-measured local-storage footprint.
+final localStorageFootprintChangedProvider =
+    Provider<LocalStorageFootprintChanged>((ref) {
+      return () {
+        ref.read(localStorageFootprintRevisionProvider.notifier).state += 1;
+      };
+    });
+
+final planningStorageAccountantProvider = Provider<PlanningStorageAccountant>((
+  ref,
+) {
+  return PlanningStorageAccountant(ref.watch(planningLocalDatabaseProvider));
+});
+
+final catalogStorageAccountantProvider = Provider<CatalogStorageAccountant>((
+  ref,
+) {
+  return CatalogStorageAccountant(ref.watch(songCatalogDatabaseProvider));
+});
+
+final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
+  return SongCatalogEvictor(
+    database: ref.watch(songCatalogDatabaseProvider),
+    accountant: ref.watch(catalogStorageAccountantProvider),
+    onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+  );
+});
+
+/// The shared storage-recovery boundary (D1): every guarded Drift store
+/// write is offered the same evictor, so eviction-and-retry behaves
+/// identically regardless of which write triggered it.
+final localStorageWriteRecoveryProvider = Provider<LocalStorageWriteRecovery>((
+  ref,
+) {
+  return LocalStorageWriteRecovery(
+    evictor: ref.watch(songCatalogEvictorProvider),
+  );
+});
+
+final localStorageMonitorProvider = Provider<LocalStorageMonitor>((ref) {
+  return LocalStorageMonitor(
+    planningAccountant: ref.watch(planningStorageAccountantProvider),
+    catalogAccountant: ref.watch(catalogStorageAccountantProvider),
+    budget: ref.watch(localStorageBudgetProvider),
+  );
 });
 
 /// Monotonic epoch used to invalidate stale last-known-identity persistence

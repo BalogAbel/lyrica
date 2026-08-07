@@ -3223,6 +3223,20 @@ class _PlanDetailTestPlanningRepository implements PlanningRepository {
 }
 
 class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   @override
   Future<String> allocatePlanSlug({
     required String userId,
@@ -3239,12 +3253,13 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   }) async => 'unused';
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+    int? expectedRevision,
+  }) async => false;
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async => false;
@@ -3330,15 +3345,15 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+  }) async => true;
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -3346,7 +3361,8 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => null;
 }
 
 class _PlanDetailStaticCapabilityGateway implements CapabilityGateway {

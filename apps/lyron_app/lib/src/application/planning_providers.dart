@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
+import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
@@ -104,13 +105,30 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
     });
 
 final planningLocalStoreProvider = Provider<PlanningLocalStore>((ref) {
-  return DriftPlanningLocalStore(ref.watch(planningLocalDatabaseProvider));
+  return DriftPlanningLocalStore(
+    ref.watch(planningLocalDatabaseProvider),
+    onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+    writeRecovery: ref.watch(localStorageWriteRecoveryProvider),
+  );
 });
 
 final planningMutationStoreProvider = Provider<PlanningMutationStore>((ref) {
-  return DriftPlanningMutationStore(
-    database: ref.watch(planningLocalDatabaseProvider),
-    localStore: ref.watch(planningLocalStoreProvider),
+  return BudgetedPlanningMutationStore(
+    delegate: DriftPlanningMutationStore(
+      database: ref.watch(planningLocalDatabaseProvider),
+      localStore: ref.watch(planningLocalStoreProvider),
+      onStorageFootprintChanged: ref.watch(
+        localStorageFootprintChangedProvider,
+      ),
+    ),
+    accountant: ref.watch(planningStorageAccountantProvider),
+    // Shared storage-recovery boundary (D1, ADR-028): the same instance the
+    // song catalog and planning local stores use, so eviction-and-retry
+    // behaves identically regardless of which write triggered it (PR #64
+    // review, M1) -- this class used to build its own, which made ADR-028's
+    // "one shared boundary" claim false for this path.
+    recovery: ref.watch(localStorageWriteRecoveryProvider),
+    budget: ref.watch(localStorageBudgetProvider),
   );
 });
 

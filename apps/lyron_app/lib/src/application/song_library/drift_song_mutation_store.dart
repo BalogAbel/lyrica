@@ -57,10 +57,11 @@ class DriftSongMutationStore implements SongMutationStore {
   }
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
+    int? expectedRevision,
   }) {
     return _songCatalogStore.reconcileSyncedSong(
       userId: userId,
@@ -72,6 +73,7 @@ class DriftSongMutationStore implements SongMutationStore {
         version: record.version,
       ),
       source: SongSource(id: record.id, source: record.chordproSource),
+      expectedRevision: expectedRevision,
     );
   }
 
@@ -163,19 +165,60 @@ class DriftSongMutationStore implements SongMutationStore {
         SongSyncStatus.pendingCreate,
         SongSyncStatus.pendingUpdate,
         SongSyncStatus.pendingDelete,
+        // D1: a `sending` row is functionally still pending from a
+        // reader's point of view -- its content is unchanged, only its
+        // in-flight bookkeeping differs -- so a record left `sending` by a
+        // crash is resent rather than stranded forever. `cancelling` is
+        // deliberately NOT included: that tombstone must not be sent
+        // directly, only resolved once the create it is waiting on
+        // concludes (D3).
+        SongSyncStatus.sending,
       ],
     );
     return rows.map(_toRecord).toList(growable: false);
   }
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) {
+    return _songCatalogStore.markSongCreateSending(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) {
+    return _songCatalogStore.resolveCancelledSongCreate(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      created: created,
+      acceptedVersion: acceptedVersion,
+    );
+  }
+
+  @override
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     final existing = await readById(
       userId: userId,
@@ -183,21 +226,47 @@ class DriftSongMutationStore implements SongMutationStore {
       songId: songId,
     );
     if (existing == null) {
-      throw StateError('Song mutation record not found: $songId');
+      // D4 (docs/specs/2026-08-06-in-flight-create-cancellation.md): the
+      // song this sync attempt was concluding is gone -- the user deleted
+      // a still-pending create while its remote call was in flight, and
+      // SongLibraryService.deleteSong's pendingCreate branch collapsed the
+      // row. An ordinary concurrent-world outcome, not a defect: report
+      // "did not apply" (the same vocabulary ADR-030 uses for
+      // reconcileSyncedSong's stale-revision case) instead of throwing, so
+      // SongMutationSyncController._runSync moves on to the songs queued
+      // behind this one instead of the whole pass dying.
+      return false;
     }
 
-    await upsertSong(
+    // Finding B (PR #64 review, 2026-08-06 remediation round): this read is
+    // used ONLY to compute the content of the write below
+    // (conflictSourceSyncStatus, folded into the encoded syncErrorContext)
+    // -- never to decide whether the write applies. That decision is made
+    // entirely by saveSongMutationStatus's own WHERE clause against
+    // [expectedRevision], inside the same statement. If the row's revision
+    // moved between this read and that write, the write's WHERE clause
+    // simply matches nothing and this computed value is never persisted --
+    // so a stale read here cannot reintroduce the race D2
+    // (docs/specs/2026-08-05-sync-snapshot-identity.md) closes, the same
+    // carve-out that ADR already makes for a SELECT used only to raise
+    // "record not found".
+    final conflictSourceSyncStatus = syncStatus == SongSyncStatus.conflict
+        ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
+        : null;
+
+    final newRevision = await _songCatalogStore.saveSongMutationStatus(
       userId: userId,
-      record: existing.copyWith(
-        syncStatus: syncStatus,
-        errorCode: errorCode,
-        errorMessage: errorMessage,
-        conflictSourceSyncStatus: syncStatus == SongSyncStatus.conflict
-            ? (existing.conflictSourceSyncStatus ?? existing.syncStatus)
-            : null,
-        clearConflictSourceSyncStatus: syncStatus != SongSyncStatus.conflict,
+      organizationId: organizationId,
+      songId: songId,
+      syncStatus: syncStatus.value,
+      syncErrorContext: _encodeError(
+        code: errorCode,
+        message: errorMessage,
+        conflictSourceSyncStatus: conflictSourceSyncStatus,
       ),
+      expectedRevision: expectedRevision,
     );
+    return newRevision != null;
   }
 
   @override
@@ -239,6 +308,7 @@ class DriftSongMutationStore implements SongMutationStore {
       errorCode: error.$1,
       errorMessage: error.$2,
       conflictSourceSyncStatus: error.$3,
+      localRevision: row.localRevision,
     );
   }
 
@@ -249,6 +319,8 @@ class DriftSongMutationStore implements SongMutationStore {
       'pending_delete' => SongSyncStatus.pendingDelete,
       'synced' => SongSyncStatus.synced,
       'conflict' => SongSyncStatus.conflict,
+      'sending' => SongSyncStatus.sending,
+      'cancelling' => SongSyncStatus.cancelling,
       _ => throw ArgumentError.value(
         value,
         'value',

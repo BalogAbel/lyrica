@@ -20,6 +20,10 @@ class AppStrings {
     required int count,
   }) =>
       'Másik fiók jelentkezett be. $email-nek $count mentetlen változtatása van. A folytatás törli ezeket.';
+  static String reauthDifferentUserUnknownPendingMessage({
+    required String email,
+  }) =>
+      'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
   static const reauthConfirmWipeAction = 'Folytatás';
   static const reauthCancelAction = 'Mégse';
   static const retryAction = 'Try again';
@@ -232,6 +236,8 @@ class AppStrings {
   static const unifiedSyncDiscardAllConfirmAction = 'Discard all';
   static const unifiedSyncDiscardAllFailedMessage =
       'Some changes could not be discarded. Try again.';
+  static const unifiedSyncWaitForSyncMessage =
+      'Sync is in progress. Try again after it finishes.';
   static const unifiedSyncActionFailedMessage =
       'Action could not be completed. Try again.';
   static const unifiedSyncActionPartialFailureMessage =

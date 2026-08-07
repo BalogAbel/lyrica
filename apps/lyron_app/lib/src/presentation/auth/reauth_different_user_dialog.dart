@@ -6,22 +6,28 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 ///
 /// Returns true if user confirms wiping prior data, false if cancelled or dismissed
 /// (which is the safe default to keep prior user offline-authenticated).
+///
+/// [pendingCount] of `null` means the count could not be determined; the
+/// dialog then states honestly that the amount is unknown instead of
+/// showing a fabricated number.
 Future<bool> showReauthDifferentUserDialog(
   BuildContext context, {
   required String email,
-  required int pendingCount,
+  required int? pendingCount,
 }) async {
+  final count = pendingCount;
+  final message = count == null
+      ? AppStrings.reauthDifferentUserUnknownPendingMessage(email: email)
+      : AppStrings.reauthDifferentUserPendingMessage(
+          email: email,
+          count: count,
+        );
   return await showDialog<bool>(
         context: context,
         barrierDismissible: true,
         builder: (context) => AlertDialog(
           title: Text(AppStrings.reauthDifferentUserTitle),
-          content: Text(
-            AppStrings.reauthDifferentUserPendingMessage(
-              email: email,
-              count: pendingCount,
-            ),
-          ),
+          content: Text(message),
           actions: [
             TextButton(
               key: const Key('reauth-different-user-cancel'),

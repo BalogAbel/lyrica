@@ -235,6 +235,195 @@ void main() {
       expect(store.clearedAggregateIds, contains('plan-1'));
     });
 
+    test('retryMutation surfaces a connectivity failure to the caller and '
+        'keeps the mutation retryable', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository(
+        error: const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final context = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await expectLater(
+        controller.retryMutation(
+          context,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        ),
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            PlanningMutationSyncErrorCode.connectivityFailure,
+          ),
+        ),
+      );
+
+      // A retry that reports failure must not also discard the user's
+      // work: the record is still in the store, pending, and still
+      // renders as retryable.
+      final record = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+      expect(record, isNotNull);
+      expect(record!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(
+        record.errorCode,
+        PlanningMutationSyncErrorCode.connectivityFailure,
+      );
+    });
+
+    test('retryMutation must not report success when it coalesces onto a '
+        'background sync that already snapshotted its candidates before the '
+        'reset', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: 'org-1',
+            name: 'Plan Two',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: 'org-1',
+            name: 'Plan Two',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final syncCompleter = Completer<void>();
+      // Every remote call fails offline -- both the background run's
+      // attempt at plan-2 and (once fixed) the retry's own attempt at
+      // plan-1 should end up with connectivityFailure.
+      final repository = _FakePlanningMutationRemoteRepository(
+        error: const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        ),
+        slowCompleter: syncCompleter,
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final context = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      // A background trigger starts syncing first. Calling
+      // syncPendingMutations synchronously reads and snapshots its
+      // candidate list (plan-2 only -- plan-1 is a conflict, not
+      // pending/accepted, so it is excluded) before suspending on the
+      // (uncompleted) repository call below.
+      final backgroundSync = controller.syncPendingMutations(context);
+
+      // The user retries plan-1 while that background run is still in
+      // flight. This resets plan-1 to pending with no error in the
+      // store. Pre-fix, retryMutation's own call to syncPendingMutations
+      // coalesces onto the SAME background run above -- which already
+      // snapshotted its candidates without plan-1 in them and can never
+      // pick it up.
+      final retryFuture = controller.retryMutation(
+        context,
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+
+      // Drain every microtask that can run without the repository call
+      // completing. The background run cannot progress past it until the
+      // completer below is completed, so this deterministically captures
+      // the moment retryMutation commits to coalescing (or, fixed, to
+      // waiting) -- there is no race to lose either way.
+      await Future<void>.delayed(Duration.zero);
+
+      syncCompleter.complete();
+
+      // Fixed behaviour: retryMutation must surface the connectivity
+      // failure, exactly like the "surfaces a connectivity failure" test
+      // above -- a retry that never left the device must not look like it
+      // succeeded. Against the pre-fix controller this expectation fails:
+      // retryFuture completes normally because it rode the background
+      // run's future to completion, and that run never touched plan-1.
+      await expectLater(
+        retryFuture,
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            PlanningMutationSyncErrorCode.connectivityFailure,
+          ),
+        ),
+      );
+
+      await backgroundSync;
+
+      final record = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+      );
+      expect(record, isNotNull);
+      expect(
+        record!.errorCode,
+        PlanningMutationSyncErrorCode.connectivityFailure,
+      );
+    });
+
     test(
       'discarding a conflicted mutation syncs the remaining queue',
       () async {
@@ -862,6 +1051,20 @@ void main() {
 }
 
 class _FakePlanningMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   _FakePlanningMutationStore({
     required this.pending,
     List<PlanningMutationRecord>? all,
@@ -874,13 +1077,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   PlanningMutationSyncStatus? lastSavedStatus;
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
     clearedAggregateIds.add(aggregateId);
+    return true;
   }
 
   @override
@@ -957,7 +1162,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => pending;
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -976,6 +1181,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
         clearErrorMessage: true,
       ),
     );
+    return true;
   }
 
   @override
@@ -1025,7 +1231,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -1033,8 +1239,31 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     lastSavedStatus = syncStatus;
+    // Mirror the real store: persist the attempt result onto the record so
+    // a subsequent readMutation reflects it, the way the Drift-backed store
+    // does. None of the tests in this file exercise the D2 snapshot-identity
+    // race (that is covered end-to-end against the real
+    // DriftPlanningMutationStore in
+    // test/offline/adversarial/planning_sync_snapshot_identity_test.dart),
+    // so this fake applies unconditionally regardless of expectedRevision.
+    final index = pending.indexWhere(
+      (record) =>
+          record.kind.aggregateType == aggregateType &&
+          record.aggregateId == aggregateId,
+    );
+    if (index != -1) {
+      pending[index] = pending[index].copyWith(
+        syncStatus: syncStatus,
+        errorCode: errorCode,
+        clearErrorCode: errorCode == null,
+        errorMessage: errorMessage,
+        clearErrorMessage: errorMessage == null,
+      );
+    }
+    return 1;
   }
 }
 

@@ -2368,6 +2368,18 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _localRevisionMeta = const VerificationMeta(
+    'localRevision',
+  );
+  @override
+  late final GeneratedColumn<int> localRevision = GeneratedColumn<int>(
+    'local_revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -2392,6 +2404,7 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     errorMessage,
     orderKey,
     updatedAt,
+    localRevision,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2583,6 +2596,15 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('local_revision')) {
+      context.handle(
+        _localRevisionMeta,
+        localRevision.isAcceptableOrUnknown(
+          data['local_revision']!,
+          _localRevisionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2685,6 +2707,10 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      localRevision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_revision'],
+      )!,
     );
   }
 
@@ -2718,6 +2744,19 @@ class CachedPlanningMutation extends DataClass
   final String? errorMessage;
   final int orderKey;
   final DateTime updatedAt;
+
+  /// Local bookkeeping only: incremented by the store on every local write
+  /// to this row (a fold, a status write, anything). It identifies the
+  /// exact content that was handed to a sync attempt, so a post-sync write
+  /// can detect whether the row is still the one that was sent.
+  ///
+  /// This is NOT part of OCC and NEVER leaves the device -- unlike
+  /// [baseVersion], which tracks the server's view of the aggregate.
+  /// `updatedAt` cannot serve this purpose: two local writes inside the
+  /// same millisecond collide, and a device clock can step backwards
+  /// (LF-T6), so only a store-owned counter is guaranteed monotonic. See
+  /// `docs/specs/2026-08-05-sync-snapshot-identity.md` (D1).
+  final int localRevision;
   const CachedPlanningMutation({
     required this.userId,
     required this.organizationId,
@@ -2741,6 +2780,7 @@ class CachedPlanningMutation extends DataClass
     this.errorMessage,
     required this.orderKey,
     required this.updatedAt,
+    required this.localRevision,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2795,6 +2835,7 @@ class CachedPlanningMutation extends DataClass
     }
     map['order_key'] = Variable<int>(orderKey);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['local_revision'] = Variable<int>(localRevision);
     return map;
   }
 
@@ -2846,6 +2887,7 @@ class CachedPlanningMutation extends DataClass
           : Value(errorMessage),
       orderKey: Value(orderKey),
       updatedAt: Value(updatedAt),
+      localRevision: Value(localRevision),
     );
   }
 
@@ -2881,6 +2923,7 @@ class CachedPlanningMutation extends DataClass
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       orderKey: serializer.fromJson<int>(json['orderKey']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      localRevision: serializer.fromJson<int>(json['localRevision']),
     );
   }
   @override
@@ -2909,6 +2952,7 @@ class CachedPlanningMutation extends DataClass
       'errorMessage': serializer.toJson<String?>(errorMessage),
       'orderKey': serializer.toJson<int>(orderKey),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'localRevision': serializer.toJson<int>(localRevision),
     };
   }
 
@@ -2935,6 +2979,7 @@ class CachedPlanningMutation extends DataClass
     Value<String?> errorMessage = const Value.absent(),
     int? orderKey,
     DateTime? updatedAt,
+    int? localRevision,
   }) => CachedPlanningMutation(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -2962,6 +3007,7 @@ class CachedPlanningMutation extends DataClass
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     orderKey: orderKey ?? this.orderKey,
     updatedAt: updatedAt ?? this.updatedAt,
+    localRevision: localRevision ?? this.localRevision,
   );
   CachedPlanningMutation copyWithCompanion(
     CachedPlanningMutationsCompanion data,
@@ -3011,6 +3057,9 @@ class CachedPlanningMutation extends DataClass
           : this.errorMessage,
       orderKey: data.orderKey.present ? data.orderKey.value : this.orderKey,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      localRevision: data.localRevision.present
+          ? data.localRevision.value
+          : this.localRevision,
     );
   }
 
@@ -3038,7 +3087,8 @@ class CachedPlanningMutation extends DataClass
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('orderKey: $orderKey, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('localRevision: $localRevision')
           ..write(')'))
         .toString();
   }
@@ -3067,6 +3117,7 @@ class CachedPlanningMutation extends DataClass
     errorMessage,
     orderKey,
     updatedAt,
+    localRevision,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -3093,7 +3144,8 @@ class CachedPlanningMutation extends DataClass
           other.errorCode == this.errorCode &&
           other.errorMessage == this.errorMessage &&
           other.orderKey == this.orderKey &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.localRevision == this.localRevision);
 }
 
 class CachedPlanningMutationsCompanion
@@ -3120,6 +3172,7 @@ class CachedPlanningMutationsCompanion
   final Value<String?> errorMessage;
   final Value<int> orderKey;
   final Value<DateTime> updatedAt;
+  final Value<int> localRevision;
   final Value<int> rowid;
   const CachedPlanningMutationsCompanion({
     this.userId = const Value.absent(),
@@ -3144,6 +3197,7 @@ class CachedPlanningMutationsCompanion
     this.errorMessage = const Value.absent(),
     this.orderKey = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.localRevision = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningMutationsCompanion.insert({
@@ -3169,6 +3223,7 @@ class CachedPlanningMutationsCompanion
     this.errorMessage = const Value.absent(),
     required int orderKey,
     required DateTime updatedAt,
+    this.localRevision = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -3201,6 +3256,7 @@ class CachedPlanningMutationsCompanion
     Expression<String>? errorMessage,
     Expression<int>? orderKey,
     Expression<DateTime>? updatedAt,
+    Expression<int>? localRevision,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3227,6 +3283,7 @@ class CachedPlanningMutationsCompanion
       if (errorMessage != null) 'error_message': errorMessage,
       if (orderKey != null) 'order_key': orderKey,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (localRevision != null) 'local_revision': localRevision,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3254,6 +3311,7 @@ class CachedPlanningMutationsCompanion
     Value<String?>? errorMessage,
     Value<int>? orderKey,
     Value<DateTime>? updatedAt,
+    Value<int>? localRevision,
     Value<int>? rowid,
   }) {
     return CachedPlanningMutationsCompanion(
@@ -3279,6 +3337,7 @@ class CachedPlanningMutationsCompanion
       errorMessage: errorMessage ?? this.errorMessage,
       orderKey: orderKey ?? this.orderKey,
       updatedAt: updatedAt ?? this.updatedAt,
+      localRevision: localRevision ?? this.localRevision,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3352,6 +3411,9 @@ class CachedPlanningMutationsCompanion
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (localRevision.present) {
+      map['local_revision'] = Variable<int>(localRevision.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3383,6 +3445,7 @@ class CachedPlanningMutationsCompanion
           ..write('errorMessage: $errorMessage, ')
           ..write('orderKey: $orderKey, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('localRevision: $localRevision, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4568,6 +4631,7 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       Value<String?> errorMessage,
       required int orderKey,
       required DateTime updatedAt,
+      Value<int> localRevision,
       Value<int> rowid,
     });
 typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
@@ -4594,6 +4658,7 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<String?> errorMessage,
       Value<int> orderKey,
       Value<DateTime> updatedAt,
+      Value<int> localRevision,
       Value<int> rowid,
     });
 
@@ -4713,6 +4778,11 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4835,6 +4905,11 @@ class $$CachedPlanningMutationsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningMutationsTableAnnotationComposer
@@ -4933,6 +5008,11 @@ class $$CachedPlanningMutationsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get localRevision => $composableBuilder(
+    column: $table.localRevision,
+    builder: (column) => column,
+  );
 }
 
 class $$CachedPlanningMutationsTableTableManager
@@ -5003,6 +5083,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> errorMessage = const Value.absent(),
                 Value<int> orderKey = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> localRevision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningMutationsCompanion(
                 userId: userId,
@@ -5027,6 +5108,7 @@ class $$CachedPlanningMutationsTableTableManager
                 errorMessage: errorMessage,
                 orderKey: orderKey,
                 updatedAt: updatedAt,
+                localRevision: localRevision,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5053,6 +5135,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> errorMessage = const Value.absent(),
                 required int orderKey,
                 required DateTime updatedAt,
+                Value<int> localRevision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningMutationsCompanion.insert(
                 userId: userId,
@@ -5077,6 +5160,7 @@ class $$CachedPlanningMutationsTableTableManager
                 errorMessage: errorMessage,
                 orderKey: orderKey,
                 updatedAt: updatedAt,
+                localRevision: localRevision,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

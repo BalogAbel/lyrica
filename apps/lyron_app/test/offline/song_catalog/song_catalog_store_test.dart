@@ -5,6 +5,10 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
+import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -13,10 +17,14 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 import '../../support/drift_test_setup.dart';
+import '../../support/insert_failing_executor.dart';
 
 void main() {
+  suppressDriftMultipleDatabaseWarnings();
+
   group('SongCatalogStore', () {
     late SongCatalogDatabase database;
     late DriftSongCatalogStore store;
@@ -28,6 +36,116 @@ void main() {
 
     tearDown(() async {
       await database.close();
+    });
+
+    test('reports catalog storage only after the concrete commit', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'song-catalog-footprint-revision-test',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final dbFile = File(p.join(directory.path, 'catalog.sqlite'));
+      final trackedDatabase = SongCatalogDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      addTearDown(trackedDatabase.close);
+      final observer = sqlite3.open(dbFile.path);
+      addTearDown(observer.close);
+      final committedRowCounts = <int>[];
+      final trackedStore = DriftSongCatalogStore(
+        trackedDatabase,
+        onStorageFootprintChanged: () {
+          final row = observer
+              .select(
+                'SELECT count(*) AS row_count FROM cached_catalog_song_mutations',
+              )
+              .single;
+          committedRowCounts.add(row['row_count'] as int);
+        },
+      );
+
+      await trackedStore.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      expect(committedRowCounts, [1]);
+    });
+
+    test('does not report a catalog throw or true no-op', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftSongCatalogStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      const mutation = SongCatalogMutationDraft(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        slug: 'alpha',
+        title: 'Alpha',
+        source: '{title: Alpha}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      );
+
+      await trackedStore.clearSongMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'missing-song',
+      );
+      expect(revisionCount, 0);
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
+
+      await expectLater(
+        () => trackedStore.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha',
+            title: 'Duplicate slug',
+            source: '{title: Duplicate slug}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ),
+        throwsA(isA<LocalSongSlugConflictException>()),
+      );
+      expect(revisionCount, 1);
+    });
+
+    test('does not report an identical song-mutation upsert', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftSongCatalogStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      const mutation = SongCatalogMutationDraft(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        slug: 'alpha',
+        title: 'Alpha',
+        source: '{title: Alpha}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      );
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
+
+      await trackedStore.saveSongMutation(mutation);
+      expect(revisionCount, 1);
     });
 
     test(
@@ -1095,6 +1213,657 @@ void main() {
         ),
         isEmpty,
       );
+    });
+  });
+
+  group('DriftSongCatalogStore storage recovery (D1)', () {
+    // Every test below wires a real DriftSongCatalogStore whose underlying
+    // executor fails every INSERT, and a real LocalStorageWriteRecovery
+    // backed by a SECOND, unwrapped SongCatalogDatabase seeded with one
+    // droppable source -- mirroring the two-database shape
+    // storage_pressure_contract_test.dart already uses for the (unchanged)
+    // planning-mutation path, so a storage failure on the guarded database
+    // never fights with eviction reads/deletes on the catalog database.
+    Future<
+      ({
+        SongCatalogDatabase failingDatabase,
+        DriftSongCatalogStore store,
+        SongCatalogDatabase evictionDatabase,
+        int Function() revisionCount,
+      })
+    >
+    buildGuardedStore({InsertFailureBudget? budget}) async {
+      final failingExecutor = InsertFailingExecutor(
+        NativeDatabase.memory(),
+        budget,
+      );
+      final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'droppable-song',
+              source: 'body ' * 200,
+            ),
+          );
+
+      var revisionCount = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+          onStorageFootprintChanged: () => revisionCount += 1,
+        ),
+      );
+      final store = DriftSongCatalogStore(
+        failingDatabase,
+        writeRecovery: recovery,
+      );
+
+      return (
+        failingDatabase: failingDatabase,
+        store: store,
+        evictionDatabase: evictionDatabase,
+        revisionCount: () => revisionCount,
+      );
+    }
+
+    test(
+      'a failed saveSongMutation write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.saveSongMutation(
+            const SongCatalogMutationDraft(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              songId: 'song-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              source: '{title: Alpha}',
+              syncStatus: SongSyncStatus.pendingCreate,
+            ),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final mutation = await built.store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(mutation, isNull);
+      },
+    );
+
+    test('a saveSongMutation write that fails once and succeeds on retry lands '
+        'the mutation, after evicting droppable catalog sources', () async {
+      final built = await buildGuardedStore(
+        budget: InsertFailureBudget(failuresRemaining: 1),
+      );
+      addTearDown(built.failingDatabase.close);
+      addTearDown(built.evictionDatabase.close);
+
+      await built.store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final remainingSources = await built.evictionDatabase
+          .select(built.evictionDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, isEmpty);
+
+      final mutation = await built.store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(mutation, isNotNull);
+      expect(mutation!.title, 'Alpha');
+    });
+
+    test(
+      'a failed replaceActiveSnapshot write evicts droppable catalog '
+      'sources, retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [SongSummary(id: 'song-1', title: 'Song One')],
+            sources: const [SongSource(id: 'song-1', source: 'chordpro body')],
+            refreshedAt: DateTime.utc(2026, 8, 4),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        final summaries = await built.store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries, isEmpty);
+      },
+    );
+
+    test(
+      'a failed reconcileSyncedSong write evicts droppable catalog sources, '
+      'retries once, and surfaces a typed LocalStorageWriteFailure',
+      () async {
+        final built = await buildGuardedStore();
+        addTearDown(built.failingDatabase.close);
+        addTearDown(built.evictionDatabase.close);
+
+        await expectLater(
+          () => built.store.reconcileSyncedSong(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summary: const SongSummary(
+              id: 'song-1',
+              title: 'Alpha',
+              slug: 'alpha',
+              version: 2,
+            ),
+            source: const SongSource(id: 'song-1', source: '{title: Alpha}'),
+          ),
+          throwsA(
+            isA<LocalStorageWriteFailure>().having(
+              (failure) => failure.cause,
+              'cause',
+              isA<StorageQuotaSimulatedException>(),
+            ),
+          ),
+        );
+
+        expect(built.revisionCount(), 1);
+        final remainingSources = await built.evictionDatabase
+            .select(built.evictionDatabase.cachedCatalogSources)
+            .get();
+        expect(remainingSources, isEmpty);
+
+        // Never landed: nothing to read back.
+        final summary = await built.store.readActiveSummaryById(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(summary, isNull);
+      },
+    );
+
+    test('domain rejections still pass through a guarded saveSongMutation '
+        'without eviction or retry', () async {
+      // No fault injection here: the underlying database is a plain,
+      // non-failing database, so the ONLY way this can throw is the
+      // domain check inside saveSongMutation itself (a slug already
+      // reserved by a different song) -- proving the guard recognises it
+      // as a LocalStorageDomainRejection rather than storage pressure.
+      final database = SongCatalogDatabase.inMemory();
+      addTearDown(database.close);
+      var evictions = 0;
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: database,
+          accountant: CatalogStorageAccountant(database),
+          onStorageFootprintChanged: () => evictions += 1,
+        ),
+      );
+      final store = DriftSongCatalogStore(database, writeRecovery: recovery);
+
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingDelete,
+        ),
+      );
+
+      await expectLater(
+        () => store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+            slug: 'alpha',
+            title: 'Alpha Recreated',
+            source: '{title: Alpha Recreated}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ),
+        throwsA(isA<LocalSongSlugConflictException>()),
+      );
+
+      expect(
+        evictions,
+        0,
+        reason: 'a domain rejection must never trigger eviction',
+      );
+    });
+  });
+
+  group('SongCatalogStore.localRevision (D1, sync-snapshot-identity)', () {
+    // docs/specs/2026-08-05-sync-snapshot-identity.md D1: localRevision is
+    // local bookkeeping incremented by the store on every local write to a
+    // mutation row -- unrelated to baseVersion/version (which track the
+    // server's view) and never sent to the backend. Unlike planning's
+    // several distinct record* writers, every song local write funnels
+    // through the single saveSongMutation upsert (including the status
+    // write DriftSongMutationStore.saveSyncAttemptResult makes), so this
+    // group proves the "every" across that one path: a fold (a second local
+    // edit landing on a still-pending row) and a status write.
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('increments by exactly one on every local write, including a fold '
+        'and a status write', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final afterCreate = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(
+        afterCreate!.localRevision,
+        1,
+        reason: 'a brand-new row starts at revision 1',
+      );
+
+      // Fold: a second local edit before the song ever synced lands in
+      // the SAME row (still pendingCreate), not a new one -- the revision
+      // must still advance.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Edited content}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final afterFold = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterFold!.localRevision, 2);
+      expect(afterFold.source, '{title: Edited content}');
+
+      // A status write (the shape
+      // DriftSongMutationStore.saveSyncAttemptResult uses after a failed
+      // remote attempt) also advances the revision.
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+      await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.dependencyBlocked,
+        errorMessage: 'blocked',
+      );
+      final afterStatusWrite = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterStatusWrite!.localRevision, 3);
+    });
+
+    test('a conditional reconcileSyncedSong that matches applies and returns '
+        'true; a stale one does not apply, returns false, and leaves the row '
+        'untouched', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      // Matching expectedRevision: applies.
+      final applied = await store.reconcileSyncedSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summary: const SongSummary(
+          id: 'song-1',
+          title: 'Alpha',
+          slug: 'alpha',
+          version: 1,
+        ),
+        source: const SongSource(id: 'song-1', source: '{title: Alpha}'),
+        expectedRevision: 1,
+      );
+      expect(applied, isTrue);
+      expect(
+        await store.readSongMutationBySongId(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        isNull,
+      );
+
+      // A second song, edited once more after the snapshot a sync would
+      // have captured: a reconcile keyed to the STALE revision must not
+      // apply.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta edited}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final stale = await store.reconcileSyncedSong(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summary: const SongSummary(
+          id: 'song-2',
+          title: 'Beta',
+          slug: 'beta',
+          version: 1,
+        ),
+        source: const SongSource(id: 'song-2', source: '{title: Beta}'),
+        expectedRevision: 1,
+      );
+      expect(stale, isFalse);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+      );
+      expect(
+        record,
+        isNotNull,
+        reason: 'the stale attempt must not have deleted the row',
+      );
+      expect(record!.localRevision, 2);
+      expect(
+        record.source,
+        '{title: Beta edited}',
+        reason: 'the stale attempt must not have overwritten anything',
+      );
+      // readActiveSummaryById overlays the still-pending mutation row
+      // above the snapshot table, so it is not the right probe for "did
+      // the snapshot write happen" -- query the raw snapshot table
+      // directly instead.
+      final rawSummaryRows = await (database.select(
+        database.cachedCatalogSummaries,
+      )..where((table) => table.songId.equals('song-2'))).get();
+      expect(
+        rawSummaryRows,
+        isEmpty,
+        reason:
+            'a stale reconcile must skip the snapshot write too, not '
+            'just the mutation-row delete',
+      );
+    });
+
+    test('a conditional saveSyncAttemptResult that matches applies and returns '
+        'the new revision; a stale one does not apply and leaves the row '
+        'untouched -- Finding B, 2026-08-06 remediation round', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      final mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+
+      // Matching expectedRevision: applies.
+      final applied = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        errorMessage: 'version mismatch',
+        expectedRevision: 1,
+      );
+      expect(applied, isTrue);
+      final afterApplied = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(afterApplied!.syncStatus, SongSyncStatus.conflict.value);
+      expect(afterApplied.localRevision, 2);
+
+      // A second song, edited once more after the revision a sync attempt
+      // would have captured: a status write keyed to the STALE revision
+      // must not apply.
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+          slug: 'beta',
+          title: 'Beta',
+          source: '{title: Beta edited}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final stale = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+        syncStatus: SongSyncStatus.conflict,
+        errorCode: SongMutationSyncErrorCode.conflict,
+        errorMessage: 'version mismatch',
+        expectedRevision: 1,
+      );
+      expect(stale, isFalse);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+      );
+      expect(
+        record,
+        isNotNull,
+        reason: 'the stale attempt must not have deleted the row',
+      );
+      expect(record!.localRevision, 2);
+      expect(
+        record.syncStatus,
+        SongSyncStatus.pendingCreate.value,
+        reason: 'the stale attempt must not have overwritten the status',
+      );
+      expect(
+        record.source,
+        '{title: Beta edited}',
+        reason: 'the stale attempt must not have overwritten the content',
+      );
+      expect(
+        record.syncErrorContext,
+        isNull,
+        reason: 'the stale attempt must not have written an error either',
+      );
+    });
+  });
+
+  group('DriftSongMutationStore missing-record handling (D4, in-flight '
+      'create cancellation)', () {
+    // docs/specs/2026-08-06-in-flight-create-cancellation.md D4: the song
+    // side's equivalent of planning's saveSyncAttemptResult -- the write
+    // SongMutationSyncController concludes a remote sync attempt with --
+    // must report "did not apply" instead of throwing when the song's row
+    // no longer exists (mutation row AND synced snapshot both gone): the
+    // ordinary outcome of the user deleting a still-pending create while
+    // its remote call was in flight (SongLibraryService.deleteSong's
+    // pendingCreate branch).
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+    late DriftSongMutationStore mutationStore;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+      mutationStore = DriftSongMutationStore(
+        songCatalogStore: store,
+        planningLocalStore: const _NoopPlanningLocalStore(),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('saveSyncAttemptResult against a nonexistent song returns false '
+        'instead of throwing', () async {
+      final result = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'ghost-song',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.authorizationDenied,
+      );
+      expect(result, isFalse);
+    });
+
+    test('saveSyncAttemptResult against an EXISTING song is unchanged -- it '
+        'still applies and reports success', () async {
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      final result = await mutationStore.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+        syncStatus: SongSyncStatus.pendingCreate,
+        errorCode: SongMutationSyncErrorCode.dependencyBlocked,
+        errorMessage: 'blocked',
+      );
+      expect(result, isTrue);
+
+      final record = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(record!.syncErrorContext, contains('dependencyBlocked'));
     });
   });
 }

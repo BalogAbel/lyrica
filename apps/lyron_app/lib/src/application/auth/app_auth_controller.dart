@@ -23,6 +23,8 @@ class AppAuthController extends ChangeNotifier {
   bool _isSigningOut = false;
   bool _isDisposed = false;
   int _authGeneration = 0;
+  AppAuthSession? _pendingReauthCancelSession;
+  int? _pendingReauthCancelGeneration;
 
   AppAuthState get state => _state;
 
@@ -74,7 +76,120 @@ class AppAuthController extends ChangeNotifier {
     }
   }
 
+  /// Cancels a different-user re-authentication: the new session is signed
+  /// out at the auth backend, but -- unlike [signOut] -- this is not an
+  /// explicit user sign-out. State returns to [AppAuthStatus.sessionExpired]
+  /// carrying [priorSession], so the app stays offline-authenticated as the
+  /// user who was signed in before the (cancelled) different-user sign-in.
+  ///
+  /// ADR-020 forbids destroying that prior offline-authenticated state on
+  /// cancel. [_pendingReauthCancelSession] / [_pendingReauthCancelGeneration]
+  /// make this convergent rather than racy across BOTH interleavings of our
+  /// own [_setState] below versus the auth stream's `null` event (a side
+  /// effect [_repository.signOut] may trigger, at a time this class does not
+  /// control):
+  ///
+  /// - the stream's `null` arrives WHILE this call is still awaiting
+  ///   [_repository.signOut] -- [_handleSessionUpdate] sees the pending
+  ///   record, applies it, and this call's own [_setState] afterwards is a
+  ///   no-op (same target state);
+  /// - the stream's `null` arrives LATE, after this call has already
+  ///   returned and set the state itself. The pending record is deliberately
+  ///   NOT cleared in a `finally` here -- doing that would erase the record
+  ///   before the late event can consume it, which is exactly how this bug
+  ///   used to reach production. Instead it is left set and consumed lazily
+  ///   by [_handleSessionUpdate] the next time any session event arrives,
+  ///   gated on [_pendingReauthCancelGeneration] so a genuinely later,
+  ///   unrelated auth event (one that bumped [_authGeneration] itself, e.g.
+  ///   another sign-out or sign-in) correctly proves the record stale
+  ///   instead of being wrongly reapplied.
+  ///
+  /// See [_handleSessionUpdate].
+  Future<void> cancelReauthToPriorSession(AppAuthSession priorSession) async {
+    _authGeneration += 1;
+    final cancelGeneration = _authGeneration;
+    _isSigningOut = true;
+    _pendingReauthCancelSession = priorSession;
+    _pendingReauthCancelGeneration = cancelGeneration;
+    try {
+      try {
+        await _repository.signOut();
+      } catch (error, stackTrace) {
+        // Finding 2 (PR #64 review): the backend signOut() call failing
+        // (offline, timeout, revoked token, ...) must not leave this cancel
+        // stuck. The convergence below still has to run unconditionally --
+        // both so the state does not silently stay put (still `signedIn` as
+        // the would-be new user) and so the pending record above is not
+        // left "live" for a later, UNRELATED null session event to
+        // misapply (see the class doc): once this method itself converges
+        // to sessionExpired here, a stale pending record consumed by a
+        // later event lands on the exact same state and is a harmless
+        // no-op via _setState's equality check, not a wrong one. Whether
+        // the remote signOut() itself actually completed is a lesser
+        // concern than that local convergence -- ADR-020 never requires
+        // backend confirmation to stay non-destructive -- but it must not
+        // vanish silently just because this is a fire-and-forget auth
+        // listener; report it.
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'AppAuthController',
+            context: ErrorDescription(
+              'cancelReauthToPriorSession: backend signOut() failed; still '
+              'converging local state to sessionExpired as the prior user',
+            ),
+          ),
+        );
+      }
+      // If the stream's own null event already arrived and converged on
+      // this same target state while we were awaiting (see
+      // _handleSessionUpdate), _authGeneration has moved past
+      // cancelGeneration; skip the redundant _setState outright rather than
+      // relying on its equality no-op, so this call can never clobber a
+      // newer, unrelated auth event that happened to land in the same
+      // window.
+      if (_authGeneration == cancelGeneration) {
+        _setState(
+          AppAuthState(
+            status: AppAuthStatus.sessionExpired,
+            lastKnownSession: priorSession,
+          ),
+        );
+      }
+    } finally {
+      _isSigningOut = false;
+    }
+  }
+
   void _handleSessionUpdate(AppAuthSession? session) {
+    final pendingCancel = _pendingReauthCancelSession;
+    final pendingGeneration = _pendingReauthCancelGeneration;
+    if (pendingCancel != null) {
+      // Consume the pending cancel record on whichever session event
+      // arrives next, however late -- including after
+      // cancelReauthToPriorSession has already returned, since its own
+      // signOut() call's stream side effect is not guaranteed to be
+      // delivered before the awaited future resolves. Gating on
+      // _authGeneration rather than clearing this field in cancel's
+      // `finally` is what lets a LATE emission still land on the
+      // cancelled-to-prior-session state: nothing bumps _authGeneration
+      // between the cancel and this event unless a genuinely newer auth
+      // operation ran in between, in which case the record is correctly
+      // treated as stale below instead of being reapplied.
+      _pendingReauthCancelSession = null;
+      _pendingReauthCancelGeneration = null;
+      if (session == null && pendingGeneration == _authGeneration) {
+        _authGeneration += 1;
+        _setState(
+          AppAuthState(
+            status: AppAuthStatus.sessionExpired,
+            lastKnownSession: pendingCancel,
+          ),
+        );
+        return;
+      }
+    }
     _authGeneration += 1;
     _setState(_stateForSession(session, fromStream: true));
   }

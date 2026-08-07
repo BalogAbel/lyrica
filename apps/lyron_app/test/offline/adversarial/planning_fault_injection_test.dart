@@ -118,6 +118,20 @@ void main() {
 /// `planning_mutation_sync_controller_test.dart`, scoped to what these
 /// adversarial tests exercise.
 class _FakePlanningMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   _FakePlanningMutationStore({
     required this.pending,
     List<PlanningMutationRecord>? all,
@@ -130,13 +144,15 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   PlanningMutationSyncStatus? lastSavedStatus;
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
+    int? expectedRevision,
   }) async {
     clearedAggregateIds.add(aggregateId);
+    return true;
   }
 
   @override
@@ -211,7 +227,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async => pending;
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -230,6 +246,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
         clearErrorMessage: true,
       ),
     );
+    return true;
   }
 
   @override
@@ -279,7 +296,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -287,7 +304,9 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
+    int? expectedRevision,
   }) async {
     lastSavedStatus = syncStatus;
+    return 1;
   }
 }

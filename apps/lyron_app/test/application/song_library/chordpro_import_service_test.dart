@@ -185,6 +185,29 @@ void main() {
 }
 
 class _FakeRepo implements SongCatalogReadRepository, SongMutationStore {
+  // Stubs for docs/specs/2026-08-06-in-flight-create-cancellation.md
+  // (D1/D3): none of these tests exercise the in-flight-create-cancellation
+  // sending marker or tombstone path, which is covered against the real
+  // DriftSongCatalogStore/DriftSongMutationStore in
+  // test/offline/adversarial/song_in_flight_create_cancellation_test.dart.
+  // Applied unconditionally, ignoring expectedRevision.
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async => expectedRevision + 1;
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async => false;
+
   List<SongSummary> songs = [];
   final List<String> createdTitles = [];
   final List<String> updatedSongIds = [];
@@ -296,21 +319,23 @@ class _FakeRepo implements SongCatalogReadRepository, SongMutationStore {
   }) async => [];
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => true;
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
-  }) async {}
+    int? expectedRevision,
+  }) async => true;
 
   @override
   Future<void> clearSongMutation({

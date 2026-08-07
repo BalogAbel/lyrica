@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
-import 'package:lyron_app/src/application/providers.dart';
-import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart'
+    show SongSyncStatus;
+import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
+import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
-import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -106,7 +106,16 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
     if (confirmed != true) return;
     if (!context.mounted) return;
     try {
-      await ref.read(unifiedDiscardControllerProvider).discardAll();
+      final result = await ref
+          .read(unifiedDiscardControllerProvider)
+          .discardAll();
+      if (result == UnifiedDiscardResult.syncInProgress && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(AppStrings.unifiedSyncWaitForSyncMessage),
+          ),
+        );
+      }
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,58 +201,37 @@ class _SongRowTile extends ConsumerWidget {
     );
   }
 
-  SongMutationContext? _context(WidgetRef ref) {
-    final c = ref.read(activeCatalogContextProvider);
-    if (c == null) return null;
-    return SongMutationContext(
-      userId: c.userId,
-      organizationId: c.organizationId,
-    );
-  }
-
   Future<void> _keepMine(BuildContext context, WidgetRef ref) async {
-    final ctx = _context(ref);
-    if (ctx == null) return;
-    try {
-      await ref
-          .read(songMutationSyncControllerProvider)
-          .keepMine(ctx, songId: row.songId);
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(AppStrings.unifiedSyncActionFailedMessage),
-          ),
-        );
-      }
-    } finally {
-      if (context.mounted) {
-        ref.invalidate(songMutationEntriesProvider);
-        ref.invalidate(songLibraryListProvider);
-      }
+    final hadFailure = await ref
+        .read(unifiedRowRecoveryControllerProvider)
+        .keepMine(row.songId);
+    if (hadFailure && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.unifiedSyncActionFailedMessage),
+        ),
+      );
     }
   }
 
   Future<void> _discardMine(BuildContext context, WidgetRef ref) async {
-    final ctx = _context(ref);
-    if (ctx == null) return;
-    try {
-      await ref
-          .read(songMutationSyncControllerProvider)
-          .discardMine(ctx, songId: row.songId);
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(AppStrings.unifiedSyncActionFailedMessage),
-          ),
-        );
-      }
-    } finally {
-      if (context.mounted) {
-        ref.invalidate(songMutationEntriesProvider);
-        ref.invalidate(songLibraryListProvider);
-      }
+    final result = await ref
+        .read(unifiedRowRecoveryControllerProvider)
+        .discardMineResult(row.songId);
+    if (!context.mounted || result == UnifiedRowDiscardResult.discarded) {
+      return;
+    }
+    final message = switch (result) {
+      UnifiedRowDiscardResult.syncInProgress =>
+        AppStrings.unifiedSyncWaitForSyncMessage,
+      UnifiedRowDiscardResult.failed =>
+        AppStrings.unifiedSyncActionFailedMessage,
+      UnifiedRowDiscardResult.discarded => null,
+    };
+    if (message != null && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -254,6 +242,13 @@ class _SongRowTile extends ConsumerWidget {
       SongSyncStatus.conflict => AppStrings.unifiedSyncSongStateEditedConflict,
       SongSyncStatus.pendingUpdate ||
       SongSyncStatus.synced => AppStrings.unifiedSyncSongStateEdited,
+      // `sending` is only ever a pendingCreate row's in-flight window (D1);
+      // it renders exactly like pendingCreate. `cancelling` is excluded
+      // from readPendingSongs so it should never reach this popup, but the
+      // switch must stay exhaustive -- it renders like pendingDelete, the
+      // closest existing label for "being removed".
+      SongSyncStatus.sending => AppStrings.unifiedSyncSongStateCreated,
+      SongSyncStatus.cancelling => AppStrings.unifiedSyncSongStateRemoved,
     };
   }
 }
@@ -319,40 +314,16 @@ class _PlanRowTile extends ConsumerWidget {
     WidgetRef ref, {
     required bool retry,
   }) async {
-    final ctx = ref.read(activePlanningContextProvider);
-    if (ctx == null) return;
-    final controller = ref.read(planningMutationSyncControllerProvider);
-    var hasError = false;
-    for (final mref in row.mutationRefs) {
-      try {
-        if (retry) {
-          await controller.retryMutation(
-            ctx,
-            aggregateType: mref.aggregateType,
-            aggregateId: mref.aggregateId,
-          );
-        } else {
-          await controller.discardMutation(
-            ctx,
-            aggregateType: mref.aggregateType,
-            aggregateId: mref.aggregateId,
-          );
-        }
-      } catch (_) {
-        hasError = true;
-      }
-    }
-    if (!context.mounted) return;
-    if (hasError) {
+    final hadFailure = await ref
+        .read(unifiedRowRecoveryControllerProvider)
+        .applyToGroup(row.mutationRefs, retry: retry);
+    if (hadFailure && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(AppStrings.unifiedSyncActionPartialFailureMessage),
         ),
       );
     }
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
   }
 }
 

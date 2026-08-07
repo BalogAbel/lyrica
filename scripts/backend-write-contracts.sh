@@ -53,3 +53,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 invitation_redemption_test_script="${INVITATION_REDEMPTION_TEST_SCRIPT:-./scripts/tests/invitation-redemption-contract-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$invitation_redemption_test_script"
+
+pg_cron_orphan_cleanup_test_script="${PG_CRON_ORPHAN_CLEANUP_TEST_SCRIPT:-./scripts/tests/pg-cron-orphan-cleanup-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$pg_cron_orphan_cleanup_test_script"

@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
-import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
+import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
@@ -110,7 +110,7 @@ void main() {
       isA<PlanningMutationStore>().having(
         (store) => store,
         'runtime type',
-        isA<DriftPlanningMutationStore>(),
+        isA<BudgetedPlanningMutationStore>(),
       ),
     );
     expect(
@@ -1568,6 +1568,20 @@ class _MutablePlanningRepository implements PlanningRepository {
 }
 
 class _MutablePlanningMutationStore implements PlanningMutationStore {
+  // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
+  // none of these tests exercise the in-flight-create-cancellation
+  // tombstone path, which is covered against the real
+  // DriftPlanningMutationStore in
+  // test/offline/adversarial/planning_in_flight_create_cancellation_test.dart.
+  @override
+  Future<bool> resolveCancelledCreate({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+    required bool created,
+    int? acceptedBaseVersion,
+  }) async => false;
   _MutablePlanningMutationStore({
     required this.entries,
     required this.hasUnsynced,
@@ -1592,12 +1606,13 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async => 'unused';
 
   @override
-  Future<void> clearMutation({
+  Future<bool> clearMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+    int? expectedRevision,
+  }) async => false;
 
   @override
   Future<bool> hasUnsyncedMutations({required String userId}) async =>
@@ -1724,15 +1739,15 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> retryMutation({
+  Future<bool> retryMutation({
     required String userId,
     required String organizationId,
     required String aggregateType,
     required String aggregateId,
-  }) async {}
+  }) async => true;
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String aggregateType,
@@ -1740,7 +1755,8 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationSyncStatus syncStatus,
     PlanningMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => null;
 }
 
 class _RecordingPlanningMutationSyncController
@@ -1758,7 +1774,10 @@ class _RecordingPlanningMutationSyncController
   int syncCalls = 0;
 
   @override
-  Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
+  Future<void> syncPendingMutations(
+    ActivePlanningReadContext context, {
+    PlanningMutationFailureObserver? onMutationFailure,
+  }) async {
     syncCalls += 1;
     await onSync();
   }

@@ -790,11 +790,33 @@ class _RecordingSongMutationStore implements SongMutationStore {
   }) async {}
 
   @override
-  Future<void> reconcileSyncedSong({
+  Future<bool> reconcileSyncedSong({
     required String userId,
     required String organizationId,
     required SongMutationRecord record,
-  }) async {}
+    int? expectedRevision,
+  }) async => true;
+
+  // docs/specs/2026-08-06-in-flight-create-cancellation.md (D1/D3): this
+  // fake is never driven through SongMutationSyncController.syncPendingSongs
+  // in this file, so these stubs are never exercised -- applied
+  // unconditionally like reconcileSyncedSong above.
+  @override
+  Future<int?> markCreateSending({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required int expectedRevision,
+  }) async => expectedRevision + 1;
+
+  @override
+  Future<bool> resolveCancelledSongCreate({
+    required String userId,
+    required String organizationId,
+    required String songId,
+    required bool created,
+    int? acceptedVersion,
+  }) async => false;
 
   @override
   Future<SongMutationRecord?> readById({
@@ -818,14 +840,15 @@ class _RecordingSongMutationStore implements SongMutationStore {
   }) async => const [];
 
   @override
-  Future<void> saveSyncAttemptResult({
+  Future<bool> saveSyncAttemptResult({
     required String userId,
     required String organizationId,
     required String songId,
     required SongSyncStatus syncStatus,
     SongMutationSyncErrorCode? errorCode,
     String? errorMessage,
-  }) async {}
+    int? expectedRevision,
+  }) async => true;
 
   @override
   Future<void> upsertSong({

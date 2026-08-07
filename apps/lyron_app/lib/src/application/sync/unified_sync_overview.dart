@@ -4,6 +4,7 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 
 enum UnifiedSyncHeaderStatus { synced, unsynced, conflict }
 
@@ -34,6 +35,8 @@ class UnifiedSyncOverview {
     required this.songRows,
     required this.planRows,
     required this.hasUnsyncedWork,
+    this.storagePressure = LocalStoragePressure.ok,
+    this.pendingMutationCount = 0,
   });
 
   const UnifiedSyncOverview.initial()
@@ -54,6 +57,14 @@ class UnifiedSyncOverview {
   final List<UnifiedSyncSongRow> songRows;
   final List<UnifiedSyncPlanRow> planRows;
   final bool hasUnsyncedWork;
+
+  /// Local storage pressure (LF-T4). `warning` means the user should sync
+  /// soon; `critical` means new offline edits may be refused.
+  final LocalStoragePressure storagePressure;
+
+  /// Pending planning mutation count, shown alongside the pressure warning so
+  /// the user can see what syncing would drain.
+  final int pendingMutationCount;
 }
 
 class UnifiedSyncSongRow {

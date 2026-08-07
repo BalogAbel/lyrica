@@ -32,6 +32,75 @@ void main() {
       await database.close();
     });
 
+    test(
+      'reports a committed mutation after commit and not for a throw or true no-op',
+      () async {
+        final directory = await Directory.systemTemp.createTemp(
+          'planning-mutation-footprint-revision-test',
+        );
+        addTearDown(() async {
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+        final trackedDatabase = PlanningLocalDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(trackedDatabase.close);
+        final observer = sqlite3.open(dbFile.path);
+        addTearDown(observer.close);
+        final committedRowCounts = <int>[];
+        final trackedStore = DriftPlanningMutationStore(
+          database: trackedDatabase,
+          localStore: DriftPlanningLocalStore(trackedDatabase),
+          onStorageFootprintChanged: () {
+            final row = observer
+                .select(
+                  'SELECT count(*) AS row_count FROM cached_planning_mutations',
+                )
+                .single;
+            committedRowCounts.add(row['row_count'] as int);
+          },
+        );
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await trackedStore.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+        expect(committedRowCounts, [1]);
+
+        await trackedStore.clearMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'missing-plan',
+        );
+        expect(committedRowCounts, [1]);
+
+        await expectLater(
+          () => trackedStore.recordPlanCreate(
+            context: context,
+            draft: const PlanningPlanCreateMutationDraft(
+              planId: 'plan-2',
+              slug: 'weekend-service',
+              name: 'Duplicate slug',
+            ),
+          ),
+          throwsA(isA<LocalPlanningSlugConflictException>()),
+        );
+        expect(committedRowCounts, [1]);
+      },
+    );
+
     test('pending mutations persist across database reopen', () async {
       final directory = await Directory.systemTemp.createTemp(
         'planning-mutation-store-test',
@@ -900,6 +969,722 @@ void main() {
         expect(
           reorder.orderedSiblingIds,
           orderedEquals(const ['item-3', 'item-2']),
+        );
+      },
+    );
+  });
+
+  group('PlanningMutationStore.localRevision (D1, sync-snapshot-identity)', () {
+    // docs/specs/2026-08-05-sync-snapshot-identity.md D1: localRevision is
+    // local bookkeeping incremented by the store on every local write to a
+    // mutation row -- unrelated to baseVersion/version (which track the
+    // server's view) and never sent to the backend. This group proves the
+    // "every" in that sentence across the write paths the spec calls out by
+    // name: a fold (planEdit onto a still-pending planCreate) and a status
+    // write (saveSyncAttemptResult, retryMutation).
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('increments by exactly one on every local write, including a fold '
+        'and status writes, and never regresses', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+      final afterCreate = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(
+        afterCreate!.localRevision,
+        1,
+        reason: 'a brand-new row starts at revision 1',
+      );
+
+      // Fold: recordPlanEdit onto a still-pending planCreate lands in the
+      // SAME row (this is the exact fold the spec's "Problem" section
+      // names), not a new one -- the revision must still advance.
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited description',
+        ),
+      );
+      final afterFold = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(afterFold!.localRevision, 2);
+      expect(afterFold.description, 'Edited description');
+
+      // A status write (the shape saveSyncAttemptResult's failure path
+      // uses -- no expectedRevision, so it applies unconditionally) also
+      // advances the revision.
+      final newRevision = await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.failedDependency,
+        errorCode: PlanningMutationSyncErrorCode.dependencyBlocked,
+      );
+      expect(newRevision, 3);
+      final afterStatusWrite = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(afterStatusWrite!.localRevision, 3);
+
+      // retryMutation is also a local write (it clears the error and
+      // rebases) and must advance the revision too.
+      await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      final afterRetry = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(afterRetry!.localRevision, 4);
+      expect(afterRetry.syncStatus, PlanningMutationSyncStatus.pending);
+    });
+
+    test(
+      'a conditional saveSyncAttemptResult that matches applies and returns '
+      'the new revision; a stale one does not apply and returns null',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+
+        // Matching expectedRevision: applies.
+        final applied = await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+          expectedRevision: 1,
+        );
+        expect(applied, 2);
+
+        // A snapshot from before the mutation existed at its new revision:
+        // stale, must not apply.
+        final stale = await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+          expectedRevision: 1,
+        );
+        expect(stale, isNull);
+
+        final record = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        );
+        expect(
+          record!.syncStatus,
+          PlanningMutationSyncStatus.accepted,
+          reason: 'the stale attempt must not have overwritten anything',
+        );
+        expect(record.localRevision, 2);
+
+        // clearMutation mirrors the same contract: a matching revision
+        // deletes, a stale one leaves the row untouched.
+        final staleClear = await store.clearMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          expectedRevision: 1,
+        );
+        expect(staleClear, isFalse);
+        expect(
+          await store.readMutation(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+          ),
+          isNotNull,
+        );
+
+        final matchingClear = await store.clearMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          expectedRevision: 2,
+        );
+        expect(matchingClear, isTrue);
+        expect(
+          await store.readMutation(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+          ),
+          isNull,
+        );
+      },
+    );
+  });
+
+  group('PlanningMutationStore missing-record handling (D4, in-flight '
+      'create cancellation)', () {
+    // docs/specs/2026-08-06-in-flight-create-cancellation.md D4:
+    // saveSyncAttemptResult and retryMutation must report "did not apply"
+    // (the same vocabulary D3 already established for a stale revision)
+    // rather than throw when the target row does not exist -- a row can
+    // vanish for the ordinary reason that the user deleted the item while
+    // a sync was awaiting the backend for it (ADR-028 D10 collapse).
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('saveSyncAttemptResult against a nonexistent aggregate returns null '
+        'instead of throwing', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      // No record ever created for this aggregate -- readMutation would
+      // return null.
+      final result = await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'ghost-plan',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        expectedRevision: 1,
+      );
+      expect(result, isNull);
+    });
+
+    test('retryMutation against a nonexistent aggregate returns false instead '
+        'of throwing', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      final result = await store.retryMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'ghost-plan',
+      );
+      expect(result, isFalse);
+    });
+
+    test('saveSyncAttemptResult and retryMutation against an EXISTING record '
+        'are unchanged -- they still apply and report success, including the '
+        'ADR-030 revision conditioning', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      // saveSyncAttemptResult: matching revision still applies and
+      // returns the new revision, exactly as before D4.
+      final applied = await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.failedDependency,
+        expectedRevision: 1,
+      );
+      expect(applied, 2);
+
+      // retryMutation: an existing record is reset to pending and
+      // reports true.
+      final retried = await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(retried, isTrue);
+
+      final record = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(record.errorCode, isNull);
+    });
+  });
+
+  group('PlanningMutationStore content folds reset status (ADR-030 '
+      'follow-up)', () {
+    // ADR-030 "Known Follow-Up": a fold that carries an existing row
+    // forward with copyWith must not carry the row's CURRENT syncStatus
+    // along with it. The important case is the ADR-019 durable-marker
+    // window -- the row is `accepted` (backend confirmed, not yet cleared)
+    // -- and a further local edit lands in that same row. New local intent
+    // is by definition unsent, so folding it in must reset the row to
+    // `pending` (and drop any stale error left by a prior attempt), or a
+    // later sync run's accepted-durable-marker branch will skip the remote
+    // send and reconcile the newer, never-sent content as if the backend
+    // already had it.
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('recordPlanEdit folding onto an accepted-but-uncleared planCreate '
+        'resets the row to pending with the newer content', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      // Simulate the ADR-019 durable-marker window: the backend accepted
+      // this create, but the row has not been cleared yet (e.g. a crash
+      // between accept and clear -- LF-1).
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+      final accepted = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(accepted!.syncStatus, PlanningMutationSyncStatus.accepted);
+
+      // The user edits the same plan while the row is still marked
+      // accepted -- new, unsent content landing on it.
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited after acceptance',
+        ),
+      );
+
+      final afterFold = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      expect(
+        afterFold!.syncStatus,
+        PlanningMutationSyncStatus.pending,
+        reason:
+            'new local intent is unsent by definition; a row still '
+            'labelled accepted would make a later sync skip sending it',
+      );
+      expect(afterFold.description, 'Edited after acceptance');
+    });
+
+    test(
+      'recordSessionRename folding onto an accepted-but-uncleared '
+      'sessionCreate resets the row to pending with the newer name',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'welcome',
+            name: 'Welcome',
+            position: 10,
+          ),
+        );
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionCreate.aggregateType,
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        );
+
+        await store.recordSessionRename(
+          context: context,
+          draft: const PlanningSessionRenameMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            name: 'Welcome Team',
+          ),
+        );
+
+        final afterFold = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        );
+
+        expect(afterFold!.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(afterFold.name, 'Welcome Team');
+      },
+    );
+
+    test('a delete collapsing into an accepted-but-uncleared session reorder '
+        'resets that row to pending with the trimmed sibling list', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordSessionReorder(
+        context: context,
+        draft: const PlanningSessionReorderMutationDraft(
+          planId: 'plan-1',
+          orderedSessionIds: ['session-1', 'session-2', 'session-3'],
+          baseVersion: 4,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.sessionReorder.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      // session-2 already exists remotely (no pending sessionCreate for
+      // it), so this takes the ordinary delete path, which folds the
+      // removal into the still-accepted reorder row via
+      // _removeSessionFromPendingReorder.
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-1',
+          baseVersion: 4,
+        ),
+      );
+
+      final reorderAfter = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_order',
+        aggregateId: 'plan-1',
+      );
+
+      expect(reorderAfter!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(
+        reorderAfter.orderedSiblingIds,
+        orderedEquals(const ['session-1', 'session-3']),
+      );
+    });
+
+    test(
+      'a delete collapsing into an accepted-but-uncleared session-item '
+      'reorder resets that row to pending with the trimmed sibling list',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordSessionItemReorder(
+          context: context,
+          draft: const PlanningSessionItemReorderMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            orderedSessionItemIds: ['item-1', 'item-2', 'item-3'],
+            baseVersion: 4,
+          ),
+        );
+        await store.saveSyncAttemptResult(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: PlanningMutationKind.sessionItemReorder.aggregateType,
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        );
+
+        await store.recordSessionItemDelete(
+          context: context,
+          draft: const PlanningSessionItemDeleteMutationDraft(
+            sessionItemId: 'item-2',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 4,
+          ),
+        );
+
+        final reorderAfter = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item_order',
+          aggregateId: 'session-1',
+        );
+
+        expect(reorderAfter!.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(
+          reorderAfter.orderedSiblingIds,
+          orderedEquals(const ['item-1', 'item-3']),
+        );
+      },
+    );
+
+    test('a stale error left by a failed attempt does not survive a content '
+        'fold', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Edited after failure',
+        ),
+      );
+
+      final afterFold = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      expect(afterFold!.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(afterFold.errorCode, isNull);
+      expect(afterFold.errorMessage, isNull);
+      expect(afterFold.description, 'Edited after failure');
+    });
+
+    test('saveSyncAttemptResult transitioning to accepted clears a stale error '
+        'left by a prior failed attempt, even with no content fold in between '
+        '(M3, PR #64 review)', () async {
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+
+      // Retried and accepted -- exactly the shape
+      // PlanningMutationSyncController._run's accepted-marker write uses:
+      // no errorCode/errorMessage argument at all.
+      await store.saveSyncAttemptResult(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: PlanningMutationKind.planCreate.aggregateType,
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      final record = await store.readMutation(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(record!.syncStatus, PlanningMutationSyncStatus.accepted);
+      expect(record.errorCode, isNull);
+      expect(record.errorMessage, isNull);
+    });
+
+    test(
+      'two concurrent saveSyncAttemptResult calls with no expectedRevision '
+      'do not lose an increment to a stale Dart-side read (M2, PR #64 '
+      'review) -- this exercises DriftPlanningMutationStore directly, '
+      'without the BudgetedPlanningMutationStore queue that serialises it '
+      'in production, because the atomicity must not depend on that caller',
+      () async {
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'weekend-service',
+            name: 'Weekend Service',
+          ),
+        );
+
+        // Both calls are the ungated shape the sync controller's
+        // failure-status write uses (no expectedRevision): a Dart-side
+        // read-then-write would let both read the same pre-write revision
+        // and each apply their own +1 on top of it, silently discarding one
+        // of the two increments (or worse, regressing the counter if a
+        // third write had already landed in between).
+        await Future.wait([
+          store.saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            errorCode: PlanningMutationSyncErrorCode.dependencyBlocked,
+          ),
+          store.saveSyncAttemptResult(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+            syncStatus: PlanningMutationSyncStatus.pending,
+          ),
+        ]);
+
+        final record = await store.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        );
+        expect(
+          record!.localRevision,
+          3,
+          reason:
+              'started at 1 (the create); two concurrent unguarded status '
+              'writes must both be reflected, landing on 3 -- not 2, which '
+              'would mean one write silently lost its increment to a stale '
+              'Dart-side read',
         );
       },
     );

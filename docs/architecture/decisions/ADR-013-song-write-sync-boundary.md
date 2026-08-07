@@ -30,6 +30,13 @@ For that slice:
 - `pending_delete` rows are hidden from normal local reads and route resolution immediately, while remaining available in dedicated sync/conflict recovery surfaces
 - offline-created slugs must be unique within the active local organization before sync succeeds, and the client must reconcile to the canonical server slug returned after sync
 - planning/session-scoped reader routes keep using planning-owned preserved song titles when the canonical song row is gone, and show a tombstone-style deleted-song surface rather than a generic song-not-found placeholder
+- song sync and discard ownership is keyed by both authenticated user and organization because a sync snapshots every pending song in that context; sync and discard are mutually exclusive within that context, while different contexts remain independent
+- concurrent sync requests for the same user-and-organization context coalesce into one owned run; if sync is requested while discard owns the context, all such requests coalesce behind the same discard completion and only then take their pending-song snapshot
+- a per-row discard requested while sync owns the context is rejected immediately with the typed `SongDiscardResult.syncInProgress` outcome and makes no local change; this expected contention path is not represented by a generic exception
+- discard acquires context ownership before reading the mutation record or changing local storage, and holds ownership through its best-effort refresh; a waiting sync therefore cannot snapshot the discarded mutation between the local clear/delete and lease release
+- unified **Discard All** acquires the song-context discard lease before starting either the song or planning domain; if sync already owns that context, it returns typed `UnifiedDiscardResult.syncInProgress` before either domain changes. Once admitted, song and planning discards remain best-effort concurrent domain operations, not a cross-database transaction and not a promise of rollback across domains
+- discard success is the completed local clear or delete. It performs no compensating remote write and does not depend on a post-discard refresh succeeding; refresh is freshness-only and cannot undo the local outcome
+- context-wide ownership covers sync and discard only. "Keep mine" (the explicit overwrite path, above) is not admitted into the same context lease: it can run concurrently with an owned sync or discard on the same user-and-organization context. This is a pre-existing gap, not a guarantee the client makes; closing it is out of scope for the discard-ownership work that introduced the lease
 
 ## Consequences
 
@@ -38,4 +45,7 @@ For that slice:
 - Remote deletion converges deterministically without introducing a second song-sync architecture or a Flutter-owned acceptance shortcut.
 - Song deletion remains safe against stale local knowledge about dependent planning data.
 - Local routing and lookup behavior stays deterministic even when multiple songs are created offline with similar titles.
+- Same-context sync and discard cannot race a pending-song snapshot against a local discard, and normal repeated sync triggers still share one run.
+- Contended discard has a dedicated typed outcome that presentation code can turn into guidance to wait for the current sync, while unexpected failures retain separate failure handling.
+- **Discard All** provides atomic admission rejection before either domain starts, but deliberately does not claim transactional rollback across the separate song and planning stores.
 - The implementation must update the song CRUD spec, plan, domain model, architecture overview, and testing strategy in lockstep with this decision.
