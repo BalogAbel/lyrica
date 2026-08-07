@@ -189,6 +189,20 @@ class SongLibraryService {
       return existing.copyWith(syncStatus: SongSyncStatus.pendingDelete);
     }
 
+    // Fifth PR #64 review round: there is deliberately no `cancelling`
+    // branch above. A row that is already a cancellation tombstone falls
+    // through to this ordinary delete, and the store refuses it with
+    // `LocalSongTombstoneConflictException` (N1) rather than burying the
+    // tombstone under a `pendingDelete` that `resolveCancelledSongCreate`
+    // would then no-op on, leaving nothing to ever delete the song the
+    // backend is about to confirm.
+    //
+    // Unreachable today: `cancelling` is excluded from every local-first
+    // read, so no UI surface can offer a delete for such a song. Left to
+    // fail loudly anyway rather than given a quiet early return. A silent
+    // no-op would look identical to success from here, so if a future
+    // change does make this reachable, the rejection is what surfaces it;
+    // an early return would hide exactly the case worth knowing about.
     final deleted = existing.copyWith(
       baseVersion: existing.version,
       syncStatus: SongSyncStatus.pendingDelete,

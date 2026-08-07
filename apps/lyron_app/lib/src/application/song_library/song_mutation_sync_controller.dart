@@ -258,6 +258,29 @@ class SongMutationSyncController {
           );
         }
         if (error.code == SongMutationSyncErrorCode.connectivityFailure) {
+          // Fifth PR #64 review round: this `break` abandons every remaining
+          // candidate, the same shape that needed a failure observer on the
+          // planning side (ADR-030's fourth-round follow-up). It needs no
+          // equivalent here, and the reason is a property of the callers,
+          // not of this loop -- recorded so a future reader does not have to
+          // re-derive it, or assume the omission was an oversight.
+          //
+          // Nothing observes a per-record outcome of this pass.
+          // `syncPendingSongs` has exactly one caller,
+          // `UnifiedManualSyncController.syncSongMutations` -- a bulk "sync
+          // now" trigger that claims nothing about any individual song.
+          // There is no song counterpart to
+          // `PlanningMutationSyncController.retryMutation`: the unified
+          // sync UI's per-record retry action is planning-only, and
+          // `keepMine`, the one user-initiated song operation with a remote
+          // call, runs that call itself and rethrows rather than going
+          // through this loop. So no caller can be handed a silent success
+          // by an abandoned candidate here.
+          //
+          // If a per-song retry is ever added, it must go through an
+          // observer like planning's rather than re-reading the row's
+          // status afterwards, and this `break` must report its abandoned
+          // candidates -- both for the reasons ADR-030 records.
           break;
         }
       }
@@ -302,6 +325,19 @@ class SongMutationSyncController {
       // markCreateSending), so the pre-send snapshot's own localRevision is
       // still the correct gate here -- unaffected by the create-cancellation
       // work above.
+      //
+      // Fifth PR #64 review round: the `bool` is deliberately not consulted,
+      // where `_runSync` above pairs the same call with `if (!applied &&
+      // isCreate) resolveCancelledSongCreate(...)`. That follow-up exists
+      // solely to resolve a D2 cancellation tombstone, and no tombstone can
+      // form under keepMine: a tombstone is only ever written by
+      // `SongLibraryService.deleteSong`'s `sending` branch, keepMine never
+      // marks the row `sending`, and deleteSong refuses a `conflict` row
+      // outright. `false` here could therefore only mean an ordinary local
+      // write raced this overwrite, which needs no follow-up at all -- that
+      // row is already `pending` with the newer content for the next sync.
+      // Calling resolveCancelledSongCreate here would be dead code, not
+      // symmetry.
       await _applySuccessfulSync(
         context,
         syncedRecord,

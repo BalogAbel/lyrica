@@ -473,6 +473,18 @@ class PlanningMutationSyncController {
     // and `syncPendingMutations` reading `_inFlight` and installing its own
     // run, and this isolate is single-threaded, so nothing can interleave
     // between the two -- the run started below is always this retry's own.
+    //
+    // Fifth PR #64 review round: in principle this loop can be starved by an
+    // unbroken stream of background triggers. Left as is, deliberately. It
+    // is not a spin -- every iteration awaits a real run's future, so it
+    // consumes nothing while waiting -- and the triggers are event-driven
+    // (a write's `_scheduleSync`, a manual sync, a connectivity change),
+    // not a timer, so a caller would have to produce writes faster than a
+    // full sync pass completes, indefinitely, to keep it going. Noted
+    // rather than guarded: a bound here would have to choose between giving
+    // up on the retry silently (the very failure this whole thread of
+    // findings is about) and coalescing onto a run that cannot resend the
+    // record anyway.
     final key = '${context.userId}_${context.organizationId}';
     while (true) {
       final inFlight = _inFlight[key];
