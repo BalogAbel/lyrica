@@ -45,8 +45,13 @@ class ReauthSuperseded extends ReauthOutcome {
 ///
 /// Side-effect callbacks report completion by returning `bool`: `true` if
 /// the action actually ran, `false` if a last-moment currentness guard
-/// prevented it. A `false` report resolves as [ReauthSuperseded], so the
-/// outcome never claims a wipe or cancellation that did not actually run.
+/// prevented it, OR if the action's destructive part ran but a later step
+/// failed in a way that makes the outcome unsafe to claim (for example
+/// `wipePriorAndProceedFor` returning `false` after the wipe genuinely ran
+/// but the terminal identity write then threw). A `false` report resolves
+/// as [ReauthSuperseded], so the outcome never claims a wipe or
+/// cancellation that did not actually complete -- it may understate what
+/// ran, but it never overstates it.
 ///
 /// The callback types are concrete `Future<bool> Function()` -- not
 /// generic -- on purpose: a callback that cannot report whether it ran

@@ -348,8 +348,15 @@ class PlanningMutationSyncController {
           // because of an old, unrelated corrupt mutation). Mark it failed
           // and visible (LF-4 sync UI) instead, and leave it un-cleared so
           // it can be inspected/discarded. failedDependency is not in the
-          // pending||accepted candidate filter above, so it will not be
-          // auto-resent and loop forever.
+          // pending||accepted candidate filter above, so on the ordinary
+          // (ungated-in-effect, revision unchanged) path it is not
+          // auto-resent and does not loop forever. N4 (PR #64 review,
+          // second remediation round): with the write now gated below, a
+          // fold landing concurrently makes this write no-op instead,
+          // leaving the row `pending` -- still terminal (the row does not
+          // loop, since a `pending` row simply gets one more, ordinary
+          // resend), just resent once more before the next attempt reaches
+          // this same corrupt-reconcile branch again.
           //
           // Finding B (PR #64 review, 2026-08-06 remediation round):
           // revision-gated on `clearRevision`, the same value `clearMutation`
