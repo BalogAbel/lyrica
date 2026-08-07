@@ -14,6 +14,26 @@ typedef PlanningAcceptedMutationReconciler =
 typedef PlanningAcceptedMutationGuard =
     Future<bool> Function(ActivePlanningReadContext context);
 
+/// N3 (PR #64 review, second remediation round): invoked synchronously,
+/// in-band, at the moment `_run` catches a `PlanningMutationSyncException`
+/// for a candidate -- BEFORE the gated failure-status write below it runs
+/// and regardless of whether that write ends up applying. `retryMutation`
+/// uses this to learn its OWN retry's remote outcome directly, instead of
+/// re-reading `errorCode` from the store after the fact: a concurrent edit
+/// landing during the remote round trip can make the gated write a no-op
+/// (D3 -- not an error, the row self-heals to `pending` with the newer
+/// content), which would silently clear `errorCode` and make a stale
+/// post-sync read report "no failure" even though this exact remote call
+/// genuinely failed. The observer sidesteps that: it reports what actually
+/// happened to THIS send, not what the row's row-level status happens to
+/// read afterward.
+typedef PlanningMutationFailureObserver =
+    void Function(
+      String aggregateType,
+      String aggregateId,
+      PlanningMutationSyncException exception,
+    );
+
 class PlanningMutationSyncController {
   PlanningMutationSyncController({
     required PlanningMutationStoreReader mutationStore,
@@ -40,21 +60,35 @@ class PlanningMutationSyncController {
   // organization so coalescing only ever merges triggers for the same context.
   final Map<String, Future<void>> _inFlight = {};
 
-  Future<void> syncPendingMutations(ActivePlanningReadContext context) {
+  Future<void> syncPendingMutations(
+    ActivePlanningReadContext context, {
+    PlanningMutationFailureObserver? onMutationFailure,
+  }) {
     final key = '${context.userId}_${context.organizationId}';
     final inFlight = _inFlight[key];
+    // N3: if this call coalesces onto an already-in-flight run (started
+    // without an observer, by a different caller), [onMutationFailure] is
+    // simply never invoked -- the same "no signal" outcome retryMutation
+    // already had to tolerate before this fix, and retryMutation itself
+    // never reaches this coalescing branch: it explicitly awaits any
+    // existing in-flight run first (see its own comment) specifically so
+    // its call here always starts a fresh run.
     if (inFlight != null) return inFlight;
     // Block body: Map.remove returns the removed future, and a whenComplete
     // callback that returns a future would wait on it (here, the very future
     // being completed) and deadlock. Discard the return value.
-    final run = _run(context).whenComplete(() {
-      _inFlight.remove(key);
-    });
+    final run = _run(context, onMutationFailure: onMutationFailure)
+        .whenComplete(() {
+          _inFlight.remove(key);
+        });
     _inFlight[key] = run;
     return run;
   }
 
-  Future<void> _run(ActivePlanningReadContext context) async {
+  Future<void> _run(
+    ActivePlanningReadContext context, {
+    PlanningMutationFailureObserver? onMutationFailure,
+  }) async {
     final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -190,6 +224,16 @@ class PlanningMutationSyncController {
         }
         acceptedRecords.add((mutation, syncedMutation, newRevision));
       } on PlanningMutationSyncException catch (error) {
+        // N3: report the raw outcome of THIS send before anything below
+        // decides how (or whether) to persist it -- an explicit retry
+        // needs to know that ITS remote call failed even in the narrow
+        // window where the persisted status ends up gated out by a
+        // concurrent edit (see the typedef doc above).
+        onMutationFailure?.call(
+          mutation.kind.aggregateType,
+          mutation.aggregateId,
+          error,
+        );
         final syncStatus = switch (error.code) {
           PlanningMutationSyncErrorCode.authorizationDenied =>
             PlanningMutationSyncStatus.failedAuthorization,
@@ -372,26 +416,47 @@ class PlanningMutationSyncController {
     if (inFlight != null) {
       await inFlight;
     }
-    await syncPendingMutations(context);
 
     // syncPendingMutations swallows a connectivity failure so that ordinary
     // background syncing -- which finds no network all the time -- stays
     // quiet. An explicit, user-initiated retry needs the opposite: it must
     // tell the caller the attempt never left the device rather than return
-    // as if it had run. Inspect the record's post-sync error code instead of
-    // catching, since the failure was already recorded there by _run.
-    final record = await _mutationStore().readMutation(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      aggregateType: aggregateType,
-      aggregateId: aggregateId,
+    // as if it had run.
+    //
+    // N3 (PR #64 review, second remediation round): this USED to inspect
+    // the record's post-sync errorCode, re-read from the store after
+    // syncPendingMutations returned. That reopened exactly the window D2/D3
+    // (ADR-030) exist to close: if a local edit landed on this SAME
+    // aggregate during the retry's own remote round trip, the failure-
+    // status write below gates on the pre-send revision and no-ops (D3 --
+    // correct, the row self-heals to `pending` with the newer content) --
+    // but that also clears the very `errorCode` this method was reading,
+    // so a stale post-sync read would report "no failure" even though this
+    // retry's OWN remote call genuinely got a connectivityFailure. The
+    // retry would then return as if it had worked -- exactly the silent
+    // success S13 removed elsewhere on this same controller.
+    //
+    // Fixed by consulting the outcome IN-BAND instead of re-reading store
+    // state: [PlanningMutationFailureObserver] reports the raw exception
+    // `_run` caught for this exact aggregate, at the moment it is caught,
+    // before the gated write decides whether (or how) to persist it. This
+    // is available regardless of whether that write ends up applying, so
+    // it cannot be defeated by the same race a stale read is vulnerable to.
+    PlanningMutationSyncException? observedFailure;
+    await syncPendingMutations(
+      context,
+      onMutationFailure: (observedAggregateType, observedAggregateId, error) {
+        if (observedAggregateType == aggregateType &&
+            observedAggregateId == aggregateId) {
+          observedFailure = error;
+        }
+      },
     );
-    if (record?.errorCode ==
-        PlanningMutationSyncErrorCode.connectivityFailure) {
-      throw PlanningMutationSyncException(
-        PlanningMutationSyncErrorCode.connectivityFailure,
-        message: record?.errorMessage,
-      );
+
+    final failure = observedFailure;
+    if (failure != null &&
+        failure.code == PlanningMutationSyncErrorCode.connectivityFailure) {
+      throw failure;
     }
   }
 
