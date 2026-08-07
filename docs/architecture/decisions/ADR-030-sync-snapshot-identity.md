@@ -23,6 +23,15 @@
   revision-gated, narrowing the "not gated" Non-Goal below. Closed by
   commits `d298013`/`659c1a6`. See "Failure-Status Write Gating
   Follow-Up (resolved)" below.
+- Amended: 2026-08-07 — a third PR #64 review round, findings N1/N3/N5:
+  `DriftSongCatalogStore.saveSongMutation`'s read-check-write is now atomic
+  and refuses to overwrite a `cancelling` tombstone;
+  `resolveCancelledSongCreate` now goes through the storage-recovery
+  boundary and writes conditionally; `PlanningMutationStore.retryMutation`
+  now takes its failure signal from the sync loop rather than a post-hoc
+  re-read that a concurrent fold can invalidate. Closed by commits
+  `963fb1a`/`9264a59` (N3), `96e3b28`/`8516511` (N1, N5). See "Third Review
+  Round: Tombstone Write-Path Atomicity and Retry Signal (resolved)" below.
 
 ## Context
 
@@ -662,6 +671,161 @@ established practice:
   store-level counterpart to `reconcileSyncedSong`'s existing test in the
   same group, proving the new `UPDATE ... RETURNING` gate directly rather
   than only through the controller.
+
+## Third Review Round: Tombstone Write-Path Atomicity and Retry Signal (resolved)
+
+A third human review round of PR #64 raised five findings, N1–N5. Three
+needed code (N1, N3, N5 — the last of which resolved to a justification
+rather than a change), two were stale comments corrected in `71ee9f0`
+(N2, N4). No dedicated spec: review findings against this ADR's own
+implementation and the in-flight cancellation follow-up above, not new
+scenarios.
+
+### N1 — verified first, and it did not say what the code did
+
+The finding read: `DriftSongCatalogStore._resolveCancelledSongCreate` reads
+the row and then writes it back "with no transaction and no guard", losing a
+`localRevision` increment.
+
+Checked against the code before acting, per this branch's practice. The
+literal claim does not hold. `resolveCancelledSongCreate` — the public method
+— has wrapped that entire private read-check-write in
+`_database.transaction()` since `baf3c23`, the commit that introduced the
+tombstone. Re-read alongside the planning twin
+(`DriftPlanningMutationStore.resolveCancelledCreate`) to be sure the
+comparison the finding drew was the right one: the planning transaction
+covers the read, the `created: false` delete, and the `created: true` upsert
+— every write, not part of one — and the song transaction covers exactly the
+same three things. The "The cancellation tombstone and its resolution"
+section above, which calls both resolutions "one atomic read-check-write",
+was accurate as written.
+
+Two real gaps sat next to it, and the more serious of the two is one the
+finding's own framing *understates*:
+
+**N1a — `saveSongMutation` was neither atomic nor tombstone-aware.**
+`saveSongMutation` is the store's one write path for a mutation row's
+content. It read the existing row and wrote the row back as two separate
+top-level statements with no transaction spanning them — the exact shape D2
+above already proved lets an unrelated write for the same row interleave in
+the gap — and it had no awareness of `cancelling` at all. The consequence is
+not a lost counter: an ordinary edit reaching a tombstoned `songId` (a
+`SongLibraryService.updateSong` call from a screen opened before the delete —
+a stale UI reference, no concurrency required) silently rewrote the whole row
+to a normal `pendingUpdate`. That destroys the user's already-confirmed
+delete intent with no error and no trace, and `resolveCancelledSongCreate`
+then no-ops because the row is no longer `cancelling` — so the song the
+backend is about to confirm is never deleted by anything, ever. Same
+silent-loss family as D1–D3, one door further along, and the losing party is
+the user's explicit delete rather than a later edit.
+
+Planning does not have this hazard for a structural reason worth stating:
+`BudgetedPlanningMutationStore._enqueue` serialises every write for a
+`(userId, organizationId)` context, so a planning write cannot interleave
+with another planning write in the first place. The song catalog has no such
+queue — its writes only pass through the non-serialising `_guarded` recovery
+boundary — so the safety net "production serialises it anyway" does not
+exist on this side.
+
+Closed by moving `saveSongMutation`'s read-check-write inside
+`_database.transaction()` and adding a guard: a write whose own status is not
+`cancelling` onto a row that currently *is* `cancelling` is refused with
+`LocalSongTombstoneConflictException`, a `LocalStorageDomainRejection`
+(rethrown untouched by the recovery boundary — retrying would fail
+identically and eviction would change nothing, the same treatment
+`LocalSongSlugConflictException` already gets). Only
+`resolveCancelledSongCreate` may move a row off `cancelling`. The
+transaction is what makes the guard trustworthy: Drift serialises every
+statement against the single connection while a transaction is open, so the
+value the guard tests is still current when the write lands. Refusing loudly
+is the deliberate choice over silently folding or silently dropping — the
+row is hidden from every actionable read, so any caller reaching it is
+working from a reference that is already wrong, and that is worth surfacing.
+
+**N1b — `resolveCancelledSongCreate` skipped the recovery boundary.** It did
+not go through `_guarded`, unlike every other growing write in the class and
+unlike the planning twin (wrapped by
+`BudgetedPlanningMutationStore._recoveredWrite`, which is `_enqueue` +
+`_recovery.guard`). A storage-pressure failure on its `created: true` write
+escaped as a raw exception rather than the typed `LocalStorageWriteFailure`
+callers have a contract for. Closed by wrapping it in `_guarded`.
+
+Two smaller changes came with N1b. The `created: true` write is now a
+targeted `UPDATE ... WHERE syncStatus = cancelling` instead of a full-row
+upsert rebuilt from the Dart-side read: the transition only ever changes
+status/`baseVersion`/error/revision, so the content columns are left
+untouched rather than written back from a snapshot, and the WHERE clause —
+not a preceding `SELECT` compared in Dart — is the sole arbiter of whether
+the write applies, matching the discipline D2 established. `rowsUpdated == 0`
+is unreachable while the enclosing transaction holds; it reports "did not
+apply" (D3's vocabulary) rather than reopening the race if that boundary is
+ever weakened. And the `_onStorageFootprintChanged` callback now fires after
+`await _database.transaction(...)` returns and only when something actually
+changed — never from inside a callback that may still roll back. The
+`created: false` branch is unchanged: a key-scoped `DELETE` with nothing to
+lose.
+
+### N3 — a retry's failure signal must come from the run that failed
+
+`PlanningMutationStore.retryMutation` decided whether to throw
+`connectivityFailure` by re-reading the record's `errorCode` *after*
+`syncPendingMutations` returned. If a local edit lands on the same aggregate
+during the retry's own remote round trip, the Failure-Status Write Gating
+follow-up above makes the failure write no-op — correctly, leaving the row
+`pending` with the newer content and no `errorCode` — so the post-hoc read
+reports "no failure" for a call that genuinely got one, and the retry returns
+as if it had worked. Closed by `PlanningMutationFailureObserver`, an optional
+callback threaded through `syncPendingMutations`/`_run` and invoked the
+moment `_run` catches the exception for a candidate, before the gated write
+decides anything. The retry reads its own run's outcome instead of the
+store's later state. Backward compatible: the callback defaults to `null`,
+and a coalesced call simply never invokes it — the same "no signal"
+`retryMutation` already tolerated.
+
+### N5 — `.single` left as-is, deliberately
+
+`updated.single.localRevision` in `saveSyncAttemptResult` throws a
+`StateError` if more than one row matched. Left as `.single` rather than made
+total: the `WHERE` clause always carries the full composite primary key
+(`userId`, `organizationId`, `songId`), so more than one match is not a
+reachable runtime state — it is a schema-invariant violation, exactly the
+class of defect `Error` subtypes exist to signal, and exactly what
+`LocalStorageWriteRecovery.guard`'s documented policy says must propagate
+rather than be papered over as storage pressure. Making it `.first` would
+convert a broken schema into a plausible-looking wrong answer. Recorded in a
+comment at the call site.
+
+### Validation (third round)
+
+Both N1 tests were watched failing against the pre-fix store, and falsified
+individually — each half of the fix was reverted on its own and the matching
+test re-run, so neither passes for the other half's reason:
+
+- `apps/lyron_app/test/offline/adversarial/song_tombstone_resolution_atomicity_test.dart`
+  — N1a: a `cancelling` tombstone is seeded, then an ordinary
+  `pendingUpdate` `saveSongMutation` is issued against the same `songId`.
+  Pre-fix it returned normally ("emitted `<null>`" where a rejection was
+  expected) and the tombstone was gone; post-fix it throws
+  `LocalSongTombstoneConflictException`, the row is still `cancelling` with
+  its original source, and the tombstone's own resolution afterwards still
+  reaches a real `pendingDelete`. Deliberately sequential, no `Completer`
+  gate: this needs no concurrency to reproduce, which is the point. A
+  companion test pins that an ordinary edit onto a non-`cancelling` row is
+  unaffected — the guard is scoped to tombstones only.
+- The same file — N1b: a `QueryExecutor` that fails every `UPDATE` (an
+  `UPDATE`-failing sibling of `test/support/insert_failing_executor.dart`,
+  needed because the `created: true` write is no longer an insert) drives
+  `resolveCancelledSongCreate`. With `_guarded` removed, the raw
+  `StorageQuotaSimulatedException` escapes; with it in place, droppable
+  catalog sources are evicted exactly once and the failure surfaces as a
+  typed `LocalStorageWriteFailure` carrying the original cause.
+- N3 —
+  `apps/lyron_app/test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart`:
+  a retry's remote call gated on a `Completer`, a `recordPlanEdit` folded
+  onto the same aggregate while the gate is held, then a
+  `connectivityFailure` released. Pre-fix `retryMutation` emitted `null`
+  instead of throwing; post-fix it throws. The no-concurrent-edit case
+  passes in both.
 
 ## Validation
 

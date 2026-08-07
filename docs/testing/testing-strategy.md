@@ -226,6 +226,38 @@ specific finding:
   `StateError`, since those are single-record, user-initiated calls with no
   sync loop and no queued sibling work to protect — not the vanished-record
   case D4 closes.
+- `song_tombstone_resolution_atomicity_test.dart` — finding N1 of the third PR #64 human
+  review round (ADR-030, "Third Review Round: Tombstone Write-Path Atomicity and Retry
+  Signal"). The finding as written — no transaction around
+  `_resolveCancelledSongCreate`'s read and write — was checked against the code and does
+  not hold (`resolveCancelledSongCreate` has wrapped that read-check-write in
+  `_database.transaction()` since `baf3c23`); the file's header records that verification
+  so the next reader does not re-derive it. What the finding *did* surface, and understated:
+  `saveSongMutation`, the store's one content-write path, was neither transactional nor
+  aware of `cancelling`, so an ordinary edit reaching a tombstoned `songId` — a stale UI
+  reference, **no concurrency needed** — silently replaced the user's confirmed delete
+  intent with a `pendingUpdate`, after which nothing would ever delete the song the backend
+  was about to confirm. Watched failing pre-fix ("emitted `<null>`" where a rejection was
+  expected, tombstone gone); passing after, with the row still `cancelling`, its source
+  untouched, and its own resolution afterwards still reaching a real `pendingDelete`. A
+  companion test pins that a non-`cancelling` row is unaffected — the guard is scoped to
+  tombstones. The second group covers N1b: an `UPDATE`-failing `QueryExecutor` (a sibling of
+  `test/support/insert_failing_executor.dart`, needed because the `created: true` write is
+  no longer an insert) proves `resolveCancelledSongCreate` now goes through the
+  storage-recovery boundary — droppable sources evicted exactly once, a typed
+  `LocalStorageWriteFailure` carrying the original cause — where pre-fix a raw
+  `StorageQuotaSimulatedException` escaped. Both halves of the fix were reverted
+  individually and the matching test re-run, so neither passes for the other's reason.
+- `planning_retry_mutation_failure_observer_test.dart` — finding N3 of the same round.
+  `retryMutation` decided whether to throw `connectivityFailure` by re-reading the record's
+  `errorCode` after `syncPendingMutations` returned; a local edit folding onto the same
+  aggregate during the retry's own remote round trip makes the (revision-gated)
+  failure-status write no-op, clearing `errorCode`, so the re-read reported "no failure" for
+  a call that genuinely got one and the retry returned as if it had worked. The remote call
+  is gated on a `Completer`, a `recordPlanEdit` applied while the gate is held, and a
+  `connectivityFailure` released: watched failing pre-fix with `retryMutation` emitting
+  `null` instead of throwing. The unchanged (no concurrent edit) case passes in both
+  directions.
 - `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
   (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
   and eviction policy have landed (ADR-028). Drives the full chain against a

@@ -1051,6 +1051,73 @@ provider-instance wiring test). See ADR-029's "PR #64 Review Remediation
 (2026-08-06)" section and ADR-030's "Atomic Revision Write and Stale-Error
 Clearing Follow-Up (resolved)" section for the full account.
 
+**Status (2026-08-07, third PR #64 human-review round)**:
+
+Five findings, N1-N5. Three needed code (`963fb1a`/`9264a59` for N3,
+`96e3b28`/`8516511` for N1 and N5); two were stale comments corrected in
+`71ee9f0`. Full account in ADR-030's "Third Review Round: Tombstone
+Write-Path Atomicity and Retry Signal (resolved)".
+
+- **N1** — reported as a lost `localRevision` increment in
+  `DriftSongCatalogStore._resolveCancelledSongCreate`, caused by "no
+  transaction and no guard" around its read and write. Verified against the
+  code before acting, per this branch's practice, and the literal claim does
+  not hold: `resolveCancelledSongCreate` has wrapped that read-check-write in
+  `_database.transaction()` since `baf3c23`, and the planning twin it was
+  compared against covers exactly the same three statements (the read, the
+  `created: false` delete, the `created: true` write) — checked explicitly,
+  not assumed from the shape. The finding nonetheless pointed at real
+  defects, and **understated the more serious one** — the second time on this
+  PR a finding's framing has been milder than the defect. `saveSongMutation`,
+  the store's *one* write path for a mutation row's content, read and wrote
+  as two separate top-level statements with no transaction and no awareness
+  of `cancelling`. The consequence is not a lost counter: an ordinary edit
+  reaching a tombstoned `songId` — a stale UI reference, needing no
+  concurrency at all — silently rewrote the whole row to `pendingUpdate`,
+  destroying the user's already-confirmed delete intent, after which
+  `resolveCancelledSongCreate` no-ops and nothing ever deletes the song the
+  backend is about to confirm. Songs have no equivalent of planning's
+  per-context write queue (`BudgetedPlanningMutationStore._enqueue`), so the
+  "production serialises it anyway" safety net does not exist on that side.
+  Closed by making that read-check-write transactional and refusing any
+  non-`cancelling` write onto a `cancelling` row with a new
+  `LocalSongTombstoneConflictException` domain rejection. Separately (N1b),
+  `resolveCancelledSongCreate` never went through the storage-recovery
+  boundary the way the planning twin and every other growing write in the
+  class do; it does now, and its `created: true` write became a targeted
+  `UPDATE ... WHERE syncStatus = cancelling` that leaves the content columns
+  alone instead of rewriting them from a Dart-side snapshot.
+- **N2, N4** (`71ee9f0`, comment-only) — `reauth_resolution.dart`'s header
+  defined a `false` return too narrowly after the Finding A fix added a path
+  where the wipe *did* run but the terminal identity write threw; and the
+  `ReconcileFieldError` branch's comment still claimed a `failedDependency`
+  row "will not be auto-resent", which stopped being exactly true once
+  Finding B gated that write (a concurrent fold now leaves the row pending,
+  so it is resent once more — still terminal, just not as worded). Both
+  behaviours were already correct; only the prose was stale.
+- **N3** — `retryMutation` took its failure signal from a post-hoc re-read of
+  the record's `errorCode` instead of from the run that failed. A fold
+  landing during the retry's own remote round trip makes the revision-gated
+  failure write no-op (correctly), clearing `errorCode`, so a genuine
+  `connectivityFailure` read back as "no failure" and the retry returned as
+  if it had worked — the same silent success this controller had already had
+  removed elsewhere. Closed with `PlanningMutationFailureObserver`, invoked
+  the moment the exception is caught, before the gated write decides
+  anything.
+- **N5** — `updated.single` in `saveSyncAttemptResult` throws if more than
+  one row matches. Left as `.single` deliberately, with the reasoning
+  recorded at the call site: the `WHERE` clause carries the full composite
+  primary key, so a second match is a schema-invariant violation, not a
+  reachable runtime state, and `LocalStorageWriteRecovery`'s own policy is
+  that an `Error` must propagate rather than be reported as storage pressure.
+  `.first` would turn a broken schema into a plausible-looking wrong answer.
+
+Pinned by
+`test/offline/adversarial/song_tombstone_resolution_atomicity_test.dart`
+(N1, both halves falsified individually) and
+`test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart`
+(N3).
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |
