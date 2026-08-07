@@ -257,7 +257,27 @@ specific finding:
   is gated on a `Completer`, a `recordPlanEdit` applied while the gate is held, and a
   `connectivityFailure` released: watched failing pre-fix with `retryMutation` emitting
   `null` instead of throwing. The unchanged (no concurrent edit) case passes in both
-  directions.
+  directions. The fourth review round added two more tests to the same file for the
+  remaining silent-success gaps (ADR-030, "Fourth Review Round: Retry Silent-Success
+  Gaps"): a connectivity failure on an *earlier* candidate breaks `_run`'s loop, so the
+  retried aggregate is never sent at all — the test asserts both that the retry throws
+  and that the aggregate was genuinely never attempted, so it cannot pass vacuously; and
+  a competing, observer-less run installed in the window `retryMutation`'s single
+  in-flight wait leaves open, which the retry used to coalesce onto, dropping its only
+  failure signal. Both watched failing with `emitted <null>`, and each fix reverted
+  individually so neither test passes for the other's reason.
+- `song_keep_mine_failure_gating_test.dart` — the fourth round's one new finding.
+  `SongMutationSyncController.keepMine` gated its success write on the pre-send
+  `localRevision` and left its failure write ungated, the same asymmetry the
+  failure-status gating work closed everywhere else. The remote call is gated on a
+  `Completer`, a local write lands on the song while it is held, and the row is
+  confirmed still `pendingUpdate` with the newer content rather than stamped `conflict`
+  (excluded from `readPendingSongs`, so never resent) — watched failing with `conflict`.
+  The write is made through the store directly because `SongLibraryService` refuses to
+  edit a `conflict` row at all: **no application path reaches this burial today**, so
+  this is a store-level contract test pinning an invariant that would otherwise rest on
+  a guard two layers up in a different file, not a reproduction of a live defect. The
+  test header and the ADR both say so rather than letting the suite imply otherwise.
 - `storage_pressure_contract_test.dart` — `LF-T4`, promoted from characterization probe
   (`storage_pressure_probe_test.dart`) to enforced contract now that the mutation budget
   and eviction policy have landed (ADR-028). Drives the full chain against a

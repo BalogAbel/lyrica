@@ -1118,6 +1118,62 @@ Pinned by
 `test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart`
 (N3).
 
+**Status (2026-08-07, fourth PR #64 human-review round)**:
+
+Confirmed N2, N3 and N4; accepted N5 as a nit; re-raised N1 against a stale
+copy; and found one new item. Three findings needed code, all the same shape
+as N3 — a caller told "it worked" when nothing was sent. Closed by commits
+`1d42904`/`947ee71`. Full account in ADR-030's "Fourth Review Round: Retry
+Silent-Success Gaps (resolved)".
+
+- **N1, re-raised — not changed again.** The round quoted the pre-fix
+  `insertOnConflictUpdate` that `8516511` had already replaced with a targeted
+  `UPDATE ... WHERE syncStatus = cancelling`. The freshness anchor it used
+  (`reauth_resolution.dart` carrying the N2 text) only proves a copy at or
+  after `71ee9f0` — exactly the commit *before* the N1 fix — so it cannot
+  distinguish the two states. The distinguishing anchor is
+  `LocalSongTombstoneConflictException`, present only from `8516511`. This is
+  the second stale-copy round on this PR; the first reported two already-fixed
+  items as unchanged. Two points from the re-statement are correct and are now
+  recorded in the ADR rather than left to be rediscovered: read on its own,
+  the *private* `_resolveCancelledSongCreate` does look untransacted (the
+  public method opens the transaction), and the song store genuinely has no
+  per-context write queue — which is precisely why the fix had to put the
+  transaction on `saveSongMutation`.
+- **`retryMutation`'s in-flight wait was not the guarantee its comment
+  claimed.** Awaiting the run it observed says nothing about a run another
+  trigger installs while it is suspended on that await. Coalescing onto that
+  run is wrong twice: it snapshotted its candidates before this retry's reset,
+  so it cannot resend the record either, and it carries no observer, so the
+  failure signal is dropped and the retry returns as if it had worked. Now a
+  re-check loop that proceeds only from a synchronously-observed empty slot;
+  the overstated comment is corrected rather than restated.
+- **An abandoned candidate is a failure the caller must hear about.** `_run`
+  breaks its loop on the first `connectivityFailure` and abandons every
+  remaining candidate; the observer only fired for the one that failed, so an
+  explicit retry of any later record returned normally while never reaching
+  the network. With no network — the usual reason to press retry — that is the
+  likely path, not the exotic one. Each abandoned candidate is now reported.
+  The `sendingRevision == null` skip stays unreported, deliberately, and the
+  typedef now says why: that row is already `pending` with newer content the
+  next sync sends, or gone (D4).
+- **`keepMine`'s failure write, gated for consistency rather than for a bug.**
+  Its success write was gated on the pre-send revision and its failure write
+  was not, with no reason stated. Now gated on the same value. Stated plainly
+  rather than overclaimed: **no application path reaches the burial today** —
+  `keepMine`'s only caller is the conflict row's action, and
+  `SongLibraryService.updateSong`/`deleteSong` refuse a `conflict` row
+  outright — so this is defense in depth against an invariant that would
+  otherwise live two layers up in a different file, on a method whose own doc
+  records that it deliberately sits outside the context lease.
+
+Pinned by two new tests in
+`test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart`
+and by
+`test/offline/adversarial/song_keep_mine_failure_gating_test.dart`; each of
+the three fixes was reverted individually and its test re-run, so none passes
+for another's reason.
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

@@ -32,6 +32,12 @@
   re-read that a concurrent fold can invalidate. Closed by commits
   `963fb1a`/`9264a59` (N3), `96e3b28`/`8516511` (N1, N5). See "Third Review
   Round: Tombstone Write-Path Atomicity and Retry Signal (resolved)" below.
+- Amended: 2026-08-07 — a fourth PR #64 review round: `retryMutation` no
+  longer coalesces onto a run started in the window its in-flight wait
+  leaves open; `_run` reports its abandoned candidates when a connectivity
+  failure ends the pass early; `keepMine`'s failure-status write is gated
+  like its success write. Closed by commits `1d42904`/`947ee71`. See "Fourth
+  Review Round: Retry Silent-Success Gaps (resolved)" below.
 
 ## Context
 
@@ -826,6 +832,116 @@ test re-run, so neither passes for the other half's reason:
   `connectivityFailure` released. Pre-fix `retryMutation` emitted `null`
   instead of throwing; post-fix it throws. The no-concurrent-edit case
   passes in both.
+
+## Fourth Review Round: Retry Silent-Success Gaps (resolved)
+
+A fourth review round confirmed N2, N3 and N4, accepted N5, re-raised N1, and
+found one new item. Three findings needed code; all three are the same shape
+as N3 itself — a caller learning "it worked" when nothing was sent.
+
+### N1, re-raised on a stale copy — not changed again
+
+The round re-stated N1 against the same pre-fix text, and the code it quoted
+does not exist at `5af671c`: the `insertOnConflictUpdate` rebuilding the row
+from the Dart-side read was replaced by a targeted `UPDATE ... WHERE
+syncStatus = cancelling` in `8516511`. The freshness anchor the round used —
+`reauth_resolution.dart` carrying the N2 text — only proves a copy at or
+after `71ee9f0`, which is precisely the commit *before* the N1 fix, so that
+anchor cannot distinguish the two states. The distinguishing anchor is
+`LocalSongTombstoneConflictException` in `song_catalog_store.dart`: present
+only from `8516511`.
+
+Two points from the re-statement are worth keeping regardless of the stale
+read, because they are correct and are now recorded here rather than left to
+be rediscovered. First, reading `_resolveCancelledSongCreate` on its own does
+make the read look untransacted — it is the *public* `resolveCancelledSongCreate`
+that opens the transaction, and the private method is only ever called from
+inside it. Second, the observation that the song store has no per-context
+write queue, only `_guarded`, is exactly right, and it is why the fix had to
+put the transaction on `saveSongMutation` rather than rely on serialisation
+that does not exist on that side.
+
+### The in-flight wait was not a guarantee
+
+`retryMutation` resets the row, then waits out any in-flight run before
+calling `syncPendingMutations`, so that the run it triggers snapshots its
+candidates *after* the reset. A comment claimed this also meant retryMutation
+could never reach the coalescing branch. It did not: awaiting the run this
+method happened to observe says nothing about a run another trigger (a
+concurrent write's `_scheduleSync`) installs while it is suspended on that
+await. Coalescing onto that run is wrong twice over — it snapshotted its own
+candidates before the reset too, so it cannot resend the record either, and
+it carries no observer, so the retry's only failure signal is dropped and it
+returns as if it had worked.
+
+Closed by re-checking in a loop and proceeding only from a
+synchronously-observed empty slot. The exit is not "the slot looked empty at
+some point": there is no `await` between reading `null` and
+`syncPendingMutations` reading `_inFlight` and installing its own run, and
+this is a single-threaded isolate, so nothing can interleave between the two.
+The overstated comment is corrected, not restated.
+
+### An abandoned candidate is a failure the caller must hear about
+
+`_run` breaks out of its candidate loop on the first `connectivityFailure`.
+Every remaining candidate is then abandoned — never sent, and not otherwise
+touched by the pass. The observer only fired for the record that actually
+failed, so an explicit retry of any record *after* the break point returned
+normally while never reaching the network. With no network — the single most
+common reason to press retry — the first candidate breaks the loop and every
+other one lands in this case, so this was the likely path, not the exotic
+one.
+
+Closed by reporting the same failure to the observer for each abandoned
+candidate. That is literally true of them: the pass ended, on connectivity,
+without concluding them. One skip stays deliberately unreported and the
+typedef now says so — `sendingRevision == null`, where the row was
+concurrently edited (it is `pending` with newer content the next ordinary
+sync sends) or vanished entirely (D4). Neither is a failed attempt, and in
+both the intent the caller cares about is already queued or already gone.
+
+### `keepMine`'s failure write, gated for consistency rather than for a bug
+
+`SongMutationSyncController.keepMine` gated its success write on the pre-send
+`record.localRevision` and left its failure write ungated — the same
+asymmetry the Failure-Status Write Gating follow-up closed everywhere else,
+with no reason stated for the difference. It is now gated on the same value.
+
+Stated plainly rather than overclaimed: **no application path can reach the
+burial today.** `keepMine`'s only caller is the conflict row's "keep mine"
+action, so the row is `conflict`, and `SongLibraryService.updateSong` and
+`deleteSong` both refuse a `conflict` row outright with
+`SongConflictResolutionRequiredException` — the user cannot produce the
+concurrent edit that would be buried. The change is consistency and defense
+in depth: the invariant would otherwise rest on a guard two layers up in a
+different file, and `keepMine`'s own doc records that it deliberately sits
+outside the context lease and can interleave with other song writes. Gating
+costs nothing when the revision has not moved — the write applies exactly as
+it always did.
+
+### Validation (fourth round)
+
+Each of the three fixes was reverted individually and its test re-run, so
+none passes for another's reason.
+
+- `apps/lyron_app/test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart`
+  — two new tests. The abandoned-candidate case seeds two pending plans and
+  retries the second one against an always-failing remote, asserting both
+  that the retry throws and that the retried aggregate was genuinely never
+  attempted, so it cannot pass vacuously; watched failing with `emitted
+  <null>`. The coalescing case starts a gated background run, registers a
+  listener that installs a second, observer-less run the moment the first
+  completes — landing exactly in the window the single wait leaves open —
+  and confirms the retry still throws; watched failing with `emitted
+  <null>`.
+- `apps/lyron_app/test/offline/adversarial/song_keep_mine_failure_gating_test.dart`
+  — `keepMine`'s remote call gated, a local write landing on the same song
+  while it is held, and the row confirmed still `pendingUpdate` with the
+  newer content afterwards rather than stamped `conflict` (which
+  `readPendingSongs` excludes). Written through the store directly, because
+  the service layer refuses to edit a `conflict` row; the test header says
+  so, and says the suite is a store-level contract test rather than a
+  reproduction of a user-reachable defect. Watched failing with `conflict`.
 
 ## Validation
 
