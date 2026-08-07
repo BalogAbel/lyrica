@@ -1174,6 +1174,30 @@ and by
 the three fixes was reverted individually and its test re-run, so none passes
 for another's reason.
 
+**Status (2026-08-07, fifth PR #64 human-review round)**:
+
+No blockers. Every fourth-round fix re-verified at a pinned commit rather than
+a branch ref — the round adopted that after its own stale read, and used the
+distinguishing anchor named above. N1 was withdrawn on the round's own
+analysis: the `created: true` write's `WHERE syncStatus = cancelling`
+predicate does the work a revision predicate would, since every writer able to
+reach a `cancelling` row between the read and the write is either refused or
+moves the row off `cancelling`, in which case the UPDATE matches nothing.
+
+Four remaining observations, all asymmetries between a hardened path and its
+sibling, all correct as they stand for reasons living elsewhere in the code.
+Recorded at the call sites rather than changed (`186fc3e`, comment-only,
+purely additive): the song `_runSync` `break` needs no failure observer
+because no caller observes a per-record outcome and there is no song
+`retryMutation`; `keepMine` discards `_applySuccessfulSync`'s `bool` because
+no cancellation tombstone can form under it, so the mirroring call would be
+dead code; `SongLibraryService.deleteSong` has no `cancelling` branch on
+purpose, failing loudly on an unreachable path rather than returning quietly;
+and `retryMutation`'s re-check loop is left unbounded because every
+alternative trades a theoretical starvation for a real silent failure. Full
+account in ADR-030's "Fifth Review Round: Recorded Asymmetries (no code
+change)".
+
 ### 6.2 Correctness / robustness
 
 | ID | Problem | Evidence | Risk |

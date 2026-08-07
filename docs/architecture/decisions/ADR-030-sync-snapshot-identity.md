@@ -38,6 +38,10 @@
   failure ends the pass early; `keepMine`'s failure-status write is gated
   like its success write. Closed by commits `1d42904`/`947ee71`. See "Fourth
   Review Round: Retry Silent-Success Gaps (resolved)" below.
+- Amended: 2026-08-07 — a fifth PR #64 review round confirmed every
+  fourth-round fix and raised no blocker. Four asymmetries were recorded as
+  deliberate rather than changed (commit `186fc3e`, comment-only). See
+  "Fifth Review Round: Recorded Asymmetries (no code change)" below.
 
 ## Context
 
@@ -942,6 +946,65 @@ none passes for another's reason.
   the service layer refuses to edit a `conflict` row; the test header says
   so, and says the suite is a store-level contract test rather than a
   reproduction of a user-reachable defect. Watched failing with `conflict`.
+
+## Fifth Review Round: Recorded Asymmetries (no code change)
+
+The fifth round re-verified every fourth-round fix at a pinned commit rather
+than a branch ref, confirmed each, and raised no blocker. It also withdrew
+the re-raised N1 on its own analysis: the `created: true` write's `WHERE
+syncStatus = cancelling` predicate does the same work a revision predicate
+would, because every writer that could reach a `cancelling` row between the
+read and the write is either refused
+(`LocalSongTombstoneConflictException`) or moves the row off `cancelling`,
+in which case this UPDATE matches nothing and reports "did not apply". Two
+concurrent `resolveCancelledSongCreate` calls resolve the same way: the
+second no-ops.
+
+Four remaining observations were all asymmetries between a hardened path and
+its sibling. None was changed; all four are now stated at the code, because
+each is currently correct for a reason that lives somewhere else and would
+otherwise read as an oversight.
+
+- **`SongMutationSyncController._runSync`'s connectivity `break` reports no
+  abandoned candidates**, where planning's now does. It needs no observer,
+  and the reason is a property of the callers rather than of the loop:
+  `syncPendingSongs` has exactly one caller, a bulk "sync now" trigger that
+  claims nothing about any individual song, and there is no song
+  counterpart to `retryMutation` — the unified sync UI's per-record retry
+  action is planning-only, and `keepMine`, the one user-initiated song
+  operation with a remote call, runs that call itself and rethrows instead
+  of going through this loop. The comment records what must change if a
+  per-song retry is ever added.
+- **`keepMine` discards `_applySuccessfulSync`'s `bool`** where `_runSync`
+  pairs it with `if (!applied && isCreate) resolveCancelledSongCreate(...)`.
+  That follow-up exists solely to resolve a D2 tombstone, and no tombstone
+  can form under `keepMine`: only `deleteSong`'s `sending` branch writes
+  one, `keepMine` never marks the row `sending`, and `deleteSong` refuses a
+  `conflict` row. `false` here can only mean an ordinary local write raced
+  the overwrite, which needs no follow-up — that row is already `pending`
+  with the newer content. The mirroring call would be dead code, not
+  symmetry.
+- **`SongLibraryService.deleteSong` has no `cancelling` branch.** Such a row
+  falls through to the ordinary delete and the store refuses it (N1) rather
+  than burying the tombstone under a `pendingDelete` that
+  `resolveCancelledSongCreate` would then no-op on. Unreachable today —
+  `cancelling` is excluded from every local-first read, so no surface can
+  offer the delete — and left to fail loudly rather than given a quiet early
+  return: a silent no-op would look identical to success from the caller's
+  side, so if a future change makes this reachable, the rejection is what
+  surfaces it.
+- **`retryMutation`'s re-check loop can in principle be starved** by an
+  unbroken stream of background triggers. Left as is. It is not a spin —
+  every iteration awaits a real run's future — and the triggers are
+  event-driven rather than timed, so starving it needs writes produced
+  faster than a full sync pass completes, indefinitely. A bound would have
+  to choose between abandoning the retry silently (the exact failure this
+  whole thread of findings is about) and coalescing onto a run that cannot
+  resend the record anyway.
+
+No test accompanies this round: nothing behavioural changed, the diff is
+purely additive comments, and a test asserting an unreachable path is
+unreachable would pin the reasoning in the wrong place.
 
 ## Validation
 
