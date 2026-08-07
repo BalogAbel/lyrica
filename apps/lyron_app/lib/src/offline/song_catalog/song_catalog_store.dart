@@ -54,6 +54,24 @@ class LocalSongSlugConflictException implements LocalStorageDomainRejection {
   String toString() => 'LocalSongSlugConflictException()';
 }
 
+/// N1 (PR #64 review, second remediation round): thrown by
+/// `DriftSongCatalogStore.saveSongMutation` when a write would overwrite a
+/// song mutation row that is currently a `cancelling` cancellation tombstone
+/// (D2, docs/specs/2026-08-06-in-flight-create-cancellation.md) with
+/// anything other than another `cancelling` write. A tombstone represents
+/// the user's already-confirmed delete intent for a create whose outcome is
+/// still unknown; only `SongCatalogStore.resolveCancelledSongCreate` may
+/// move a row off `cancelling`. A domain rejection, not a storage failure:
+/// retrying identically would fail the same way, and evicting droppable
+/// catalog sources would not change the outcome.
+class LocalSongTombstoneConflictException
+    implements LocalStorageDomainRejection {
+  const LocalSongTombstoneConflictException();
+
+  @override
+  String toString() => 'LocalSongTombstoneConflictException()';
+}
+
 extension SongSyncStatusX on SongSyncStatus {
   String get value => switch (this) {
     SongSyncStatus.pendingCreate => 'pending_create',
