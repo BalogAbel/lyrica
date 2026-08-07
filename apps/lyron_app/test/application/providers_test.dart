@@ -1774,7 +1774,10 @@ class _RecordingPlanningMutationSyncController
   int syncCalls = 0;
 
   @override
-  Future<void> syncPendingMutations(ActivePlanningReadContext context) async {
+  Future<void> syncPendingMutations(
+    ActivePlanningReadContext context, {
+    PlanningMutationFailureObserver? onMutationFailure,
+  }) async {
     syncCalls += 1;
     await onSync();
   }
