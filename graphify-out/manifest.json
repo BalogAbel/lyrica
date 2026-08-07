@@ -5,7 +5,7 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1786037354.8711398,
+    "mtime": 1786091033.0961564,
     "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart": {
-    "mtime": 1786048852.752562,
-    "ast_hash": "b1f3b61ddfe12ee4b76eca36f69ded44",
+    "mtime": 1786093172.726165,
+    "ast_hash": "be2cbaa5c7113dcd7fa53637715e4fb6",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
@@ -565,8 +565,8 @@
     "semantic_hash": "0a9d651987de4b6ecca3f5eb16c5bd7b"
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart": {
-    "mtime": 1786048852.754668,
-    "ast_hash": "34f37345eb71b75756668f3ffb927ac1",
+    "mtime": 1786108786.4823575,
+    "ast_hash": "d02b7506b01fe9415277b5ce4648aa62",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_tables.dart": {
@@ -990,8 +990,8 @@
     "semantic_hash": "dea2391e3f9d798f2b5668dd6a50c37b"
   },
   "apps/lyron_app/test/application/providers_test.dart": {
-    "mtime": 1785932190.1780994,
-    "ast_hash": "84bc001aa6252a72e297edd912a07517",
+    "mtime": 1786092663.344498,
+    "ast_hash": "4cd7a9eac0e142c7af5fae0fccac451a",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/chordpro_import_service_test.dart": {
@@ -2455,8 +2455,8 @@
     "semantic_hash": "b6dfaff2d7cc0023ffc4fbc9029cd7e6"
   },
   "docs/testing/testing-strategy.md": {
-    "mtime": 1786037051.6414707,
-    "ast_hash": "596e0eb224511fa424fc1914eb558f45",
+    "mtime": 1786108957.6560588,
+    "ast_hash": "25a51d955821557ebce3469b7263d1d9",
     "semantic_hash": ""
   },
   "docs/workflows/ai-development.md": {
@@ -2635,8 +2635,8 @@
     "semantic_hash": "1962ead0111d2720face580e80a4155c"
   },
   "apps/lyron_app/lib/src/application/auth/reauth_resolution.dart": {
-    "mtime": 1786036447.9158201,
-    "ast_hash": "3fbed7c43993d6d5b1d1473bb4d5222f",
+    "mtime": 1786092227.1510866,
+    "ast_hash": "d10544284cbc9b1c8cb577f41326dce8",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_reconciler.dart": {
@@ -2815,8 +2815,8 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1786037182.4861693,
-    "ast_hash": "ec157bed37fe1e3143c81e2843699928",
+    "mtime": 1786108994.659889,
+    "ast_hash": "c59d131031b1d4dffe9a416e591e1d00",
     "semantic_hash": ""
   },
   "docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md": {
@@ -3755,8 +3755,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-030-sync-snapshot-identity.md": {
-    "mtime": 1786048940.38532,
-    "ast_hash": "68aa42e09b7779b3c66dabcfbd663986",
+    "mtime": 1786108925.199802,
+    "ast_hash": "8d435573d7d5f4bbfaa7d3bddd53112a",
     "semantic_hash": ""
   },
   "docs/specs/2026-08-05-sync-snapshot-identity.md": {
@@ -3787,6 +3787,16 @@
   "docs/specs/2026-08-06-in-flight-create-cancellation.md": {
     "mtime": 1786010850.6764133,
     "ast_hash": "4f6d865d7a0932889e9fa7d60f269909",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/offline/adversarial/planning_retry_mutation_failure_observer_test.dart": {
+    "mtime": 1786092637.7462919,
+    "ast_hash": "ca8247145620e94085134a1788669926",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/offline/adversarial/song_tombstone_resolution_atomicity_test.dart": {
+    "mtime": 1786092637.760217,
+    "ast_hash": "d1577dd50f84e86a9d45833fe98da01e",
     "semantic_hash": ""
   }
 }
