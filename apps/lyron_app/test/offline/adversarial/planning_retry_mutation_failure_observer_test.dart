@@ -228,6 +228,213 @@ void main() {
       );
     });
   });
+
+  /// N3, remaining gaps found in the third review round's follow-up. The
+  /// observer closes the stale-read window, but two paths still let an
+  /// explicit retry return as if it had worked while nothing was sent.
+  group('retryMutation silent-success gaps (N3 follow-up)', () {
+    test('a connectivity failure on an EARLIER candidate ends the pass before '
+        'the retried aggregate is ever attempted -- the retry must still '
+        'report that nothing left the device', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      // Two pending plans. The user hits retry on the SECOND one while
+      // offline; `_run` breaks out of its loop on the first one's
+      // connectivity failure, so the retried aggregate is never sent.
+      for (final (id, slug, name) in const [
+        ('plan-1', 'first-service', 'First Service'),
+        ('plan-2', 'second-service', 'Second Service'),
+      ]) {
+        await store.recordPlanCreate(
+          context: context,
+          draft: PlanningPlanCreateMutationDraft(
+            planId: id,
+            slug: slug,
+            name: name,
+            description: 'Original description',
+          ),
+        );
+      }
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-2',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+
+      final remote = _AlwaysFailingPlanningRemote(
+        const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        ),
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await expectLater(
+        controller.retryMutation(
+          readContext,
+          aggregateType: 'plan',
+          aggregateId: 'plan-2',
+        ),
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            PlanningMutationSyncErrorCode.connectivityFailure,
+          ),
+        ),
+        reason:
+            'the user asked for THIS record to be resent and it never '
+            'reached the network -- returning normally reports a success '
+            'that did not happen, the exact silent success S13 removed',
+      );
+
+      expect(
+        remote.attempted,
+        isNot(contains('plan-2')),
+        reason:
+            'precondition: the retried aggregate must genuinely never have '
+            'been attempted, or this test proves nothing about the gap',
+      );
+    });
+
+    test('a competing sync starting in the window between retryMutation\'s '
+        'in-flight wait and its own call must not swallow the retry\'s '
+        'failure signal', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+          description: 'Original description',
+        ),
+      );
+
+      final remote = _AlwaysFailingPlanningRemote(
+        const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        ),
+        gateFirstCall: true,
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      // A background sync is already running when the user hits retry.
+      final backgroundRun = controller.syncPendingMutations(readContext);
+
+      // Another trigger (a concurrent write's `_scheduleSync`, say) starts a
+      // NEW observer-less run the moment the background one finishes.
+      // Registered here, before `retryMutation` awaits the same future, so
+      // it lands in exactly the window `retryMutation`'s in-flight wait
+      // leaves open: the wait only guarantees the run it saw is over, not
+      // that no other run has started since.
+      unawaited(
+        backgroundRun.then((_) {
+          unawaited(controller.syncPendingMutations(readContext));
+        }),
+      );
+
+      final retryFuture = controller.retryMutation(
+        readContext,
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      await remote.entered.future;
+      remote.gate.complete();
+
+      await expectLater(
+        retryFuture,
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            PlanningMutationSyncErrorCode.connectivityFailure,
+          ),
+        ),
+        reason:
+            'coalescing onto a run started without the observer drops the '
+            'retry\'s only failure signal -- and that run snapshotted its '
+            'candidates before this retry\'s reset anyway, so riding along '
+            'on it is exactly what the in-flight wait exists to prevent',
+      );
+    });
+  });
+}
+
+/// Every call throws [failure]; the first optionally gates on [gate] so a
+/// test can interleave against a run that is genuinely in flight. Records
+/// the aggregate ids it was actually asked to send, so a test can assert
+/// that a record was never attempted rather than assuming it.
+class _AlwaysFailingPlanningRemote implements PlanningMutationRemoteRepository {
+  _AlwaysFailingPlanningRemote(this.failure, {this.gateFirstCall = false});
+
+  final PlanningMutationSyncException failure;
+  final bool gateFirstCall;
+  final Completer<void> gate = Completer<void>();
+  final Completer<void> entered = Completer<void>();
+  final List<String> attempted = <String>[];
+
+  @override
+  Future<PlanningMutationRecord> syncMutation({
+    required String organizationId,
+    required PlanningMutationRecord record,
+  }) async {
+    attempted.add(record.aggregateId);
+    if (gateFirstCall && attempted.length == 1) {
+      if (!entered.isCompleted) {
+        entered.complete();
+      }
+      await gate.future;
+    }
+    throw failure;
+  }
 }
 
 /// Copy of `planning_sync_snapshot_identity_test.dart`'s
