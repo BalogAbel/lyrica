@@ -27,6 +27,18 @@ typedef PlanningAcceptedMutationGuard =
 /// genuinely failed. The observer sidesteps that: it reports what actually
 /// happened to THIS send, not what the row's row-level status happens to
 /// read afterward.
+///
+/// Fourth PR #64 review round: also invoked for every candidate the pass
+/// ABANDONS when a connectivity failure breaks `_run`'s loop early. Those
+/// records were never sent and nothing else in the pass will touch them, so
+/// reporting the same failure for each is literally accurate -- and without
+/// it, an explicit retry of any record after the break point returns as if
+/// it had worked while never reaching the network. There remains one path
+/// where a candidate is skipped and NOT reported: `sendingRevision == null`,
+/// where the row was concurrently edited (it is now `pending` with newer
+/// content, which the next ordinary sync sends) or vanished entirely (D4).
+/// Deliberate: neither is a failed attempt, and in both cases the intent the
+/// caller cares about is already correctly queued or already gone.
 typedef PlanningMutationFailureObserver =
     void Function(
       String aggregateType,
@@ -69,10 +81,17 @@ class PlanningMutationSyncController {
     // N3: if this call coalesces onto an already-in-flight run (started
     // without an observer, by a different caller), [onMutationFailure] is
     // simply never invoked -- the same "no signal" outcome retryMutation
-    // already had to tolerate before this fix, and retryMutation itself
-    // never reaches this coalescing branch: it explicitly awaits any
-    // existing in-flight run first (see its own comment) specifically so
-    // its call here always starts a fresh run.
+    // already had to tolerate before this fix.
+    //
+    // Fourth PR #64 review round: an earlier version of this comment went
+    // on to claim retryMutation can never reach this branch, because it
+    // awaits any in-flight run first. That was wrong, and the fix belongs
+    // there rather than here: awaiting the run it *observed* says nothing
+    // about a run some other trigger starts in the gap before this line
+    // runs. retryMutation now re-checks in a loop and only proceeds from a
+    // synchronously-observed empty slot, so it genuinely always starts its
+    // own run. This branch keeps its original, honest contract: a caller
+    // that coalesces gets no signal.
     if (inFlight != null) return inFlight;
     // Block body: Map.remove returns the removed future, and a whenComplete
     // callback that returns a future would wait on it (here, the very future
@@ -129,7 +148,8 @@ class PlanningMutationSyncController {
           )
         >[];
 
-    for (final mutation in candidates) {
+    for (var index = 0; index < candidates.length; index += 1) {
+      final mutation = candidates[index];
       if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {
         // Durable marker: already accepted, skip remote send
         acceptedRecords.add((mutation, mutation, mutation.localRevision));
@@ -309,6 +329,27 @@ class PlanningMutationSyncController {
           );
         }
         if (error.code == PlanningMutationSyncErrorCode.connectivityFailure) {
+          // Fourth PR #64 review round: this `break` abandons every
+          // remaining candidate without sending it, and nothing else in
+          // this pass ever touches them -- an accepted record after this
+          // point is not even cleared. An observer that only heard about
+          // the one record that actually failed would leave an explicit
+          // retry of any LATER record returning as if it had worked, while
+          // that record never reached the network at all. With no network
+          // -- the single most common reason to press retry -- the first
+          // candidate breaks the loop and every other one lands here, so
+          // this is the likely path, not the exotic one. Report the same
+          // failure for each abandoned candidate: it is literally true of
+          // them (this pass ended, on connectivity, without concluding
+          // them), and it is what a caller waiting on its own record needs
+          // in order not to claim a success that did not happen.
+          for (final abandoned in candidates.skip(index + 1)) {
+            onMutationFailure?.call(
+              abandoned.kind.aggregateType,
+              abandoned.aggregateId,
+              error,
+            );
+          }
           break;
         }
       }
@@ -418,9 +459,26 @@ class PlanningMutationSyncController {
     // success even though nothing was resent. Wait out any such run first,
     // so the sync this retry triggers is guaranteed to start its own
     // candidate snapshot *after* the reset and therefore include it.
+    //
+    // Fourth PR #64 review round: awaiting ONCE is not enough. Awaiting the
+    // run this method happened to observe says nothing about a run some
+    // other trigger (a concurrent write's `_scheduleSync`, say) installs
+    // while this one is suspended on that await -- and coalescing onto that
+    // run is doubly wrong: it also snapshotted its candidates before the
+    // reset above, so it can no more resend this record than the first one
+    // could, and it carries no observer, so the failure signal below is
+    // silently dropped and the retry returns as if it had worked. Re-check
+    // in a loop instead. The exit condition is not merely "the slot looked
+    // empty at some point": there is no `await` between reading `null` here
+    // and `syncPendingMutations` reading `_inFlight` and installing its own
+    // run, and this isolate is single-threaded, so nothing can interleave
+    // between the two -- the run started below is always this retry's own.
     final key = '${context.userId}_${context.organizationId}';
-    final inFlight = _inFlight[key];
-    if (inFlight != null) {
+    while (true) {
+      final inFlight = _inFlight[key];
+      if (inFlight == null) {
+        break;
+      }
       await inFlight;
     }
 

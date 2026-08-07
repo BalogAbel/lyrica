@@ -323,6 +323,25 @@ class SongMutationSyncController {
       // "next record" to protect; the original SongMutationSyncException is
       // rethrown to the caller regardless of whether the status write
       // found anything to update.
+      //
+      // Fourth PR #64 review round: gated on the same pre-send
+      // `record.localRevision` the success path above already uses. The
+      // asymmetry (success gated, failure not) was an omission, not a
+      // decision -- it is the identical shape Finding B closed on every
+      // other failure-status write: `conflict` is excluded from
+      // `readPendingSongs`, so an ungated write landing on newer,
+      // never-sent content buries it where nothing resends it.
+      //
+      // No application path can produce that concurrent write today: this
+      // method's only caller is the conflict row's "keep mine" action, so
+      // the row is `conflict`, and `SongLibraryService.updateSong`/
+      // `deleteSong` both refuse a `conflict` row outright. So this is
+      // consistency and defense in depth, not a live defect -- but the
+      // invariant it would otherwise rest on lives two layers up in a
+      // different file, and this method's own doc above records that it
+      // deliberately sits outside the context lease and can interleave with
+      // other song writes. Gating costs nothing when the revision has not
+      // moved: the write applies exactly as it always did.
       await _store.saveSyncAttemptResult(
         userId: context.userId,
         organizationId: context.organizationId,
@@ -330,6 +349,7 @@ class SongMutationSyncController {
         syncStatus: SongSyncStatus.conflict,
         errorCode: error.code,
         errorMessage: error.message,
+        expectedRevision: record.localRevision,
       );
       rethrow;
     }
