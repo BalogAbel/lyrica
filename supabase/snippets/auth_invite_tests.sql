@@ -29,7 +29,12 @@ insert into public.memberships (
   'organization', 'organization_admin', 'active'
 );
 
--- Service-role caller (auth.uid() = null) can create an invite
+-- Service-role caller (auth.uid() = null) can create an invite.
+-- SEC-2 (create-invitation-service-role-gate) requires the session role to
+-- actually be service_role when auth.uid() is null; this raw psql session
+-- otherwise runs as plain `postgres`, which the gate now rejects.
+set local role service_role;
+
 do $$
 declare
   v_token text;

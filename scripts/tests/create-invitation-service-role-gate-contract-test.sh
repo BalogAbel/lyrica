@@ -55,14 +55,20 @@ def create_invitation_as_role(role):
     `role` but whose auth.uid() is null, independent of that role. Real
     PostgREST always sets both together; this harness can pull them apart,
     which is exactly the drift SEC-2 defends against.
+
+    Wrapped in begin/rollback so a successful call leaves no invitation row
+    behind -- each run_sql invocation is its own psql session, so nothing
+    but an explicit rollback would otherwise undo the insert.
     """
     sql = dedent(f"""
+        begin;
         set local role {role};
         select public.create_invitation(
           {sql_quote(ORG_ID)}::uuid,
           'organization_member'::public.role_code,
           null
         );
+        rollback;
     """)
     return run_sql(sql)
 
@@ -122,6 +128,14 @@ check(
     sqlstate == "42501",
     f"expected 42501 when authenticated role calls create_invitation with a "
     f"null auth.uid(), got sqlstate={sqlstate!r} message={message!r}",
+)
+# 42501 alone is also raised by a bare privilege-check failure (e.g. if the
+# authenticated EXECUTE grant were ever revoked) -- pin the message too, so
+# this test fails for the right reason if that grant ever changes.
+check(
+    "case A null-caller rejection is the SEC-2 gate, not a bare grant failure",
+    message == "invitation_create_not_authorized",
+    f"expected message='invitation_create_not_authorized', got {message!r}",
 )
 
 # --- Case B: the real null-caller path. service_role must still work. --------
