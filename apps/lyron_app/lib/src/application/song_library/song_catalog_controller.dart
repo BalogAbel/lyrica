@@ -62,15 +62,64 @@ class SongCatalogController extends ChangeNotifier {
   Timer? _refreshTimer;
   StreamSubscription<bool>? _foregroundSubscription;
   Future<void>? _refreshFuture;
+  // The session identity (AppAuthSession.userId, nullable) the current
+  // _refreshFuture was dispatched under. Only meaningful while _refreshFuture
+  // is non-null. See docs/specs/2026-08-08-web-catalog-refresh-race.md (D1).
+  String? _refreshFutureUserId;
+  // At most one follow-up refresh queued behind the in-flight one, for
+  // callers whose session identity differs from _refreshFutureUserId. Kept
+  // to a single slot so a burst of differing-identity triggers cannot fan
+  // out into a refresh storm; every such caller shares this one completer.
+  Completer<void>? _pendingFollowUpRefresh;
 
   CatalogSnapshotState get state => _state;
 
+  // Coalescing here used to be presence-based: "some refresh is in flight"
+  // was treated as "the refresh you asked for will happen". That is false
+  // when the in-flight refresh was dispatched under a different session
+  // identity — e.g. it started with no session, bailed at its first gate,
+  // and a moment later the auth stream emits signedIn in the same turn. The
+  // signed-in caller would get handed back the doomed null-session future
+  // instead of a real refresh, and nothing would retrigger it. See
+  // docs/specs/2026-08-08-web-catalog-refresh-race.md (D1) for the full
+  // repro and the coalescing contract this implements: same identity still
+  // coalesces (sign-out overlap tests depend on that), a different identity
+  // gets exactly one queued follow-up that runs once the in-flight refresh
+  // settles, and the caller's future completes only after that follow-up.
   Future<void> refreshCatalog() async {
+    final requestedUserId = _authSessionReader()?.userId;
     final inFlightRefresh = _refreshFuture;
     if (inFlightRefresh != null) {
-      return inFlightRefresh;
+      if (requestedUserId == _refreshFutureUserId) {
+        return inFlightRefresh;
+      }
+
+      final pendingFollowUp = _pendingFollowUpRefresh;
+      if (pendingFollowUp != null) {
+        return pendingFollowUp.future;
+      }
+
+      final followUpCompleter = Completer<void>();
+      _pendingFollowUpRefresh = followUpCompleter;
+      unawaited(
+        inFlightRefresh.whenComplete(() async {
+          _pendingFollowUpRefresh = null;
+          if (_disposed) {
+            followUpCompleter.complete();
+            return;
+          }
+          try {
+            await refreshCatalog();
+            followUpCompleter.complete();
+          } catch (error, stackTrace) {
+            followUpCompleter.completeError(error, stackTrace);
+          }
+        }),
+      );
+      return followUpCompleter.future;
     }
 
+    _refreshFutureUserId = requestedUserId;
     final refreshFuture = _refreshCatalog();
     _refreshFuture = refreshFuture;
     try {
@@ -78,6 +127,7 @@ class SongCatalogController extends ChangeNotifier {
     } finally {
       if (identical(_refreshFuture, refreshFuture)) {
         _refreshFuture = null;
+        _refreshFutureUserId = null;
       }
     }
   }

@@ -801,6 +801,120 @@ void main() {
         });
       },
     );
+
+    test(
+      'a refresh dispatched with a null session is superseded by a refresh '
+      'dispatched under a real session before the first settles',
+      () async {
+        AppAuthSession? session;
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => session,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        final nullSessionRefresh = controller.refreshCatalog();
+        session = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+        final signedInRefresh = controller.refreshCatalog();
+
+        await nullSessionRefresh;
+        await signedInRefresh;
+
+        expect(remoteRepository.listSongsCalls, 1);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
+      'two refreshes under the same session identity while one is in '
+      'flight still coalesce into a single remote call',
+      () async {
+        final delayedRepository = _DelayedSongRepository();
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: delayedRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        final first = controller.refreshCatalog();
+        await delayedRepository.listSongsStarted.future;
+        final second = controller.refreshCatalog();
+
+        expect(delayedRepository.listSongsCalls, 1);
+
+        delayedRepository.completeWith(
+          const [SongSummary(id: 'song-1', title: 'Alpha')],
+          const {'song-1': SongSource(id: 'song-1', source: '{title: Alpha}')},
+        );
+
+        await first;
+        await second;
+
+        expect(delayedRepository.listSongsCalls, 1);
+      },
+    );
+
+    test(
+      'a burst of differing-identity triggers during one in-flight refresh '
+      'queues at most one follow-up refresh',
+      () {
+        fakeAsync((async) {
+          final delayedRepository = _MultiPhaseSongRepository();
+          AppAuthSession? session = const AppAuthSession(
+            userId: 'user-1',
+            email: 'demo@lyron.local',
+          );
+          final controller = SongCatalogController(
+            store: store,
+            remoteRepository: delayedRepository,
+            authSessionReader: () => session,
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          expect(delayedRepository.listSongsCalls, 1);
+
+          session = const AppAuthSession(
+            userId: 'user-2',
+            email: 'other@lyron.local',
+          );
+          unawaited(controller.refreshCatalog());
+          unawaited(controller.refreshCatalog());
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          // The in-flight refresh (for user-1) hasn't settled yet, so no
+          // follow-up has dispatched.
+          expect(delayedRepository.listSongsCalls, 1);
+
+          delayedRepository.completeRequest(0);
+          async.flushMicrotasks();
+
+          // Exactly one follow-up refresh runs for the burst of three
+          // differing-identity triggers, not three.
+          expect(delayedRepository.listSongsCalls, 2);
+
+          delayedRepository.completeRequest(1);
+          async.flushMicrotasks();
+        });
+      },
+    );
   });
 }
 
