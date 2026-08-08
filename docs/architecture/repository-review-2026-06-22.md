@@ -78,14 +78,14 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-4 | UI/UX | List density inconsistent: plan rows rich, song rows title-only | Medium |
 | UX-6 | UI/UX | CanvasKit render → no text select / find / copy; weak screen-reader support | Medium |
 | UX-7 | UI/UX | No dark theme (only `theme:`); relevant for dim-stage use | Medium |
-| ~~SEC-2~~ | Security | ~~`create_invitation` null-caller admin gate relies on grant scope only~~ **Done (2026-08-08, debt sweep).** | Low |
+| ~~SEC-2~~ | Security | ~~`create_invitation` null-caller admin gate relies on grant scope only~~ **Done (2026-08-08, debt sweep, PR #68).** | Low |
 | SEC-3 | Security | `has_capability`/`current_organization_ids`/`get_my_capabilities` lack `set search_path` | Low |
 | ~~LF-9~~ | Local-first | ~~Slug-by-slug lookup re-merges all mutations (N+1 reads)~~ **Done (offline-durability-phase4).** | Low |
 | LF-T5 | Local-first | OCC divergence grows with offline duration → larger conflict surface on reconnect. **Deferred with trigger condition (offline-durability-phase4, S15)** — see `docs/deferred/2026-07-31-occ-divergence-lf-t5.md`. | Low |
 | LF-T6 | Local-first | Freshness/ordering use device clock (`DateTime.now().toUtc()` in reconcile). **Characterized + deferred; re-confirmed still deferred (offline-durability-phase4, S15)** — see `docs/deferred/2026-06-29-server-clock-anchor-lf-t6.md`. | Low |
 | ~~LF-T7~~ | Local-first | ~~No structural-migration playbook~~ **Fixed (catalog) + validated (planning) (local-first-validation).** | Low–Med |
 | ~~LF-T8~~ | Local-first | ~~Server-side TTL cleanup (`pg_cron`) deletes unredeemed users >24h and expires invitations (30d)~~ **Validated — audited, no gap found (offline-durability-phase4, S15).** | Low |
-| ~~ARCH-4~~ | Architecture | ~~Melos monorepo overhead for a single package~~ **Done (2026-08-08, debt sweep).** | Low |
+| ~~ARCH-4~~ | Architecture | ~~Melos monorepo overhead for a single package~~ **Done (2026-08-08, debt sweep, PR #68).** | Low |
 | ARCH-5 | Architecture | Active-organization resolution spread across providers (high implicit coupling) | Medium |
 | UX-5 | UI/UX | Internal gap positions ("10.", "20.") shown to user | Low |
 | UX-9 | UI/UX | Inconsistent content-width caps (sign-in 420, song-list 720, invite none) | Low |
@@ -290,7 +290,7 @@ retained per ADR-016.
 **ARCH-4** — `melos.yaml` manages a single package today; either grow into multiple
 packages or drop the overhead.
 
-**Fixed (2026-08-08, debt sweep):** dropped — `melos.yaml` deleted; no multi-package direction exists or is planned. Analyze/test/format now run directly via `flutter`/`dart` commands.
+**Fixed (2026-08-08, debt sweep, PR #68):** dropped — `melos.yaml` deleted; no multi-package direction exists or is planned. Analyze/test/format now run directly via `flutter`/`dart` commands.
 
 ## 5. Security Review
 
@@ -357,7 +357,7 @@ failing-then-passing DB-level contract test.
 **SEC-2 [inferred]** — `create_invitation` skips the admin check when `auth.uid()` is
 null (only `service_role`); safe today via grant scope, but fragile to future grant
 changes.
-**Status (2026-08-08, debt sweep): fixed.** The null-caller branch now explicitly
+**Status (2026-08-08, debt sweep, PR #68): fixed.** The null-caller branch now explicitly
 asserts `current_setting('role', true) = 'service_role'` before bypassing the admin
 check, instead of relying on grant scope alone
 (`supabase/migrations/202608080001_create_invitation_service_role_gate.sql`).
