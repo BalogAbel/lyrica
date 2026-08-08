@@ -11,16 +11,21 @@ abstract interface class AppForegroundState {
 class WidgetsBindingAppForegroundState
     with WidgetsBindingObserver
     implements AppForegroundState {
-  WidgetsBindingAppForegroundState()
-    : _isForeground = _isForegroundLifecycleState(
-        WidgetsBinding.instance.lifecycleState,
-      ) {
+  WidgetsBindingAppForegroundState() {
     WidgetsBinding.instance.addObserver(this);
   }
 
   final StreamController<bool> _foregroundController =
       StreamController<bool>.broadcast();
-  bool _isForeground;
+
+  // Optimistic until the framework reports a real transition. A value read
+  // from WidgetsBinding.lifecycleState before the first
+  // didChangeAppLifecycleState callback is not trustworthy: on web it can be
+  // sampled as non-resumed even though the app is actually foregrounded,
+  // which would otherwise permanently disarm the recovery timer with no
+  // later callback to correct it. See
+  // docs/specs/2026-08-08-web-catalog-refresh-race.md (D3).
+  bool _isForeground = true;
 
   @override
   bool get isForeground => _isForeground;
@@ -44,7 +49,7 @@ class WidgetsBindingAppForegroundState
     unawaited(_foregroundController.close());
   }
 
-  static bool _isForegroundLifecycleState(AppLifecycleState? state) {
-    return state == null || state == AppLifecycleState.resumed;
+  static bool _isForegroundLifecycleState(AppLifecycleState state) {
+    return state == AppLifecycleState.resumed;
   }
 }

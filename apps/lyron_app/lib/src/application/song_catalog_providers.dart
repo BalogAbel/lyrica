@@ -106,7 +106,6 @@ final songCatalogControllerProvider =
       authController.addListener(authListener);
       ref.onDispose(() => authController.removeListener(authListener));
       handleAuthStateChanged(authController.state);
-      unawaited(controller.refreshCatalog());
       return controller;
     });
 
