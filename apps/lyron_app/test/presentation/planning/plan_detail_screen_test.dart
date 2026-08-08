@@ -641,7 +641,7 @@ void main() {
     final sessionList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first;
-    sessionList.onReorder(0, 0);
+    sessionList.onReorderItem!(0, 0);
     await tester.pumpAndSettle();
 
     expect(writeService.reorderedSessionDraft, isNull);
@@ -672,9 +672,9 @@ void main() {
     final sessionList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first;
-    sessionList.onReorder(0, 2);
+    sessionList.onReorderItem!(0, 1);
     await tester.pump();
-    sessionList.onReorder(1, 0);
+    sessionList.onReorderItem!(1, 0);
     await tester.pump();
 
     expect(writeService.reorderSessionsCallCount, 1);
@@ -707,7 +707,7 @@ void main() {
         .first;
     // _editablePlanDetailFixture has two sessions (Warm-Up, Closing), so
     // newIndex 2 is the pre-removal "insert at end" position.
-    sessionList.onReorder(0, 2);
+    sessionList.onReorderItem!(0, 1);
     await tester.pump();
 
     expect(
@@ -741,7 +741,7 @@ void main() {
     final sessionList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first;
-    sessionList.onReorder(0, 2);
+    sessionList.onReorderItem!(0, 1);
     await tester.pump();
     expect(
       tester.getTopLeft(find.text('Warm-Up')).dy,
@@ -777,7 +777,7 @@ void main() {
     tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first
-        .onReorder(0, 2);
+        .onReorderItem!(0, 1);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isA<StateError>());
@@ -821,11 +821,11 @@ void main() {
         .first;
     // First drag (stale, blocked on firstReorderCompleter): Warm-Up, Main
     // Set, Closing -> Main Set, Warm-Up, Closing.
-    sessionList.onReorder(0, 2);
+    sessionList.onReorderItem!(0, 1);
     await tester.pump();
     // Second drag (newer, queued behind the first): Main Set, Warm-Up,
     // Closing -> Main Set, Closing, Warm-Up.
-    sessionList.onReorder(1, 3);
+    sessionList.onReorderItem!(1, 2);
     await tester.pump();
 
     expect(
@@ -894,11 +894,11 @@ void main() {
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .first;
     // First drag (stale, blocked on firstReorderCompleter).
-    sessionList.onReorder(0, 2);
+    sessionList.onReorderItem!(0, 1);
     await tester.pump();
     // Second drag (newer, queued behind the first) supersedes the first
     // drag's generation before it settles.
-    sessionList.onReorder(1, 3);
+    sessionList.onReorderItem!(1, 2);
     await tester.pump();
 
     firstReorderCompleter.complete();
@@ -945,7 +945,7 @@ void main() {
         .first;
     // Drag first session to the end: Warm-Up, Main Set, Closing ->
     // Main Set, Closing, Warm-Up.
-    sessionList.onReorder(0, 3);
+    sessionList.onReorderItem!(0, 2);
     await tester.pump();
 
     expect(
@@ -1039,7 +1039,7 @@ void main() {
           .first;
       // Drag first session to the end: Warm-Up, Main Set, Closing ->
       // Main Set, Closing, Warm-Up.
-      sessionList.onReorder(0, 3);
+      sessionList.onReorderItem!(0, 2);
       await tester.pump();
 
       expect(
@@ -1150,7 +1150,7 @@ void main() {
         .first;
     // Drag first session to the end: Warm-Up, Main Set, Closing ->
     // Main Set, Closing, Warm-Up.
-    sessionList.onReorder(0, 3);
+    sessionList.onReorderItem!(0, 2);
     await tester.pump();
 
     expect(
@@ -2026,7 +2026,7 @@ void main() {
       final itemList = tester
           .widgetList<ReorderableListView>(find.byType(ReorderableListView))
           .elementAt(1);
-      itemList.onReorder(1, 0);
+      itemList.onReorderItem!(1, 0);
       await tester.pumpAndSettle();
 
       expect(
@@ -2061,10 +2061,49 @@ void main() {
     final itemList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1);
-    itemList.onReorder(0, 0);
+    itemList.onReorderItem!(0, 0);
     await tester.pumpAndSettle();
 
     expect(writeService.reorderedSessionItemDraft, isNull);
+  });
+
+  testWidgets('session item drag down lands at the adjusted index', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+        visibleSongs: const [
+          SongSummary(id: 'song-1', slug: 'alpha', title: 'Alpha'),
+          SongSummary(id: 'song-2', slug: 'beta', title: 'Beta'),
+        ],
+        catalogSnapshotState: const CatalogSnapshotState(
+          context: null,
+          connectionStatus: CatalogConnectionStatus.online,
+          refreshStatus: CatalogRefreshStatus.idle,
+          sessionStatus: CatalogSessionStatus.verified,
+          hasCachedCatalog: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final itemList = tester
+        .widgetList<ReorderableListView>(find.byType(ReorderableListView))
+        .elementAt(1);
+
+    // Dragging item 0 below item 1: ReorderableListView reports raw
+    // newIndex 2, and hands onReorderItem the removal-adjusted 1.
+    itemList.onReorderItem!(0, 1);
+    await tester.pumpAndSettle();
+
+    expect(
+      writeService.reorderedSessionItemDraft?.orderedSessionItemIds,
+      orderedEquals(const ['item-2', 'item-1']),
+    );
   });
 
   testWidgets('queues session item reorder requests while one is in flight', (
@@ -2097,9 +2136,9 @@ void main() {
     final itemList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1);
-    itemList.onReorder(0, 2);
+    itemList.onReorderItem!(0, 1);
     await tester.pump();
-    itemList.onReorder(1, 0);
+    itemList.onReorderItem!(1, 0);
     await tester.pump();
 
     expect(writeService.reorderSessionItemsCallCount, 1);
@@ -2141,7 +2180,7 @@ void main() {
     final itemList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1);
-    itemList.onReorder(1, 0);
+    itemList.onReorderItem!(1, 0);
     await tester.pump();
 
     expect(
@@ -2201,9 +2240,9 @@ void main() {
     final itemList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1);
-    itemList.onReorder(0, 2);
+    itemList.onReorderItem!(0, 1);
     await tester.pump();
-    itemList.onReorder(1, 3);
+    itemList.onReorderItem!(1, 2);
     await tester.pump();
 
     expect(
@@ -2290,7 +2329,7 @@ void main() {
           .widgetList<ReorderableListView>(find.byType(ReorderableListView))
           .elementAt(1);
       // Drag first item to the end: Alpha, Beta, Gamma -> Beta, Gamma, Alpha.
-      itemList.onReorder(0, 3);
+      itemList.onReorderItem!(0, 2);
       await tester.pump();
 
       expect(
@@ -2354,7 +2393,7 @@ void main() {
     final itemList = tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1);
-    itemList.onReorder(1, 0);
+    itemList.onReorderItem!(1, 0);
     await tester.pump();
 
     expect(
@@ -2402,7 +2441,7 @@ void main() {
     tester
         .widgetList<ReorderableListView>(find.byType(ReorderableListView))
         .elementAt(1)
-        .onReorder(1, 0);
+        .onReorderItem!(1, 0);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isA<StateError>());
@@ -2920,9 +2959,6 @@ class _ReorderHandleHarnessState extends State<_ReorderHandleHarness> {
   final List<String> _items = ['Warm-Up', 'Closing'];
 
   void _reorder(int oldIndex, int newIndex) {
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
     setState(() {
       final moved = _items.removeAt(oldIndex);
       _items.insert(newIndex, moved);
@@ -2936,7 +2972,7 @@ class _ReorderHandleHarnessState extends State<_ReorderHandleHarness> {
         body: ReorderableListView.builder(
           buildDefaultDragHandles: false,
           itemCount: _items.length,
-          onReorder: _reorder,
+          onReorderItem: _reorder,
           itemBuilder: (context, index) {
             final label = _items[index];
             return ListTile(

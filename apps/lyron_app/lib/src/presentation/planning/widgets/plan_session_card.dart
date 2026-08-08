@@ -218,7 +218,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
-              onReorder: (oldIndex, newIndex) =>
+              onReorderItem: (oldIndex, newIndex) =>
                   _reorderItems(ref, oldIndex, newIndex),
               itemBuilder: (context, index) {
                 final item = items[index];
@@ -541,9 +541,6 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     final currentOrder = _orderedItems(
       session,
     ).map((value) => value.id).toList();
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
     if (oldIndex < 0 ||
         oldIndex >= currentOrder.length ||
         newIndex < 0 ||

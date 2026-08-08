@@ -185,7 +185,7 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
               ],
             ),
             itemCount: sessions.length,
-            onReorder: (oldIndex, newIndex) =>
+            onReorderItem: (oldIndex, newIndex) =>
                 _reorderSessions(ref, oldIndex, newIndex),
             itemBuilder: (context, index) {
               final session = sessions[index];
@@ -319,9 +319,6 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     final currentOrder = _orderedSessions(
       planDetail,
     ).map((value) => value.id).toList();
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
     if (oldIndex < 0 ||
         oldIndex >= currentOrder.length ||
         newIndex < 0 ||
