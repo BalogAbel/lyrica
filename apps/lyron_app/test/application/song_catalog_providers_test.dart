@@ -21,83 +21,78 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 /// should refresh exactly once auth resolves to a known state, driven
 /// solely through `handleAuthStateChanged`.
 void main() {
-  test(
-    'does not refresh the catalog while auth is initializing, and refreshes '
-    'exactly once auth resolves to signedIn',
-    () async {
-      final authRepository = _ControllableAuthRepository();
-      final authController = AppAuthController(authRepository);
-      // Deliberately do NOT await restoreSession yet: the controller's
-      // constructor leaves state at AppAuthStatus.initializing, which is
-      // the state under test.
-      final songDatabase = SongCatalogDatabase.inMemory();
-      final songStore = DriftSongCatalogStore(songDatabase);
-      var listSongsCalls = 0;
-      final remoteRepository = SupabaseSongRepository.testing(
-        listSongsRows: () async {
-          listSongsCalls += 1;
-          return const [
-            {'id': 'song-1', 'slug': 'alpha', 'title': 'Alpha', 'version': 1},
-          ];
-        },
-        getSongRow: (id) async => const {
-          'id': 'song-1',
-          'slug': 'alpha',
-          'chordpro_source': '{title: Alpha}',
-        },
-      );
-      final foregroundState = _TestAppForegroundState();
+  test('does not refresh the catalog while auth is initializing, and refreshes '
+      'exactly once auth resolves to signedIn', () async {
+    final authRepository = _ControllableAuthRepository();
+    final authController = AppAuthController(authRepository);
+    // Deliberately do NOT await restoreSession yet: the controller's
+    // constructor leaves state at AppAuthStatus.initializing, which is
+    // the state under test.
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final songStore = DriftSongCatalogStore(songDatabase);
+    var listSongsCalls = 0;
+    final remoteRepository = SupabaseSongRepository.testing(
+      listSongsRows: () async {
+        listSongsCalls += 1;
+        return const [
+          {'id': 'song-1', 'slug': 'alpha', 'title': 'Alpha', 'version': 1},
+        ];
+      },
+      getSongRow: (id) async => const {
+        'id': 'song-1',
+        'slug': 'alpha',
+        'chordpro_source': '{title: Alpha}',
+      },
+    );
+    final foregroundState = _TestAppForegroundState();
 
-      final container = ProviderContainer(
-        overrides: [
-          appAuthControllerProvider.overrideWith((_) => authController),
-          songCatalogStoreProvider.overrideWithValue(songStore),
-          supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
-          catalogSessionVerifierProvider.overrideWithValue(
-            () async => CatalogSessionStatus.verified,
-          ),
-          activeOrganizationReaderProvider.overrideWithValue(
-            () async => 'org-1',
-          ),
-          appForegroundStateProvider.overrideWithValue(foregroundState),
-        ],
-      );
-      addTearDown(() async {
-        container.dispose();
-        await songDatabase.close();
-      });
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        songCatalogStoreProvider.overrideWithValue(songStore),
+        supabaseSongRepositoryProvider.overrideWithValue(remoteRepository),
+        catalogSessionVerifierProvider.overrideWithValue(
+          () async => CatalogSessionStatus.verified,
+        ),
+        activeOrganizationReaderProvider.overrideWithValue(() async => 'org-1'),
+        appForegroundStateProvider.overrideWithValue(foregroundState),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await songDatabase.close();
+    });
 
-      // Build the controller while auth is still `initializing`.
-      final subscription = container.listen(
-        songCatalogControllerProvider,
-        (_, _) {},
-        fireImmediately: true,
-      );
-      addTearDown(subscription.close);
+    // Build the controller while auth is still `initializing`.
+    final subscription = container.listen(
+      songCatalogControllerProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
 
-      expect(authController.state.status.name, 'initializing');
-      expect(listSongsCalls, 0);
-      // A refresh fired with no session sets sessionStatus to `expired`
-      // (SongCatalogController._refreshCatalog's null-session branch) even
-      // though nothing has actually expired -- exactly the misleading
-      // status the spec (D2) says an unconditional refresh under
-      // `initializing` produces. Asserting the state stayed at its
-      // untouched default catches a reintroduced unconditional refresh
-      // even in cases where it wouldn't otherwise change listSongsCalls.
-      expect(
-        container.read(songCatalogControllerProvider).state.sessionStatus,
-        isNot(CatalogSessionStatus.expired),
-      );
+    expect(authController.state.status.name, 'initializing');
+    expect(listSongsCalls, 0);
+    // A refresh fired with no session sets sessionStatus to `expired`
+    // (SongCatalogController._refreshCatalog's null-session branch) even
+    // though nothing has actually expired -- exactly the misleading
+    // status the spec (D2) says an unconditional refresh under
+    // `initializing` produces. Asserting the state stayed at its
+    // untouched default catches a reintroduced unconditional refresh
+    // even in cases where it wouldn't otherwise change listSongsCalls.
+    expect(
+      container.read(songCatalogControllerProvider).state.sessionStatus,
+      isNot(CatalogSessionStatus.expired),
+    );
 
-      // Now let auth resolve to signedIn; the listener installed at
-      // construction (handleAuthStateChanged) must be the thing that
-      // triggers the refresh -- not a trailing unconditional call.
-      await authController.restoreSession();
-      await Future<void>.delayed(Duration.zero);
+    // Now let auth resolve to signedIn; the listener installed at
+    // construction (handleAuthStateChanged) must be the thing that
+    // triggers the refresh -- not a trailing unconditional call.
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
 
-      expect(listSongsCalls, 1);
-    },
-  );
+    expect(listSongsCalls, 1);
+  });
 }
 
 class _ControllableAuthRepository implements AuthRepository {
