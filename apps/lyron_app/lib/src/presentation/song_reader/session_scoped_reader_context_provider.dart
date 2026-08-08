@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/planning/session_summary.dart';
@@ -47,7 +48,7 @@ final sessionScopedReaderContextProvider = FutureProvider.autoDispose
           SessionScopedReaderContextFailure.unavailablePlanDetail,
         );
       }
-    });
+    }, retry: noAutomaticProviderRetry);
 
 Future<PlanDetail> _canonicalizePlanDetailSongs(
   Ref ref,

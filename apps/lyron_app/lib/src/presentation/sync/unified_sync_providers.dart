@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -53,7 +54,7 @@ final localStorageFootprintProvider =
             userId: context.userId,
             organizationId: context.organizationId,
           );
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,

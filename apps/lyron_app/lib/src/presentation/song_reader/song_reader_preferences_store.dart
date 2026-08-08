@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists per-user, per-song reader preferences locally.
@@ -43,4 +44,4 @@ final songReaderPreferencesStoreProvider =
     FutureProvider<SongReaderPreferencesStore>((ref) async {
       final prefs = await SharedPreferences.getInstance();
       return SharedPreferencesSongReaderPreferencesStore(prefs);
-    });
+    }, retry: noAutomaticProviderRetry);

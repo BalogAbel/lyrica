@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -14,7 +15,7 @@ final planningPlanListProvider = FutureProvider.autoDispose<List<PlanSummary>>((
     ref,
     () => ref.watch(planningRepositoryProvider).listPlans(),
   );
-});
+}, retry: noAutomaticProviderRetry);
 
 final planningPlanBySlugProvider = FutureProvider.autoDispose
     .family<PlanSummary?, String>((ref, planSlug) async {
@@ -22,7 +23,7 @@ final planningPlanBySlugProvider = FutureProvider.autoDispose
       return ref
           .watch(planningRepositoryProvider)
           .getPlanSummaryBySlug(planSlug);
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final planningPlanDetailBySlugProvider = FutureProvider.autoDispose
     .family<PlanDetail?, String>((ref, planSlug) async {
@@ -30,7 +31,7 @@ final planningPlanDetailBySlugProvider = FutureProvider.autoDispose
       return ref
           .watch(planningRepositoryProvider)
           .getPlanDetailBySlug(planSlug);
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final planningPlanDetailProvider = FutureProvider.autoDispose
     .family<PlanDetail, String>((ref, planId) {
@@ -39,7 +40,7 @@ final planningPlanDetailProvider = FutureProvider.autoDispose
         ref,
         () => ref.watch(planningRepositoryProvider).getPlanDetail(planId),
       );
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final planningMutationEntriesProvider =
     FutureProvider.autoDispose<List<PlanningMutationRecord>>((ref) async {
@@ -64,7 +65,7 @@ final planningMutationEntriesProvider =
         }
         return left.aggregateId.compareTo(right.aggregateId);
       });
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final hasUnsyncedPlanningMutationsProvider = FutureProvider.autoDispose<bool>((
   ref,
@@ -80,7 +81,7 @@ final hasUnsyncedPlanningMutationsProvider = FutureProvider.autoDispose<bool>((
   return ref
       .watch(planningMutationStoreProvider)
       .hasUnsyncedMutations(userId: userId);
-});
+}, retry: noAutomaticProviderRetry);
 
 Future<T> _readPlanningOrThrow<T>(Ref ref, Future<T> Function() read) async {
   final syncState = ref.watch(planningSyncStateProvider);
