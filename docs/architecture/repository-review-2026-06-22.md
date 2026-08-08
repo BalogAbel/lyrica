@@ -29,7 +29,7 @@ two-device conflict convergence, screen-reader pass, and performance profiling
 
 ## 2. System Overview
 
-**Stack**: Flutter (3.38.5) · Riverpod · go_router · Drift · Supabase (Postgres +
+**Stack**: Flutter (3.44.9) · Riverpod · go_router · Drift · Supabase (Postgres +
 Auth + RLS + RPC). Melos monorepo, currently a **single** package (`lyron_app`).
 
 **Client layers** (`lib/src/`): `domain` (entities, value objects, repository
@@ -91,7 +91,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-9 | UI/UX | Inconsistent content-width caps (sign-in 420, song-list 720, invite none) | Low |
 | UX-10 | UI/UX | i18n leak: inline English in discard-all message vs centralized `AppStrings` | Low |
 | UX-11 | UI/UX | Forms silently no-op on empty/invalid input (sign-in, invite) | Low–Med |
-| ~~DX-1~~ | Tooling | ~~`file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor~~ **Done (security-read-boundary-phase3), riverpod deferred.** | Medium |
+| ~~DX-1~~ | Tooling | ~~`file_picker` 3 majors behind; riverpod/go_router 1 major; supabase/gotrue minor~~ **Done (security-read-boundary-phase3); riverpod 3 done in phase 5.** | Medium |
 | ~~DX-2~~ | Tooling | ~~No dependency-audit / coverage gate in CI~~ **Done (security-read-boundary-phase3).** | Medium |
 
 ### Resolution status (updated 2026-08-02)
@@ -1429,13 +1429,19 @@ DX-1, in priority order rather than by version distance: `supabase_flutter`
 the invite deep-link path; `go_router` 16.3.0 → 17.3.0; `file_picker` 8.3.7 →
 11.0.2; and a lockfile refresh of thirty-five in-constraint packages including
 `drift` 2.32.0 → 2.34.3. `app_links` is pinned to `^7.0.0` rather than 7.2.1
-because 7.1.1 requires Dart SDK 3.12 and this toolchain is on 3.11.3.
+because 7.1.1 requires Dart SDK 3.12 and this toolchain was on 3.11.3. That
+constraint no longer binds — phase 5 moved the toolchain to Dart 3.12.2 — but
+raising the pin was out of that slice's scope and has not been done.
 
-`flutter_riverpod`/`riverpod` 3.x is **deferred** —
-`docs/deferred/2026-07-30-riverpod-3-migration.md`. The mechanical migration was
-completed and then reverted: Riverpod 3 wraps provider errors, which breaks nine
-tests on the song reader's error paths, one of them a production-visible symptom.
-That is the surface ADR-023/024 stabilised, so it needs its own slice.
+**Status (2026-08-08, phase 5): `flutter_riverpod`/`riverpod` 2.6.1 → 3.4.2 is
+done.** The deferred document's diagnosis was wrong, and reproducing the nine
+failures replaced it: Riverpod 3's *automatic retry*, not its `ProviderException`
+wrapping, was what kept a failed provider from ever settling into `AsyncError`.
+No error-taxonomy code changed. Async providers now opt out of automatic retry,
+enforced by a guard test — see ADR-032. The target is 3.4.2 rather than 3.3.2
+because 3.4.0/3.4.2 fix an upstream `markNeedsBuild`-during-build defect that
+accounted for the ninth failure; that requires Dart >=3.12.0, so the toolchain
+moved to Flutter 3.44.9.
 
 DX-2: `./scripts/coverage-gate.sh` ratchets line coverage from the measured 72%,
 `./scripts/dependency-audit.sh` fails on published advisories, retracted or
@@ -1472,7 +1478,7 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 - ~~ARCH-1: split `providers.dart`; extract `PlanningMutationReconciler`.~~ **Done (arch-spine-phase0-1).**
 - ~~UX-1: reader line-wrap/chord-alignment on narrow widths; UX-2: date picker.~~ **Done (ui-decomposition-phase2).**
 - ~~SEC-1: invite email-binding + rate limit + audit + ADR.~~ **Done (security-read-boundary-phase3).**
-- ~~DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.~~ **Done (security-read-boundary-phase3); riverpod 3 deferred.**
+- ~~DX-1/DX-2: bump auth packages; add pub-audit + coverage gates.~~ **Done (security-read-boundary-phase3); riverpod 3 done in phase 5 — see ADR-032.**
 
 **Strategic (1+ month)**
 - ~~LF-T3/LF-T4: mutation budget + storage eviction policy for indefinite offline.~~
