@@ -1,6 +1,9 @@
 # Web Song Catalog Never Loads (Refresh Trigger Race)
 
-> Status: Proposed
+> Status: Implemented
+>
+> Decisions recorded durably in
+> `docs/architecture/decisions/ADR-031-session-scoped-catalog-refresh.md`.
 
 ## Goal
 

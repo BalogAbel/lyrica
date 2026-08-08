@@ -41,6 +41,18 @@ job — the existing one is the place to attach a `chromedriver` lane. It has
 already earned its keep: the `file_picker` 11 bump in the same slice broke the web
 build, and the compile gate is what surfaced it.
 
+**Update (2026-08-08, web catalog refresh race).** The gap described here has
+now cost something concrete. The song catalog never loaded on web at all —
+`GET /rest/v1/songs` was never issued — because of a startup trigger race that
+native platforms win by accident
+(`docs/specs/2026-08-08-web-catalog-refresh-race.md`, ADR-031). The `web_build`
+compile gate passed throughout: the bug was behavioural, not a compile failure,
+and nothing in the native suite exercised the web startup ordering that exposed
+it. It was found by hand, by serving a web build and reading the browser
+console. The regressions are now covered by native unit tests, so this does not
+close the deferral — it is evidence for the trigger condition below, and for
+web behaviour being unobserved rather than observed-and-passing.
+
 ## Trigger Condition
 
 Address before committing to web as a supported production target for offline/rehearsal
