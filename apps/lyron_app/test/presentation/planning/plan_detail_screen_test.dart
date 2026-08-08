@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
@@ -2610,15 +2611,13 @@ void main() {
                 hasCachedCatalog: true,
               ),
             ),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => SongReaderResult(
-                  song: ParsedSong(
-                    title: 'A forrasnal',
-                    sourceKey: 'C',
-                    sections: const [],
-                    diagnostics: const [],
-                  ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => SongReaderResult(
+                song: ParsedSong(
+                  title: 'A forrasnal',
+                  sourceKey: 'C',
+                  sections: const [],
+                  diagnostics: const [],
                 ),
               ),
             ),

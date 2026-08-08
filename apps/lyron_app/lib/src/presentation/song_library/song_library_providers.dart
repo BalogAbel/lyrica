@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
@@ -127,7 +128,7 @@ final songMutationEntriesProvider =
 
 final songLibraryBrowseRowsProvider =
     Provider.autoDispose<List<SongLibraryBrowseRow>>((ref) {
-      final songs = ref.watch(songLibraryListProvider).valueOrNull;
+      final songs = ref.watch(songLibraryListProvider).value;
       if (songs == null) {
         return const [];
       }

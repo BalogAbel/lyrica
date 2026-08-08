@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 /// Aggregate planning invalidation: the set of plans or a plan summary changed,
 /// or a full sync / discard reconciled potentially many plans. Watched by all

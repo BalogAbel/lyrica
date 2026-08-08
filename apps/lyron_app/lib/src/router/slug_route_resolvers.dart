@@ -198,7 +198,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
       );
     }
 
-    final plan = plansAsync.valueOrNull?.firstWhereOrNull(
+    final plan = plansAsync.value?.firstWhereOrNull(
       (candidate) => candidate.slug == planSlug,
     );
     if (plan == null) {
@@ -227,7 +227,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
         }
 
         final songsById = {
-          for (final song in songsAsync.valueOrNull ?? const <SongSummary>[])
+          for (final song in songsAsync.value ?? const <SongSummary>[])
             song.id: song,
         };
         final selectedItem = resolveSessionItemBySongSlug(

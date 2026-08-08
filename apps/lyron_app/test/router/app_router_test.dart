@@ -816,15 +816,13 @@ void main() {
               hasCachedCatalog: true,
             ),
           ),
-          songLibraryReaderProvider.overrideWithProvider(
-            (songId) => FutureProvider.autoDispose(
-              (ref) async => SongReaderResult(
-                song: ParsedSong(
-                  title: 'Egy út',
-                  sourceKey: 'C',
-                  sections: const [],
-                  diagnostics: const [],
-                ),
+          songLibraryReaderProvider.overrideWith(
+            (ref, songId) async => SongReaderResult(
+              song: ParsedSong(
+                title: 'Egy út',
+                sourceKey: 'C',
+                sections: const [],
+                diagnostics: const [],
               ),
             ),
           ),
@@ -925,10 +923,8 @@ void main() {
             planningPlanDetailProvider(
               'plan-1',
             ).overrideWith((ref) async => _planDetailFixture()),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => throw const SongNotFoundException('song-1'),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => throw const SongNotFoundException('song-1'),
             ),
           ],
           child: MaterialApp.router(routerConfig: router),
@@ -1148,15 +1144,13 @@ void main() {
                 hasCachedCatalog: true,
               ),
             ),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => SongReaderResult(
-                  song: ParsedSong(
-                    title: 'Egy út',
-                    sourceKey: 'C',
-                    sections: const [],
-                    diagnostics: const [],
-                  ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => SongReaderResult(
+                song: ParsedSong(
+                  title: 'Egy út',
+                  sourceKey: 'C',
+                  sections: const [],
+                  diagnostics: const [],
                 ),
               ),
             ),
@@ -1251,15 +1245,13 @@ void main() {
                 title: 'Blocked Song',
               ),
             ),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => SongReaderResult(
-                  song: ParsedSong(
-                    title: 'Blocked Song',
-                    sourceKey: 'C',
-                    sections: const [],
-                    diagnostics: const [],
-                  ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => SongReaderResult(
+                song: ParsedSong(
+                  title: 'Blocked Song',
+                  sourceKey: 'C',
+                  sections: const [],
+                  diagnostics: const [],
                 ),
               ),
             ),

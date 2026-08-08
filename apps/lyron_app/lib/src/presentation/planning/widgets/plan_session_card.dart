@@ -340,7 +340,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     final activeCatalogContext = ref.read(catalogSnapshotStateProvider).context;
     final visibleSongsState = ref.read(songLibraryListProvider);
     final existingSongIds = session.items.map((item) => item.song.id).toSet();
-    final selectableSongs = visibleSongsState.valueOrNull;
+    final selectableSongs = visibleSongsState.value;
     final FutureOr<List<SongSummary>> eligibleSongs =
         selectableSongs == null || visibleSongsState.isLoading
         ? ref.read(songLibraryListProvider.future).then((songs) {

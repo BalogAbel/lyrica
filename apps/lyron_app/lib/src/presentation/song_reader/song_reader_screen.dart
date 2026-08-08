@@ -346,13 +346,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final mutationRecordAsync = _isScopedMode
         ? ref.watch(songMutationRecordByIdProvider(widget.songId))
         : null;
-    final readerResult = readerAsync.valueOrNull;
-    final scopedContextResult = scopedContextAsync?.valueOrNull;
+    final readerResult = readerAsync.value;
+    final scopedContextResult = scopedContextAsync?.value;
     final resolvedScopedContext =
         scopedContextResult is ResolvedSessionScopedReaderContextResult
         ? scopedContextResult.context
         : null;
-    final mutationRecord = mutationRecordAsync?.valueOrNull;
+    final mutationRecord = mutationRecordAsync?.value;
     final projection = readerResult == null
         ? null
         : SongReaderProjection(song: readerResult.song, state: readerState);
@@ -377,7 +377,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
               .length;
 
     if (_isScopedMode && scopedContextAsync != null) {
-      final scopedValue = scopedContextAsync.valueOrNull;
+      final scopedValue = scopedContextAsync.value;
       if (scopedValue is SessionScopedReaderContextFailureResult) {
         return SongReaderScopedContextFailureScaffold(
           onBack: () => _handleBack(context),

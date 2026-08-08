@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -183,8 +184,8 @@ void main() {
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
           songLibraryServiceProvider.overrideWithValue(songLibraryService),
-        songLibraryReaderProvider.overrideWithProvider(
-          (value) => FutureProvider.autoDispose((ref) async => result),
+        songLibraryReaderProvider.overrideWith(
+          (ref, value) async => result,
         ),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
@@ -247,8 +248,8 @@ void main() {
                 SongSummary(id: songId, title: 'Reader Song'),
               ],
             ),
-        songLibraryReaderProvider.overrideWithProvider(
-          (value) => FutureProvider.autoDispose((ref) async => result),
+        songLibraryReaderProvider.overrideWith(
+          (ref, value) async => result,
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -332,10 +333,8 @@ void main() {
 
           return Future.value(planDetail);
         }),
-        songLibraryReaderProvider.overrideWithProvider(
-          (songId) => FutureProvider.autoDispose(
-            (ref) async => resultsBySongId[songId]!,
-          ),
+        songLibraryReaderProvider.overrideWith(
+          (ref, songId) async => resultsBySongId[songId]!,
         ),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -357,8 +356,8 @@ void main() {
         _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
-        songLibraryReaderProvider.overrideWithProvider(
-          (value) => FutureProvider.autoDispose((ref) => loadSong()),
+        songLibraryReaderProvider.overrideWith(
+          (ref, value) => loadSong(),
         ),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
@@ -888,8 +887,8 @@ void main() {
             ),
           ),
           activeCatalogContextProvider.overrideWithValue(null),
-          songLibraryReaderProvider.overrideWithProvider(
-            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          songLibraryReaderProvider.overrideWith(
+            (ref, value) async => buildResult(),
           ),
         ],
         child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
@@ -943,8 +942,8 @@ void main() {
             ),
           ),
           activeCatalogContextProvider.overrideWithValue(null),
-          songLibraryReaderProvider.overrideWithProvider(
-            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          songLibraryReaderProvider.overrideWith(
+            (ref, value) async => buildResult(),
           ),
         ],
         child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
@@ -1542,10 +1541,8 @@ void main() {
             planningPlanDetailProvider(
               'plan-1',
             ).overrideWith((ref) async => _multiItemPlanDetail()),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => throw const SongNotFoundException('song-2'),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => throw const SongNotFoundException('song-2'),
             ),
           ],
           child: MaterialApp.router(
@@ -1652,10 +1649,8 @@ void main() {
                 conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
               ),
             ),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => throw const SongNotFoundException('song-2'),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => throw const SongNotFoundException('song-2'),
             ),
           ],
           child: MaterialApp.router(
@@ -1773,10 +1768,8 @@ void main() {
             planningPlanDetailProvider('plan-1').overrideWith(
               (ref) => Future<PlanDetail>.error(Exception('unavailable')),
             ),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => buildScopedResult('Song Two'),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => buildScopedResult('Song Two'),
             ),
           ],
           child: MaterialApp.router(routerConfig: router),
@@ -2044,8 +2037,8 @@ void main() {
             ),
           ),
           activeCatalogContextProvider.overrideWithValue(null),
-          songLibraryReaderProvider.overrideWithProvider(
-            (value) => FutureProvider.autoDispose((ref) async => buildResult()),
+          songLibraryReaderProvider.overrideWith(
+            (ref, value) async => buildResult(),
           ),
         ],
         child: const MaterialApp(home: SongReaderScreen(songId: testSongId)),
