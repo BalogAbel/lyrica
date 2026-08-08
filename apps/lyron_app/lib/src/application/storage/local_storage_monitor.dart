@@ -11,12 +11,10 @@ import 'package:lyron_app/src/application/storage/planning_storage_accountant.da
 /// a small table.
 class LocalStorageMonitor {
   const LocalStorageMonitor({
-    required PlanningStorageAccountant planningAccountant,
-    required CatalogStorageAccountant catalogAccountant,
-    required LocalStorageBudget budget,
-  }) : _planningAccountant = planningAccountant,
-       _catalogAccountant = catalogAccountant,
-       _budget = budget;
+    required this._planningAccountant,
+    required this._catalogAccountant,
+    required this._budget,
+  });
 
   final PlanningStorageAccountant _planningAccountant;
   final CatalogStorageAccountant _catalogAccountant;

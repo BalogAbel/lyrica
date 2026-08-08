@@ -7,8 +7,8 @@ typedef ForegroundSyncCallback = Future<void> Function();
 class ForegroundSyncListener {
   ForegroundSyncListener({
     required AppForegroundState foregroundState,
-    required ForegroundSyncCallback onResume,
-  }) : _onResume = onResume {
+    required this._onResume,
+  }) {
     _subscription = foregroundState.watchForeground().listen(_handle);
   }
 

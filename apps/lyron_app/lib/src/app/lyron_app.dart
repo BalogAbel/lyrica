@@ -8,7 +8,7 @@ import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class LyronApp extends ConsumerStatefulWidget {
-  const LyronApp({super.key, GoRouter? router}) : _router = router;
+  const LyronApp({super.key, this._router});
 
   final GoRouter? _router;
 

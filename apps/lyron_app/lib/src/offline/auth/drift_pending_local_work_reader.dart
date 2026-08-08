@@ -5,10 +5,9 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 class DriftPendingLocalWorkReader {
   const DriftPendingLocalWorkReader({
-    required PlanningLocalDatabase planningDatabase,
-    required SongCatalogDatabase songDatabase,
-  }) : _planningDatabase = planningDatabase,
-       _songDatabase = songDatabase;
+    required this._planningDatabase,
+    required this._songDatabase,
+  });
 
   final PlanningLocalDatabase _planningDatabase;
   final SongCatalogDatabase _songDatabase;

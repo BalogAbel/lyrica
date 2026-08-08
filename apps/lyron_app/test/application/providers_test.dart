@@ -2076,11 +2076,8 @@ class _StaticPlanningRemoteRefreshRepository
 }
 
 class _TestAppForegroundState implements AppForegroundState {
-  _TestAppForegroundState({bool isForeground = true})
-    : _isForeground = isForeground;
-
   final StreamController<bool> _controller = StreamController<bool>.broadcast();
-  bool _isForeground;
+  bool _isForeground = true;
 
   @override
   bool get isForeground => _isForeground;

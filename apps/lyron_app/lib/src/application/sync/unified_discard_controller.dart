@@ -25,12 +25,11 @@ typedef UnifiedDiscardOwnedSongsStep =
 
 class UnifiedDiscardController {
   UnifiedDiscardController({
-    required UnifiedDiscardContextReader activeContextReader,
-    required UnifiedDiscardStep discardPlanning,
+    required this._activeContextReader,
+    required this._discardPlanning,
     required this.acquireSongDiscardLease,
     required this.discardSongsWhileOwned,
-  }) : _activeContextReader = activeContextReader,
-       _discardPlanning = discardPlanning;
+  });
 
   final UnifiedDiscardContextReader _activeContextReader;
   final UnifiedDiscardStep _discardPlanning;

@@ -27,7 +27,7 @@ class SupabaseCapabilityGateway implements CapabilityGateway {
 }
 
 class CapabilityResolver extends ChangeNotifier {
-  CapabilityResolver({required CapabilityGateway gateway}) : _gateway = gateway;
+  CapabilityResolver({required this._gateway});
 
   final CapabilityGateway _gateway;
 

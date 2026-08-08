@@ -49,11 +49,9 @@ class ImportFailed extends ChordProImportState {
 
 class ChordProImportController extends StateNotifier<ChordProImportState> {
   ChordProImportController({
-    required ChordProImportService importService,
-    required ActiveCatalogContext? Function() contextReader,
-  }) : _importService = importService,
-       _contextReader = contextReader,
-       super(const ImportIdle());
+    required this._importService,
+    required this._contextReader,
+  }) : super(const ImportIdle());
 
   final ChordProImportService _importService;
   final ActiveCatalogContext? Function() _contextReader;

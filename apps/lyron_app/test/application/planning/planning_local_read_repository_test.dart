@@ -431,10 +431,9 @@ void main() {
 
 class _RecordingPlanningLocalStore implements PlanningLocalStore {
   _RecordingPlanningLocalStore({
-    required List<PlanSummary> summaries,
-    required Map<String, PlanDetail> details,
-  }) : _summaries = summaries,
-       _details = details;
+    required this._summaries,
+    required this._details,
+  });
 
   final List<PlanSummary> _summaries;
   final Map<String, PlanDetail> _details;
@@ -617,8 +616,8 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
     int? acceptedBaseVersion,
   }) async => false;
   _RecordingPlanningMutationStore({
-    required List<PlanningMutationRecord> actionable,
-  }) : _actionable = actionable;
+    required this._actionable,
+  });
 
   final List<PlanningMutationRecord> _actionable;
   int readActionableMutationsCalls = 0;

@@ -50,16 +50,12 @@ typedef UnifiedSyncPlanningRefresh = Future<void> Function();
 
 class UnifiedManualSyncController extends ChangeNotifier {
   UnifiedManualSyncController({
-    required UnifiedSyncContextReader activeContextReader,
-    required UnifiedSyncSongStep syncSongMutations,
-    required UnifiedSyncCatalogRefresh refreshSongCatalog,
-    required UnifiedSyncPlanningStep syncPlanningMutations,
-    required UnifiedSyncPlanningRefresh refreshPlanning,
-  }) : _activeContextReader = activeContextReader,
-       _syncSongMutations = syncSongMutations,
-       _refreshSongCatalog = refreshSongCatalog,
-       _syncPlanningMutations = syncPlanningMutations,
-       _refreshPlanning = refreshPlanning;
+    required this._activeContextReader,
+    required this._syncSongMutations,
+    required this._refreshSongCatalog,
+    required this._syncPlanningMutations,
+    required this._refreshPlanning,
+  });
 
   final UnifiedSyncContextReader _activeContextReader;
   final UnifiedSyncSongStep _syncSongMutations;

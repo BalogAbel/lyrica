@@ -10,10 +10,9 @@ enum SongDiscardLeaseOutcome { acquired, syncInProgress }
 
 class SongDiscardLease {
   SongDiscardLease({
-    required Future<void> Function(String songId) discardSong,
-    required void Function() release,
-  }) : _discardSong = discardSong,
-       _release = release;
+    required this._discardSong,
+    required this._release,
+  });
 
   final Future<void> Function(String songId) _discardSong;
   final void Function() _release;
@@ -64,12 +63,10 @@ final class _SongDiscardOperation extends _SongContextOperation {
 
 class SongMutationSyncController {
   SongMutationSyncController({
-    required SongMutationStore store,
-    required SongMutationRemoteRepository remoteRepository,
-    SongCatalogRefresh? refreshCatalog,
-  }) : _store = store,
-       _remoteRepository = remoteRepository,
-       _refreshCatalog = refreshCatalog;
+    required this._store,
+    required this._remoteRepository,
+    this._refreshCatalog,
+  });
 
   final SongMutationStore _store;
   final SongMutationRemoteRepository _remoteRepository;

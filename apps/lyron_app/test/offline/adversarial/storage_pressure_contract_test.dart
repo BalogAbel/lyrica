@@ -202,8 +202,7 @@ class StorageQuotaSimulatedException implements Exception {
 /// issues the actual `INSERT` through a fresh [TransactionExecutor], not
 /// the top-level [QueryExecutor].
 class _InsertFailureBudget {
-  _InsertFailureBudget({int? failuresRemaining})
-    : _failuresRemaining = failuresRemaining;
+  _InsertFailureBudget({this._failuresRemaining});
 
   int? _failuresRemaining;
 

@@ -32,12 +32,10 @@ typedef UnifiedRowRecoveryGroupStep =
 /// they run.
 class UnifiedRowRecoveryController {
   UnifiedRowRecoveryController({
-    required UnifiedRowRecoverySongStep keepMineStep,
-    required UnifiedRowRecoveryDiscardSongStep discardMineStep,
-    required UnifiedRowRecoveryGroupStep applyToGroupStep,
-  }) : _keepMineStep = keepMineStep,
-       _discardMineStep = discardMineStep,
-       _applyToGroupStep = applyToGroupStep;
+    required this._keepMineStep,
+    required this._discardMineStep,
+    required this._applyToGroupStep,
+  });
 
   final UnifiedRowRecoverySongStep _keepMineStep;
   final UnifiedRowRecoveryDiscardSongStep _discardMineStep;

@@ -48,16 +48,12 @@ typedef PlanningMutationFailureObserver =
 
 class PlanningMutationSyncController {
   PlanningMutationSyncController({
-    required PlanningMutationStoreReader mutationStore,
-    required PlanningMutationRemoteRepositoryReader remoteRepository,
-    required PlanningRefreshTrigger refreshPlanning,
-    required PlanningAcceptedMutationReconciler reconcileAcceptedMutation,
-    required PlanningAcceptedMutationGuard shouldReconcileAcceptedMutation,
-  }) : _mutationStore = mutationStore,
-       _remoteRepository = remoteRepository,
-       _refreshPlanning = refreshPlanning,
-       _reconcileAcceptedMutation = reconcileAcceptedMutation,
-       _shouldReconcileAcceptedMutation = shouldReconcileAcceptedMutation;
+    required this._mutationStore,
+    required this._remoteRepository,
+    required this._refreshPlanning,
+    required this._reconcileAcceptedMutation,
+    required this._shouldReconcileAcceptedMutation,
+  });
 
   final PlanningMutationStoreReader _mutationStore;
   final PlanningMutationRemoteRepositoryReader _remoteRepository;

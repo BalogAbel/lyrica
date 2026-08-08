@@ -5,10 +5,9 @@ import 'package:lyron_app/src/application/auth/pending_invite_token_controller.d
 
 class DeepLinkListener {
   DeepLinkListener({
-    required Stream<Uri> stream,
-    required PendingInviteTokenController pendingTokens,
-  }) : _stream = stream,
-       _pendingTokens = pendingTokens;
+    required this._stream,
+    required this._pendingTokens,
+  });
 
   final Stream<Uri> _stream;
   final PendingInviteTokenController _pendingTokens;

@@ -1005,13 +1005,10 @@ class _FakeSongMutationStore implements SongMutationStore {
 class _FakeSongMutationRemoteRepository
     implements SongMutationRemoteRepository {
   _FakeSongMutationRemoteRepository({
-    Future<SongMutationRecord> Function(SongMutationRecord record)? syncHandler,
-    Future<SongMutationRecord> Function(SongMutationRecord record)?
-    overwriteHandler,
-    Future<SongMutationRecord> Function(String songId)? fetchHandler,
-  }) : _syncHandler = syncHandler,
-       _overwriteHandler = overwriteHandler,
-       _fetchHandler = fetchHandler;
+    this._syncHandler,
+    this._overwriteHandler,
+    this._fetchHandler,
+  });
 
   final Future<SongMutationRecord> Function(SongMutationRecord record)?
   _syncHandler;

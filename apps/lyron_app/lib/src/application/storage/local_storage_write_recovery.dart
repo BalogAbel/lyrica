@@ -36,8 +36,7 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// write this boundary protects, and shrinking writes (deletes) are never
 /// guarded in the first place (see the call sites for why).
 class LocalStorageWriteRecovery {
-  const LocalStorageWriteRecovery({required SongCatalogEvictor evictor})
-    : _evictor = evictor;
+  const LocalStorageWriteRecovery({required this._evictor});
 
   final SongCatalogEvictor _evictor;
 

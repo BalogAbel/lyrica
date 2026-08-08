@@ -15,14 +15,11 @@ typedef PlanningRemoteRefreshRepositoryReader =
 
 class PlanningSyncController extends ChangeNotifier {
   PlanningSyncController({
-    required PlanningLocalStoreReader localStore,
-    required PlanningRemoteRefreshRepositoryReader remoteRepository,
-    required PlanningAuthSessionReader authSessionReader,
+    required this._localStore,
+    required this._remoteRepository,
+    required this._authSessionReader,
     DateTime Function()? clock,
-  }) : _localStore = localStore,
-       _remoteRepository = remoteRepository,
-       _authSessionReader = authSessionReader,
-       _clock = clock ?? (() => DateTime.now().toUtc()),
+  }) : _clock = clock ?? (() => DateTime.now().toUtc()),
        _state = const PlanningSyncState.initial();
 
   final PlanningLocalStoreReader _localStore;

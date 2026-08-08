@@ -16,12 +16,10 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 /// This is local storage policy, never an authorization decision.
 class SongCatalogEvictor {
   const SongCatalogEvictor({
-    required SongCatalogDatabase database,
-    required CatalogStorageAccountant accountant,
-    LocalStorageFootprintChanged? onStorageFootprintChanged,
-  }) : _database = database,
-       _accountant = accountant,
-       _onStorageFootprintChanged = onStorageFootprintChanged;
+    required this._database,
+    required this._accountant,
+    this._onStorageFootprintChanged,
+  });
 
   final SongCatalogDatabase _database;
   final CatalogStorageAccountant _accountant;

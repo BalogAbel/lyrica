@@ -20,13 +20,10 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 class SongEditorScreen extends ConsumerStatefulWidget {
   const SongEditorScreen.edit({
     super.key,
-    required String songId,
-    required String songSlug,
-    String? initialSource,
-  }) : _songId = songId,
-       _songSlug = songSlug,
-       _initialSource = initialSource,
-       _isCreating = false;
+    required String this._songId,
+    required String this._songSlug,
+    this._initialSource,
+  }) : _isCreating = false;
 
   const SongEditorScreen.create({super.key})
     : _songId = null,

@@ -347,10 +347,9 @@ abstract interface class SongCatalogStore {
 class DriftSongCatalogStore implements SongCatalogStore {
   const DriftSongCatalogStore(
     this._database, {
-    LocalStorageFootprintChanged? onStorageFootprintChanged,
-    LocalStorageWriteRecovery? writeRecovery,
-  }) : _onStorageFootprintChanged = onStorageFootprintChanged,
-       _writeRecovery = writeRecovery;
+    this._onStorageFootprintChanged,
+    this._writeRecovery,
+  });
 
   final SongCatalogDatabase _database;
   final LocalStorageFootprintChanged? _onStorageFootprintChanged;

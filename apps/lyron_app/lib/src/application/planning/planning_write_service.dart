@@ -152,15 +152,12 @@ class PlanningWriteService {
 
   PlanningWriteService(
     this._repository, {
-    required PlanningMutationStore mutationStore,
+    required this._mutationStore,
     PlanningVisibleSongReader? listVisibleSongs,
-    required PlanningWriteActiveContextReader activeContextReader,
-    PlanningWriteSyncScheduler? syncScheduler,
+    required this._activeContextReader,
+    this._syncScheduler,
     PlanningIdGenerator? idGenerator,
-  }) : _mutationStore = mutationStore,
-       _listVisibleSongs = listVisibleSongs ?? _defaultVisibleSongs,
-       _activeContextReader = activeContextReader,
-       _syncScheduler = syncScheduler,
+  }) : _listVisibleSongs = listVisibleSongs ?? _defaultVisibleSongs,
        _idGenerator = idGenerator ?? generatePlanningUuidV4;
 
   final PlanningRepository _repository;

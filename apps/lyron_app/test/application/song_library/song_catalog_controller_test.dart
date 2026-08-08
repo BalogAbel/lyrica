@@ -1082,8 +1082,7 @@ class _MultiPhaseSongRepository implements SongRepository {
 }
 
 class _TestAppForegroundState implements AppForegroundState {
-  _TestAppForegroundState({bool isForeground = true})
-    : _isForeground = isForeground;
+  _TestAppForegroundState({this._isForeground = true});
 
   final StreamController<bool> _controller = StreamController<bool>.broadcast();
   bool _isForeground;

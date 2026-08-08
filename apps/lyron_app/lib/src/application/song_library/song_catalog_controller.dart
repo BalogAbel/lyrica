@@ -21,22 +21,15 @@ const _defaultRefreshInterval = Duration(minutes: 5);
 
 class SongCatalogController extends ChangeNotifier {
   SongCatalogController({
-    required SongCatalogStore store,
-    required SongRepository remoteRepository,
-    required AppAuthSessionReader authSessionReader,
-    required ActiveOrganizationReader organizationReader,
-    required CatalogSessionVerifier sessionVerifier,
-    Future<void> Function({required String userId})? onVerifiedEmptyMembership,
+    required this._store,
+    required this._remoteRepository,
+    required this._authSessionReader,
+    required this._organizationReader,
+    required this._sessionVerifier,
+    this._onVerifiedEmptyMembership,
     AppForegroundState? foregroundState,
-    Duration refreshInterval = _defaultRefreshInterval,
-  }) : _store = store,
-       _remoteRepository = remoteRepository,
-       _authSessionReader = authSessionReader,
-       _organizationReader = organizationReader,
-       _sessionVerifier = sessionVerifier,
-       _onVerifiedEmptyMembership = onVerifiedEmptyMembership,
-       _foregroundState = foregroundState ?? _AlwaysForegroundState(),
-       _refreshInterval = refreshInterval,
+    this._refreshInterval = _defaultRefreshInterval,
+  }) : _foregroundState = foregroundState ?? _AlwaysForegroundState(),
        _state = const CatalogSnapshotState.initial() {
     _foregroundSubscription = _foregroundState.watchForeground().listen(
       _handleForegroundChange,

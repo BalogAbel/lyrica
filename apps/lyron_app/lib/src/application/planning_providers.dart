@@ -33,15 +33,11 @@ typedef VerifiedEmptyMembershipCleanupHandler =
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
-    required PlanningLocalStore planningLocalStore,
-    required SongCatalogStore songCatalogStore,
-    required LastKnownIdentityStore lastKnownIdentityStore,
-    required void Function() invalidateLastKnownIdentityPersistence,
-  }) : _planningLocalStore = planningLocalStore,
-       _songCatalogStore = songCatalogStore,
-       _lastKnownIdentityStore = lastKnownIdentityStore,
-       _invalidateLastKnownIdentityPersistence =
-           invalidateLastKnownIdentityPersistence;
+    required this._planningLocalStore,
+    required this._songCatalogStore,
+    required this._lastKnownIdentityStore,
+    required this._invalidateLastKnownIdentityPersistence,
+  });
 
   final PlanningLocalStore _planningLocalStore;
   final SongCatalogStore _songCatalogStore;

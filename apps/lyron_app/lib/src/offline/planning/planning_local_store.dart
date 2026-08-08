@@ -200,10 +200,9 @@ abstract interface class PlanningLocalStore {
 class DriftPlanningLocalStore implements PlanningLocalStore {
   const DriftPlanningLocalStore(
     this._database, {
-    LocalStorageFootprintChanged? onStorageFootprintChanged,
-    LocalStorageWriteRecovery? writeRecovery,
-  }) : _onStorageFootprintChanged = onStorageFootprintChanged,
-       _writeRecovery = writeRecovery;
+    this._onStorageFootprintChanged,
+    this._writeRecovery,
+  });
 
   final PlanningLocalDatabase _database;
   final LocalStorageFootprintChanged? _onStorageFootprintChanged;
