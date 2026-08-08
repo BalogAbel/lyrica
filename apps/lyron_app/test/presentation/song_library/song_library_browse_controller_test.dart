@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_row.dart';

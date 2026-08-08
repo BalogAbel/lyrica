@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 
 final class SongEditorRouteData {
@@ -28,7 +29,7 @@ final songEditorSourceProvider = FutureProvider.autoDispose
         songId: songId,
       );
       return source.source;
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final songEditorRouteDataProvider = FutureProvider.autoDispose
     .family<SongEditorRouteData?, String>((ref, songSlug) async {
@@ -55,4 +56,4 @@ final songEditorRouteDataProvider = FutureProvider.autoDispose
         songSlug: songSlug,
         source: source.source,
       );
-    });
+    }, retry: noAutomaticProviderRetry);

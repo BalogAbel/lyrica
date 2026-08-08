@@ -9,14 +9,11 @@ import 'package:path/path.dart' as p;
 
 class ChordProImportService {
   const ChordProImportService({
-    required SongLibraryService songLibraryService,
-    required SongCatalogReadRepository catalogReadRepository,
-    required ChordproNormalizer normalizer,
-    required ChordproParser parser,
-  }) : _songLibraryService = songLibraryService,
-       _catalogReadRepository = catalogReadRepository,
-       _normalizer = normalizer,
-       _parser = parser;
+    required this._songLibraryService,
+    required this._catalogReadRepository,
+    required this._normalizer,
+    required this._parser,
+  });
 
   final SongLibraryService _songLibraryService;
   final SongCatalogReadRepository _catalogReadRepository;

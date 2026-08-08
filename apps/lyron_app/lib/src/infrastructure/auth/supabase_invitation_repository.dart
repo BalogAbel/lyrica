@@ -21,8 +21,7 @@ class SupabaseInvitationRepository implements InvitationRepository {
       );
 
   @visibleForTesting
-  SupabaseInvitationRepository.testing({required RedeemFn redeem})
-    : _redeem = redeem;
+  SupabaseInvitationRepository.testing({required this._redeem});
 
   final RedeemFn _redeem;
 

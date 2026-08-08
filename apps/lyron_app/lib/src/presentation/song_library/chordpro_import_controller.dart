@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
@@ -49,11 +49,9 @@ class ImportFailed extends ChordProImportState {
 
 class ChordProImportController extends StateNotifier<ChordProImportState> {
   ChordProImportController({
-    required ChordProImportService importService,
-    required ActiveCatalogContext? Function() contextReader,
-  }) : _importService = importService,
-       _contextReader = contextReader,
-       super(const ImportIdle());
+    required this._importService,
+    required this._contextReader,
+  }) : super(const ImportIdle());
 
   final ChordProImportService _importService;
   final ActiveCatalogContext? Function() _contextReader;

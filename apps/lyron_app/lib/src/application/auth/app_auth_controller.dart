@@ -9,11 +9,8 @@ import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 
 class AppAuthController extends ChangeNotifier {
-  AppAuthController(
-    this._repository, {
-    LastKnownIdentityStore? lastKnownIdentityStore,
-  }) : _lastKnownIdentityStore = lastKnownIdentityStore,
-       _state = const AppAuthState(status: AppAuthStatus.initializing);
+  AppAuthController(this._repository, {this._lastKnownIdentityStore})
+    : _state = const AppAuthState(status: AppAuthStatus.initializing);
 
   final AuthRepository _repository;
   final LastKnownIdentityStore? _lastKnownIdentityStore;

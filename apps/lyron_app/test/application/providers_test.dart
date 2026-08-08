@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -2075,11 +2076,8 @@ class _StaticPlanningRemoteRefreshRepository
 }
 
 class _TestAppForegroundState implements AppForegroundState {
-  _TestAppForegroundState({bool isForeground = true})
-    : _isForeground = isForeground;
-
   final StreamController<bool> _controller = StreamController<bool>.broadcast();
-  bool _isForeground;
+  bool _isForeground = true;
 
   @override
   bool get isForeground => _isForeground;

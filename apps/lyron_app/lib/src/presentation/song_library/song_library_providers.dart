@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
@@ -123,11 +125,11 @@ final songMutationEntriesProvider =
         }
         return left.id.compareTo(right.id);
       });
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final songLibraryBrowseRowsProvider =
     Provider.autoDispose<List<SongLibraryBrowseRow>>((ref) {
-      final songs = ref.watch(songLibraryListProvider).valueOrNull;
+      final songs = ref.watch(songLibraryListProvider).value;
       if (songs == null) {
         return const [];
       }
@@ -164,7 +166,7 @@ final songMutationRecordByIdProvider = FutureProvider.autoDispose
             organizationId: context.organizationId,
             songId: songId,
           );
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final hasUnsyncedSongMutationsProvider = FutureProvider.autoDispose<bool>((
   ref,
@@ -178,7 +180,7 @@ final hasUnsyncedSongMutationsProvider = FutureProvider.autoDispose<bool>((
   return ref
       .watch(songMutationStoreProvider)
       .hasUnsyncedChanges(userId: userId);
-});
+}, retry: noAutomaticProviderRetry);
 
 final songLibraryListProvider = FutureProvider.autoDispose<List<SongSummary>>((
   ref,
@@ -190,7 +192,7 @@ final songLibraryListProvider = FutureProvider.autoDispose<List<SongSummary>>((
   }
 
   return ref.watch(songLibraryServiceProvider).listSongs(context: context);
-});
+}, retry: noAutomaticProviderRetry);
 
 final songLibrarySongBySlugProvider = FutureProvider.autoDispose
     .family<SongSummary?, String>((ref, songSlug) async {
@@ -202,7 +204,7 @@ final songLibrarySongBySlugProvider = FutureProvider.autoDispose
       return ref
           .watch(songLibraryServiceProvider)
           .getSongSummaryBySlug(context: context, songSlug: songSlug);
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final songLibrarySongByIdProvider = FutureProvider.autoDispose
     .family<SongSummary?, String>((ref, songId) async {
@@ -214,7 +216,7 @@ final songLibrarySongByIdProvider = FutureProvider.autoDispose
       }
 
       return null;
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final songLibraryReaderProvider = FutureProvider.autoDispose
     .family<SongReaderResult, String>((ref, songId) async {
@@ -262,7 +264,7 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
       }
 
       return SongReaderResult(song: song);
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final chordProImportServiceProvider = Provider<ChordProImportService>((ref) {
   return ChordProImportService(

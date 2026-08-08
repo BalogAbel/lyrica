@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -20,7 +22,7 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 final planningPlanTitlesProvider = Provider.autoDispose<Map<String, String>>((
   ref,
 ) {
-  final summaries = ref.watch(planningPlanListProvider).valueOrNull;
+  final summaries = ref.watch(planningPlanListProvider).value;
   if (summaries == null) return const {};
   return {for (final summary in summaries) summary.id: summary.name};
 });
@@ -52,7 +54,7 @@ final localStorageFootprintProvider =
             userId: context.userId,
             organizationId: context.organizationId,
           );
-    });
+    }, retry: noAutomaticProviderRetry);
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,
@@ -63,7 +65,7 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   );
   final songEntries = _safeWatch(
     () =>
-        ref.watch(songMutationEntriesProvider).valueOrNull ??
+        ref.watch(songMutationEntriesProvider).value ??
         const <SongMutationRecord>[],
     const <SongMutationRecord>[],
   );
@@ -73,7 +75,7 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   );
   final planningEntries = _safeWatch(
     () =>
-        ref.watch(planningMutationEntriesProvider).valueOrNull ??
+        ref.watch(planningMutationEntriesProvider).value ??
         const <PlanningMutationRecord>[],
     const <PlanningMutationRecord>[],
   );
@@ -87,7 +89,7 @@ final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   );
   final storageFootprint = _safeWatch(
     () =>
-        ref.watch(localStorageFootprintProvider).valueOrNull ??
+        ref.watch(localStorageFootprintProvider).value ??
         const LocalStorageFootprint.empty(),
     const LocalStorageFootprint.empty(),
   );

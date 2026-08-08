@@ -10,10 +10,9 @@ class OnlineTransitionDetector {
   OnlineTransitionDetector({
     required OnlineTransitionCallback onTransitionToOnline,
     HasUnsyncedWorkReader? hasUnsyncedWorkReader,
-    bool triggerWhenClean = true,
+    this._triggerWhenClean = true,
   }) : _onTransition = onTransitionToOnline,
-       _hasUnsyncedWork = hasUnsyncedWorkReader,
-       _triggerWhenClean = triggerWhenClean;
+       _hasUnsyncedWork = hasUnsyncedWorkReader;
 
   final OnlineTransitionCallback _onTransition;
   final HasUnsyncedWorkReader? _hasUnsyncedWork;

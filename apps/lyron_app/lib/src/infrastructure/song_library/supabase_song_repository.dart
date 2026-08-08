@@ -42,10 +42,9 @@ class SupabaseSongRepository implements SongRepository {
   @visibleForTesting
   SupabaseSongRepository.testing({
     required ListSongRows listSongsRows,
-    required GetSongRow getSongRow,
+    required this._getSongRow,
     GetSongSummaryBySlugRow? getSongSummaryBySlugRow,
   }) : _listSongsRows = listSongsRows,
-       _getSongRow = getSongRow,
        _getSongSummaryBySlugRow =
            getSongSummaryBySlugRow ??
            ((songSlug) async {

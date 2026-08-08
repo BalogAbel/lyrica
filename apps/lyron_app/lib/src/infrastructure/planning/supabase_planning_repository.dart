@@ -73,12 +73,10 @@ class SupabasePlanningRepository
   @visibleForTesting
   SupabasePlanningRepository.testing({
     required ListPlanRows listPlanRows,
-    required GetPlanRow getPlanRow,
-    required ListSessionRows listSessionRows,
+    required this._getPlanRow,
+    required this._listSessionRows,
     GetPlanSummaryBySlugRow? getPlanSummaryBySlugRow,
   }) : _listPlanRows = listPlanRows,
-       _getPlanRow = getPlanRow,
-       _listSessionRows = listSessionRows,
        _getPlanSummaryBySlugRow =
            getPlanSummaryBySlugRow ??
            ((planSlug) async {

@@ -204,7 +204,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                         )
                       : Builder(
                           builder: (context) {
-                            final songs = songsAsync.valueOrNull;
+                            final songs = songsAsync.value;
                             if (songs == null && songsAsync.hasError) {
                               return _RetryableErrorState(
                                 message: AppStrings.songListLoadFailureMessage,

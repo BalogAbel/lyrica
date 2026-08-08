@@ -9,10 +9,9 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 class DriftSongMutationStore implements SongMutationStore {
   const DriftSongMutationStore({
-    required SongCatalogStore songCatalogStore,
-    required PlanningLocalStore planningLocalStore,
-  }) : _songCatalogStore = songCatalogStore,
-       _planningLocalStore = planningLocalStore;
+    required this._songCatalogStore,
+    required this._planningLocalStore,
+  });
 
   final SongCatalogStore _songCatalogStore;
   final PlanningLocalStore _planningLocalStore;

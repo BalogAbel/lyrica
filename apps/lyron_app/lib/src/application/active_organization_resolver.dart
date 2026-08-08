@@ -12,13 +12,10 @@ import 'package:lyron_app/src/application/active_organization_resolution.dart';
 /// testable place. See ADR-022.
 final class ActiveOrganizationResolver {
   ActiveOrganizationResolver({
-    required ActiveOrganizationResolutionReader resolveRawReader,
-    required String? Function() readUserId,
-    required Future<String?> Function({required String userId})
-    readCachedOrganizationId,
-  }) : _resolveRawReader = resolveRawReader,
-       _readUserId = readUserId,
-       _readCachedOrganizationId = readCachedOrganizationId;
+    required this._resolveRawReader,
+    required this._readUserId,
+    required this._readCachedOrganizationId,
+  });
 
   final ActiveOrganizationResolutionReader _resolveRawReader;
   final String? Function() _readUserId;

@@ -198,26 +198,24 @@ void main() {
               SongSummary(id: 'song-1', slug: 'egy-ut', title: 'Reader Song'),
             ],
           ),
-          songLibraryReaderProvider.overrideWithProvider(
-            (songId) => FutureProvider.autoDispose(
-              (ref) async => SongReaderResult(
-                song: ParsedSong(
-                  title: 'Reader Song',
-                  sourceKey: 'D',
-                  sections: [
-                    SongSection(
-                      kind: SongSectionKind.verse,
-                      label: 'Verse',
-                      number: 1,
-                      lines: [
-                        LyricLine(
-                          segments: [const LyricSegment(text: 'Reader body')],
-                        ),
-                      ],
-                    ),
-                  ],
-                  diagnostics: const [],
-                ),
+          songLibraryReaderProvider.overrideWith(
+            (ref, songId) async => SongReaderResult(
+              song: ParsedSong(
+                title: 'Reader Song',
+                sourceKey: 'D',
+                sections: [
+                  SongSection(
+                    kind: SongSectionKind.verse,
+                    label: 'Verse',
+                    number: 1,
+                    lines: [
+                      LyricLine(
+                        segments: [const LyricSegment(text: 'Reader body')],
+                      ),
+                    ],
+                  ),
+                ],
+                diagnostics: const [],
               ),
             ),
           ),
@@ -620,26 +618,24 @@ Future<_RecordingSongMutationStore> _pumpEditorAndReturnToSongView(
             SongSummary(id: 'song-1', slug: 'egy-ut', title: 'Reader Song'),
           ],
         ),
-        songLibraryReaderProvider.overrideWithProvider(
-          (songId) => FutureProvider.autoDispose(
-            (ref) async => SongReaderResult(
-              song: ParsedSong(
-                title: 'Reader Song',
-                sourceKey: 'D',
-                sections: [
-                  SongSection(
-                    kind: SongSectionKind.verse,
-                    label: 'Verse',
-                    number: 1,
-                    lines: [
-                      LyricLine(
-                        segments: [const LyricSegment(text: 'Reader body')],
-                      ),
-                    ],
-                  ),
-                ],
-                diagnostics: const [],
-              ),
+        songLibraryReaderProvider.overrideWith(
+          (ref, songId) async => SongReaderResult(
+            song: ParsedSong(
+              title: 'Reader Song',
+              sourceKey: 'D',
+              sections: [
+                SongSection(
+                  kind: SongSectionKind.verse,
+                  label: 'Verse',
+                  number: 1,
+                  lines: [
+                    LyricLine(
+                      segments: [const LyricSegment(text: 'Reader body')],
+                    ),
+                  ],
+                ),
+              ],
+              diagnostics: const [],
             ),
           ),
         ),

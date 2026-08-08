@@ -1,4 +1,4 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_browse_state.dart';
 
 class SongLibraryBrowseController

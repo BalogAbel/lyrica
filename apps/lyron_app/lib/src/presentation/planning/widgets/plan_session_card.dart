@@ -218,7 +218,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
-              onReorder: (oldIndex, newIndex) =>
+              onReorderItem: (oldIndex, newIndex) =>
                   _reorderItems(ref, oldIndex, newIndex),
               itemBuilder: (context, index) {
                 final item = items[index];
@@ -340,7 +340,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     final activeCatalogContext = ref.read(catalogSnapshotStateProvider).context;
     final visibleSongsState = ref.read(songLibraryListProvider);
     final existingSongIds = session.items.map((item) => item.song.id).toSet();
-    final selectableSongs = visibleSongsState.valueOrNull;
+    final selectableSongs = visibleSongsState.value;
     final FutureOr<List<SongSummary>> eligibleSongs =
         selectableSongs == null || visibleSongsState.isLoading
         ? ref.read(songLibraryListProvider.future).then((songs) {
@@ -541,9 +541,6 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     final currentOrder = _orderedItems(
       session,
     ).map((value) => value.id).toList();
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
     if (oldIndex < 0 ||
         oldIndex >= currentOrder.length ||
         newIndex < 0 ||

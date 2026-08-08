@@ -45,8 +45,7 @@ class _TestAuthRepository implements AuthRepository {
 class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   final LastKnownIdentity? _identity;
 
-  _FakeLastKnownIdentityStore({LastKnownIdentity? identity})
-    : _identity = identity;
+  _FakeLastKnownIdentityStore({this._identity});
 
   @override
   Future<LastKnownIdentity?> read() async => _identity;

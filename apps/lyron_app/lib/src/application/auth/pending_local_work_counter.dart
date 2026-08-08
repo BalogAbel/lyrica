@@ -20,10 +20,9 @@ typedef SongPendingWorkCountReader =
 /// version that implied propagation alone was what prevented that outcome).
 class PendingLocalWorkCounter {
   PendingLocalWorkCounter({
-    required PlanningPendingWorkCountReader readPlanningPendingWorkCount,
-    required SongPendingWorkCountReader readSongPendingWorkCount,
-  }) : _readPlanningPendingWorkCount = readPlanningPendingWorkCount,
-       _readSongPendingWorkCount = readSongPendingWorkCount;
+    required this._readPlanningPendingWorkCount,
+    required this._readSongPendingWorkCount,
+  });
 
   final PlanningPendingWorkCountReader _readPlanningPendingWorkCount;
   final SongPendingWorkCountReader _readSongPendingWorkCount;

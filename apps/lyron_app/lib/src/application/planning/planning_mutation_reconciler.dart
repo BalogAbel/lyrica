@@ -21,10 +21,9 @@ T _required<T>(T? value, String field, PlanningMutationKind kind) =>
 
 class PlanningMutationReconciler {
   const PlanningMutationReconciler({
-    required PlanningLocalStore Function() localStore,
-    DateTime Function() now = _wallClockNow,
-  }) : _localStore = localStore,
-       _now = now;
+    required this._localStore,
+    this._now = _wallClockNow,
+  });
 
   final PlanningLocalStore Function() _localStore;
 

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 

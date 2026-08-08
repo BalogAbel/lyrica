@@ -21,15 +21,9 @@ class SupabaseSongMutationRemoteRepository
       });
 
   const SupabaseSongMutationRemoteRepository.testing({
-    required Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
-    rpc,
-    required Future<Map<String, dynamic>?> Function(
-      String organizationId,
-      String songId,
-    )
-    fetchSongRow,
-  }) : _rpc = rpc,
-       _fetchSongRow = fetchSongRow;
+    required this._rpc,
+    required this._fetchSongRow,
+  });
 
   final Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
   _rpc;

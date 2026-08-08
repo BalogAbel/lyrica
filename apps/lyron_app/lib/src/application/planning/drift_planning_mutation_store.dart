@@ -9,12 +9,10 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
 class DriftPlanningMutationStore implements PlanningMutationStore {
   const DriftPlanningMutationStore({
-    required PlanningLocalDatabase database,
-    required PlanningLocalStore localStore,
-    LocalStorageFootprintChanged? onStorageFootprintChanged,
-  }) : _database = database,
-       _localStore = localStore,
-       _onStorageFootprintChanged = onStorageFootprintChanged;
+    required this._database,
+    required this._localStore,
+    this._onStorageFootprintChanged,
+  });
 
   final PlanningLocalDatabase _database;
   final PlanningLocalStore _localStore;

@@ -360,8 +360,8 @@ void main() {
 class _CountingLocalStorageWriteRecovery extends LocalStorageWriteRecovery {
   _CountingLocalStorageWriteRecovery({
     required super.evictor,
-    required void Function() onGuard,
-  }) : _onGuard = onGuard;
+    required this._onGuard,
+  });
 
   final void Function() _onGuard;
 

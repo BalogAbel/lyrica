@@ -95,10 +95,8 @@ void main() {
             songLibrarySongByIdProvider(
               'song-2',
             ).overrideWith((ref) async => _songSummaryFixture('song-2')),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => _songResultFor(songId),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => _songResultFor(songId),
             ),
           ],
           child: LyronApp(router: router),
@@ -174,10 +172,8 @@ void main() {
           songLibrarySongByIdProvider(
             'song-2',
           ).overrideWith((ref) async => _songSummaryFixture('song-2')),
-          songLibraryReaderProvider.overrideWithProvider(
-            (songId) => FutureProvider.autoDispose(
-              (ref) async => _songResultFor(songId),
-            ),
+          songLibraryReaderProvider.overrideWith(
+            (ref, songId) async => _songResultFor(songId),
           ),
         ],
         child: LyronApp(router: router),
@@ -250,10 +246,8 @@ void main() {
             songLibrarySongByIdProvider(
               'song-25',
             ).overrideWith((ref) async => _songSummaryFixture('song-25')),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => _songResultFor(songId),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async => _songResultFor(songId),
             ),
           ],
           child: LyronApp(router: router),
@@ -318,10 +312,9 @@ void main() {
               'plan-1',
             ).overrideWith((ref) async => _planDetailFixture()),
             songLibraryListProvider.overrideWith((ref) async => const []),
-            songLibraryReaderProvider.overrideWithProvider(
-              (songId) => FutureProvider.autoDispose(
-                (ref) async => throw const SongNotFoundException('song-1'),
-              ),
+            songLibraryReaderProvider.overrideWith(
+              (ref, songId) async =>
+                  throw const SongNotFoundException('song-1'),
             ),
           ],
           child: LyronApp(router: router),

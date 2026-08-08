@@ -13,14 +13,11 @@ typedef VerifiedEmptyMembershipHandler =
 
 class ActivePlanningContextController extends ChangeNotifier {
   ActivePlanningContextController({
-    required PlanningAuthSessionReader authSessionReader,
-    required ActiveOrganizationReader organizationReader,
-    required LatestPlanningOrganizationReader latestOrganizationReader,
-    VerifiedEmptyMembershipHandler? onVerifiedEmptyMembership,
-  }) : _authSessionReader = authSessionReader,
-       _organizationReader = organizationReader,
-       _latestOrganizationReader = latestOrganizationReader,
-       _onVerifiedEmptyMembership = onVerifiedEmptyMembership;
+    required this._authSessionReader,
+    required this._organizationReader,
+    required this._latestOrganizationReader,
+    this._onVerifiedEmptyMembership,
+  });
 
   final PlanningAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;

@@ -44,18 +44,13 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @visibleForTesting
   SupabaseAuthRepository.testing({
-    required RestoreSessionFn restoreSession,
-    required WatchSessionFn watchSession,
-    required OAuthSignInFn signInWithOAuth,
-    required MagicLinkFn sendMagicLink,
-    required SignOutFn signOut,
-    required DeleteAccountFn deleteAccount,
-  }) : _restoreSession = restoreSession,
-       _watchSession = watchSession,
-       _signInWithOAuth = signInWithOAuth,
-       _sendMagicLink = sendMagicLink,
-       _signOut = signOut,
-       _deleteAccount = deleteAccount;
+    required this._restoreSession,
+    required this._watchSession,
+    required this._signInWithOAuth,
+    required this._sendMagicLink,
+    required this._signOut,
+    required this._deleteAccount,
+  });
 
   final RestoreSessionFn _restoreSession;
   final WatchSessionFn _watchSession;

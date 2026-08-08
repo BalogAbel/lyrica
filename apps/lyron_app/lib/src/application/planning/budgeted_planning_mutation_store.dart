@@ -117,14 +117,11 @@ import 'package:lyron_app/src/application/storage/planning_storage_accountant.da
 /// recovers.
 class BudgetedPlanningMutationStore implements PlanningMutationStore {
   BudgetedPlanningMutationStore({
-    required PlanningMutationStore delegate,
-    required PlanningStorageAccountant accountant,
-    required LocalStorageWriteRecovery recovery,
-    required LocalStorageBudget budget,
-  }) : _delegate = delegate,
-       _accountant = accountant,
-       _recovery = recovery,
-       _budget = budget;
+    required this._delegate,
+    required this._accountant,
+    required this._recovery,
+    required this._budget,
+  });
 
   final PlanningMutationStore _delegate;
   final PlanningStorageAccountant _accountant;

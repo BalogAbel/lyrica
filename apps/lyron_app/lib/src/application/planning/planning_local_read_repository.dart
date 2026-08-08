@@ -32,12 +32,10 @@ typedef ActivePlanningReadContextReader =
 
 class PlanningLocalReadRepository implements PlanningRepository {
   const PlanningLocalReadRepository({
-    required PlanningLocalStore store,
-    PlanningMutationStore? mutationStore,
-    required ActivePlanningReadContextReader contextReader,
-  }) : _store = store,
-       _mutationStore = mutationStore,
-       _contextReader = contextReader;
+    required this._store,
+    this._mutationStore,
+    required this._contextReader,
+  });
 
   final PlanningLocalStore _store;
   final PlanningMutationStore? _mutationStore;
