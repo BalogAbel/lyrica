@@ -57,3 +57,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 pg_cron_orphan_cleanup_test_script="${PG_CRON_ORPHAN_CLEANUP_TEST_SCRIPT:-./scripts/tests/pg-cron-orphan-cleanup-contract-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$pg_cron_orphan_cleanup_test_script"
+
+create_invitation_service_role_gate_test_script="${CREATE_INVITATION_SERVICE_ROLE_GATE_TEST_SCRIPT:-./scripts/tests/create-invitation-service-role-gate-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$create_invitation_service_role_gate_test_script"

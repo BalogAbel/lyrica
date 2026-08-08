@@ -110,7 +110,14 @@ def make_user(user_id, email, confirmed=True):
 
 def make_invitation(email=None, role="organization_member"):
     email_sql = sql_quote(email) if email is not None else "null"
+    # create_invitation's null-caller (auth.uid() is null) path is
+    # service_role-only per SEC-2 (create-invitation-service-role-gate
+    # contract test): the raw psql session here has no JWT claims and no
+    # SET ROLE, so without an explicit `set local role service_role` it
+    # would fail the function's runtime role check rather than actually
+    # exercising the real, intended service_role fixture-seeding path.
     return run_sql(
+        "set local role service_role;\n"
         f"select public.create_invitation("
         f"{sql_quote(ORG_ID)}, {sql_quote(role)}::public.role_code, {email_sql});"
     )
