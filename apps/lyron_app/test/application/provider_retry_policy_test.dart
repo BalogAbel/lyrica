@@ -17,18 +17,26 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('every async provider declares the no-retry policy', () {
     final offenders = <String>[];
+    var declarationsSeen = 0;
+    var policyMentions = 0;
 
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
 
+      final source = entity.readAsStringSync();
+      policyMentions += 'retry: noAutomaticProviderRetry'
+          .allMatches(source)
+          .length;
+
       final parsed = parseString(
-        content: entity.readAsStringSync(),
+        content: source,
         path: entity.path,
         throwIfDiagnostics: false,
       );
 
       final visitor = _AsyncProviderVisitor();
       parsed.unit.accept(visitor);
+      declarationsSeen += visitor.declarationCount;
 
       for (final offset in visitor.offsetsMissingPolicy) {
         final location = parsed.lineInfo.getLocation(offset);
@@ -45,6 +53,20 @@ void main() {
           'failure and their error will never reach the UI. See ADR-032.\n'
           '${offenders.join('\n')}',
     );
+
+    // A guard that silently stops recognising a declaration form reports no
+    // offenders for a reason that has nothing to do with compliance. Every
+    // declaration the visitor sees carries exactly one policy argument, so the
+    // two counts must agree; a declaration shape the visitor cannot parse
+    // shows up here as a surplus mention.
+    expect(
+      declarationsSeen,
+      policyMentions,
+      reason:
+          'the scan recognised $declarationsSeen provider declarations but '
+          '$policyMentions policy arguments are present in lib/ — a '
+          'declaration form is escaping the visitor',
+    );
   });
 
   test('the scan sees through text a regex would trip over', () {
@@ -59,11 +81,7 @@ final interpolated = FutureProvider.autoDispose<int>((ref) {
 final arrowed = FutureProvider.autoDispose<int>((ref) => 0);
 ''';
 
-    final visitor = _AsyncProviderVisitor();
-    parseString(
-      content: source,
-      throwIfDiagnostics: false,
-    ).unit.accept(visitor);
+    final visitor = _parse(source);
 
     expect(
       visitor.declarationCount,
@@ -81,46 +99,119 @@ final arrowed = FutureProvider.autoDispose<int>((ref) => 0);
           'let the first one cover the second',
     );
   });
+
+  test('the scan recognises every declaration shape', () {
+    const source = '''
+final plain = FutureProvider<int>((ref) async => 0);
+final untyped = FutureProvider((ref) async => 0);
+final tearOff = FutureProvider<int>(_build);
+final disposed = FutureProvider.autoDispose<int>((ref) async => 0);
+final familied = FutureProvider.autoDispose.family<int, String>(
+  (ref, id) async => 0,
+);
+final streamed = StreamProvider<int>((ref) => const Stream.empty());
+''';
+
+    final visitor = _parse(source);
+
+    expect(
+      visitor.declarationCount,
+      6,
+      reason:
+          'a declaration shape the visitor cannot see is a declaration free to '
+          'skip the policy — the plain FutureProvider<T>(...) form has no '
+          'target and must not be mistaken for a method call on a provider',
+    );
+    expect(visitor.offsetsMissingPolicy, hasLength(6));
+  });
+
+  test('a method called on a provider is not a declaration', () {
+    const source = '''
+final derived = FutureProvider.autoDispose<int>(
+  (ref) async => ref.watch(other.select((value) => value.id)),
+  retry: noAutomaticProviderRetry,
+);
+
+final override = other.overrideWith((ref) async => 0);
+''';
+
+    final visitor = _parse(source);
+
+    expect(
+      visitor.declarationCount,
+      1,
+      reason: '.select and .overrideWith create no provider',
+    );
+    expect(visitor.offsetsMissingPolicy, isEmpty);
+  });
 }
 
-/// Finds every call that creates a `FutureProvider` or `StreamProvider` —
-/// including the `.autoDispose` and `.family` builder chains — and records the
-/// ones whose arguments omit `retry: noAutomaticProviderRetry`.
+_AsyncProviderVisitor _parse(String source) {
+  final visitor = _AsyncProviderVisitor();
+  parseString(content: source, throwIfDiagnostics: false).unit.accept(visitor);
+  return visitor;
+}
+
+/// Finds every call that creates a `FutureProvider` or `StreamProvider` and
+/// records the ones whose arguments omit `retry: noAutomaticProviderRetry`.
+///
+/// Creation takes three shapes, and all three must be recognised by the shape
+/// of the call rather than by what is passed to it. Keying off "an argument is
+/// a function literal" would miss a create callback passed as a tear-off or a
+/// variable, which is exactly the declaration that would then be free to skip
+/// the policy:
+///
+/// - `FutureProvider<T>(create, …)` — no target; the type is the invocation's
+///   own `methodName`
+/// - `FutureProvider.autoDispose<T>(create, …)` and
+///   `FutureProvider.autoDispose.family<T, A>(create, …)` — the builder members
+///   parse as targeted invocations on the chain, not as separate node kinds
+/// - a resolved constructor invocation
+///
+/// A method called *on* a provider (`.select`, `.overrideWith`) can sit on the
+/// same chain but creates nothing, so a targeted invocation counts only when
+/// the name it invokes is one of the builder members.
 class _AsyncProviderVisitor extends RecursiveAstVisitor<void> {
+  static const _providerTypes = {'FutureProvider', 'StreamProvider'};
+  static const _builderMembers = {'autoDispose', 'family'};
+
   final List<int> offsetsMissingPolicy = [];
   int declarationCount = 0;
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
-    _record(node.function, node.argumentList);
+    if (_chainRootIsAsyncProvider(node.function)) {
+      _record(node.function, node.argumentList);
+    }
     super.visitFunctionExpressionInvocation(node);
   }
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    _record(node, node.argumentList);
+    final target = node.target;
+
+    if (target == null) {
+      if (_providerTypes.contains(node.methodName.name)) {
+        _record(node.methodName, node.argumentList);
+      }
+    } else if (_builderMembers.contains(node.methodName.name) &&
+        _chainRootIsAsyncProvider(target)) {
+      _record(node.methodName, node.argumentList);
+    }
+
     super.visitMethodInvocation(node);
   }
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
-    _record(node.constructorName.type, node.argumentList);
+    final type = node.constructorName.type;
+    if (_providerTypes.contains(type.name.lexeme)) {
+      _record(type, node.argumentList);
+    }
     super.visitInstanceCreationExpression(node);
   }
 
   void _record(AstNode callee, ArgumentList arguments) {
-    if (!_isAsyncProviderChain(callee)) return;
-
-    // The call that actually creates the provider is the one handed the create
-    // callback; `FutureProvider.autoDispose` on its own creates nothing.
-    final createsProvider = arguments.arguments.any(
-      (argument) =>
-          argument is FunctionExpression ||
-          (argument is NamedExpression &&
-              argument.expression is FunctionExpression),
-    );
-    if (!createsProvider) return;
-
     declarationCount++;
 
     final hasPolicy = arguments.arguments.any(
@@ -134,22 +225,21 @@ class _AsyncProviderVisitor extends RecursiveAstVisitor<void> {
 
   /// Walks a receiver chain such as `FutureProvider.autoDispose.family` down to
   /// its leftmost identifier.
-  bool _isAsyncProviderChain(AstNode node) {
+  bool _chainRootIsAsyncProvider(AstNode node) {
     var current = node;
 
     while (true) {
       switch (current) {
         case SimpleIdentifier(:final name):
-          return name == 'FutureProvider' || name == 'StreamProvider';
+          return _providerTypes.contains(name);
         case PrefixedIdentifier(:final prefix):
           current = prefix;
         case PropertyAccess(:final target?):
           current = target;
         case MethodInvocation(:final target?):
           current = target;
-        case NamedType(:final name):
-          return name.lexeme == 'FutureProvider' ||
-              name.lexeme == 'StreamProvider';
+        case MethodInvocation(:final methodName):
+          return _providerTypes.contains(methodName.name);
         case _:
           return false;
       }
