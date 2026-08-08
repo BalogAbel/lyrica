@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
@@ -18,6 +19,8 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('SongCatalogController', () {
     late SongCatalogDatabase database;
     late DriftSongCatalogStore store;
@@ -680,6 +683,45 @@ void main() {
         expect(remoteRepository.listSongsCalls, 1);
       });
     });
+
+    test(
+      'a controller wired to the real WidgetsBindingAppForegroundState '
+      'still runs the periodic refresh when the binding reported a '
+      'non-resumed lifecycle state before construction',
+      () {
+        // Reproduces the production seam: the binding already reports a
+        // non-resumed state (e.g. hidden, as observed on web) before the
+        // foreground state observer is constructed. Per
+        // docs/specs/2026-08-08-web-catalog-refresh-race.md (D3), that
+        // pre-settle sample must not disarm the recovery timer.
+        TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+          AppLifecycleState.hidden,
+        );
+        final foregroundState = WidgetsBindingAppForegroundState();
+        addTearDown(foregroundState.dispose);
+
+        fakeAsync((async) {
+          final controller = SongCatalogController(
+            store: store,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            foregroundState: foregroundState,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+
+          expect(remoteRepository.listSongsCalls, 1);
+        });
+      },
+    );
 
     test(
       'runs periodic refresh only while the app stays in the foreground',
