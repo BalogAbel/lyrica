@@ -40,8 +40,9 @@ void main() {
 
       if (visitor.candidateCount != visitor.declarationCount) {
         unrecognised.add(
-          '${entity.path}: ${visitor.candidateCount} declarations name a '
-          'provider type, ${visitor.declarationCount} were recognised',
+          '${entity.path}: ${visitor.candidateCount} variable declarations '
+          'name a provider type, ${visitor.declarationCount} provider-creating '
+          'calls were recognised',
         );
       }
     }
@@ -68,8 +69,11 @@ void main() {
       unrecognised,
       isEmpty,
       reason:
-          'a provider declaration shape is escaping the visitor, so the check '
-          'above proves less than it appears to.\n${unrecognised.join('\n')}',
+          'the two counts disagree. Usually that means a provider declaration '
+          'shape is escaping the visitor, so the check above proves less than '
+          'it appears to; it can also mean an initializer merely names a '
+          'provider type without creating one, which is a false alarm in the '
+          'safe direction.\n${unrecognised.join('\n')}',
     );
     expect(
       declarationsSeen,
@@ -154,6 +158,29 @@ final streamed = StreamProvider<int>((ref) => const Stream.empty());
     );
   });
 
+  test('a declaration that is not top-level counts on both sides', () {
+    const source = '''
+class Providers {
+  static final store = FutureProvider<int>(
+    (ref) async => 0,
+    retry: noAutomaticProviderRetry,
+  );
+}
+''';
+
+    final visitor = _parse(source);
+
+    expect(
+      visitor.candidateCount,
+      visitor.declarationCount,
+      reason:
+          'the candidate side must be as broad as the visitor, or a provider '
+          'declared on a class reads as an escaping shape',
+    );
+    expect(visitor.declarationCount, 1);
+    expect(visitor.offsetsMissingPolicy, isEmpty);
+  });
+
   test('a method called on a provider is not a declaration', () {
     const source = '''
 final derived = FutureProvider.autoDispose<int>(
@@ -207,22 +234,26 @@ class _AsyncProviderVisitor extends RecursiveAstVisitor<void> {
   final List<int> offsetsMissingPolicy = [];
   int declarationCount = 0;
 
-  /// Top-level declarations whose initializer names a provider type at all,
+  /// Variable declarations whose initializer names a provider type at all,
   /// counted without looking at the shape of the call. This is the shape-blind
   /// half of the cross-check in the test above; on its own it proves nothing.
+  ///
+  /// Deliberately `visitVariableDeclaration` rather than the top-level form:
+  /// the visitor recognises a declaration wherever it appears, so a candidate
+  /// side that only looked at top-level variables would disagree with it for a
+  /// provider declared on a class or inside a function — reporting an escaping
+  /// shape when the real difference is where the declaration sits.
   int candidateCount = 0;
 
   @override
-  void visitTopLevelVariableDeclaration(TopLevelVariableDeclaration node) {
-    for (final variable in node.variables.variables) {
-      final initializer = variable.initializer;
-      if (initializer == null) continue;
-
-      final source = initializer.toSource();
-      if (_providerTypes.any(source.contains)) candidateCount++;
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final initializer = node.initializer;
+    if (initializer != null &&
+        _providerTypes.any(initializer.toSource().contains)) {
+      candidateCount++;
     }
 
-    super.visitTopLevelVariableDeclaration(node);
+    super.visitVariableDeclaration(node);
   }
 
   @override
