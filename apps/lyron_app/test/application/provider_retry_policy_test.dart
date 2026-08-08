@@ -21,7 +21,8 @@ void main() {
 
         if (body.contains('retry: noAutomaticProviderRetry')) continue;
 
-        final line = '\n'.allMatches(source.substring(0, match.start)).length + 1;
+        final line =
+            '\n'.allMatches(source.substring(0, match.start)).length + 1;
         offenders.add('${entity.path}:$line');
       }
     }

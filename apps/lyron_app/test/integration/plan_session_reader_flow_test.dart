@@ -313,7 +313,8 @@ void main() {
             ).overrideWith((ref) async => _planDetailFixture()),
             songLibraryListProvider.overrideWith((ref) async => const []),
             songLibraryReaderProvider.overrideWith(
-              (ref, songId) async => throw const SongNotFoundException('song-1'),
+              (ref, songId) async =>
+                  throw const SongNotFoundException('song-1'),
             ),
           ],
           child: LyronApp(router: router),

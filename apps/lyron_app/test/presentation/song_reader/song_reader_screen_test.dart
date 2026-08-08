@@ -184,9 +184,7 @@ void main() {
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
         if (songLibraryService != null)
           songLibraryServiceProvider.overrideWithValue(songLibraryService),
-        songLibraryReaderProvider.overrideWith(
-          (ref, value) async => result,
-        ),
+        songLibraryReaderProvider.overrideWith((ref, value) async => result),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
     );
@@ -248,9 +246,7 @@ void main() {
                 SongSummary(id: songId, title: 'Reader Song'),
               ],
             ),
-        songLibraryReaderProvider.overrideWith(
-          (ref, value) async => result,
-        ),
+        songLibraryReaderProvider.overrideWith((ref, value) async => result),
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -356,9 +352,7 @@ void main() {
         _noopPreferencesStoreOverride,
         catalogSnapshotStateProvider.overrideWithValue(catalogState),
         activeCatalogContextProvider.overrideWithValue(catalogState.context),
-        songLibraryReaderProvider.overrideWith(
-          (ref, value) => loadSong(),
-        ),
+        songLibraryReaderProvider.overrideWith((ref, value) => loadSong()),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
     );
@@ -1542,7 +1536,8 @@ void main() {
               'plan-1',
             ).overrideWith((ref) async => _multiItemPlanDetail()),
             songLibraryReaderProvider.overrideWith(
-              (ref, songId) async => throw const SongNotFoundException('song-2'),
+              (ref, songId) async =>
+                  throw const SongNotFoundException('song-2'),
             ),
           ],
           child: MaterialApp.router(
@@ -1650,7 +1645,8 @@ void main() {
               ),
             ),
             songLibraryReaderProvider.overrideWith(
-              (ref, songId) async => throw const SongNotFoundException('song-2'),
+              (ref, songId) async =>
+                  throw const SongNotFoundException('song-2'),
             ),
           ],
           child: MaterialApp.router(

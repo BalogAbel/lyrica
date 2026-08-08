@@ -443,8 +443,7 @@ class _GatedSongMutationStore implements SongMutationStore {
   _GatedSongMutationStore({
     List<SongMutationRecord> pendingSongs = const [],
     this.clearGate,
-    this._recordContexts =
-        const {},
+    this._recordContexts = const {},
   }) : _records = {for (final record in pendingSongs) record.id: record};
 
   final Map<String, SongMutationRecord> _records;

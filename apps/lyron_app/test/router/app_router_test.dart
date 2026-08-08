@@ -924,7 +924,8 @@ void main() {
               'plan-1',
             ).overrideWith((ref) async => _planDetailFixture()),
             songLibraryReaderProvider.overrideWith(
-              (ref, songId) async => throw const SongNotFoundException('song-1'),
+              (ref, songId) async =>
+                  throw const SongNotFoundException('song-1'),
             ),
           ],
           child: MaterialApp.router(routerConfig: router),

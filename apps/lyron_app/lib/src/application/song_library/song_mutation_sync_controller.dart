@@ -9,10 +9,7 @@ enum SongDiscardResult { discarded, syncInProgress }
 enum SongDiscardLeaseOutcome { acquired, syncInProgress }
 
 class SongDiscardLease {
-  SongDiscardLease({
-    required this._discardSong,
-    required this._release,
-  });
+  SongDiscardLease({required this._discardSong, required this._release});
 
   final Future<void> Function(String songId) _discardSong;
   final void Function() _release;

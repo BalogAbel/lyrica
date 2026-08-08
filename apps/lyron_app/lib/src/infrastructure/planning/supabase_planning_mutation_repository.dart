@@ -8,9 +8,7 @@ class SupabasePlanningMutationRepository
     implements PlanningMutationRemoteRepository {
   SupabasePlanningMutationRepository(SupabaseClient client) : _rpc = client.rpc;
 
-  const SupabasePlanningMutationRepository.testing({
-    required this._rpc,
-  });
+  const SupabasePlanningMutationRepository.testing({required this._rpc});
 
   final Future<dynamic> Function(String fn, {Map<String, dynamic>? params})
   _rpc;

@@ -615,9 +615,7 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
     required bool created,
     int? acceptedBaseVersion,
   }) async => false;
-  _RecordingPlanningMutationStore({
-    required this._actionable,
-  });
+  _RecordingPlanningMutationStore({required this._actionable});
 
   final List<PlanningMutationRecord> _actionable;
   int readActionableMutationsCalls = 0;
