@@ -17,19 +17,14 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('every async provider declares the no-retry policy', () {
     final offenders = <String>[];
+    final unrecognised = <String>[];
     var declarationsSeen = 0;
-    var policyMentions = 0;
 
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
 
-      final source = entity.readAsStringSync();
-      policyMentions += 'retry: noAutomaticProviderRetry'
-          .allMatches(source)
-          .length;
-
       final parsed = parseString(
-        content: source,
+        content: entity.readAsStringSync(),
         path: entity.path,
         throwIfDiagnostics: false,
       );
@@ -38,9 +33,16 @@ void main() {
       parsed.unit.accept(visitor);
       declarationsSeen += visitor.declarationCount;
 
-      for (final offset in visitor.offsetsMissingPolicy) {
-        final location = parsed.lineInfo.getLocation(offset);
-        offenders.add('${entity.path}:${location.lineNumber}');
+      String at(int offset) =>
+          '${entity.path}:${parsed.lineInfo.getLocation(offset).lineNumber}';
+
+      offenders.addAll(visitor.offsetsMissingPolicy.map(at));
+
+      if (visitor.candidateCount != visitor.declarationCount) {
+        unrecognised.add(
+          '${entity.path}: ${visitor.candidateCount} declarations name a '
+          'provider type, ${visitor.declarationCount} were recognised',
+        );
       }
     }
 
@@ -54,18 +56,25 @@ void main() {
           '${offenders.join('\n')}',
     );
 
-    // A guard that silently stops recognising a declaration form reports no
-    // offenders for a reason that has nothing to do with compliance. Every
-    // declaration the visitor sees carries exactly one policy argument, so the
-    // two counts must agree; a declaration shape the visitor cannot parse
-    // shows up here as a surplus mention.
+    // A guard that stops recognising a declaration shape reports no offenders
+    // for a reason that has nothing to do with compliance. The cross-check
+    // therefore has to be blind to shape, or it goes blind in exactly the same
+    // place: it counts top-level declarations whose initializer names a
+    // provider type at all, and requires the visitor to have recognised the
+    // same number. That holds whether or not the escaping declaration carries
+    // the policy — counting policy arguments instead would only catch the ones
+    // that do.
+    expect(
+      unrecognised,
+      isEmpty,
+      reason:
+          'a provider declaration shape is escaping the visitor, so the check '
+          'above proves less than it appears to.\n${unrecognised.join('\n')}',
+    );
     expect(
       declarationsSeen,
-      policyMentions,
-      reason:
-          'the scan recognised $declarationsSeen provider declarations but '
-          '$policyMentions policy arguments are present in lib/ — a '
-          'declaration form is escaping the visitor',
+      greaterThan(0),
+      reason: 'a scan that recognises nothing trivially reports no offenders',
     );
   });
 
@@ -125,6 +134,26 @@ final streamed = StreamProvider<int>((ref) => const Stream.empty());
     expect(visitor.offsetsMissingPolicy, hasLength(6));
   });
 
+  test('the cross-check fires on a shape the visitor cannot recognise', () {
+    const source = 'final aliased = FutureProvider<int>;';
+
+    final visitor = _parse(source);
+
+    expect(
+      visitor.candidateCount,
+      1,
+      reason: 'the initializer names a provider type',
+    );
+    expect(
+      visitor.declarationCount,
+      0,
+      reason:
+          'and the visitor does not recognise it — which is the condition the '
+          'cross-check exists to surface, whether or not a policy argument is '
+          'present',
+    );
+  });
+
   test('a method called on a provider is not a declaration', () {
     const source = '''
 final derived = FutureProvider.autoDispose<int>(
@@ -177,6 +206,24 @@ class _AsyncProviderVisitor extends RecursiveAstVisitor<void> {
 
   final List<int> offsetsMissingPolicy = [];
   int declarationCount = 0;
+
+  /// Top-level declarations whose initializer names a provider type at all,
+  /// counted without looking at the shape of the call. This is the shape-blind
+  /// half of the cross-check in the test above; on its own it proves nothing.
+  int candidateCount = 0;
+
+  @override
+  void visitTopLevelVariableDeclaration(TopLevelVariableDeclaration node) {
+    for (final variable in node.variables.variables) {
+      final initializer = variable.initializer;
+      if (initializer == null) continue;
+
+      final source = initializer.toSource();
+      if (_providerTypes.any(source.contains)) candidateCount++;
+    }
+
+    super.visitTopLevelVariableDeclaration(node);
+  }
 
   @override
   void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
