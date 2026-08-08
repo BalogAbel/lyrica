@@ -1,33 +1,38 @@
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Riverpod 3 retries a failed provider up to ten times by default, which keeps
 /// the failure from ever settling into `AsyncError` and so from ever reaching
 /// the UI. Every async provider therefore opts out explicitly. See ADR-032.
+///
+/// The scan parses each library rather than pattern-matching its text. A
+/// regex over source cannot tell a provider declaration from the same words
+/// inside a comment or a string, and cannot reliably find where a declaration
+/// ends — string interpolation alone (`'${f('(')}'`) is enough to desynchronise
+/// bracket counting and let one declaration absorb the next one's arguments.
 void main() {
   test('every async provider declares the no-retry policy', () {
-    final declaration = RegExp(r'=\s*(FutureProvider|StreamProvider)\b');
     final offenders = <String>[];
 
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
 
-      final source = entity.readAsStringSync();
-      // Parenthesis depth is only meaningful over code, so comments and string
-      // literals are blanked out first — an unbalanced bracket inside either
-      // would otherwise run the scan past the real end of a declaration and
-      // let it read a neighbouring provider's policy as this one's.
-      final code = _maskCommentsAndStrings(source);
+      final parsed = parseString(
+        content: entity.readAsStringSync(),
+        path: entity.path,
+        throwIfDiagnostics: false,
+      );
 
-      for (final match in declaration.allMatches(code)) {
-        final end = _declarationEnd(code, match.end);
-        final body = code.substring(match.start, end);
+      final visitor = _AsyncProviderVisitor();
+      parsed.unit.accept(visitor);
 
-        if (body.contains('retry: noAutomaticProviderRetry')) continue;
-
-        final line = '\n'.allMatches(code.substring(0, match.start)).length + 1;
-        offenders.add('${entity.path}:$line');
+      for (final offset in visitor.offsetsMissingPolicy) {
+        final location = parsed.lineInfo.getLocation(offset);
+        offenders.add('${entity.path}:${location.lineNumber}');
       }
     }
 
@@ -42,126 +47,112 @@ void main() {
     );
   });
 
-  test('the scan is not fooled by brackets inside comments or strings', () {
+  test('the scan sees through text a regex would trip over', () {
     const source = '''
-final a = FutureProvider<int>((ref) {
-  // a stray ( in a comment
-  return int.parse(')(');
+// FutureProvider<int>((ref) => 0);
+const banner = 'FutureProvider<int>((ref) => 0)';
+
+final interpolated = FutureProvider.autoDispose<int>((ref) {
+  return int.parse('\${_label('(')} 1');
 }, retry: noAutomaticProviderRetry);
 
-final b = FutureProvider<int>((ref) => 0);
+final arrowed = FutureProvider.autoDispose<int>((ref) => 0);
 ''';
 
-    final code = _maskCommentsAndStrings(source);
-    final matches = RegExp(
-      r'=\s*(FutureProvider|StreamProvider)\b',
-    ).allMatches(code).toList();
+    final visitor = _AsyncProviderVisitor();
+    parseString(
+      content: source,
+      throwIfDiagnostics: false,
+    ).unit.accept(visitor);
 
-    expect(matches, hasLength(2));
-
-    final first = code.substring(
-      matches[0].start,
-      _declarationEnd(code, matches[0].end),
-    );
-    final second = code.substring(
-      matches[1].start,
-      _declarationEnd(code, matches[1].end),
-    );
-
-    expect(first.contains('retry: noAutomaticProviderRetry'), isTrue);
     expect(
-      second.contains('retry: noAutomaticProviderRetry'),
-      isFalse,
-      reason: 'the second declaration must not absorb the first one\'s policy',
+      visitor.declarationCount,
+      2,
+      reason:
+          'the commented-out and quoted occurrences must not count as '
+          'declarations',
+    );
+    expect(
+      visitor.offsetsMissingPolicy,
+      hasLength(1),
+      reason:
+          'the interpolated declaration carries the policy and the arrow-bodied '
+          'one does not; unbalanced brackets inside the interpolation must not '
+          'let the first one cover the second',
     );
   });
 }
 
-/// Replaces the contents of comments and string literals with spaces, leaving
-/// every other character and the source's length untouched so offsets computed
-/// over the result still address the original.
-String _maskCommentsAndStrings(String source) {
-  final out = source.split('');
-  var i = 0;
+/// Finds every call that creates a `FutureProvider` or `StreamProvider` —
+/// including the `.autoDispose` and `.family` builder chains — and records the
+/// ones whose arguments omit `retry: noAutomaticProviderRetry`.
+class _AsyncProviderVisitor extends RecursiveAstVisitor<void> {
+  final List<int> offsetsMissingPolicy = [];
+  int declarationCount = 0;
 
-  void blank(int from, int to) {
-    for (var j = from; j < to && j < out.length; j++) {
-      if (out[j] != '\n') out[j] = ' ';
-    }
+  @override
+  void visitFunctionExpressionInvocation(FunctionExpressionInvocation node) {
+    _record(node.function, node.argumentList);
+    super.visitFunctionExpressionInvocation(node);
   }
 
-  while (i < source.length) {
-    final rest = source.length - i;
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    _record(node, node.argumentList);
+    super.visitMethodInvocation(node);
+  }
 
-    if (rest >= 2 && source.startsWith('//', i)) {
-      final end = source.indexOf('\n', i);
-      final stop = end == -1 ? source.length : end;
-      blank(i, stop);
-      i = stop;
-      continue;
-    }
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    _record(node.constructorName.type, node.argumentList);
+    super.visitInstanceCreationExpression(node);
+  }
 
-    if (rest >= 2 && source.startsWith('/*', i)) {
-      final end = source.indexOf('*/', i + 2);
-      final stop = end == -1 ? source.length : end + 2;
-      blank(i, stop);
-      i = stop;
-      continue;
-    }
+  void _record(AstNode callee, ArgumentList arguments) {
+    if (!_isAsyncProviderChain(callee)) return;
 
-    final quote = _quoteAt(source, i);
-    if (quote != null) {
-      final isRaw = i > 0 && source[i - 1] == 'r';
-      final contentStart = i + quote.length;
-      var j = contentStart;
+    // The call that actually creates the provider is the one handed the create
+    // callback; `FutureProvider.autoDispose` on its own creates nothing.
+    final createsProvider = arguments.arguments.any(
+      (argument) =>
+          argument is FunctionExpression ||
+          (argument is NamedExpression &&
+              argument.expression is FunctionExpression),
+    );
+    if (!createsProvider) return;
 
-      while (j < source.length) {
-        if (!isRaw && source[j] == r'\') {
-          j += 2;
-          continue;
-        }
-        if (source.startsWith(quote, j)) break;
-        j++;
+    declarationCount++;
+
+    final hasPolicy = arguments.arguments.any(
+      (argument) =>
+          argument is NamedExpression &&
+          argument.name.label.name == 'retry' &&
+          argument.expression.toSource() == 'noAutomaticProviderRetry',
+    );
+    if (!hasPolicy) offsetsMissingPolicy.add(callee.offset);
+  }
+
+  /// Walks a receiver chain such as `FutureProvider.autoDispose.family` down to
+  /// its leftmost identifier.
+  bool _isAsyncProviderChain(AstNode node) {
+    var current = node;
+
+    while (true) {
+      switch (current) {
+        case SimpleIdentifier(:final name):
+          return name == 'FutureProvider' || name == 'StreamProvider';
+        case PrefixedIdentifier(:final prefix):
+          current = prefix;
+        case PropertyAccess(:final target?):
+          current = target;
+        case MethodInvocation(:final target?):
+          current = target;
+        case NamedType(:final name):
+          return name.lexeme == 'FutureProvider' ||
+              name.lexeme == 'StreamProvider';
+        case _:
+          return false;
       }
-
-      final stop = j >= source.length ? source.length : j + quote.length;
-      blank(i, stop);
-      i = stop;
-      continue;
-    }
-
-    i++;
-  }
-
-  return out.join();
-}
-
-/// Returns the quote delimiter starting at [index], preferring the triple
-/// forms, or `null` when the character there does not open a string.
-String? _quoteAt(String source, int index) {
-  for (final quote in const ["'''", '"""', "'", '"']) {
-    if (source.startsWith(quote, index)) return quote;
-  }
-  return null;
-}
-
-/// Returns the offset just past the `)` that closes the provider declaration
-/// whose argument list starts at or after [start], by tracking parenthesis
-/// depth over code with comments and strings already masked out.
-int _declarationEnd(String source, int start) {
-  var depth = 0;
-  var seenOpen = false;
-
-  for (var i = start; i < source.length; i++) {
-    final char = source[i];
-    if (char == '(') {
-      depth++;
-      seenOpen = true;
-    } else if (char == ')') {
-      depth--;
-      if (seenOpen && depth == 0) return i + 1;
     }
   }
-
-  return source.length;
 }

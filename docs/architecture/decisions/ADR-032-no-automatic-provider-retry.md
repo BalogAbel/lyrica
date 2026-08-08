@@ -6,7 +6,8 @@
 - Relates to: ADR-003 (Riverpod as the state-management choice),
   ADR-021 (provider domain split), ADR-026 (RLS-protected read boundary)
 - Scope: every `FutureProvider`/`StreamProvider` declaration in
-  `apps/lyron_app/lib/`, and the song reader's failure surfaces
+  `apps/lyron_app/lib/`, and the song reader's failure surfaces. Synchronous
+  providers are deliberately outside it — see Known Limit.
 
 ## Context
 
@@ -63,9 +64,29 @@ without threading a `retry:` argument through the roughly 175
 omission would silently give that test different failure behaviour from the
 application.
 
-`test/application/provider_retry_policy_test.dart` scans `lib/` and fails when
-an async provider is declared without the policy, so a provider added later
-cannot quietly opt back in.
+`test/application/provider_retry_policy_test.dart` parses every library in
+`lib/` and fails when a provider-creating call omits the policy, so a provider
+added later cannot quietly opt back in. It parses rather than pattern-matches:
+a regex over source cannot distinguish a declaration from the same words inside
+a comment or a string, and string interpolation is enough to desynchronise
+bracket counting so that one declaration appears to carry its neighbour's
+arguments.
+
+## Known Limit
+
+`triggerRetry` sits on the shared build path (`element.dart`), so Riverpod
+retries a synchronous provider that throws during build as well. This policy
+does not cover those, and the guard test does not look for them.
+
+That is deliberate and currently harmless: no synchronous provider in `lib/`
+throws from its build, and for the synchronous case the error surfaces
+immediately regardless — `SyncProviderElement` maps the retrying-loading state
+to an error result, so nothing is hidden from the UI. What a retry would cost
+there is re-running the build body, and with it any side effect that body
+performs, up to ten times.
+
+Revisit if a synchronous provider is ever given a build body that can throw, or
+one whose re-execution is not free.
 
 ## Target Version
 
@@ -99,7 +120,8 @@ generic case is excluded there is nothing left for the policy to retry, and what
 remains is a rule that looks configurable but never fires.
 
 **Restating the reader error taxonomy in Riverpod 3 terms.** This was the option
-`docs/deferred/2026-07-30-riverpod-3-migration.md` anticipated, on the
+the deferred document that this slice removes anticipated
+(`docs/specs/2026-08-08-riverpod-3-migration.md` records what it said), on the
 hypothesis that Riverpod 3's `ProviderException` wrapping had broken the
 taxonomy's `error is SongNotFoundException` branches. Reproducing the failures
 disproved it. In Riverpod 3, `AsyncValue.error` carries the original error, and
