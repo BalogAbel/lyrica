@@ -405,6 +405,12 @@ class ReaderTheme extends ThemeExtension<ReaderTheme> {
 Run: `cd apps/lyron_app && flutter test test/app/reader_theme_test.dart`
 Expected: all tests pass.
 
+Known limitation, accepted: `copyWith` cannot clear `chordChipColor` back to
+null, because `chordChipColor ?? this.chordChipColor` reads a null argument as
+"unchanged". Nothing needs to clear it — the field goes from null to a colour in
+PR2 and stays set. Leave the sentinel-parameter workaround out until something
+actually needs it.
+
 - [ ] **Step 5: Commit**
 
 ```bash
