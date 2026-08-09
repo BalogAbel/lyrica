@@ -173,6 +173,16 @@ Rationale, measured across four candidate dark palettes:
   accent is therefore two values, not one inverted value — which is the concrete
   reason a token layer is required rather than a second hardcoded palette.
 
+**Switching between the themes.** Following the platform setting alone does not
+serve the use case that justifies the dark theme at all: a stage tablet is in
+light mode all day, and nobody leaves the app for the OS settings between two
+songs. The reader's overflow menu carries a single entry that flips to the other
+theme, and the choice is stored app-wide. Absence of a stored value means
+"follow the system", so a user who never touches it keeps platform behaviour;
+once they choose, the choice wins. There is deliberately no "back to system"
+entry — a third state to explain, for a preference set once. An account-screen
+setting is a reasonable later addition and is not built here.
+
 A brightness step for the reader is **not** in this slice; `#B3B0A6`-level
 dimming (9.7:1, 43% luminance) was rejected as a default because it is too faint
 in daylight rehearsal.
