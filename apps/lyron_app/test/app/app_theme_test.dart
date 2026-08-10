@@ -36,4 +36,21 @@ void main() {
       );
     },
   );
+
+  testWidgets('the app offers both themes to the system', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        home: Builder(
+          builder: (context) => Text(
+            'reader',
+            style: ReaderTheme.of(context).lyricStyle,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('reader'), findsOneWidget);
+  });
 }
