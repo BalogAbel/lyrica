@@ -277,10 +277,7 @@ void main() {
           displayChord: 'E',
           text: 'Kegyelmed elég, több, mint elég, Igé',
         ),
-        SongReaderSegmentProjection(
-          displayChord: 'G#m',
-          text: 'dben bízok én',
-        ),
+        SongReaderSegmentProjection(displayChord: 'G#m', text: 'dben bízok én'),
       ],
     );
 
