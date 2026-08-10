@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 
 /// Measured average per-character advance (in logical pixels, at the
@@ -93,12 +94,15 @@ const _headerMeasureSample =
 
 /// Measures [SongReaderCharWidths] for the current [context]'s theme.
 ///
-/// Mirrors the exact text styles `SongLineView` (widgets/song_line_view.dart)
-/// builds for chord and lyric text:
-///   - chord: `theme.textTheme.labelLarge` + `FontWeight.w700`
-///   - lyric: `theme.textTheme.bodyLarge` + `height: 1.25`
-/// at their BASE font size (fontScale == 1.0) -- callers convert the
-/// returned widths to any candidate fontScale via
+/// Reads `chordStyle`/`lyricStyle`/`sectionLabelStyle`/`directiveStyle`
+/// straight off `ReaderTheme.of(context)` -- the same object the reader
+/// widgets render with -- rather than re-deriving them from `TextTheme` by
+/// hand. That structural sharing is what keeps this estimator from silently
+/// drifting out of sync with the renderer: before `ReaderTheme` existed, this
+/// function and `SongLineView` each hand-typed `labelLarge + w700` /
+/// `bodyLarge + height: 1.25`, and nothing enforced that the two copies
+/// stayed equal. At their BASE font size (fontScale == 1.0) -- callers
+/// convert the returned widths to any candidate fontScale via
 /// `SongReaderFitTextScale.factorFor` (song_reader_fit.dart) rather than
 /// re-measuring at every scale. This keeps `resolveFitFontScale`'s
 /// ~24-iteration binary search free of repeated `TextPainter` layout work:
@@ -123,16 +127,11 @@ const _headerMeasureSample =
 /// (song_reader_fit.dart) at the REAL candidate rendered size for each
 /// style, via `SongReaderFitTextScale.factorFor`.
 SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
-  final theme = Theme.of(context);
+  final tokens = ReaderTheme.of(context);
   final textScaler = MediaQuery.textScalerOf(context);
-  final chordStyle = theme.textTheme.labelLarge?.copyWith(
-    fontWeight: FontWeight.w700,
-  );
-  final lyricStyle = theme.textTheme.bodyLarge?.copyWith(height: 1.25);
-  // Mirrors song_reader_section_grid.dart's `_buildHeaderWidget`: titleLarge
-  // with no weight/size override (only `color` is overridden there, which
-  // does not affect layout).
-  final headerStyle = theme.textTheme.titleLarge;
+  final chordStyle = tokens.chordStyle;
+  final lyricStyle = tokens.lyricStyle;
+  final headerStyle = tokens.sectionLabelStyle;
 
   double measure(String sample, TextStyle? style) {
     final painter = TextPainter(
@@ -153,11 +152,10 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     headerCharWidth: measure(_headerMeasureSample, headerStyle),
     textScale: SongReaderFitTextScale(
       textScaler: textScaler,
-      lyricBaseFontSize: lyricStyle?.fontSize ?? 16.0,
-      chordBaseFontSize: chordStyle?.fontSize ?? 14.0,
-      headerBaseFontSize: headerStyle?.fontSize ?? 22.0,
-      inlineDirectiveBaseFontSize:
-          theme.textTheme.labelMedium?.fontSize ?? 12.0,
+      lyricBaseFontSize: lyricStyle.fontSize ?? 16.0,
+      chordBaseFontSize: chordStyle.fontSize ?? 14.0,
+      headerBaseFontSize: headerStyle.fontSize ?? 22.0,
+      inlineDirectiveBaseFontSize: tokens.directiveStyle.fontSize ?? 12.0,
     ),
   );
 }

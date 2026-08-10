@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
@@ -224,4 +225,31 @@ void main() {
       const Color(0xFFAA0009),
     );
   });
+
+  testWidgets(
+    'measureSongReaderCharWidths measures the styles ReaderTheme declares, '
+    'not the ambient TextTheme',
+    (tester) async {
+      late SongReaderCharWidths widths;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: _themeWith(_markedTokens),
+          home: Builder(
+            builder: (context) {
+              widths = measureSongReaderCharWidths(context);
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      // The marked tokens set lyric 31 / chord 29 / header 27; the M3 defaults
+      // would report 16 / 14 / 22.
+      expect(widths.textScale.lyricBaseFontSize, 31);
+      expect(widths.textScale.chordBaseFontSize, 29);
+      expect(widths.textScale.headerBaseFontSize, 27);
+      expect(widths.textScale.inlineDirectiveBaseFontSize, 21);
+    },
+  );
 }
