@@ -339,6 +339,28 @@ opportunities, and the mid-word segment boundary is.
 The estimator (`song_reader_fit.dart:763`) mirrors this faithfully, so the
 estimate is correct and the render is wrong. Both move together in the fix.
 
+**Amended 2026-08-10, while implementing:** "the estimate is correct" held for
+the grouping rule only. Building the new consistency fixtures surfaced a
+*separate*, pre-existing estimator defect on the same code path — the
+`columnWidth.clamp(120.0, 1200.0)` applied to `effectiveLineWidth` clamped the
+modelled line width **up** to 120px for any narrower column, modelling a wider
+line than the renderer gets and so under-estimating its height. Under a
+one-sided `estimated >= rendered` contract the two bounds are not symmetric: a
+narrower model is always safe, a wider one is never. Reproduced on `main` at a
+90px column (rendered 126px, estimated 114px). Fixed by lowering the floor to a
+pure numeric guard, `minEffectiveLineWidth`; the 1200px cap stays, as it can
+only over-estimate. Full measurements in
+`docs/deferred/2026-07-28-reader-fit-conservatism-margin.md`, "Word-boundary
+splitting (2026-08-10)".
+
+That document also records a real side effect of the fix: because a line is now
+one box per word in the outer `Wrap`, the renderer's 10px `lineRunSpacing` now
+applies between a line's own wrapped rows (+10px per wrap), where a
+single-segment line previously wrapped internally at plain text leading. Lines
+that already split into several groups behaved this way on `main`, so this makes
+the behaviour consistent rather than introducing it. Whether that leading is the
+right typography belongs to the type-scale slice, not here.
+
 **Fix:** make the wrapping unit the word rather than the segment run. Split each
 segment's text at its internal whitespace before grouping, leaving the
 whitespace on the left-hand piece so the rendered string is unchanged, and
