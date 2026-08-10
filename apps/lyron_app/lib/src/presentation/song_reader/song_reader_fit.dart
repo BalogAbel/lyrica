@@ -692,9 +692,17 @@ double _lineItemHeight({
       // word groups only apply when the line has lyric segments. A
       // chord-only line is measured one segment at a time, exactly as it
       // is rendered.
+      //
+      // A ChordPro segment is not a word -- ChordPro splits a line at
+      // chord positions, which can land inside a word (e.g. a chord
+      // fingered mid-word splits it into two segments). Grouping raw
+      // segments used to make renderer and estimator agree on the WRONG
+      // boundary. Both now split segments at word boundaries first (see
+      // splitSegmentsAtWordBoundaries), so every group is exactly one
+      // word, and the renderer and estimator agree on the right one.
       final groups = hasLyrics
           ? groupSegmentsIntoWords(
-              item.segments,
+              splitSegmentsAtWordBoundaries(item.segments),
             ).map((group) => group.segments).toList(growable: false)
           : [
               for (final segment in item.segments) [segment],
