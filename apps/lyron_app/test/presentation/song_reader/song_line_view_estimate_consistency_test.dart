@@ -629,8 +629,8 @@ void main() {
     );
 
     testWidgets(
-      'realistic annotated chord label ("N.C. (fade out)") must wrap at a '
-      'width above the 120px clamp floor',
+      'realistic annotated chord label ("N.C. (fade out)") wraps at a width '
+      'that isolates the wrap model from the old clamp floor',
       (tester) async {
         // A parenthetical performance annotation appended to a chord label
         // is a realistic shape (not just the reviewer's all-C synthetic
@@ -649,11 +649,15 @@ void main() {
         // even division over the label's full width undercounts to two.
         //
         // width=130 -- same as the "chord label wraps within its own run"
-        // group above and for the same reason: it must stay ABOVE
-        // _lineItemHeight's own `columnWidth.clamp(120.0, 1200.0)` floor, or
-        // the estimator would silently evaluate at a wider effective column
-        // than the real render uses, confounding this case's own wrap-model
-        // bug with an unrelated clamp mismatch.
+        // group above and for the same reason: this case must isolate its own
+        // wrap-model bug from any effective-width mismatch. It was chosen to
+        // sit above _lineItemHeight's then-120px clamp floor, which used to
+        // make the estimator silently evaluate every narrower column at 120px
+        // -- a wider effective line than the real render, and therefore an
+        // under-estimate. That floor was lowered to [minEffectiveLineWidth]
+        // on 2026-08-10 (song_reader_fit.dart), so widths below 120 are now
+        // modelled honestly too; 130 is kept here because this fixture's
+        // point is the wrap model, not the clamp.
         final line = SongReaderLyricLineProjection(
           segments: const [
             SongReaderSegmentProjection(
@@ -1342,6 +1346,207 @@ void main() {
               'the estimate must not be uselessly loose either; '
               'rendered=$rendered estimated=$estimated '
               'ceiling=${rendered * 1.6}',
+        );
+      },
+    );
+  });
+
+  group('SongLineView per-line estimate/render consistency: word-boundary '
+      'wrapping (splitSegmentsAtWordBoundaries)', () {
+    testWidgets(
+      "reproduction: ChordPro splits a word at the chord ('Igédben'), the "
+      'word must not break at the chord join',
+      (tester) async {
+        // The exact defect from docs/specs/2026-08-09-song-presentation.md,
+        // "Defect pulled into scope": ChordPro places the G#m chord inside
+        // "Igédben", producing two segments ('...Igé' / 'dben bízok én')
+        // with no whitespace at the join. Before word-boundary splitting,
+        // groupSegmentsIntoWords could only see segment boundaries, so the
+        // whole line was one giant group; now splitSegmentsAtWordBoundaries
+        // cuts each segment at its OWN internal word boundaries first, so
+        // 'Igédben' (spanning the segment join) stays a single word group
+        // while the other words on the line are free to wrap independently.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: 'E',
+              text: 'Kegyelmed elég, több, mint elég, Igé',
+            ),
+            SongReaderSegmentProjection(
+              displayChord: 'G#m',
+              text: 'dben bízok én',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 375.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 375.0,
+          fontScale: fontScale,
+        );
+
+        // Measured 2026-08-10: rendered=136.0 estimated=148.0 (width=375,
+        // ratio 1.09x). estimated > rendered -- the greedy word-wrap model's
+        // usual per-group over-count (see the plain wrapping fixtures
+        // above), not a defect. Ceiling pinned at 1.1x, just above the
+        // measured ratio.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render for the '
+              "reproduction shape (ChordPro splitting 'Igédben' at its "
+              'chord); rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.1),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.1}',
+        );
+      },
+    );
+
+    testWidgets(
+      'a word split across three segments stays one group across a wrap '
+      'point',
+      (tester) async {
+        // 'al' + 'ph' + 'a beta' -- three segments with no whitespace at the
+        // al/ph join, so splitSegmentsAtWordBoundaries leaves 'al' and 'ph'
+        // untouched (each is already a single word-piece) while it splits
+        // the third segment's internal space into 'a ' and 'beta'.
+        // groupSegmentsIntoWords then merges al+ph+'a ' into one 'alpha '
+        // group (three segments, one word) and 'beta' into its own group.
+        // At a narrow enough width the outer Wrap must break between the
+        // two groups -- the atomic-group architecture (each group is a
+        // single child of the outer Wrap) means 'alpha' can never itself be
+        // split across that break, even though it is built from three
+        // separate segments each carrying its own chord.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'C', text: 'al'),
+            SongReaderSegmentProjection(displayChord: 'G', text: 'ph'),
+            SongReaderSegmentProjection(displayChord: 'Am', text: 'a beta'),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 90.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 90.0,
+          fontScale: fontScale,
+        );
+
+        // Measured 2026-08-10: rendered=136.0 estimated=148.0 (width=90,
+        // ratio 1.09x) -- the render puts 'al'+'ph' on one row, the split
+        // word's tail 'a ' on a second, and 'beta' on a third.
+        //
+        // This fixture is the one that caught the effective-width clamp bug:
+        // width=90 is BELOW the estimator's old 120px floor, so
+        // flowBlockHeight modelled a 120px line for a 90px render, saw the
+        // 99px 'alpha' group fit on one row where the real 90px column
+        // splits it across two, and returned 92px against a 136px render --
+        // an under-estimate, the exact failure this suite exists to catch.
+        // The floor is now [minEffectiveLineWidth] (song_reader_fit.dart),
+        // a pure numeric guard that can never raise a real column width.
+        // Ceiling pinned at 1.1x.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render when a '
+              'single word is split across three segments and the line '
+              'wraps between that word and the next; rendered=$rendered '
+              'estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.1),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.1}',
+        );
+      },
+    );
+
+    testWidgets(
+      'a single word longer than the line still wraps inside itself via the '
+      'over-wide-group ConstrainedBox fallback',
+      (tester) async {
+        // No whitespace anywhere in this ~40-character text -- a genuinely
+        // unbreakable single word is the one case where a mid-word break is
+        // still the correct behaviour (there is no word boundary to prefer
+        // instead). splitSegmentsAtWordBoundaries leaves a single-piece
+        // segment untouched (song_reader_word_groups.dart: `if
+        // (pieces.length == 1) { result.add(segment); continue; }`), so
+        // groupSegmentsIntoWords produces one group containing this one
+        // segment, and that group's own width comfortably exceeds a 130px
+        // column -- forcing the renderer's inner, over-wide-group
+        // ConstrainedBox/Wrap fallback (widgets/song_line_view.dart's
+        // per-group `ConstrainedBox(constraints: BoxConstraints(maxWidth:
+        // maxWidth))`) to wrap the segment's own Text internally.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(
+              displayChord: null,
+              text: 'abcdefghijklmnopqrstuvwxyzabcdefghijkl',
+            ),
+          ],
+        );
+
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 130.0,
+          fontScale: fontScale,
+        );
+
+        // Measured 2026-08-10: rendered=132.0 estimated=132.0 (width=130,
+        // ratio 1.00x) -- exact match. estimated never drops below
+        // rendered. Ceiling pinned at 1.1x.
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render for a '
+              'single word longer than the line, wrapping inside itself; '
+              'rendered=$rendered estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.1),
+          reason:
+              'the estimate must not be uselessly loose either; '
+              'rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.1}',
         );
       },
     );

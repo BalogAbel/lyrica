@@ -1330,7 +1330,7 @@ void main() {
     // Reviewer's repro: 12 segments in a single word group (no whitespace
     // between them, so groupSegmentsIntoWords keeps them together), each
     // with a wide chord ('C#m/G#', 6 chars -> 60px) over a one-character
-    // lyric ('a'). At columnWidth=120 (the estimator's clamp floor), each
+    // lyric ('a'). At columnWidth=120, each
     // segment is 60px wide, so 2 fit per run (0 inter-segment spacing,
     // mirroring song_line_view.dart's inner Wrap) -> 6 runs of 2 segments
     // each, every run carrying a chord.
@@ -1419,7 +1419,7 @@ void main() {
     test(
       'estimate grows with the number of wrapped lines a long segment implies',
       () {
-        const columnWidth = 120.0; // == the estimator's clamp floor
+        const columnWidth = 120.0;
         // shortText: 6 chars -> 60px -> fits in one 120px line -> 1 line.
         // longText: 30 chars -> 300px -> ceil(300/120) = 3 lines.
         const shortText = 'aaaaaa'; // 6 chars

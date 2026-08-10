@@ -114,6 +114,34 @@ const double tabBlockVerticalPadding = 16.0;
 /// once per lyric line to match what the widget actually adds.
 const double lineWidgetBottomPadding = 2.0;
 
+/// Bounds applied to the caller's column width before it is used as the
+/// estimator's `effectiveLineWidth`.
+///
+/// Direction is the whole point here, and the two bounds are NOT symmetric:
+///
+///   - Modelling a NARROWER line than the renderer really gets can only add
+///     estimated wraps, so it can only ever push the estimate UP -- safe
+///     under this file's one-sided `estimated >= rendered` contract.
+///   - Modelling a WIDER line than the renderer really gets removes estimated
+///     wraps, pushing the estimate DOWN and straight through the contract's
+///     floor. `resolveFitFontScale` picks the largest scale whose ESTIMATED
+///     height fits, so an under-estimate is exactly the overflow that
+///     fit-to-screen exists to prevent.
+///
+/// [maxEffectiveLineWidth] is therefore a real cap (it can only over-estimate),
+/// while the lower bound exists ONLY as a numeric guard: at width 0 the
+/// oversized-word branch of [_greedyWrapLineCount] evaluates
+/// `(wordWidth / 0).ceil()` on an infinity and throws, and a negative width
+/// makes the greedy packing loop meaningless. It must stay small enough that it
+/// never RAISES a real column width -- it was 120.0 until 2026-08-10, which
+/// silently modelled a 120px line for every narrower column and under-estimated
+/// every one of them (see
+/// docs/deferred/2026-07-28-reader-fit-conservatism-margin.md, "Word-boundary
+/// splitting"). The renderer applies no such floor: `SongLineView` lays out at
+/// whatever `constraints.maxWidth` it is given.
+const double minEffectiveLineWidth = 1.0;
+const double maxEffectiveLineWidth = 1200.0;
+
 // Layout decision constants (shared by the section grid, the fit calculator,
 // and the layout resolver so all three agree).
 const double denseLayoutMinWidth = 1180.0;
@@ -662,7 +690,10 @@ double _lineItemHeight({
   double chordCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
-  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
+  final effectiveLineWidth = columnWidth.clamp(
+    minEffectiveLineWidth,
+    maxEffectiveLineWidth,
+  );
   // Both lyricCharWidth and chordCharWidth are measured RAW (no ambient
   // scaler baked in, see measureSongReaderCharWidths) at each style's own
   // base size, so every quantity derived from them needs the REAL effective
@@ -988,7 +1019,10 @@ double flowBlockHeight({
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
-  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
+  final effectiveLineWidth = columnWidth.clamp(
+    minEffectiveLineWidth,
+    maxEffectiveLineWidth,
+  );
 
   switch (block.kind) {
     case FlowBlockKind.leadingDirective:
@@ -1226,7 +1260,10 @@ double estimateSectionHeight({
     final headerFactor = textScale.factorFor(textScale.headerBaseFontSize, 1.0);
     final headerLines = _wordWrapLineCount(
       text: headerLabel,
-      effectiveLineWidth: maxWidth.clamp(120.0, 1200.0),
+      effectiveLineWidth: maxWidth.clamp(
+        minEffectiveLineWidth,
+        maxEffectiveLineWidth,
+      ),
       charWidth: headerCharWidth * headerFactor,
     );
     h = headerLines * headerHeight * headerFactor;
