@@ -21,21 +21,18 @@ void main() {
     expect(theme.scaffoldBackgroundColor, const Color(0xFF000000));
   });
 
-  test(
-    'the light tokens equal the fallback, so a tree without the extension '
-    'renders identically to one with it',
-    () {
-      final theme = buildLightTheme();
+  test('the light tokens equal the fallback, so a tree without the extension '
+      'renders identically to one with it', () {
+    final theme = buildLightTheme();
 
-      expect(
-        theme.extension<ReaderTheme>(),
-        ReaderTheme.fromM3(
-          colorScheme: theme.colorScheme,
-          textTheme: theme.textTheme,
-        ),
-      );
-    },
-  );
+    expect(
+      theme.extension<ReaderTheme>(),
+      ReaderTheme.fromM3(
+        colorScheme: theme.colorScheme,
+        textTheme: theme.textTheme,
+      ),
+    );
+  });
 
   testWidgets('the app offers both themes to the system', (tester) async {
     await tester.pumpWidget(
@@ -43,10 +40,8 @@ void main() {
         theme: buildLightTheme(),
         darkTheme: buildDarkTheme(),
         home: Builder(
-          builder: (context) => Text(
-            'reader',
-            style: ReaderTheme.of(context).lyricStyle,
-          ),
+          builder: (context) =>
+              Text('reader', style: ReaderTheme.of(context).lyricStyle),
         ),
       ),
     );

@@ -219,8 +219,11 @@ class ReaderTheme extends ThemeExtension<ReaderTheme> {
       lyricStyle: TextStyle.lerp(lyricStyle, other.lyricStyle, t)!,
       chordStyle: TextStyle.lerp(chordStyle, other.chordStyle, t)!,
       chordChipColor: Color.lerp(chordChipColor, other.chordChipColor, t),
-      sectionLabelStyle:
-          TextStyle.lerp(sectionLabelStyle, other.sectionLabelStyle, t)!,
+      sectionLabelStyle: TextStyle.lerp(
+        sectionLabelStyle,
+        other.sectionLabelStyle,
+        t,
+      )!,
       unknownSectionLabelColor: Color.lerp(
         unknownSectionLabelColor,
         other.unknownSectionLabelColor,
@@ -234,8 +237,11 @@ class ReaderTheme extends ThemeExtension<ReaderTheme> {
         t,
       )!,
       tabStyle: TextStyle.lerp(tabStyle, other.tabStyle, t)!,
-      tabBackgroundColor:
-          Color.lerp(tabBackgroundColor, other.tabBackgroundColor, t)!,
+      tabBackgroundColor: Color.lerp(
+        tabBackgroundColor,
+        other.tabBackgroundColor,
+        t,
+      )!,
     );
   }
 

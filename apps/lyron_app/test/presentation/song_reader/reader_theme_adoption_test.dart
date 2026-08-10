@@ -25,7 +25,10 @@ ReaderTheme _markedTokens(ThemeData base) {
     chordStyle: const TextStyle(fontSize: 29, color: Color(0xFFAA0002)),
     sectionLabelStyle: const TextStyle(fontSize: 27, color: Color(0xFFAA0003)),
     unknownSectionLabelColor: const Color(0xFFAA0004),
-    leadingDirectiveStyle: const TextStyle(fontSize: 25, color: Color(0xFFAA0005)),
+    leadingDirectiveStyle: const TextStyle(
+      fontSize: 25,
+      color: Color(0xFFAA0005),
+    ),
     commentStyle: const TextStyle(fontSize: 23, color: Color(0xFFAA0006)),
     directiveStyle: const TextStyle(fontSize: 21, color: Color(0xFFAA0007)),
     tabStyle: const TextStyle(fontSize: 19, color: Color(0xFFAA0008)),
@@ -35,9 +38,7 @@ ReaderTheme _markedTokens(ThemeData base) {
 
 ThemeData _themeWith(ReaderTheme Function(ThemeData) tokens) {
   final base = buildLightTheme();
-  return base.copyWith(
-    extensions: <ThemeExtension<dynamic>>[tokens(base)],
-  );
+  return base.copyWith(extensions: <ThemeExtension<dynamic>>[tokens(base)]);
 }
 
 void main() {
@@ -51,10 +52,7 @@ void main() {
           body: SongLineView(
             line: SongReaderLyricLineProjection(
               segments: const [
-                SongReaderSegmentProjection(
-                  text: 'lyric',
-                  displayChord: 'Am',
-                ),
+                SongReaderSegmentProjection(text: 'lyric', displayChord: 'Am'),
               ],
             ),
             viewMode: SongReaderViewMode.chordsAndLyrics,
@@ -83,10 +81,7 @@ void main() {
           body: SongLineView(
             line: SongReaderLyricLineProjection(
               segments: const [
-                SongReaderSegmentProjection(
-                  text: 'lyric',
-                  displayChord: 'Am',
-                ),
+                SongReaderSegmentProjection(text: 'lyric', displayChord: 'Am'),
               ],
             ),
             viewMode: SongReaderViewMode.chordsAndLyrics,
@@ -214,10 +209,7 @@ void main() {
 
     final container = tester.widget<Container>(
       find
-          .ancestor(
-            of: find.text('e|--0--'),
-            matching: find.byType(Container),
-          )
+          .ancestor(of: find.text('e|--0--'), matching: find.byType(Container))
           .first,
     );
     expect(
@@ -265,10 +257,7 @@ void main() {
           body: SongLineView(
             line: SongReaderLyricLineProjection(
               segments: const [
-                SongReaderSegmentProjection(
-                  text: 'lyric',
-                  displayChord: 'Am',
-                ),
+                SongReaderSegmentProjection(text: 'lyric', displayChord: 'Am'),
               ],
             ),
             viewMode: SongReaderViewMode.chordsAndLyrics,

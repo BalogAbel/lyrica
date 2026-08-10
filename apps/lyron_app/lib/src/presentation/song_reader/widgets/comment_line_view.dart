@@ -17,9 +17,7 @@ class CommentLineView extends StatelessWidget {
     final style = ReaderTheme.of(context).commentStyle;
     return Text(
       projection.text,
-      style: style.copyWith(
-        fontSize: (style.fontSize ?? 14) * sharedFontScale,
-      ),
+      style: style.copyWith(fontSize: (style.fontSize ?? 14) * sharedFontScale),
     );
   }
 }
