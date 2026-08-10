@@ -6,8 +6,11 @@ import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/directive_line_view.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/tab_block_view.dart';
 
 /// A deliberately unmistakable token set: if a widget still derives its style
 /// from the ambient TextTheme/ColorScheme instead of reading the extension,
@@ -22,6 +25,10 @@ ReaderTheme _markedTokens(ThemeData base) {
     sectionLabelStyle: const TextStyle(fontSize: 27, color: Color(0xFFAA0003)),
     unknownSectionLabelColor: const Color(0xFFAA0004),
     leadingDirectiveStyle: const TextStyle(fontSize: 25, color: Color(0xFFAA0005)),
+    commentStyle: const TextStyle(fontSize: 23, color: Color(0xFFAA0006)),
+    directiveStyle: const TextStyle(fontSize: 21, color: Color(0xFFAA0007)),
+    tabStyle: const TextStyle(fontSize: 19, color: Color(0xFFAA0008)),
+    tabBackgroundColor: const Color(0xFFAA0009),
   );
 }
 
@@ -159,6 +166,62 @@ void main() {
     expect(
       tester.widget<Text>(find.text('Interlude')).style!.color,
       const Color(0xFFAA0004),
+    );
+  });
+
+  testWidgets('comment, directive and tab views read ReaderTheme', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _themeWith(_markedTokens),
+        home: Scaffold(
+          body: Column(
+            children: [
+              CommentLineView(
+                projection: const SongReaderCommentProjection(text: 'note'),
+                sharedFontScale: 1,
+              ),
+              const DirectiveLineView(
+                projection: SongReaderDirectiveProjection(
+                  name: 'tempo',
+                  value: '72',
+                ),
+              ),
+              TabBlockView(
+                projection: SongReaderTabProjection(rawLines: ['e|--0--']),
+                sharedFontScale: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Text>(find.text('note')).style!.color,
+      const Color(0xFFAA0006),
+    );
+    expect(
+      tester.widget<Text>(find.text('{tempo: 72}')).style!.color,
+      const Color(0xFFAA0007),
+    );
+    expect(
+      tester.widget<Text>(find.text('e|--0--')).style!.color,
+      const Color(0xFFAA0008),
+    );
+
+    final container = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.text('e|--0--'),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect(
+      (container.decoration! as BoxDecoration).color,
+      const Color(0xFFAA0009),
     );
   });
 }
