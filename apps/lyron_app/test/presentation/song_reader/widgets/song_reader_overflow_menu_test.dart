@@ -19,6 +19,7 @@ void main() {
           body: SongReaderOverflowMenu(
             viewMode: SongReaderViewMode.chordsAndLyrics,
             canEditSongs: false,
+            isDarkActive: false,
             onSelected: (_) {},
           ),
         ),
@@ -40,6 +41,7 @@ void main() {
           body: SongReaderOverflowMenu(
             viewMode: SongReaderViewMode.lyricsOnly,
             canEditSongs: false,
+            isDarkActive: false,
             onSelected: (_) {},
           ),
         ),
@@ -64,6 +66,7 @@ void main() {
           body: SongReaderOverflowMenu(
             viewMode: SongReaderViewMode.chordsAndLyrics,
             canEditSongs: false,
+            isDarkActive: false,
             onSelected: (_) {},
           ),
         ),
@@ -85,6 +88,7 @@ void main() {
           body: SongReaderOverflowMenu(
             viewMode: SongReaderViewMode.chordsAndLyrics,
             canEditSongs: true,
+            isDarkActive: false,
             onSelected: (_) {},
           ),
         ),
@@ -106,6 +110,7 @@ void main() {
           body: SongReaderOverflowMenu(
             viewMode: SongReaderViewMode.chordsAndLyrics,
             canEditSongs: true,
+            isDarkActive: false,
             onSelected: selections.add,
           ),
         ),
@@ -117,5 +122,68 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selections, [SongReaderOverflowAction.delete]);
+  });
+
+  testWidgets('offers dark view while light is active', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderOverflowMenu(
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            canEditSongs: false,
+            isDarkActive: false,
+            onSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await openMenu(tester);
+
+    expect(find.text(AppStrings.songReaderDarkThemeAction), findsOneWidget);
+    expect(find.text(AppStrings.songReaderLightThemeAction), findsNothing);
+  });
+
+  testWidgets('offers light view while dark is active', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderOverflowMenu(
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            canEditSongs: false,
+            isDarkActive: true,
+            onSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    await openMenu(tester);
+
+    expect(find.text(AppStrings.songReaderLightThemeAction), findsOneWidget);
+    expect(find.text(AppStrings.songReaderDarkThemeAction), findsNothing);
+  });
+
+  testWidgets('emits toggleTheme when the entry is tapped', (tester) async {
+    final selections = <SongReaderOverflowAction>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderOverflowMenu(
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            canEditSongs: false,
+            isDarkActive: false,
+            onSelected: selections.add,
+          ),
+        ),
+      ),
+    );
+
+    await openMenu(tester);
+    await tester.tap(find.text(AppStrings.songReaderDarkThemeAction));
+    await tester.pumpAndSettle();
+
+    expect(selections, [SongReaderOverflowAction.toggleTheme]);
   });
 }

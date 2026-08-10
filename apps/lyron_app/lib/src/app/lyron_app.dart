@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
+import 'package:lyron_app/src/app/theme_mode_store.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/presentation/auth/reauth_prompt_host.dart';
 import 'package:lyron_app/src/router/app_router.dart';
@@ -28,11 +29,14 @@ class _LyronAppState extends ConsumerState<LyronApp> {
   @override
   Widget build(BuildContext context) {
     final router = widget._router ?? ref.watch(appRouterProvider);
+    final themeMode =
+        ref.watch(themeModeControllerProvider).value ?? ThemeMode.system;
 
     return MaterialApp.router(
       title: AppStrings.appName,
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
+      themeMode: themeMode,
       routerConfig: router,
       builder: (context, child) =>
           ReauthPromptHost(child: child ?? const SizedBox.shrink()),
