@@ -43,3 +43,118 @@ bool _endsWithWhitespace(String value) =>
 
 bool _startsWithWhitespace(String value) =>
     value.isNotEmpty && value.trimLeft().length != value.length;
+
+/// Whitespace that Flutter's line breaker treats as a break opportunity.
+///
+/// Deliberately the same character class `song_reader_fit.dart`'s
+/// `_breakableWhitespace` uses, and for the same reason: the estimator and the
+/// renderer must agree on where a break may happen. See
+/// docs/deferred/2026-07-28-reader-fit-conservatism-margin.md for the
+/// `TextPainter` measurements behind this set.
+final _breakableWhitespace = RegExp('[ 	   -​  　]');
+
+/// Splits each segment's text at internal whitespace so that every piece holds
+/// at most one word.
+///
+/// ChordPro splits a lyric line at chord positions, which has nothing to do
+/// with where words begin and end: one segment can hold a whole clause, and a
+/// single word can span two segments. [groupSegmentsIntoWords] can only start a
+/// group at a segment boundary, so without this pre-pass a multi-word segment
+/// and its chord-split neighbour collapse into one indivisible group covering
+/// most of a line — and when that group does not fit, the only break available
+/// is the segment boundary, in the middle of a word.
+///
+/// The trailing whitespace stays on the LEFT piece: the concatenated text must
+/// be byte-identical to the original (the rendered line's spacing comes from
+/// the text itself, since the `Wrap` uses `spacing: 0`), and
+/// [groupSegmentsIntoWords] reads exactly that trailing whitespace to decide
+/// where a group ends.
+///
+/// [SongReaderSegmentProjection.displayChord] rides on the first piece: a
+/// chord is drawn at its segment's start. The last piece (if it has no trailing
+/// whitespace, meaning a word is still in progress) also keeps the chord if a
+/// following segment exists, so a word split across two segments by a chord can
+/// preserve both chords through the group.
+List<SongReaderSegmentProjection> splitSegmentsAtWordBoundaries(
+  List<SongReaderSegmentProjection> segments,
+) {
+  final result = <SongReaderSegmentProjection>[];
+
+  for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    final segment = segments[segmentIndex];
+    final hasFollowingSegment = segmentIndex < segments.length - 1;
+
+    // A chord-only segment (an instrumental bar's slot) has no words to split
+    // and must stay one box, or it loses its own chord slot.
+    if (segment.text.isEmpty) {
+      result.add(segment);
+      continue;
+    }
+
+    final pieces = _splitKeepingTrailingWhitespace(segment.text);
+    if (pieces.length == 1) {
+      result.add(segment);
+      continue;
+    }
+
+    bool foundFirstContentPiece = false;
+
+    for (var i = 0; i < pieces.length; i++) {
+      final isLastPiece = i == pieces.length - 1;
+      final lastPieceHasNoTrailingWhitespace =
+          isLastPiece && !_hasTrailingWhitespace(pieces[i]);
+      final hasContent = pieces[i].trim().isNotEmpty;
+
+      bool shouldKeepChord = false;
+      if (!foundFirstContentPiece && hasContent) {
+        shouldKeepChord = true;
+        foundFirstContentPiece = true;
+      } else if (lastPieceHasNoTrailingWhitespace && hasFollowingSegment) {
+        shouldKeepChord = true;
+      }
+
+      result.add(
+        SongReaderSegmentProjection(
+          displayChord: shouldKeepChord ? segment.displayChord : null,
+          text: pieces[i],
+        ),
+      );
+    }
+  }
+
+  return List.unmodifiable(result);
+}
+
+bool _hasTrailingWhitespace(String text) =>
+    text.isNotEmpty && _breakableWhitespace.hasMatch(text[text.length - 1]);
+
+/// Cuts [text] after each run of breakable whitespace, so every piece except
+/// the last ends with the whitespace that terminated it and the pieces
+/// concatenate back to [text].
+List<String> _splitKeepingTrailingWhitespace(String text) {
+  final pieces = <String>[];
+  var start = 0;
+  var index = 0;
+
+  while (index < text.length) {
+    if (!_breakableWhitespace.hasMatch(text[index])) {
+      index++;
+      continue;
+    }
+
+    // Consume the whole whitespace run so "alpha   beta" yields "alpha   ".
+    var end = index;
+    while (end < text.length && _breakableWhitespace.hasMatch(text[end])) {
+      end++;
+    }
+    pieces.add(text.substring(start, end));
+    start = end;
+    index = end;
+  }
+
+  if (start < text.length) {
+    pieces.add(text.substring(start));
+  }
+
+  return pieces;
+}
