@@ -77,7 +77,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | UX-3 | UI/UX | New-song default body is a copyrighted song's full lyrics, hardcoded | Medium |
 | UX-4 | UI/UX | List density inconsistent: plan rows rich, song rows title-only | Medium |
 | UX-6 | UI/UX | CanvasKit render → no text select / find / copy; weak screen-reader support | Medium |
-| UX-7 | UI/UX | No dark theme (only `theme:`); relevant for dim-stage use | Medium |
+| ~~UX-7~~ | UI/UX | ~~No dark theme (only `theme:`); relevant for dim-stage use~~ **Done (reader-token-layer-and-dark-theme, ADR-033).** | Medium |
 | ~~SEC-2~~ | Security | ~~`create_invitation` null-caller admin gate relies on grant scope only~~ **Done (2026-08-08, debt sweep, PR #68).** | Low |
 | SEC-3 | Security | `has_capability`/`current_organization_ids`/`get_my_capabilities` lack `set search_path` | Low |
 | ~~LF-9~~ | Local-first | ~~Slug-by-slug lookup re-merges all mutations (N+1 reads)~~ **Done (offline-durability-phase4).** | Low |
@@ -1311,7 +1311,7 @@ delete, navigation chevron, add-song); consistent Material 3 theme (green seed
 | UX-4 | Song-list rows show **title only** (no artist/key) while plan rows show title+description+date — inconsistent density | `presentation/song_library/song_list_screen.dart:263`; plan list |
 | UX-5 | Internal gap-based positions ("10.", "20.") shown to the user | plan detail |
 | UX-6 | CanvasKit renderer → lyrics not selectable/copyable, find-in-page fails, screen-reader support weak | all screens |
-| UX-7 | No dark theme; `MaterialApp.router` sets only `theme:` | `app/lyron_app.dart:33`, `app/app_theme.dart` |
+| ~~UX-7~~ | ~~No dark theme; `MaterialApp.router` sets only `theme:`~~ **Done (reader-token-layer-and-dark-theme, ADR-033).** | `app/lyron_app.dart`, `app/app_theme.dart`, `app/reader_theme.dart` |
 | UX-8 | Failed local edits silently revert in the main UI (same mechanism as LF-4) | see LF-4 |
 | UX-9 | Inconsistent content-width caps: sign-in 420, song-list 720, invite-required none | respective screens |
 | UX-10 | i18n leak: inline English in discard-all message vs centralized `AppStrings` | `presentation/sync/unified_sync_status_popup.dart:84` |
@@ -1496,8 +1496,8 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 - ~~ARCH-2: aggregate-scoped invalidation.~~ **Done (arch-spine-phase0-1).**
 - ~~ARCH-3: decompose plan_detail / song_editor.~~ **Done (ui-decomposition-phase2).**
 - ~~SEC-4: backend-derived shadow metadata.~~ **Done (read-boundary-and-derived-song-metadata).**
-- Schema-vs-app reconciliation; FreeShow; i18n; production-readiness; design-token layer;
-  dark mode (UX-7).
+- Schema-vs-app reconciliation; FreeShow; i18n; production-readiness.
+- ~~Design-token layer; dark mode (UX-7).~~ **Done (reader-token-layer-and-dark-theme, ADR-033).**
 
 ## 14. Evidence Appendix
 

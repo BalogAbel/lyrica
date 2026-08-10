@@ -22,6 +22,7 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.showOverflowMenu,
     required this.viewMode,
     required this.canEditSongs,
+    required this.isDarkActive,
     this.onOverflowAction,
   });
 
@@ -33,6 +34,7 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool showOverflowMenu;
   final SongReaderViewMode viewMode;
   final bool canEditSongs;
+  final bool isDarkActive;
   final void Function(SongReaderOverflowAction action)? onOverflowAction;
 
   @override
@@ -77,6 +79,7 @@ class SongReaderAppBar extends StatelessWidget implements PreferredSizeWidget {
           SongReaderOverflowMenu(
             viewMode: viewMode,
             canEditSongs: canEditSongs,
+            isDarkActive: isDarkActive,
             onSelected: onOverflowAction!,
           ),
       ],

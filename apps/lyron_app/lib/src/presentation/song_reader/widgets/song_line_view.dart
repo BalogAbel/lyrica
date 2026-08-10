@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -18,15 +19,12 @@ class SongLineView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final chordStyle = theme.textTheme.labelLarge?.copyWith(
-      fontSize: (theme.textTheme.labelLarge?.fontSize ?? 14) * sharedFontScale,
-      fontWeight: FontWeight.w700,
-      color: theme.colorScheme.primary,
+    final tokens = ReaderTheme.of(context);
+    final chordStyle = tokens.chordStyle.copyWith(
+      fontSize: (tokens.chordStyle.fontSize ?? 14) * sharedFontScale,
     );
-    final lyricStyle = theme.textTheme.bodyLarge?.copyWith(
-      fontSize: (theme.textTheme.bodyLarge?.fontSize ?? 16) * sharedFontScale,
-      height: 1.25,
+    final lyricStyle = tokens.lyricStyle.copyWith(
+      fontSize: (tokens.lyricStyle.fontSize ?? 16) * sharedFontScale,
     );
 
     final hasLyricSegments = line.segments.any(

@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/app/theme_mode_store.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
@@ -396,6 +397,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         showOverflowMenu: readerResult != null,
         viewMode: readerState.viewMode,
         canEditSongs: canEditSongs,
+        isDarkActive: Theme.of(context).brightness == Brightness.dark,
         onOverflowAction: (action) {
           switch (action) {
             case SongReaderOverflowAction.toggleViewMode:
@@ -406,6 +408,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
               break;
             case SongReaderOverflowAction.pianoView:
               _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+              break;
+            case SongReaderOverflowAction.toggleTheme:
+              unawaited(
+                ref
+                    .read(themeModeControllerProvider.notifier)
+                    .toggle(Theme.of(context).brightness),
+              );
               break;
             case SongReaderOverflowAction.edit:
               unawaited(

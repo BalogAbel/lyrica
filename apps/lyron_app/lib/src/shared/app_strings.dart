@@ -106,6 +106,8 @@ class AppStrings {
   static const songReaderChordsAndLyricsAction = 'Chords + lyrics';
   static const songReaderGuitarViewAction = 'Guitar View';
   static const songReaderPianoViewAction = 'Piano View';
+  static const songReaderDarkThemeAction = 'Dark view';
+  static const songReaderLightThemeAction = 'Light view';
   static const songReaderCapoDirectivePrefix = 'Capo ';
   static const songReaderShowControlsSemantics = 'Show reader controls';
   static const songReaderHideControlsSemantics = 'Hide reader controls';

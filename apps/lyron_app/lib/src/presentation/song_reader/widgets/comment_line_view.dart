@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 
 class CommentLineView extends StatelessWidget {
@@ -13,16 +14,10 @@ class CommentLineView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final style = ReaderTheme.of(context).commentStyle;
     return Text(
       projection.text,
-      style: theme.textTheme.bodyMedium?.copyWith(
-        fontSize:
-            (theme.textTheme.bodyMedium?.fontSize ?? 14) * sharedFontScale,
-        fontStyle: FontStyle.italic,
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-        height: 1.4,
-      ),
+      style: style.copyWith(fontSize: (style.fontSize ?? 14) * sharedFontScale),
     );
   }
 }

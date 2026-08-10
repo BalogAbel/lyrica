@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 
 class TabBlockView extends StatelessWidget {
@@ -13,16 +14,13 @@ class TabBlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final textStyle = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: 13.0 * sharedFontScale,
-      height: 1.5,
-      color: theme.colorScheme.onSurface,
+    final tokens = ReaderTheme.of(context);
+    final textStyle = tokens.tabStyle.copyWith(
+      fontSize: (tokens.tabStyle.fontSize ?? 13) * sharedFontScale,
     );
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: tokens.tabBackgroundColor,
         borderRadius: BorderRadius.circular(6),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

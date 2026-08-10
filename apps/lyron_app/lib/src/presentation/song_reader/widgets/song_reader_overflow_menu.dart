@@ -8,6 +8,7 @@ enum SongReaderOverflowAction {
   toggleViewMode,
   guitarView,
   pianoView,
+  toggleTheme,
   edit,
   delete,
 }
@@ -23,11 +24,17 @@ class SongReaderOverflowMenu extends StatelessWidget {
     super.key,
     required this.viewMode,
     required this.canEditSongs,
+    required this.isDarkActive,
     required this.onSelected,
   });
 
   final SongReaderViewMode viewMode;
   final bool canEditSongs;
+
+  /// Whether the reader is currently rendering dark. Passed in rather than
+  /// read from a provider: this widget stays provider-free, like the rest of
+  /// the reader's leaf widgets.
+  final bool isDarkActive;
   final void Function(SongReaderOverflowAction action) onSelected;
 
   @override
@@ -52,6 +59,15 @@ class SongReaderOverflowMenu extends StatelessWidget {
         PopupMenuItem(
           value: SongReaderOverflowAction.pianoView,
           child: Text(AppStrings.songReaderPianoViewAction),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: SongReaderOverflowAction.toggleTheme,
+          child: Text(
+            isDarkActive
+                ? AppStrings.songReaderLightThemeAction
+                : AppStrings.songReaderDarkThemeAction,
+          ),
         ),
         if (canEditSongs) ...[
           const PopupMenuDivider(),
