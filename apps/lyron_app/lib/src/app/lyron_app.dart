@@ -31,7 +31,7 @@ class _LyronAppState extends ConsumerState<LyronApp> {
 
     return MaterialApp.router(
       title: AppStrings.appName,
-      theme: buildAppTheme(),
+      theme: buildLightTheme(),
       routerConfig: router,
       builder: (context, child) =>
           ReauthPromptHost(child: child ?? const SizedBox.shrink()),

@@ -238,4 +238,37 @@ class ReaderTheme extends ThemeExtension<ReaderTheme> {
           Color.lerp(tabBackgroundColor, other.tabBackgroundColor, t)!,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+
+    return other is ReaderTheme &&
+        other.lyricStyle == lyricStyle &&
+        other.chordStyle == chordStyle &&
+        other.chordChipColor == chordChipColor &&
+        other.sectionLabelStyle == sectionLabelStyle &&
+        other.unknownSectionLabelColor == unknownSectionLabelColor &&
+        other.commentStyle == commentStyle &&
+        other.directiveStyle == directiveStyle &&
+        other.leadingDirectiveStyle == leadingDirectiveStyle &&
+        other.tabStyle == tabStyle &&
+        other.tabBackgroundColor == tabBackgroundColor;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    lyricStyle,
+    chordStyle,
+    chordChipColor,
+    sectionLabelStyle,
+    unknownSectionLabelColor,
+    commentStyle,
+    directiveStyle,
+    leadingDirectiveStyle,
+    tabStyle,
+    tabBackgroundColor,
+  );
 }
