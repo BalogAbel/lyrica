@@ -252,4 +252,39 @@ void main() {
       expect(widths.textScale.inlineDirectiveBaseFontSize, 21);
     },
   );
+
+  testWidgets('the dark theme renders the reader with the stage palette', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: ThemeMode.dark,
+        home: Scaffold(
+          body: SongLineView(
+            line: SongReaderLyricLineProjection(
+              segments: const [
+                SongReaderSegmentProjection(
+                  text: 'lyric',
+                  displayChord: 'Am',
+                ),
+              ],
+            ),
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Text>(find.text('lyric')).style!.color,
+      const Color(0xFFCDCAC0),
+    );
+    expect(
+      tester.widget<Text>(find.text('Am')).style!.color,
+      const Color(0xFF7ACFA8),
+    );
+  });
 }
