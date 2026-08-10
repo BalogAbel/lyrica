@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
@@ -173,4 +175,36 @@ void main() {
       expect(splitWord.map((s) => s.displayChord).toList(), ['E', 'G#m']);
     });
   });
+
+  test(
+    'the renderer and the estimator both split before grouping',
+    () {
+      // A guard, not a behaviour test: both call sites must apply the splitter,
+      // or the estimate stops describing what is drawn. Checked by source
+      // inspection because the two call sites are in different layers and
+      // neither exposes its grouping.
+      final renderer = File(
+        'lib/src/presentation/song_reader/widgets/song_line_view.dart',
+      ).readAsStringSync();
+      final estimator = File(
+        'lib/src/presentation/song_reader/song_reader_fit.dart',
+      ).readAsStringSync();
+
+      for (final source in [renderer, estimator]) {
+        expect(
+          source.contains('groupSegmentsIntoWords'),
+          isTrue,
+        );
+        expect(
+          source.contains(
+            RegExp(r'groupSegmentsIntoWords\(\s*splitSegmentsAtWordBoundaries\('),
+          ),
+          isTrue,
+          reason:
+              'groupSegmentsIntoWords must be called on split segments; '
+              'grouping raw ChordPro segments reintroduces the mid-word break',
+        );
+      }
+    },
+  );
 }
