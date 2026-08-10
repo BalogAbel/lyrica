@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -188,15 +189,16 @@ class SongReaderSectionGrid extends StatelessWidget {
   }
 
   Widget _buildHeaderWidget(FlowBlock block, BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = ReaderTheme.of(context);
     final section = sections[block.sectionIndex];
     final label = _sectionLabel(section)!;
-    final labelColor = section.isUnknown
-        ? theme.colorScheme.tertiary
-        : theme.colorScheme.primary;
     return Text(
       label,
-      style: theme.textTheme.titleLarge?.copyWith(color: labelColor),
+      style: section.isUnknown
+          ? tokens.sectionLabelStyle.copyWith(
+              color: tokens.unknownSectionLabelColor,
+            )
+          : tokens.sectionLabelStyle,
     );
   }
 
@@ -237,18 +239,12 @@ class _DirectiveLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Text(
         text,
         key: const Key('song-reader-capo-directive-line'),
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.primary,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.02,
-        ),
+        style: ReaderTheme.of(context).leadingDirectiveStyle,
       ),
     );
   }

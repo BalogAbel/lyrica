@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 
 /// A deliberately unmistakable token set: if a widget still derives its style
 /// from the ambient TextTheme/ColorScheme instead of reading the extension,
@@ -17,6 +19,9 @@ ReaderTheme _markedTokens(ThemeData base) {
   ).copyWith(
     lyricStyle: const TextStyle(fontSize: 31, color: Color(0xFFAA0001)),
     chordStyle: const TextStyle(fontSize: 29, color: Color(0xFFAA0002)),
+    sectionLabelStyle: const TextStyle(fontSize: 27, color: Color(0xFFAA0003)),
+    unknownSectionLabelColor: const Color(0xFFAA0004),
+    leadingDirectiveStyle: const TextStyle(fontSize: 25, color: Color(0xFFAA0005)),
   );
 }
 
@@ -85,5 +90,75 @@ void main() {
 
     expect(tester.widget<Text>(find.text('lyric')).style!.fontSize, 62);
     expect(tester.widget<Text>(find.text('Am')).style!.fontSize, 58);
+  });
+
+  testWidgets('the section header uses the ReaderTheme label style', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _themeWith(_markedTokens),
+        home: Scaffold(
+          body: SongReaderSectionGrid(
+            leadingDirectiveText: 'Capo 2',
+            sections: [
+              SongReaderSectionProjection(
+                kind: SongSectionKind.verse,
+                label: 'Verse',
+                number: 1,
+                isUnknown: false,
+                lines: const [],
+              ),
+            ],
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+            columnCount: 1,
+            availableHeight: 600,
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.widget<Text>(find.text('Verse 1')).style!.fontSize, 27);
+    expect(
+      tester.widget<Text>(find.text('Verse 1')).style!.color,
+      const Color(0xFFAA0003),
+    );
+    expect(
+      tester.widget<Text>(find.text('Capo 2')).style!.color,
+      const Color(0xFFAA0005),
+    );
+  });
+
+  testWidgets('an unrecognised section kind uses the unknown label colour', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _themeWith(_markedTokens),
+        home: Scaffold(
+          body: SongReaderSectionGrid(
+            sections: [
+              SongReaderSectionProjection(
+                kind: SongSectionKind.unknown,
+                label: 'Interlude',
+                number: null,
+                isUnknown: true,
+                lines: const [],
+              ),
+            ],
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+            columnCount: 1,
+            availableHeight: 600,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<Text>(find.text('Interlude')).style!.color,
+      const Color(0xFFAA0004),
+    );
   });
 }
