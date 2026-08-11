@@ -576,6 +576,13 @@ budget in view, not something to fold into this PR.
 
 ## Word-boundary splitting (2026-08-10)
 
+> **2026-08-11:** `splitSegmentsAtWordBoundaries`'s chord-assignment rule
+> changed after this section was written (a duplicate-chord bug found by
+> visual verification — see `docs/specs/2026-08-09-song-presentation.md`,
+> "Amended 2026-08-11"). The render/estimate numbers below are unaffected
+> (the chord label was never the wider side of the affected pieces), but the
+> chord semantics they were measured under did change.
+
 ### What changed
 
 The reader's wrapping unit became the **word** rather than the ChordPro segment
