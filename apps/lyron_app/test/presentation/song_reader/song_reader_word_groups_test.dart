@@ -156,6 +156,38 @@ void main() {
         ]);
       },
     );
+
+    test('does not repeat the segment chord on a later piece', () {
+      // A chord is drawn once, at the position where it starts sounding. Every
+      // piece after the first belongs to the same chord, so repeating the label
+      // would claim a chord change that the source never wrote -- and next to
+      // the following segment's own chord it renders as two labels running
+      // together over one word.
+      final result = splitSegmentsAtWordBoundaries(const [
+        SongReaderSegmentProjection(
+          displayChord: 'G#m',
+          text: 'g, több, mint elé',
+        ),
+        SongReaderSegmentProjection(displayChord: 'C#m', text: 'g, Igé'),
+      ]);
+
+      expect(result.map((s) => s.text).toList(), [
+        'g, ',
+        'több, ',
+        'mint ',
+        'elé',
+        'g, ',
+        'Igé',
+      ]);
+      expect(result.map((s) => s.displayChord).toList(), [
+        'G#m',
+        null,
+        null,
+        null, // 'elé' continues G#m; the label already stands over 'g, '.
+        'C#m',
+        null,
+      ]);
+    });
   });
 
   group('groupSegmentsIntoWords after splitting', () {
@@ -177,9 +209,10 @@ void main() {
         'Igédben ',
         'gamma',
       ]);
-      // The chorded half of the split word keeps its own chord inside the group.
+      // Inside the group, only the half where a chord actually starts carries a
+      // label: 'Igé' still sounds under the E already drawn over 'alpha'.
       final splitWord = groups[2].segments;
-      expect(splitWord.map((s) => s.displayChord).toList(), ['E', 'G#m']);
+      expect(splitWord.map((s) => s.displayChord).toList(), [null, 'G#m']);
     });
   });
 

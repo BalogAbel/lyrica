@@ -70,20 +70,18 @@ final _breakableWhitespace = RegExp('[ 	   -​  　]');
 /// [groupSegmentsIntoWords] reads exactly that trailing whitespace to decide
 /// where a group ends.
 ///
-/// [SongReaderSegmentProjection.displayChord] rides on the first piece: a
-/// chord is drawn at its segment's start. The last piece (if it has no trailing
-/// whitespace, meaning a word is still in progress) also keeps the chord if a
-/// following segment exists, so a word split across two segments by a chord can
-/// preserve both chords through the group.
+/// [SongReaderSegmentProjection.displayChord] rides on the first piece that has
+/// content: a chord is drawn once, where it starts sounding, and leading
+/// whitespace is not that place. Every later piece of the same segment is still
+/// under that chord, so it carries no label -- a repeated label would claim a
+/// chord change the source never wrote, and next to the following segment's own
+/// chord it renders as two labels running together over a single word.
 List<SongReaderSegmentProjection> splitSegmentsAtWordBoundaries(
   List<SongReaderSegmentProjection> segments,
 ) {
   final result = <SongReaderSegmentProjection>[];
 
-  for (var segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
-    final segment = segments[segmentIndex];
-    final hasFollowingSegment = segmentIndex < segments.length - 1;
-
+  for (final segment in segments) {
     // A chord-only segment (an instrumental bar's slot) has no words to split
     // and must stay one box, or it loses its own chord slot.
     if (segment.text.isEmpty) {
@@ -99,24 +97,17 @@ List<SongReaderSegmentProjection> splitSegmentsAtWordBoundaries(
 
     bool foundFirstContentPiece = false;
 
-    for (var i = 0; i < pieces.length; i++) {
-      final isLastPiece = i == pieces.length - 1;
-      final lastPieceHasNoTrailingWhitespace =
-          isLastPiece && !_hasTrailingWhitespace(pieces[i]);
-      final hasContent = pieces[i].trim().isNotEmpty;
-
-      bool shouldKeepChord = false;
-      if (!foundFirstContentPiece && hasContent) {
-        shouldKeepChord = true;
+    for (final piece in pieces) {
+      final shouldKeepChord =
+          !foundFirstContentPiece && piece.trim().isNotEmpty;
+      if (shouldKeepChord) {
         foundFirstContentPiece = true;
-      } else if (lastPieceHasNoTrailingWhitespace && hasFollowingSegment) {
-        shouldKeepChord = true;
       }
 
       result.add(
         SongReaderSegmentProjection(
           displayChord: shouldKeepChord ? segment.displayChord : null,
-          text: pieces[i],
+          text: piece,
         ),
       );
     }
@@ -124,9 +115,6 @@ List<SongReaderSegmentProjection> splitSegmentsAtWordBoundaries(
 
   return List.unmodifiable(result);
 }
-
-bool _hasTrailingWhitespace(String text) =>
-    text.isNotEmpty && _breakableWhitespace.hasMatch(text[text.length - 1]);
 
 /// Cuts [text] after each run of breakable whitespace, so every piece except
 /// the last ends with the whitespace that terminated it and the pieces

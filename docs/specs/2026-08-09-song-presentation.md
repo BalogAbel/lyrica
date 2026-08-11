@@ -353,6 +353,27 @@ only over-estimate. Full measurements in
 `docs/deferred/2026-07-28-reader-fit-conservatism-margin.md`, "Word-boundary
 splitting (2026-08-10)".
 
+**Amended 2026-08-11, from visual verification:** the first implementation of
+`splitSegmentsAtWordBoundaries` also carried the segment's chord onto its *last*
+piece whenever that piece had no trailing whitespace and another segment
+followed, on the reasoning that "a word split across two segments by a chord can
+preserve both chords through the group". That reasoning was wrong, and it
+contradicted this spec's own fix description and the plan
+(`docs/plans/2026-08-10-reader-word-boundary-wrap.md`, "The fix"), both of which
+say the chord rides on the **first** piece only. A chord is drawn once, at the
+position where it starts sounding; every later piece of the same segment is
+still under that chord, so a second label there announces a chord change the
+source never wrote. In a chord-dense line the duplicate lands directly next to
+the following segment's real chord and the two labels render as one run of text.
+Caught on the real song "A mi Istenünk (Leborulok előtted)"
+(`[E] Kegyelmed elé[G#m]g, több, mint elé[C#m]g, Igé[A]dben bízok é[E]n`), whose
+first line has four mid-word chord splits: at ~400px the reader drew `G#m` over
+`elé` immediately before `C#m` over `g,`, reading as `G#mC#m`. Fixed by dropping
+the last-piece rule, so exactly one label per source chord survives the split.
+The estimator consumes the same splitter and moved with it; the recorded
+render/estimate measurements are unchanged (the chord column was never the wider
+of the two).
+
 That document also records a real side effect of the fix: because a line is now
 one box per word in the outer `Wrap`, the renderer's 10px `lineRunSpacing` now
 applies between a line's own wrapped rows (+10px per wrap), where a
