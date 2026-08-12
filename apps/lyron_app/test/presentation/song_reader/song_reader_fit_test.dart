@@ -855,7 +855,8 @@ void main() {
         //   availableHeight=500: single(768)>500 → 2-col path;
         //     taller(384) ≤ 500*1.15=575 ✓, 384 ≤ 768*0.9=691 ✓, balanced ✓
         const availableWidth = 800.0;
-        const tileWidth = (availableWidth - sectionGap) / 2;
+        final tileWidth =
+            (availableWidth - SongReaderMetrics.legacy.sectionGap) / 2;
         const availableHeight = 500.0;
 
         final sections = [emptyLabeled('Intro'), bigVerse(12)];
@@ -913,7 +914,8 @@ void main() {
         //   availableHeight=600: single(1104)>600, taller(552)≤600*1.15=690 ✓,
         //     552 ≤ 1104*0.9=993.6 ✓, balanced(552/552=1.0) ✓
         const availableWidth = 800.0;
-        const tileWidth = (availableWidth - sectionGap) / 2;
+        final tileWidth =
+            (availableWidth - SongReaderMetrics.legacy.sectionGap) / 2;
         const availableHeight = 600.0;
 
         // 4 equal sections → best boundary split = at index 2 (half).
@@ -967,7 +969,8 @@ void main() {
 
     test('split never strands a header at the bottom of the left column', () {
       const availableWidth = 800.0;
-      const tileWidth = (availableWidth - sectionGap) / 2;
+      final tileWidth =
+          (availableWidth - SongReaderMetrics.legacy.sectionGap) / 2;
       // 10-line verse total ≈ 60+60+10*54=660; balanced ≈ 330;
       // need availableHeight > 330/1.15≈287 so tolerance allows 2 cols.
       const availableHeight = 400.0;
@@ -1232,7 +1235,11 @@ void main() {
       final diff = twoRunHeight - oneRunHeight;
       expect(
         diff,
-        greaterThanOrEqualTo(chordRowHeight + lyricRowHeight + lineRunSpacing),
+        greaterThanOrEqualTo(
+          SongReaderMetrics.legacy.chordRowHeight +
+              SongReaderMetrics.legacy.lyricRowHeight +
+              SongReaderMetrics.legacy.lineRunSpacing,
+        ),
         reason:
             'The second wrapped run brings its own chord row, lyric row, '
             'and run gap, exactly like the renderer draws it.',
@@ -1373,7 +1380,10 @@ void main() {
         fontScale: fontScale,
       );
 
-      final minExpected = runsImplied * (chordRowHeight + lyricRowHeight);
+      final minExpected =
+          runsImplied *
+          (SongReaderMetrics.legacy.chordRowHeight +
+              SongReaderMetrics.legacy.lyricRowHeight);
 
       expect(
         height,
@@ -1448,7 +1458,9 @@ void main() {
 
         final diff = longHeight - shortHeight;
         final minExpectedDiff =
-            (longLines - shortLines) * lyricRowHeight * fontScale;
+            (longLines - shortLines) *
+            SongReaderMetrics.legacy.lyricRowHeight *
+            fontScale;
 
         expect(
           diff,
@@ -1505,7 +1517,8 @@ void main() {
         expect(
           chordContribution,
           moreOrLessEquals(
-            chordRowHeight * fontScale + chordToLyricGap,
+            SongReaderMetrics.legacy.chordRowHeight * fontScale +
+                SongReaderMetrics.legacy.chordToLyricGap,
             epsilon: 0.01,
           ),
           reason:

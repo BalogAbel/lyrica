@@ -20,6 +20,9 @@ class SongLineView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = ReaderTheme.of(context);
+    // A later task replaces this with tokens.metrics, once ReaderTheme carries
+    // the metrics and resolves them at the 600px breakpoint.
+    const metrics = SongReaderMetrics.legacy;
     final chordStyle = tokens.chordStyle.copyWith(
       fontSize: (tokens.chordStyle.fontSize ?? 14) * sharedFontScale,
     );
@@ -33,7 +36,7 @@ class SongLineView extends StatelessWidget {
     if (!hasLyricSegments && viewMode == SongReaderViewMode.lyricsOnly) {
       return const SizedBox.shrink();
     }
-    final spacing = hasLyricSegments ? 0.0 : chordOnlySpacing;
+    final spacing = hasLyricSegments ? 0.0 : metrics.chordOnlySpacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -69,7 +72,7 @@ class SongLineView extends StatelessWidget {
                     constraints: BoxConstraints(maxWidth: maxWidth),
                     child: Wrap(
                       spacing: 0,
-                      runSpacing: lineRunSpacing,
+                      runSpacing: metrics.lineRunSpacing,
                       crossAxisAlignment: WrapCrossAlignment.end,
                       children: [
                         for (final segment in group.segments)
@@ -79,6 +82,7 @@ class SongLineView extends StatelessWidget {
                             chordStyle: chordStyle,
                             lyricStyle: lyricStyle,
                             maxWidth: maxWidth,
+                            chordToLyricGap: metrics.chordToLyricGap,
                           ),
                       ],
                     ),
@@ -92,14 +96,15 @@ class SongLineView extends StatelessWidget {
                     chordStyle: chordStyle,
                     lyricStyle: lyricStyle,
                     maxWidth: maxWidth,
+                    chordToLyricGap: metrics.chordToLyricGap,
                   ),
               ];
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 2),
+          padding: EdgeInsets.only(bottom: metrics.lineWidgetBottomPadding),
           child: Wrap(
             spacing: spacing,
-            runSpacing: lineRunSpacing,
+            runSpacing: metrics.lineRunSpacing,
             crossAxisAlignment: WrapCrossAlignment.end,
             children: children,
           ),
@@ -116,6 +121,7 @@ class _SongLineSegmentView extends StatelessWidget {
     required this.chordStyle,
     required this.lyricStyle,
     required this.maxWidth,
+    required this.chordToLyricGap,
   });
 
   final SongReaderSegmentProjection segment;
@@ -127,6 +133,7 @@ class _SongLineSegmentView extends StatelessWidget {
   // bound so that a long unbreakable token wraps internally instead of
   // overflowing the line.
   final double maxWidth;
+  final double chordToLyricGap;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +152,7 @@ class _SongLineSegmentView extends StatelessWidget {
       children: [
         if (showChord) ...[
           Text(segment.displayChord!, style: chordStyle),
-          if (showLyric) const SizedBox(height: chordToLyricGap),
+          if (showLyric) SizedBox(height: chordToLyricGap),
         ],
         if (showLyric)
           ConstrainedBox(

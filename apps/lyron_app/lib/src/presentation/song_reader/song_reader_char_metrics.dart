@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 
 /// Measured average per-character advance (in logical pixels, at the
 /// RAW base point size -- fontScale == 1.0, no ambient scaling) of the
@@ -38,6 +39,7 @@ class SongReaderCharWidths {
     required this.lyricCharWidth,
     required this.chordCharWidth,
     required this.headerCharWidth,
+    required this.metrics,
     required this.textScale,
   });
 
@@ -72,6 +74,14 @@ class SongReaderCharWidths {
   /// label wraps into, exactly the failure this whole file exists to
   /// prevent. Hence its own real measurement.
   final double headerCharWidth;
+
+  /// The resolved [SongReaderMetrics] for this build's `BuildContext`.
+  ///
+  /// Bundled with the char widths deliberately: both come from the SAME
+  /// `ReaderTheme.of(context)` call, so the row heights the estimator charges
+  /// and the styles the renderer draws with can never be resolved at two
+  /// different breakpoints.
+  final SongReaderMetrics metrics;
 
   /// The ambient [SongReaderFitTextScale] bundle (scaler + every base font
   /// size song_reader_fit.dart's estimator models), captured once per build
@@ -150,6 +160,9 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
     headerCharWidth: measure(_headerMeasureSample, headerStyle),
+    // A later task replaces this with tokens.metrics, once ReaderTheme
+    // carries the metrics and resolves them at the 600px breakpoint.
+    metrics: SongReaderMetrics.legacy,
     textScale: SongReaderFitTextScale(
       textScaler: textScaler,
       lyricBaseFontSize: lyricStyle.fontSize ?? 16.0,

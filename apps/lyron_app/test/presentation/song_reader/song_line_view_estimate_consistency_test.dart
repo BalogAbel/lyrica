@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
@@ -29,7 +30,8 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.da
 // Measured 2026-07-28, MaterialApp default ThemeData, fontScale = 1.0.
 
 double _measuredLineHeight(WidgetTester tester) =>
-    tester.getSize(find.byType(SongLineView)).height + lineGap;
+    tester.getSize(find.byType(SongLineView)).height +
+    SongReaderMetrics.legacy.lineGap;
 
 Future<double> _renderAndMeasure(
   WidgetTester tester, {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
@@ -56,12 +57,13 @@ class SongReaderSectionGrid extends StatelessWidget {
         // measureSongReaderCharWidths for why a single flat character-width
         // estimate undercounts both styles differently.
         final charWidths = measureSongReaderCharWidths(context);
+        final metrics = charWidths.metrics;
 
         // Use [resolveFlowLayoutForSections] so the grid's column decision uses
         // the same logic as [estimateRenderedLayout] / [resolveFitFontScale].
         // This is the single source of truth: the fit calculator and the grid
         // both call the same resolver with the same tile width.
-        final tileWidth = (availableWidth - sectionGap) / 2;
+        final tileWidth = (availableWidth - metrics.sectionGap) / 2;
         final layout = resolveFlowLayoutForSections(
           sections: sections,
           viewMode: viewMode,
@@ -75,6 +77,7 @@ class SongReaderSectionGrid extends StatelessWidget {
           chordCharWidth: charWidths.chordCharWidth,
           headerCharWidth: charWidths.headerCharWidth,
           textScale: charWidths.textScale,
+          metrics: metrics,
         );
         final effectiveColumns = layout.columnCount;
 
@@ -87,6 +90,7 @@ class SongReaderSectionGrid extends StatelessWidget {
               startIndex: 0,
               endIndex: blocks.length,
               context: context,
+              metrics: metrics,
             ),
           );
         }
@@ -106,10 +110,11 @@ class SongReaderSectionGrid extends StatelessWidget {
                   startIndex: 0,
                   endIndex: splitIndex,
                   context: context,
+                  metrics: metrics,
                 ),
               ),
             ),
-            const SizedBox(width: sectionGap),
+            SizedBox(width: metrics.sectionGap),
             SizedBox(
               width: tileWidth,
               child: Column(
@@ -119,6 +124,7 @@ class SongReaderSectionGrid extends StatelessWidget {
                   startIndex: splitIndex,
                   endIndex: blocks.length,
                   context: context,
+                  metrics: metrics,
                 ),
               ),
             ),
@@ -132,24 +138,30 @@ class SongReaderSectionGrid extends StatelessWidget {
   ///
   /// Gap strategy (mirrors block-height accounting in [flowBlockHeight]):
   ///   - [FlowBlockKind.leadingDirective]: widget + SizedBox(sectionGap)
-  ///   - [FlowBlockKind.sectionHeader]: widget + SizedBox(12) then lines follow
-  ///   - [FlowBlockKind.line]: widget + SizedBox(lineGap=10)
+  ///   - [FlowBlockKind.sectionHeader]: widget + SizedBox(sectionLabelToLineGap)
+  ///     then lines follow
+  ///   - [FlowBlockKind.line]: widget + SizedBox(lineGap)
   ///   - Between sections (wherever isSectionStart=true and the previous block was
   ///     a line), no extra gap is needed because sectionGap is already baked into
   ///     the first block of each section in the height estimate.  However, for the
   ///     RENDER we do not use height-budgeted SizedBoxes — we use the same visual
-  ///     spacing that SongSectionView used: 12 after the header, 10 after each
-  ///     line, and sectionGap between sections.
+  ///     spacing that SongSectionView used: sectionLabelToLineGap after the header,
+  ///     lineGap after each line, and sectionGap between sections.
+  ///
+  /// `headerHeight` (used by the estimator) is `sectionLabelRowHeight +
+  /// sectionLabelToLineGap`, i.e. exactly the header widget's row plus this
+  /// same gap — so the render and the estimate charge the same thing.
   ///
   /// The render inserts sectionGap before each section's first block (except for
-  /// the very first block in a column) and uses the standard 12/10 px gaps within
-  /// a section.  This matches the single-column behavior of the original
-  /// _buildSingleColumn / SongSectionView.
+  /// the very first block in a column) and uses the standard sectionLabelToLineGap/
+  /// lineGap gaps within a section.  This matches the single-column behavior of
+  /// the original _buildSingleColumn / SongSectionView.
   List<Widget> _buildBlockWidgets({
     required List<FlowBlock> blocks,
     required int startIndex,
     required int endIndex,
     required BuildContext context,
+    required SongReaderMetrics metrics,
   }) {
     final widgets = <Widget>[];
     var isFirstInColumn = true;
@@ -160,7 +172,7 @@ class SongReaderSectionGrid extends StatelessWidget {
       // Insert sectionGap before the start of each section (except the very
       // first block in this column).
       if (block.isSectionStart && !isFirstInColumn) {
-        widgets.add(const SizedBox(height: sectionGap));
+        widgets.add(SizedBox(height: metrics.sectionGap));
       }
       isFirstInColumn = false;
 
@@ -168,19 +180,19 @@ class SongReaderSectionGrid extends StatelessWidget {
         case FlowBlockKind.leadingDirective:
           widgets.add(_DirectiveLine(text: leadingDirectiveText!));
           // sectionGap follows the leading directive (same as before).
-          widgets.add(const SizedBox(height: sectionGap));
+          widgets.add(SizedBox(height: metrics.sectionGap));
           // Mark as consumed — next block won't insert an extra sectionGap.
           isFirstInColumn = true; // suppress gap before the next block
           break;
 
         case FlowBlockKind.sectionHeader:
           widgets.add(_buildHeaderWidget(block, context));
-          widgets.add(const SizedBox(height: 12));
+          widgets.add(SizedBox(height: metrics.sectionLabelToLineGap));
           break;
 
         case FlowBlockKind.line:
           widgets.add(_buildLineWidget(block, context));
-          widgets.add(const SizedBox(height: 10));
+          widgets.add(SizedBox(height: metrics.lineGap));
           break;
       }
     }

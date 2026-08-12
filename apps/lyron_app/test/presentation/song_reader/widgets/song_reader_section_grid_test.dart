@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
@@ -510,5 +511,54 @@ void main() {
       find.byKey(const Key('song-reader-section-grid-columns-2')),
       findsNothing,
     );
+  });
+
+  testWidgets('section grid spaces blocks with the reader metrics', (
+    tester,
+  ) async {
+    // Pins the renderer's gaps to the SAME numbers the estimator charges.
+    // Before this test the grid hardcoded 12 after a header and 10 after a
+    // line, while the estimator carried them inside headerHeight/lineGap:
+    // two definitions of one number, which is exactly how estimator drift
+    // starts.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderSectionGrid(
+            sections: [
+              SongReaderSectionProjection(
+                kind: SongSectionKind.verse,
+                label: 'Verse',
+                number: 1,
+                isUnknown: false,
+                lines: [
+                  SongReaderLyricLineProjection(
+                    segments: const [
+                      SongReaderSegmentProjection(
+                        displayChord: 'C',
+                        text: 'hello world',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+            columnCount: 1,
+            availableHeight: 800,
+          ),
+        ),
+      ),
+    );
+
+    final gaps = tester
+        .widgetList<SizedBox>(find.byType(SizedBox))
+        .map((box) => box.height)
+        .whereType<double>()
+        .toSet();
+
+    expect(gaps, contains(SongReaderMetrics.legacy.sectionLabelToLineGap));
+    expect(gaps, contains(SongReaderMetrics.legacy.lineGap));
   });
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
@@ -71,7 +72,8 @@ void main() {
       await tester.pump();
 
       final rendered =
-          tester.getSize(find.byType(CommentLineView)).height + lineGap;
+          tester.getSize(find.byType(CommentLineView)).height +
+          SongReaderMetrics.legacy.lineGap;
       final charWidths = measureSongReaderCharWidths(
         tester.element(find.byType(CommentLineView)),
       );
@@ -181,7 +183,8 @@ void main() {
       await tester.pump();
 
       final rendered =
-          tester.getSize(find.byType(TabBlockView)).height + lineGap;
+          tester.getSize(find.byType(TabBlockView)).height +
+          SongReaderMetrics.legacy.lineGap;
       final charWidths = measureSongReaderCharWidths(
         tester.element(find.byType(TabBlockView)),
       );
@@ -281,7 +284,8 @@ void main() {
       await tester.pump();
 
       final rendered =
-          tester.getSize(find.byType(DirectiveLineView)).height + lineGap;
+          tester.getSize(find.byType(DirectiveLineView)).height +
+          SongReaderMetrics.legacy.lineGap;
       final charWidths = measureSongReaderCharWidths(
         tester.element(find.byType(DirectiveLineView)),
       );
