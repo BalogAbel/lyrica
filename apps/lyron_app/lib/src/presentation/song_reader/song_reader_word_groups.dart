@@ -70,27 +70,51 @@ bool _isGroupBreakChar(String char) =>
     readerBreakableWhitespace.hasMatch(char) ||
     _mandatoryBreakChar.hasMatch(char);
 
-/// A character that forces a line break wherever it occurs, regardless of
-/// available width -- a SUPERSET case for grouping: if the render is
-/// forced to break here no matter what, the piece boundary is always a
-/// safe place for the outer `Wrap` to break too, in addition to every
-/// ordinary [readerBreakableWhitespace] opportunity.
+/// The seven characters Flutter's line breaker honors as a FORCED line
+/// break wherever they occur, regardless of available width: LINE FEED,
+/// CARRIAGE RETURN, LINE SEPARATOR, PARAGRAPH SEPARATOR, NEXT LINE,
+/// VERTICAL TAB and FORM FEED. Written as `\u` escapes rather than raw
+/// bytes so the set stays legible (and diffable) in review, an editor, or
+/// after a copy-paste, unlike an invisible literal control character.
 ///
-/// Mirrors `song_reader_fit.dart`'s `_mandatoryLineBreak` character set
-/// (the individual characters, not its `\r\n` pairing -- pairing only
-/// matters there to avoid double-counting a CRLF as two lines when
-/// measuring height; grouping only asks "can a break happen at this
-/// boundary", so treating `\r` and `\n` independently is correct here).
-/// Duplicated rather than imported: `song_reader_fit.dart` imports THIS
-/// file, so the reverse import would be circular. `_mandatoryLineBreak`'s
-/// own doc comment carries the `TextPainter` measurements this set is
-/// pinned by; keep the two in sync by hand if that set ever changes.
+/// The canonical definition: `song_reader_fit.dart`'s `_mandatoryLineBreak`
+/// builds its own pattern from this rather than keeping a hand-copied
+/// second list, for the same reason `readerBreakableWhitespace` above is
+/// canonical here rather than duplicated in that file -- a hand-kept second
+/// copy is exactly the kind of drift this file's whitespace handling has
+/// already been bitten by twice. See that pattern's own doc comment (in
+/// `song_reader_fit.dart`) for the `TextPainter` measurements this set is
+/// pinned by.
+///
+/// U+FEFF ZERO WIDTH NO-BREAK SPACE is ALSO whitespace-adjacent (stripped
+/// by `String.trim*`, the same family of gap that motivated
+/// [readerBreakableWhitespace] moving off `trim*` in the first place), but
+/// is deliberately NOT included here or in [readerBreakableWhitespace]: it
+/// isn't pinned by a `TextPainter` measurement the way every character in
+/// both of those sets is, and this file's whitespace decisions are made by
+/// measuring, not by inference from a Unicode category name -- adding it
+/// without that verification would be exactly the kind of unverified
+/// assumption this codebase's review history keeps finding gaps in one
+/// round later. A pre-existing, separate gap either way: it was never part
+/// of the estimator's numeric model, so this is not a regression this
+/// round introduces.
+const readerMandatoryBreakChars = '\r\n\u2028\u2029\u0085\u000B\u000C';
+
+/// A character that forces a line break wherever it occurs -- a SUPERSET
+/// case for grouping: if the render is forced to break here no matter
+/// what, the piece boundary is always a safe place for the outer `Wrap` to
+/// break too, in addition to every ordinary [readerBreakableWhitespace]
+/// opportunity. Individual characters, not `song_reader_fit.dart`'s `\r\n`
+/// pairing -- that pairing only matters there to avoid double-counting a
+/// CRLF as two lines when measuring height; grouping only asks "can a
+/// break happen at this boundary", so treating `\r` and `\n` independently
+/// is correct here.
 ///
 /// Not extended to [_isEntirelyBreakableWhitespace]: none of these
 /// characters can become a lone piece via [_splitKeepingTrailingWhitespace]
 /// (which only cuts at [readerBreakableWhitespace]), so a piece "entirely"
 /// one of these never arises from splitting.
-final _mandatoryBreakChar = RegExp('[\r\n  ]');
+final _mandatoryBreakChar = RegExp('[$readerMandatoryBreakChars]');
 
 /// True when [value] is non-empty and every character is
 /// [readerBreakableWhitespace] -- e.g. a single space, a run of tabs, or a

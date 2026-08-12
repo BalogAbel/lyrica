@@ -452,9 +452,15 @@ int _segmentIntraLines({
 /// is handled regardless of how implausible its source is. Leaving either
 /// out on a "real data won't contain it" assumption is exactly the kind of
 /// gap this review sequence keeps finding one round later.
-final RegExp _mandatoryLineBreak = RegExp(
-  '\r\n|\r|\n|\u2028|\u2029|\u0085|\u000B|\u000C',
-);
+///
+/// `\r\n` listed first (before the shared character class, which also
+/// matches a lone `\r` or `\n`) so the pair always matches as a single
+/// break, not two -- see the paragraph above for why that ordering matters.
+/// The seven individual characters come from `readerMandatoryBreakChars`
+/// (`song_reader_word_groups.dart`), the canonical definition: keeping a
+/// second hand-copied list here is exactly the class of drift this file's
+/// `readerBreakableWhitespace` import already closed once.
+final RegExp _mandatoryLineBreak = RegExp('\r\n|[$readerMandatoryBreakChars]');
 
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
