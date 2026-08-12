@@ -17,20 +17,24 @@ void main() {
     expect(groups.single.segments.map((s) => s.text), ['por', 'cikám,']);
   });
 
-  test('a whitespace-only segment stands alone between two words', () {
-    // A bare separator segment has a boundary on both sides — it ends with
-    // whitespace and starts with whitespace — so it neither glues its
-    // neighbours together nor attaches to either of them.
+  test('a whitespace-only segment joins the group before it, not its own', () {
+    // A bare separator segment ends with whitespace, so the word after it
+    // still starts a fresh group normally -- but the separator itself is
+    // never left free to start a NEW group on its own (PR review round,
+    // 2026-08-12): that would make it a standalone box the outer Wrap could
+    // place at the START of a wrapped row, indistinguishable from a real
+    // blank leading indent. Landing at the END of the previous group instead
+    // is invisible at that same wrap point, exactly as trailing whitespace
+    // on any other piece already is.
     final groups = groupSegmentsIntoWords([
       _segment('minden', chord: 'C'),
       _segment(' '),
       _segment('porcikám', chord: 'D'),
     ]);
 
-    expect(groups, hasLength(3));
-    expect(groups[0].segments.map((s) => s.text), ['minden']);
-    expect(groups[1].segments.map((s) => s.text), [' ']);
-    expect(groups[2].segments.map((s) => s.text), ['porcikám']);
+    expect(groups, hasLength(2));
+    expect(groups[0].segments.map((s) => s.text), ['minden', ' ']);
+    expect(groups[1].segments.map((s) => s.text), ['porcikám']);
   });
 
   test('keeps every segment when a single group spans the whole line', () {
@@ -143,6 +147,9 @@ void main() {
         // ChordPro splits "alpha beta" at chord, producing segments with text
         // 'alpha' (no chord) and ' beta' (chord E). When ' beta' is split at
         // whitespace, the chord should land on 'beta', not on the leading ' '.
+        // (The lone ' ' piece not being free to start its own outer-Wrap row
+        // is a grouping concern, not a splitting one -- see
+        // groupSegmentsIntoWords' "leading whitespace" test below.)
         final result = splitSegmentsAtWordBoundaries(const [
           SongReaderSegmentProjection(displayChord: null, text: 'alpha'),
           SongReaderSegmentProjection(displayChord: 'E', text: ' beta'),
@@ -214,6 +221,131 @@ void main() {
       final splitWord = groups[2].segments;
       expect(splitWord.map((s) => s.displayChord).toList(), [null, 'G#m']);
     });
+  });
+
+  group('readerBreakableWhitespace edge cases (PR review round)', () {
+    test(
+      'a zero-width space is a real split point, not silently re-merged',
+      () {
+        // U+200B is in readerBreakableWhitespace (Flutter's line breaker treats
+        // it as a break opportunity), but String.trim* does not recognize it --
+        // using trim* to decide group boundaries let the splitter cut a piece
+        // at a ZWSP that the grouper then silently glued back together,
+        // undoing the split.
+        final pieces = splitSegmentsAtWordBoundaries(const [
+          SongReaderSegmentProjection(displayChord: 'E', text: 'alpha​beta'),
+        ]);
+        expect(pieces.map((s) => s.text).toList(), ['alpha​', 'beta']);
+
+        final groups = groupSegmentsIntoWords(pieces);
+        expect(
+          groups.map((g) => g.segments.map((s) => s.text).toList()).toList(),
+          [
+            ['alpha​'],
+            ['beta'],
+          ],
+          reason:
+              'a ZWSP-terminated piece must end a group like any other '
+              'breakable-whitespace-terminated piece',
+        );
+      },
+    );
+
+    test('a lone leading-whitespace piece joins the previous group, not its '
+        'own', () {
+      // "word[C] next" -> segments ('word', null) and (' next', 'C').
+      // Splitting cuts ' next''s leading space off as its own piece
+      // ('word', ' ', 'next'); grouping must not let that lone ' ' piece
+      // end 'word''s group AND start a fresh one -- that would be a stray
+      // box free to open its own outer-Wrap row, which never existed
+      // before this segment was split (the space was harmless leading
+      // whitespace inside one Text). 'word' itself stays its own exact
+      // piece (unglued -- other code, and other tests, key off a segment's
+      // text unchanged), just sharing a group with the space that follows.
+      final pieces = splitSegmentsAtWordBoundaries(const [
+        SongReaderSegmentProjection(displayChord: null, text: 'word'),
+        SongReaderSegmentProjection(displayChord: 'C', text: ' next'),
+      ]);
+      expect(pieces.map((s) => s.text).toList(), ['word', ' ', 'next']);
+      expect(pieces.map((s) => s.displayChord).toList(), [null, null, 'C']);
+
+      final groups = groupSegmentsIntoWords(pieces);
+      expect(
+        groups.map((g) => g.segments.map((s) => s.text).toList()).toList(),
+        [
+          ['word', ' '],
+          ['next'],
+        ],
+      );
+    });
+
+    test(
+      'a lone ZWSP leading-whitespace piece also joins the previous group',
+      () {
+        // Same shape as the plain-space case above, but the leading
+        // whitespace piece is a single U+200B ZERO WIDTH SPACE instead of an
+        // ASCII space. isEntirelyBreakableWhitespace must test per-character
+        // against readerBreakableWhitespace, not `.trim().isEmpty`: trim*
+        // does not recognize ZWSP, so a trim-based check would miss this
+        // piece and let it start its own group -- the exact bug this
+        // grouping rule exists to prevent, through a different separator.
+        final pieces = splitSegmentsAtWordBoundaries(const [
+          SongReaderSegmentProjection(displayChord: null, text: 'word'),
+          SongReaderSegmentProjection(displayChord: 'C', text: '​next'),
+        ]);
+        expect(pieces.map((s) => s.text).toList(), ['word', '​', 'next']);
+
+        final groups = groupSegmentsIntoWords(pieces);
+        expect(
+          groups.map((g) => g.segments.map((s) => s.text).toList()).toList(),
+          [
+            ['word', '​'],
+            ['next'],
+          ],
+        );
+      },
+    );
+
+    test('a chord-only slot may share a group with a following whitespace '
+        'piece, but its own text stays untouched', () {
+      // A chord-only segment's empty text is load-bearing: song_line_view
+      // keys its rendering off text.isEmpty to keep the slot's own chord.
+      // Grouping (unlike a discarded earlier version of this fix, which
+      // glued at the splitting stage) never rewrites a piece's text, so the
+      // slot's own piece stays exactly empty even when the grouper puts it
+      // in the same group as the ' ' that follows.
+      final pieces = splitSegmentsAtWordBoundaries(const [
+        SongReaderSegmentProjection(displayChord: 'Am', text: ''),
+        SongReaderSegmentProjection(displayChord: 'C', text: ' next'),
+      ]);
+      expect(pieces.map((s) => s.text).toList(), ['', ' ', 'next']);
+      expect(pieces.first.text, isEmpty);
+
+      final groups = groupSegmentsIntoWords(pieces);
+      expect(groups.first.segments.first.text, isEmpty);
+      expect(groups.first.segments.first.displayChord, 'Am');
+    });
+  });
+
+  test('the estimator does not keep its own copy of the breakable-whitespace '
+      'class', () {
+    // A guard, not a behaviour test: song_reader_fit.dart must import
+    // readerBreakableWhitespace rather than defining its own RegExp, or the
+    // two layers can silently drift onto different character classes.
+    final estimator = File(
+      'lib/src/presentation/song_reader/song_reader_fit.dart',
+    ).readAsStringSync();
+
+    expect(
+      estimator.contains('readerBreakableWhitespace'),
+      isTrue,
+      reason: 'must reference the shared constant',
+    );
+    expect(
+      estimator.contains(RegExp(r'RegExp\S*\s*_breakableWhitespace\s*=')),
+      isFalse,
+      reason: 'must not keep its own private copy of the character class',
+    );
   });
 
   test('the renderer and the estimator both split before grouping', () {

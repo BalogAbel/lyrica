@@ -397,7 +397,7 @@ int _segmentIntraLines({
 /// Mandatory line-break sequences: Flutter's line breaker honors these as
 /// FORCED line ends (the text before one occupies its own line, the next
 /// segment starts on a fresh line, regardless of remaining width) rather
-/// than mere break OPPORTUNITIES like [_breakableWhitespace] below.
+/// than mere break OPPORTUNITIES like [readerBreakableWhitespace] below.
 ///
 /// `\r\n` is listed before the lone `\r` (and before the lone `\n`) so the
 /// pair always matches as a single break, not two: measured with a real
@@ -440,7 +440,7 @@ int _segmentIntraLines({
 /// identically to `\n` (`getLineBoundary` places the line's end immediately
 /// after the preceding content, the separator itself consumed as the
 /// terminator, never left dangling on the line the way trailing
-/// [_breakableWhitespace] is).
+/// [readerBreakableWhitespace] is).
 ///
 /// U+000B (VERTICAL TAB) and U+000C (FORM FEED) are included for the same
 /// measured reason: `getLineBoundary` places their line boundary identically
@@ -456,32 +456,22 @@ final RegExp _mandatoryLineBreak = RegExp(
   '\r\n|\r|\n|\u2028|\u2029|\u0085|\u000B|\u000C',
 );
 
-/// Breakable whitespace: characters Flutter's line breaker treats as an
-/// ordinary word-boundary break OPPORTUNITY (not a forced line end -- a bare
-/// `\r` and U+0085 moved to [_mandatoryLineBreak] as of the eighth review
-/// round; see that pattern's doc for why), verified with a real
-/// `TextPainter` rather than assumed from the Unicode category name
-/// (`song_line_view_estimate_consistency_test.dart`'s empirical probe):
-/// ASCII space and TAB, plus the Unicode Zs "space separator" characters
-/// (U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F, U+3000) and U+200B ZERO
-/// WIDTH SPACE. Every one of these was confirmed via
-/// `TextPainter.getLineBoundary` to place the same trailing-whitespace line
-/// boundary a plain ASCII space does.
+/// Breakable whitespace, shared with the renderer's word splitter
+/// ([readerBreakableWhitespace] in `song_reader_word_groups.dart` -- see its
+/// doc for the `TextPainter` measurements behind this set) so the estimator
+/// and the renderer can never silently drift onto two different character
+/// classes: a bare `\r` and U+0085 are NOT in this class (they moved to
+/// [_mandatoryLineBreak] as of the eighth review round; see that pattern's
+/// doc for why).
 ///
-/// This deliberately includes U+00A0 NO-BREAK SPACE and U+202F NARROW
-/// NO-BREAK SPACE: despite the names, Flutter's line breaker does NOT
-/// special-case either as non-breaking -- both break exactly like a plain
-/// space. Assuming otherwise from the Unicode category name, rather than
-/// measuring, would silently reproduce this round's exact defect (an
-/// under-estimate) through a separator that looks safe to ignore but is
-/// not. (A SEPARATE empirical finding, not modelled here because it only
-/// ever makes the estimate LOOSER, never wrong: for these same two
-/// "no-break"-branded characters specifically, real Flutter additionally
-/// lets a following over-wide run "steal" trailing characters across the
-/// break to fill the remaining line width, something the greedy model
-/// below does not attempt -- harmless, since not modelling a real-world
-/// space-saving trick can only over-count lines, never under-count them.)
-final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
+/// One thing this file adds on top of the shared class: for U+00A0 NO-BREAK
+/// SPACE and U+202F NARROW NO-BREAK SPACE specifically, real Flutter lets a
+/// following over-wide run "steal" trailing characters across the break to
+/// fill the remaining line width -- something the greedy model below does
+/// not attempt. Not modelled here (a SEPARATE empirical finding, not a
+/// correction to the shared class): harmless under this file's one-sided
+/// contract, since skipping a real-world space-saving trick can only
+/// over-count lines, never under-count them.
 
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
@@ -497,7 +487,7 @@ final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
 /// still occupies a blank visual line, measured: `AAAA\n\nBBBB` renders 3
 /// lines, not 2) is wrapped independently and their line counts summed,
 /// since a mandatory break can never be undone by available width. Within
-/// each chunk, greedily packs whole words (split on [_breakableWhitespace])
+/// each chunk, greedily packs whole words (split on [readerBreakableWhitespace])
 /// onto a line, starting a new line whenever the next word would overflow.
 /// A single word wider than a whole line is placed on its own and spans
 /// `ceil(wordWidth / effectiveLineWidth)` lines by itself (mirroring how a
@@ -507,13 +497,13 @@ final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
 ///
 /// A seventh review round found the previous version split only on a
 /// literal ASCII space, so a "word" containing a TAB or any other
-/// [_breakableWhitespace] character was measured as one unbreakable token;
+/// [readerBreakableWhitespace] character was measured as one unbreakable token;
 /// whenever that token's flat width happened to still fit within
 /// [effectiveLineWidth] (or its oversized-fallback ceiling happened to
 /// match the real line count -- not guaranteed, see the doc above), the
 /// estimate fell below the real render, reproducing the sixth round's
 /// chord-space defect through a different separator. Splitting on the full
-/// [_breakableWhitespace] class closes every one of those gaps the same
+/// [readerBreakableWhitespace] class closes every one of those gaps the same
 /// way the sixth round closed the plain-space one.
 ///
 /// A plain `ceil(textWidth / effectiveLineWidth)` division over the WHOLE
@@ -554,7 +544,7 @@ int _greedyWrapLineCount({
   if (chunk.isEmpty) return 1;
 
   final spaceWidth = charWidth;
-  final words = chunk.split(_breakableWhitespace);
+  final words = chunk.split(readerBreakableWhitespace);
 
   var lineCount = 0;
   var currentLineWidth = 0.0;
