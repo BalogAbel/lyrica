@@ -114,7 +114,19 @@ const readerMandatoryBreakChars = '\r\n\u2028\u2029\u0085\u000B\u000C';
 /// characters can become a lone piece via [_splitKeepingTrailingWhitespace]
 /// (which only cuts at [readerBreakableWhitespace]), so a piece "entirely"
 /// one of these never arises from splitting.
-final _mandatoryBreakChar = RegExp('[$readerMandatoryBreakChars]');
+///
+/// Built as an escaped alternation, not a `'[$readerMandatoryBreakChars]'`
+/// character class: [readerMandatoryBreakChars] being canonical makes the
+/// two files' CHARACTER SETS structurally unable to drift apart, but a
+/// character class is not a safe container for an arbitrary interpolated
+/// string regardless -- a future edit adding `-`, `]`, `\`, or `^` to that
+/// constant would silently change what the class matches (a range, an
+/// early terminator, an escape, a negation) instead of erroring, on BOTH
+/// call sites at once. `RegExp.escape` per character sidesteps that: safe
+/// for any string the constant might ever hold, not just the current one.
+final _mandatoryBreakChar = RegExp(
+  readerMandatoryBreakChars.split('').map(RegExp.escape).join('|'),
+);
 
 /// True when [value] is non-empty and every character is
 /// [readerBreakableWhitespace] -- e.g. a single space, a run of tabs, or a

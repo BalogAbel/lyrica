@@ -453,14 +453,22 @@ int _segmentIntraLines({
 /// out on a "real data won't contain it" assumption is exactly the kind of
 /// gap this review sequence keeps finding one round later.
 ///
-/// `\r\n` listed first (before the shared character class, which also
-/// matches a lone `\r` or `\n`) so the pair always matches as a single
-/// break, not two -- see the paragraph above for why that ordering matters.
-/// The seven individual characters come from `readerMandatoryBreakChars`
+/// `\r\n` listed first (before the seven individual characters, which also
+/// match a lone `\r` or `\n`) so the pair always matches as a single break,
+/// not two -- see the paragraph above for why that ordering matters. The
+/// seven individual characters come from `readerMandatoryBreakChars`
 /// (`song_reader_word_groups.dart`), the canonical definition: keeping a
 /// second hand-copied list here is exactly the class of drift this file's
-/// `readerBreakableWhitespace` import already closed once.
-final RegExp _mandatoryLineBreak = RegExp('\r\n|[$readerMandatoryBreakChars]');
+/// `readerBreakableWhitespace` import already closed once. Escaped and
+/// alternated (`RegExp.escape` per character, joined with `|`) rather than
+/// interpolated into a `[...]` character class: a class is not a safe
+/// container for an arbitrary string regardless of how the source of that
+/// string is shared -- a future edit to `readerMandatoryBreakChars` adding
+/// `-`, `]`, `\`, or `^` would silently change what the class matches
+/// instead of erroring, on both this file and `word_groups.dart` at once.
+final RegExp _mandatoryLineBreak = RegExp(
+  '\r\n|${readerMandatoryBreakChars.split('').map(RegExp.escape).join('|')}',
+);
 
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
