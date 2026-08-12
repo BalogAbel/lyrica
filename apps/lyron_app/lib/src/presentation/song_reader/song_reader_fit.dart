@@ -114,6 +114,34 @@ const double tabBlockVerticalPadding = 16.0;
 /// once per lyric line to match what the widget actually adds.
 const double lineWidgetBottomPadding = 2.0;
 
+/// Bounds applied to the caller's column width before it is used as the
+/// estimator's `effectiveLineWidth`.
+///
+/// Direction is the whole point here, and the two bounds are NOT symmetric:
+///
+///   - Modelling a NARROWER line than the renderer really gets can only add
+///     estimated wraps, so it can only ever push the estimate UP -- safe
+///     under this file's one-sided `estimated >= rendered` contract.
+///   - Modelling a WIDER line than the renderer really gets removes estimated
+///     wraps, pushing the estimate DOWN and straight through the contract's
+///     floor. `resolveFitFontScale` picks the largest scale whose ESTIMATED
+///     height fits, so an under-estimate is exactly the overflow that
+///     fit-to-screen exists to prevent.
+///
+/// [maxEffectiveLineWidth] is therefore a real cap (it can only over-estimate),
+/// while the lower bound exists ONLY as a numeric guard: at width 0 the
+/// oversized-word branch of [_greedyWrapLineCount] evaluates
+/// `(wordWidth / 0).ceil()` on an infinity and throws, and a negative width
+/// makes the greedy packing loop meaningless. It must stay small enough that it
+/// never RAISES a real column width -- it was 120.0 until 2026-08-10, which
+/// silently modelled a 120px line for every narrower column and under-estimated
+/// every one of them (see
+/// docs/deferred/2026-07-28-reader-fit-conservatism-margin.md, "Word-boundary
+/// splitting"). The renderer applies no such floor: `SongLineView` lays out at
+/// whatever `constraints.maxWidth` it is given.
+const double minEffectiveLineWidth = 1.0;
+const double maxEffectiveLineWidth = 1200.0;
+
 // Layout decision constants (shared by the section grid, the fit calculator,
 // and the layout resolver so all three agree).
 const double denseLayoutMinWidth = 1180.0;
@@ -369,7 +397,7 @@ int _segmentIntraLines({
 /// Mandatory line-break sequences: Flutter's line breaker honors these as
 /// FORCED line ends (the text before one occupies its own line, the next
 /// segment starts on a fresh line, regardless of remaining width) rather
-/// than mere break OPPORTUNITIES like [_breakableWhitespace] below.
+/// than mere break OPPORTUNITIES like [readerBreakableWhitespace] below.
 ///
 /// `\r\n` is listed before the lone `\r` (and before the lone `\n`) so the
 /// pair always matches as a single break, not two: measured with a real
@@ -412,7 +440,7 @@ int _segmentIntraLines({
 /// identically to `\n` (`getLineBoundary` places the line's end immediately
 /// after the preceding content, the separator itself consumed as the
 /// terminator, never left dangling on the line the way trailing
-/// [_breakableWhitespace] is).
+/// [readerBreakableWhitespace] is).
 ///
 /// U+000B (VERTICAL TAB) and U+000C (FORM FEED) are included for the same
 /// measured reason: `getLineBoundary` places their line boundary identically
@@ -424,36 +452,23 @@ int _segmentIntraLines({
 /// is handled regardless of how implausible its source is. Leaving either
 /// out on a "real data won't contain it" assumption is exactly the kind of
 /// gap this review sequence keeps finding one round later.
-final RegExp _mandatoryLineBreak = RegExp(
-  '\r\n|\r|\n|\u2028|\u2029|\u0085|\u000B|\u000C',
-);
-
-/// Breakable whitespace: characters Flutter's line breaker treats as an
-/// ordinary word-boundary break OPPORTUNITY (not a forced line end -- a bare
-/// `\r` and U+0085 moved to [_mandatoryLineBreak] as of the eighth review
-/// round; see that pattern's doc for why), verified with a real
-/// `TextPainter` rather than assumed from the Unicode category name
-/// (`song_line_view_estimate_consistency_test.dart`'s empirical probe):
-/// ASCII space and TAB, plus the Unicode Zs "space separator" characters
-/// (U+00A0, U+1680, U+2000-U+200A, U+202F, U+205F, U+3000) and U+200B ZERO
-/// WIDTH SPACE. Every one of these was confirmed via
-/// `TextPainter.getLineBoundary` to place the same trailing-whitespace line
-/// boundary a plain ASCII space does.
 ///
-/// This deliberately includes U+00A0 NO-BREAK SPACE and U+202F NARROW
-/// NO-BREAK SPACE: despite the names, Flutter's line breaker does NOT
-/// special-case either as non-breaking -- both break exactly like a plain
-/// space. Assuming otherwise from the Unicode category name, rather than
-/// measuring, would silently reproduce this round's exact defect (an
-/// under-estimate) through a separator that looks safe to ignore but is
-/// not. (A SEPARATE empirical finding, not modelled here because it only
-/// ever makes the estimate LOOSER, never wrong: for these same two
-/// "no-break"-branded characters specifically, real Flutter additionally
-/// lets a following over-wide run "steal" trailing characters across the
-/// break to fill the remaining line width, something the greedy model
-/// below does not attempt -- harmless, since not modelling a real-world
-/// space-saving trick can only over-count lines, never under-count them.)
-final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
+/// `\r\n` listed first (before the seven individual characters, which also
+/// match a lone `\r` or `\n`) so the pair always matches as a single break,
+/// not two -- see the paragraph above for why that ordering matters. The
+/// seven individual characters come from `readerMandatoryBreakChars`
+/// (`song_reader_word_groups.dart`), the canonical definition: keeping a
+/// second hand-copied list here is exactly the class of drift this file's
+/// `readerBreakableWhitespace` import already closed once. Escaped and
+/// alternated (`RegExp.escape` per character, joined with `|`) rather than
+/// interpolated into a `[...]` character class: a class is not a safe
+/// container for an arbitrary string regardless of how the source of that
+/// string is shared -- a future edit to `readerMandatoryBreakChars` adding
+/// `-`, `]`, `\`, or `^` would silently change what the class matches
+/// instead of erroring, on both this file and `word_groups.dart` at once.
+final RegExp _mandatoryLineBreak = RegExp(
+  '\r\n|${readerMandatoryBreakChars.split('').map(RegExp.escape).join('|')}',
+);
 
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
@@ -464,12 +479,28 @@ final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
 /// leading capo/tuning variant) -- see each call site's own comment for why
 /// THAT kind uses this word-boundary model.
 ///
+/// Splits on [readerBreakableWhitespace] (`song_reader_word_groups.dart` --
+/// see its doc for the `TextPainter` measurements behind that class), the
+/// single shared definition that keeps the estimator and the renderer from
+/// silently drifting onto two different character classes: a bare `\r` and
+/// U+0085 are NOT in it (they're [_mandatoryLineBreak] instead; see that
+/// pattern's doc for why).
+///
+/// One thing this file's greedy model does NOT attempt, on top of that
+/// shared class: for U+00A0 NO-BREAK SPACE and U+202F NARROW NO-BREAK SPACE
+/// specifically, real Flutter lets a following over-wide run "steal"
+/// trailing characters across the break to fill the remaining line width.
+/// Not modelled here (a SEPARATE empirical finding, not a correction to the
+/// shared class): harmless under this file's one-sided contract, since
+/// skipping a real-world space-saving trick can only over-count lines,
+/// never under-count them.
+///
 /// Splits [text] first on [_mandatoryLineBreak] (each resulting chunk --
 /// including an empty one between two consecutive mandatory breaks, which
 /// still occupies a blank visual line, measured: `AAAA\n\nBBBB` renders 3
 /// lines, not 2) is wrapped independently and their line counts summed,
 /// since a mandatory break can never be undone by available width. Within
-/// each chunk, greedily packs whole words (split on [_breakableWhitespace])
+/// each chunk, greedily packs whole words (split on [readerBreakableWhitespace])
 /// onto a line, starting a new line whenever the next word would overflow.
 /// A single word wider than a whole line is placed on its own and spans
 /// `ceil(wordWidth / effectiveLineWidth)` lines by itself (mirroring how a
@@ -479,13 +510,13 @@ final RegExp _breakableWhitespace = RegExp('[ \t   -​  　]');
 ///
 /// A seventh review round found the previous version split only on a
 /// literal ASCII space, so a "word" containing a TAB or any other
-/// [_breakableWhitespace] character was measured as one unbreakable token;
+/// [readerBreakableWhitespace] character was measured as one unbreakable token;
 /// whenever that token's flat width happened to still fit within
 /// [effectiveLineWidth] (or its oversized-fallback ceiling happened to
 /// match the real line count -- not guaranteed, see the doc above), the
 /// estimate fell below the real render, reproducing the sixth round's
 /// chord-space defect through a different separator. Splitting on the full
-/// [_breakableWhitespace] class closes every one of those gaps the same
+/// [readerBreakableWhitespace] class closes every one of those gaps the same
 /// way the sixth round closed the plain-space one.
 ///
 /// A plain `ceil(textWidth / effectiveLineWidth)` division over the WHOLE
@@ -526,7 +557,7 @@ int _greedyWrapLineCount({
   if (chunk.isEmpty) return 1;
 
   final spaceWidth = charWidth;
-  final words = chunk.split(_breakableWhitespace);
+  final words = chunk.split(readerBreakableWhitespace);
 
   var lineCount = 0;
   var currentLineWidth = 0.0;
@@ -662,7 +693,10 @@ double _lineItemHeight({
   double chordCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
-  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
+  final effectiveLineWidth = columnWidth.clamp(
+    minEffectiveLineWidth,
+    maxEffectiveLineWidth,
+  );
   // Both lyricCharWidth and chordCharWidth are measured RAW (no ambient
   // scaler baked in, see measureSongReaderCharWidths) at each style's own
   // base size, so every quantity derived from them needs the REAL effective
@@ -692,9 +726,17 @@ double _lineItemHeight({
       // word groups only apply when the line has lyric segments. A
       // chord-only line is measured one segment at a time, exactly as it
       // is rendered.
+      //
+      // A ChordPro segment is not a word -- ChordPro splits a line at
+      // chord positions, which can land inside a word (e.g. a chord
+      // fingered mid-word splits it into two segments). Grouping raw
+      // segments used to make renderer and estimator agree on the WRONG
+      // boundary. Both now split segments at word boundaries first (see
+      // splitSegmentsAtWordBoundaries), so every group is exactly one
+      // word, and the renderer and estimator agree on the right one.
       final groups = hasLyrics
           ? groupSegmentsIntoWords(
-              item.segments,
+              splitSegmentsAtWordBoundaries(item.segments),
             ).map((group) => group.segments).toList(growable: false)
           : [
               for (final segment in item.segments) [segment],
@@ -980,7 +1022,10 @@ double flowBlockHeight({
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
 }) {
-  final effectiveLineWidth = columnWidth.clamp(120.0, 1200.0);
+  final effectiveLineWidth = columnWidth.clamp(
+    minEffectiveLineWidth,
+    maxEffectiveLineWidth,
+  );
 
   switch (block.kind) {
     case FlowBlockKind.leadingDirective:
@@ -1218,7 +1263,10 @@ double estimateSectionHeight({
     final headerFactor = textScale.factorFor(textScale.headerBaseFontSize, 1.0);
     final headerLines = _wordWrapLineCount(
       text: headerLabel,
-      effectiveLineWidth: maxWidth.clamp(120.0, 1200.0),
+      effectiveLineWidth: maxWidth.clamp(
+        minEffectiveLineWidth,
+        maxEffectiveLineWidth,
+      ),
       charWidth: headerCharWidth * headerFactor,
     );
     h = headerLines * headerHeight * headerFactor;

@@ -144,13 +144,21 @@ void main() {
                 viewMode: SongReaderViewMode.chordsAndLyrics,
                 sharedFontScale: 1,
                 columnCount: 2,
-                // The estimator now charges a chord row + gap per wrapped
-                // run (not once per line) and adds the renderer's run
-                // spacing between runs, so the taller column estimates
-                // higher than before. 420 keeps single-column overflowing
-                // (so the 2-column path is tried) while staying above the
-                // 2-column tolerance threshold for this fixture's content.
-                availableHeight: 420,
+                // The estimator charges a chord row + gap per wrapped run
+                // (not once per line) and adds the renderer's run spacing
+                // between runs, so the taller column estimates higher than a
+                // per-line model would. Re-tuned 2026-08-10 from 420 when
+                // word-boundary splitting made a wrapped lyric line taller
+                // for real: a line is now one box PER WORD in the outer
+                // Wrap, so the renderer's 10px lineRunSpacing applies
+                // between the line's own wrapped rows, where before a
+                // single-segment line was one Text that wrapped internally
+                // at plain text leading. Measured at this fixture's 380px
+                // column: 114px -> 144px rendered per line. This value keeps
+                // single-column overflowing (so the 2-column path is tried)
+                // while staying above the 2-column tolerance threshold for
+                // this fixture's now-taller content.
+                availableHeight: 540,
               ),
             ),
           ),

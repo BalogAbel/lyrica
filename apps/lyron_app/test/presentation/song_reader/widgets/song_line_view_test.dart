@@ -30,8 +30,12 @@ void main() {
         ),
       );
 
+      // "lo world" is two words -- splitSegmentsAtWordBoundaries now cuts
+      // it at the internal space, so the word-internal chord split (the
+      // thing this test guards) shows up as 'Hel' butting against 'lo ',
+      // not the whole clause.
       final firstTextRight = tester.getTopRight(find.text('Hel')).dx;
-      final secondTextLeft = tester.getTopLeft(find.text('lo world')).dx;
+      final secondTextLeft = tester.getTopLeft(find.text('lo ')).dx;
 
       expect(secondTextLeft - firstTextRight, lessThanOrEqualTo(1));
     },
@@ -255,6 +259,64 @@ void main() {
       tester.getTopLeft(find.text('m,')).dy,
       tester.getTopLeft(find.text('porcika')).dy,
       reason: 'the word must not be split across rows',
+    );
+  });
+
+  testWidgets('never breaks inside a word split by a chord change', (
+    tester,
+  ) async {
+    // Narrow enough that the line must wrap. The reproduction from the spec:
+    // ChordPro cuts "Igédben" in half at the chord.
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final line = SongReaderLyricLineProjection(
+      segments: const [
+        SongReaderSegmentProjection(
+          displayChord: 'E',
+          text: 'Kegyelmed elég, több, mint elég, Igé',
+        ),
+        SongReaderSegmentProjection(displayChord: 'G#m', text: 'dben bízok én'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongLineView(
+            line: line,
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+          ),
+        ),
+      ),
+    );
+
+    // Every rendered lyric box holds at most one word: no box may contain
+    // whitespace with text on both sides of it.
+    final texts = tester
+        .widgetList<Text>(find.byType(Text))
+        .map((t) => t.data ?? '')
+        .where((t) => t.trim().isNotEmpty)
+        .toList();
+
+    for (final text in texts) {
+      expect(
+        text.trimRight().contains(RegExp(r'\s')),
+        isFalse,
+        reason: 'a rendered box holds more than one word: "$text"',
+      );
+    }
+
+    // And the line still says what it said before.
+    expect(
+      texts
+          .where((t) => t != 'E' && t != 'G#m')
+          .join()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim(),
+      'Kegyelmed elég, több, mint elég, Igédben bízok én',
     );
   });
 }

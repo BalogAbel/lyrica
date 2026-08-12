@@ -319,16 +319,76 @@ Untouched. Nothing in this slice reaches authorization.
 ## Defect pulled into scope
 
 **Lyric lines break mid-word at narrow widths.** At 375px the reader renders
-`Igé` / `dben bízok én` and `Szelleme` / `d újítson meg!` — a word carrying a
-chord change is split into segments, and when the resulting group is wider than
-the line it wraps inside the group. `groupSegmentsIntoWords`
-(`song_reader_word_groups.dart`) exists to prevent exactly this and does not
-cover the case where the group itself overflows.
+`Igé` / `dben bízok én` and `Szelleme` / `d újítson meg!`.
 
-This is a correctness defect, not styling, and it becomes more visible as phone
-line lengths tighten. It is fixed in this slice, with its own estimator
-consistency case, because the estimator already models per-word wrapping and the
-fix must stay inside that model.
+Root cause (corrected 2026-08-10, after reading the code rather than inferring
+from the screenshot): `groupSegmentsIntoWords`
+(`song_reader_word_groups.dart:23-33`) decides group boundaries at **segment**
+granularity — a new group starts only where the previous segment's text ends
+with whitespace or the next segment's begins with it. A segment's *internal*
+whitespace is never a boundary. So `Kegyelmed elég, több, mint elég, Igé` plus
+`dben bízok én` becomes one indivisible group holding an entire line of text.
+That group is wider than the line, so the renderer falls back to packing it
+segment by segment, and the only available break is the segment boundary — which
+sits in the middle of `Igédben`.
+
+The file's own doc comment claims a break is only possible where the source text
+had whitespace. Today the opposite holds: the real word boundaries are not break
+opportunities, and the mid-word segment boundary is.
+
+The estimator (`song_reader_fit.dart:763`) mirrors this faithfully, so the
+estimate is correct and the render is wrong. Both move together in the fix.
+
+**Amended 2026-08-10, while implementing:** "the estimate is correct" held for
+the grouping rule only. Building the new consistency fixtures surfaced a
+*separate*, pre-existing estimator defect on the same code path — the
+`columnWidth.clamp(120.0, 1200.0)` applied to `effectiveLineWidth` clamped the
+modelled line width **up** to 120px for any narrower column, modelling a wider
+line than the renderer gets and so under-estimating its height. Under a
+one-sided `estimated >= rendered` contract the two bounds are not symmetric: a
+narrower model is always safe, a wider one is never. Reproduced on `main` at a
+90px column (rendered 126px, estimated 114px). Fixed by lowering the floor to a
+pure numeric guard, `minEffectiveLineWidth`; the 1200px cap stays, as it can
+only over-estimate. Full measurements in
+`docs/deferred/2026-07-28-reader-fit-conservatism-margin.md`, "Word-boundary
+splitting (2026-08-10)".
+
+**Amended 2026-08-11, from visual verification:** the first implementation of
+`splitSegmentsAtWordBoundaries` also carried the segment's chord onto its *last*
+piece whenever that piece had no trailing whitespace and another segment
+followed, on the reasoning that "a word split across two segments by a chord can
+preserve both chords through the group". That reasoning was wrong, and it
+contradicted this spec's own fix description and the plan
+(`docs/plans/2026-08-10-reader-word-boundary-wrap.md`, "The fix"), both of which
+say the chord rides on the **first** piece only. A chord is drawn once, at the
+position where it starts sounding; every later piece of the same segment is
+still under that chord, so a second label there announces a chord change the
+source never wrote. In a chord-dense line the duplicate lands directly next to
+the following segment's real chord and the two labels render as one run of text.
+Caught on the real song "A mi Istenünk (Leborulok előtted)"
+(`[E] Kegyelmed elé[G#m]g, több, mint elé[C#m]g, Igé[A]dben bízok é[E]n`), whose
+first line has four mid-word chord splits: at ~400px the reader drew `G#m` over
+`elé` immediately before `C#m` over `g,`, reading as `G#mC#m`. Fixed by dropping
+the last-piece rule, so exactly one label per source chord survives the split.
+The estimator consumes the same splitter and moved with it; the recorded
+render/estimate measurements are unchanged (the chord column was never the wider
+of the two).
+
+That document also records a real side effect of the fix: because a line is now
+one box per word in the outer `Wrap`, the renderer's 10px `lineRunSpacing` now
+applies between a line's own wrapped rows (+10px per wrap), where a
+single-segment line previously wrapped internally at plain text leading. Lines
+that already split into several groups behaved this way on `main`, so this makes
+the behaviour consistent rather than introducing it. Whether that leading is the
+right typography belongs to the type-scale slice, not here.
+
+**Fix:** make the wrapping unit the word rather than the segment run. Split each
+segment's text at its internal whitespace before grouping, leaving the
+whitespace on the left-hand piece so the rendered string is unchanged, and
+carrying `displayChord` only on the first piece (the chord is positioned at the
+segment's start). The existing grouping rule then produces exactly one word per
+group with no change to the rule itself, and the over-wide-group branch fires
+only for a genuinely unbreakable single word — which is its correct meaning.
 
 ## Phone behaviour
 
@@ -360,22 +420,37 @@ the plan does not treat phone wrap counts as a regression.
 
 ## Slice / PR split
 
-Four PRs. The split is not cosmetic: PR2 is the only one that can break the
-estimator invariant, and it should be reviewable without chrome changes mixed in.
+Four PRs. Revised 2026-08-10, after PR1 landed and the wrap defect's real cause
+turned out to be a separate correctness bug rather than a styling consequence.
 
-1. **Token layer + dark theme.** Introduce `ReaderTheme`, move every existing
-   hardcoded reader value into it at its *current* value, add the dark
-   `ThemeData` and wire `darkTheme:`. Closes UX-7. ADR for the token layer.
-   Light-theme rendering is pixel-identical to today and **no estimator constant
-   moves**, which is what makes this reviewable as a refactor; the visible change
-   is that users on a dark system setting now get a dark reader.
-2. **Typography and spacing.** Section 1, 2, 3 and 4 values, with the estimator
-   moved in lockstep and the three traps above covered by new cases. Includes the
-   mid-word wrap fix. Updates the reader-fit deferred doc's tables.
-3. **Chrome restructure.** Fixed bottom bar, tap-revealed top bar and control
+1. **Token layer + dark theme.** *(landed: #69)* `ReaderTheme` holding every
+   reader colour and text style, both themes registered, an in-app light/dark
+   switch, ADR-033, UX-7 closed. Light rendering pixel-identical and no
+   estimator constant moved.
+2. **Word-boundary wrapping.** The defect above: split segments at internal
+   whitespace so a group is one word, in both the renderer and the estimator,
+   with its own consistency fixtures. Measured against **today's** metrics, so
+   its fixtures prove one thing at a time.
+3. **Type scale.** Two commits: first the estimator's row-height and gap
+   constants become values passed in (defaulted to today's, so no fixture
+   moves — the inert step), then the new values from sections 1-4 with the chip,
+   the uppercased label and the margins. Re-measures the reader-fit deferred
+   doc's tables.
+4. **Chrome restructure.** Fixed bottom bar, tap-revealed top bar and control
    rail, phone adaptation, safe-area handling. ADR for the chrome model.
-4. **Docs closeout.** Repository review strike-throughs, any remaining ADR
-   cross-references.
+
+There is deliberately **no separate documentation PR**: AGENTS.md rule 4 makes
+docs part of the change that justifies them, so each PR carries its own ADR and
+its own review-doc strike-throughs.
+
+Why 2 and 3 are separate: the wrap fix proves the renderer and the estimator
+agree under *unchanged* metrics; the type scale proves they still agree under
+changed ones. Merged into one diff, a moved fixture number would not identify
+which change moved it — the failure mode that cost Phase 2 eight review rounds.
+
+Why 3 is one PR and not two: landing the plumbing inert is a real risk
+reduction, but it is visible as a commit boundary, which is where a reviewer
+checks it. A second PR would add a CI round and a session for no extra evidence.
 
 ## Open questions, to settle on a real device rather than in a mockup
 

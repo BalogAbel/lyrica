@@ -573,3 +573,122 @@ hunting, and the fix for both was a one-line regex addition covered entirely by
 host-runnable unit tests, a dedicated CI web lane does not currently look
 justified by the defect rate — but that is a call for a human to make with the CI
 budget in view, not something to fold into this PR.
+
+## Word-boundary splitting (2026-08-10)
+
+> **2026-08-11:** `splitSegmentsAtWordBoundaries`'s chord-assignment rule
+> changed after this section was written (a duplicate-chord bug found by
+> visual verification — see `docs/specs/2026-08-09-song-presentation.md`,
+> "Amended 2026-08-11"). The render/estimate numbers below are unaffected
+> (the chord label was never the wider side of the affected pieces), but the
+> chord semantics they were measured under did change.
+
+### What changed
+
+The reader's wrapping unit became the **word** rather than the ChordPro segment
+run. `splitSegmentsAtWordBoundaries` (`song_reader_word_groups.dart`) cuts each
+segment's text at its own internal breakable whitespace before
+`groupSegmentsIntoWords` runs, and **both** the renderer
+(`widgets/song_line_view.dart`) and the estimator (`song_reader_fit.dart`) call
+the pair in that order — pinned by a source-inspection guard in
+`song_reader_word_groups_test.dart` so the two layers cannot drift apart.
+
+This closes the mid-word break defect (`docs/specs/2026-08-09-song-presentation.md`,
+"Defect pulled into scope"): at 375px the reader rendered `Igé` / `dben bízok én`,
+because grouping worked at segment granularity and a segment's *internal*
+whitespace was never a break opportunity.
+
+### The real root cause of the round's RED fixture: the effective-width clamp
+
+Task 3's framing — that the split simply buys "more per-group packing slack" — was
+incomplete, and the new fixtures found why. A three-segment single word
+(`al` + `ph` + `a beta`, chord on each) measured at a **90px** column came back
+`rendered=136 estimated=92`: an under-estimate, the one failure mode this whole
+estimator exists to prevent.
+
+The cause was **not** the char-width model. That model was verified directly
+against `TextPainter` for exactly these strings and is *exact* here (`'al'` 33.0
+real vs 33.0 estimated; `'beta'` 66.0 vs 66.0; `'Am'` 28.2 vs 28.2), which
+disproves the standing "short strings under-measure because per-glyph overhead is
+amortized over fewer characters" hypothesis for this case.
+
+The cause was `columnWidth.clamp(120.0, 1200.0)`, applied at all three
+`effectiveLineWidth` sites in `song_reader_fit.dart`. The two bounds are **not**
+symmetric under a one-sided contract:
+
+- modelling a **narrower** line than the renderer really gets can only add
+  estimated wraps → estimate moves **up** → safe;
+- modelling a **wider** line than the renderer really gets removes estimated wraps
+  → estimate moves **down** → straight through the contract floor.
+
+The 120px *lower* bound is the unsafe direction, and it silently modelled a 120px
+line for every narrower column. At 90px the `alpha` group measures 99px: under a
+120px model it fits on one row, while the real 90px column splits it across two.
+The renderer applies no such floor — `SongLineView` lays out at whatever
+`constraints.maxWidth` it is handed.
+
+**Fixed** by lowering the floor to `minEffectiveLineWidth = 1.0`, a pure numeric
+guard (at width 0 the oversized-word branch of `_greedyWrapLineCount` evaluates
+`(wordWidth / 0).ceil()` on an infinity and throws; a negative width makes the
+greedy packing loop meaningless) that can never *raise* a real column width. The
+1200px upper bound is kept as `maxEffectiveLineWidth`: it only ever over-estimates.
+
+This bug **pre-dates this PR** — it is not fallout from word splitting. Measured on
+`main`'s reader library, the same 90px fixture gives `rendered=126 estimated=114`
+(ratio 0.905), already RED. Word splitting only produced the first fixture narrow
+enough to expose it. Note that an earlier round had already *worked around* the
+clamp rather than fixing it: the "N.C. (fade out)" fixture's comment explicitly
+pins its width at 130 to stay "above the 120px clamp floor". That comment is now
+corrected.
+
+### Measured (2026-08-10, host, `MaterialApp` default `ThemeData`, fontScale 1.0)
+
+The three new fixtures in `song_line_view_estimate_consistency_test.dart`:
+
+| Line shape | Rendered | Estimated | Ratio |
+|------------|----------|-----------|-------|
+| reproduction — `'…Igé'` + `'dben bízok én'`, chords `E`/`G#m`, width 375 | 136 px | 148 px | 1.09 |
+| one word across three segments — `'al'`/`C` + `'ph'`/`G` + `'a beta'`/`Am`, width 90 | 136 px | 148 px | 1.09 |
+| single unbreakable 38-char word, no chord, width 130 | 132 px | 132 px | 1.00 |
+
+Same fixtures against `main`'s reader library, for the before/after:
+
+| Line shape | `main` rendered | `main` estimated | `main` ratio | This PR rendered | This PR estimated | This PR ratio |
+|------------|-----------------|------------------|--------------|------------------|-------------------|---------------|
+| reproduction, width 375 | 126 px | 138 px | 1.10 | 136 px | 148 px | 1.09 |
+| three-segment word, width 90 | 126 px | 114 px | **0.90 — RED (under)** | 136 px | 148 px | 1.09 |
+| unbreakable 38-char word, width 130 | 132 px | 132 px | 1.00 | 132 px | 132 px | 1.00 |
+
+**Overshoot held.** The ratios did not worsen: 1.10 → 1.09 on the reproduction,
+unchanged at 1.00 on the unbreakable word, and the third case moved from an unsafe
+0.90 to a safe 1.09. No pre-existing fixture's ceiling was loosened; the
+reproduction fixture's ceiling was *tightened* from a provisional 1.4x to 1.1x once
+the real numbers were known. This document's subject — the estimator's deliberate
+conservatism — is **not** resolved by this PR.
+
+### Side effect that is real, and not a regression to hide: wrapped lines got taller
+
+A lyric line is now one box **per word** in the outer `Wrap`, where a single-segment
+line used to be one `Text` that wrapped internally. So the renderer's 10px
+`lineRunSpacing` now applies between a line's *own* wrapped rows, at plain text
+leading before. Measured on a long single-segment chorded line:
+
+| Column width | `main` rendered | This PR rendered | Delta |
+|--------------|-----------------|------------------|-------|
+| 380 px (3 wrapped rows) | 114 px | 144 px | +30 px (+10 px per wrap) |
+| 760 px (1 wrapped row) | 74 px | 84 px | +10 px |
+
+This is not new behaviour so much as **newly consistent** behaviour: on `main` a
+line that happened to contain whitespace at a segment boundary already became
+several groups in the outer `Wrap` and already wrapped with the 10px run spacing.
+Only lines that collapsed into a single group — exactly the ones carrying the
+mid-word-break defect — wrapped tightly. The estimator models the increase
+correctly (`estimated >= rendered` holds throughout), and
+`song_reader_section_grid_test.dart`'s "uses two columns when wrapped lyrics
+overflow single-column height" fixture was re-tuned from `availableHeight: 420` to
+`540` for this reason, with the measurement recorded in its comment.
+
+On a phone, where most lines wrap, this adds roughly 10px per wrapped row to total
+song height. **Whether that leading is the right typography is a PR3/PR4 question,
+not this PR's** — this PR's job is where lines may break. Flagged here so the
+type-scale work does not rediscover it as a mystery.

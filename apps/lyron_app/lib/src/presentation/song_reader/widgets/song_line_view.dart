@@ -52,9 +52,19 @@ class SongLineView extends StatelessWidget {
         // must keep their own spacing -- grouping them would collapse that
         // spacing whenever two adjacent slots both carry empty text (no
         // whitespace character survives to signal a group boundary).
+        //
+        // groupSegmentsIntoWords only ever starts a new group at whitespace it
+        // can see at a segment boundary -- it cannot see whitespace buried
+        // inside a single segment's text. splitSegmentsAtWordBoundaries runs
+        // first to cut each segment's text at its internal breakable
+        // whitespace, so every segment handed to groupSegmentsIntoWords is
+        // already word-sized and grouping only ever breaks at real word
+        // boundaries.
         final children = hasLyricSegments
             ? [
-                for (final group in groupSegmentsIntoWords(line.segments))
+                for (final group in groupSegmentsIntoWords(
+                  splitSegmentsAtWordBoundaries(line.segments),
+                ))
                   ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: maxWidth),
                     child: Wrap(
