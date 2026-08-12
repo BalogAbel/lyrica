@@ -68,6 +68,64 @@ void main() {
     expect(groups, hasLength(2));
   });
 
+  test('a whitespace-only segment carrying its own chord still joins the '
+      'group before it (PR review round, 2026-08-12)', () {
+    // Not every whitespace-only segment comes from
+    // splitSegmentsAtWordBoundaries -- the real parser can emit one
+    // directly (song_line_view_test.dart has a fixture: a bare '   '
+    // segment carrying a chord, used to align a chord that has no lyric
+    // syllable of its own under it). The "joins the group before it" rule
+    // applies the same way regardless of source: the chord still renders
+    // (SongReaderWordGroup keeps every segment, including this one), but
+    // the segment itself cannot open a fresh outer-Wrap row by itself.
+    final groups = groupSegmentsIntoWords([
+      _segment('minden', chord: 'C'),
+      _segment('   ', chord: 'A'),
+      _segment('porcikám', chord: 'D'),
+    ]);
+
+    expect(groups, hasLength(2));
+    expect(groups[0].segments.map((s) => s.text).toList(), ['minden', '   ']);
+    expect(groups[0].segments.map((s) => s.displayChord).toList(), ['C', 'A']);
+    expect(groups[1].segments.single.text, 'porcikám');
+  });
+
+  test('a mandatory line-break character also ends a group (PR review round, '
+      '2026-08-12)', () {
+    // \n, \r, U+2028, U+2029, U+0085, U+000B and U+000C force a real line
+    // break wherever Flutter's line breaker sees them, independent of
+    // available width -- the same set song_reader_fit.dart's
+    // _mandatoryLineBreak models. A forced break is always a safe place
+    // for the outer Wrap to break too (a superset of an ordinary
+    // readerBreakableWhitespace opportunity), so a piece ending in one of
+    // these must still end its group, the same as it did before
+    // _endsWithWhitespace moved off String.trim* onto the shared
+    // whitespace class (trim* happened to strip these too; the class
+    // alone does not, since they are forced breaks, not ordinary
+    // whitespace opportunities).
+    final mandatoryBreakCodes = [
+      0x0A, // LINE FEED
+      0x0D, // CARRIAGE RETURN
+      0x2028, // LINE SEPARATOR
+      0x2029, // PARAGRAPH SEPARATOR
+      0x0085, // NEXT LINE
+      0x000B, // VERTICAL TAB
+      0x000C, // FORM FEED
+    ];
+    for (final code in mandatoryBreakCodes) {
+      final mandatoryBreak = String.fromCharCode(code);
+      final groups = groupSegmentsIntoWords([
+        _segment('minden$mandatoryBreak', chord: 'C'),
+        _segment('porcikám', chord: 'D'),
+      ]);
+      expect(
+        groups,
+        hasLength(2),
+        reason: 'failed for U+${code.toRadixString(16)}',
+      );
+    }
+  });
+
   test('attaches a chord-only segment to the group that follows it', () {
     final groups = groupSegmentsIntoWords([
       _segment('', chord: 'C'),

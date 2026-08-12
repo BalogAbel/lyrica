@@ -61,11 +61,36 @@ List<SongReaderWordGroup> groupSegmentsIntoWords(
 }
 
 bool _endsWithWhitespace(String value) =>
-    value.isNotEmpty &&
-    readerBreakableWhitespace.hasMatch(value[value.length - 1]);
+    value.isNotEmpty && _isGroupBreakChar(value[value.length - 1]);
 
 bool _startsWithWhitespace(String value) =>
-    value.isNotEmpty && readerBreakableWhitespace.hasMatch(value[0]);
+    value.isNotEmpty && _isGroupBreakChar(value[0]);
+
+bool _isGroupBreakChar(String char) =>
+    readerBreakableWhitespace.hasMatch(char) ||
+    _mandatoryBreakChar.hasMatch(char);
+
+/// A character that forces a line break wherever it occurs, regardless of
+/// available width -- a SUPERSET case for grouping: if the render is
+/// forced to break here no matter what, the piece boundary is always a
+/// safe place for the outer `Wrap` to break too, in addition to every
+/// ordinary [readerBreakableWhitespace] opportunity.
+///
+/// Mirrors `song_reader_fit.dart`'s `_mandatoryLineBreak` character set
+/// (the individual characters, not its `\r\n` pairing -- pairing only
+/// matters there to avoid double-counting a CRLF as two lines when
+/// measuring height; grouping only asks "can a break happen at this
+/// boundary", so treating `\r` and `\n` independently is correct here).
+/// Duplicated rather than imported: `song_reader_fit.dart` imports THIS
+/// file, so the reverse import would be circular. `_mandatoryLineBreak`'s
+/// own doc comment carries the `TextPainter` measurements this set is
+/// pinned by; keep the two in sync by hand if that set ever changes.
+///
+/// Not extended to [_isEntirelyBreakableWhitespace]: none of these
+/// characters can become a lone piece via [_splitKeepingTrailingWhitespace]
+/// (which only cuts at [readerBreakableWhitespace]), so a piece "entirely"
+/// one of these never arises from splitting.
+final _mandatoryBreakChar = RegExp('[\r\n  ]');
 
 /// True when [value] is non-empty and every character is
 /// [readerBreakableWhitespace] -- e.g. a single space, a run of tabs, or a

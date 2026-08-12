@@ -456,23 +456,6 @@ final RegExp _mandatoryLineBreak = RegExp(
   '\r\n|\r|\n|\u2028|\u2029|\u0085|\u000B|\u000C',
 );
 
-/// Breakable whitespace, shared with the renderer's word splitter
-/// ([readerBreakableWhitespace] in `song_reader_word_groups.dart` -- see its
-/// doc for the `TextPainter` measurements behind this set) so the estimator
-/// and the renderer can never silently drift onto two different character
-/// classes: a bare `\r` and U+0085 are NOT in this class (they moved to
-/// [_mandatoryLineBreak] as of the eighth review round; see that pattern's
-/// doc for why).
-///
-/// One thing this file adds on top of the shared class: for U+00A0 NO-BREAK
-/// SPACE and U+202F NARROW NO-BREAK SPACE specifically, real Flutter lets a
-/// following over-wide run "steal" trailing characters across the break to
-/// fill the remaining line width -- something the greedy model below does
-/// not attempt. Not modelled here (a SEPARATE empirical finding, not a
-/// correction to the shared class): harmless under this file's one-sided
-/// contract, since skipping a real-world space-saving trick can only
-/// over-count lines, never under-count them.
-
 /// Number of visual lines greedy word-boundary wrapping breaks [text] into
 /// at [effectiveLineWidth], given a flat per-character advance of
 /// [charWidth]. Shared by every kind of text this file estimates that DOES
@@ -481,6 +464,22 @@ final RegExp _mandatoryLineBreak = RegExp(
 /// ([_segmentRowHeight]), and a directive line (both the inline and the
 /// leading capo/tuning variant) -- see each call site's own comment for why
 /// THAT kind uses this word-boundary model.
+///
+/// Splits on [readerBreakableWhitespace] (`song_reader_word_groups.dart` --
+/// see its doc for the `TextPainter` measurements behind that class), the
+/// single shared definition that keeps the estimator and the renderer from
+/// silently drifting onto two different character classes: a bare `\r` and
+/// U+0085 are NOT in it (they're [_mandatoryLineBreak] instead; see that
+/// pattern's doc for why).
+///
+/// One thing this file's greedy model does NOT attempt, on top of that
+/// shared class: for U+00A0 NO-BREAK SPACE and U+202F NARROW NO-BREAK SPACE
+/// specifically, real Flutter lets a following over-wide run "steal"
+/// trailing characters across the break to fill the remaining line width.
+/// Not modelled here (a SEPARATE empirical finding, not a correction to the
+/// shared class): harmless under this file's one-sided contract, since
+/// skipping a real-world space-saving trick can only over-count lines,
+/// never under-count them.
 ///
 /// Splits [text] first on [_mandatoryLineBreak] (each resulting chunk --
 /// including an empty one between two consecutive mandatory breaks, which
