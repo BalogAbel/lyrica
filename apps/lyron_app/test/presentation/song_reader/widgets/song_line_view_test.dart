@@ -321,9 +321,7 @@ void main() {
     );
   });
 
-  testWidgets('renders a chord inside a tinted, rounded chip', (
-    tester,
-  ) async {
+  testWidgets('renders a chord inside a tinted, rounded chip', (tester) async {
     // No ReaderThemeSet registered -- ReaderTheme.of falls back to
     // ReaderTheme.stageLight, whose chordChipColor is non-null (spec section
     // 2: a chip in both themes).
@@ -346,19 +344,13 @@ void main() {
     );
 
     final container = tester.widget<Container>(
-      find.ancestor(
-        of: find.text('Am'),
-        matching: find.byType(Container),
-      ),
+      find.ancestor(of: find.text('Am'), matching: find.byType(Container)),
     );
     final decoration = container.decoration as BoxDecoration;
 
     expect(decoration.borderRadius, BorderRadius.circular(3));
     expect(decoration.color, isNotNull);
-    expect(
-      container.padding,
-      const EdgeInsets.symmetric(horizontal: 3),
-    );
+    expect(container.padding, const EdgeInsets.symmetric(horizontal: 3));
   });
 
   testWidgets(

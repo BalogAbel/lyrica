@@ -96,9 +96,9 @@ void main() {
       late ReaderTheme resolved;
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(useMaterial3: true).copyWith(
-            extensions: <ThemeExtension<dynamic>>[markedSet()],
-          ),
+          theme: ThemeData(
+            useMaterial3: true,
+          ).copyWith(extensions: <ThemeExtension<dynamic>>[markedSet()]),
           home: MediaQuery(
             data: MediaQueryData(size: Size(width, 900)),
             child: Builder(
@@ -136,9 +136,9 @@ void main() {
       late ReaderTheme resolved;
       await tester.pumpWidget(
         Theme(
-          data: ThemeData(useMaterial3: true).copyWith(
-            extensions: <ThemeExtension<dynamic>>[markedSet()],
-          ),
+          data: ThemeData(
+            useMaterial3: true,
+          ).copyWith(extensions: <ThemeExtension<dynamic>>[markedSet()]),
           child: Builder(
             builder: (context) {
               resolved = ReaderTheme.of(context);
@@ -185,10 +185,26 @@ void main() {
 
   group('type scale', () {
     for (final spec in const [
-      (name: 'regular', compact: false, lyricSize: 22.0, lyricRow: 24.0,
-       chordSize: 15.0, chordRow: 18.0, labelSize: 15.0, labelRow: 20.0),
-      (name: 'compact', compact: true, lyricSize: 19.0, lyricRow: 21.0,
-       chordSize: 13.0, chordRow: 16.0, labelSize: 13.0, labelRow: 18.0),
+      (
+        name: 'regular',
+        compact: false,
+        lyricSize: 22.0,
+        lyricRow: 24.0,
+        chordSize: 15.0,
+        chordRow: 18.0,
+        labelSize: 15.0,
+        labelRow: 20.0,
+      ),
+      (
+        name: 'compact',
+        compact: true,
+        lyricSize: 19.0,
+        lyricRow: 21.0,
+        chordSize: 13.0,
+        chordRow: 16.0,
+        labelSize: 13.0,
+        labelRow: 18.0,
+      ),
     ]) {
       ReaderTheme light() {
         final base = ThemeData(useMaterial3: true);
@@ -245,8 +261,10 @@ void main() {
         expect(dark.chordStyle.height, l.chordStyle.height);
         expect(dark.sectionLabelStyle.fontSize, l.sectionLabelStyle.fontSize);
         expect(dark.sectionLabelStyle.height, l.sectionLabelStyle.height);
-        expect(dark.sectionLabelStyle.letterSpacing,
-            l.sectionLabelStyle.letterSpacing);
+        expect(
+          dark.sectionLabelStyle.letterSpacing,
+          l.sectionLabelStyle.letterSpacing,
+        );
         expect(dark.chordChipColor, isNotNull);
       });
 
@@ -266,8 +284,7 @@ void main() {
           closeTo(tokens.metrics.chordRowHeight, 0.001),
         );
         expect(
-          tokens.sectionLabelStyle.fontSize! *
-              tokens.sectionLabelStyle.height!,
+          tokens.sectionLabelStyle.fontSize! * tokens.sectionLabelStyle.height!,
           closeTo(tokens.metrics.sectionLabelRowHeight, 0.001),
         );
       });

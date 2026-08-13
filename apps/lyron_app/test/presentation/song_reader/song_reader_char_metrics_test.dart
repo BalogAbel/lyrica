@@ -96,7 +96,9 @@ void main() {
       // measure), not a defect -- hence greaterThanOrEqualTo rather than
       // greaterThan. The fontWeight assertion above plus the closeTo check
       // are the real signal that the estimator tracks the rendered weight.
-      final w400Painter = paint(realLyricStyle.copyWith(fontWeight: FontWeight.w400));
+      final w400Painter = paint(
+        realLyricStyle.copyWith(fontWeight: FontWeight.w400),
+      );
       expect(realPainter.width, greaterThanOrEqualTo(w400Painter.width));
 
       realPainter.dispose();

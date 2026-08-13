@@ -75,9 +75,7 @@ void main() {
       // than a separately stored value.
       final base = _estimate(metrics: SongReaderMetrics.legacy);
       final taller = _estimate(
-        metrics: SongReaderMetrics.legacy.copyWith(
-          sectionLabelRowHeight: 48.0,
-        ),
+        metrics: SongReaderMetrics.legacy.copyWith(sectionLabelRowHeight: 48.0),
       );
 
       expect(taller, base + 20.0);

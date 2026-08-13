@@ -670,27 +670,24 @@ void main() {
     // genuinely wraps to more than one row as actually drawn (uppercase,
     // 0.07em letterSpacing -- see `ReaderTheme.stageLight`'s
     // `sectionLabelStyle`), which a trivially-fitting label would not.
-    testWidgets(
-      'short, ordinary label wraps to more than one row once drawn '
-      'uppercase with letterSpacing',
-      (tester) async {
-        // Measured 2026-08-12: rendered=64.0 estimated=86.0 (width=70,
-        // ratio 1.34x) -- the render genuinely produces 2 rows ("PRE" /
-        // "CHORUS") at this width, not 1, confirming the width isolates a
-        // real multi-row wrap rather than a label that happens to fit.
-        // `headerCharWidth` (song_reader_char_metrics.dart) is measured
-        // against an ALL-UPPERCASE sample using the real
-        // `sectionLabelStyle` (which already carries the 0.07em
-        // letterSpacing), so both the uppercasing and the letter-spacing
-        // widening are baked into the estimate through that one shared
-        // measurement, not modelled separately.
-        await runCase(
-          tester,
-          label: 'Pre Chorus',
-          width: 70.0,
-          ceilingMultiplier: 1.4,
-        );
-      },
-    );
+    testWidgets('short, ordinary label wraps to more than one row once drawn '
+        'uppercase with letterSpacing', (tester) async {
+      // Measured 2026-08-12: rendered=64.0 estimated=86.0 (width=70,
+      // ratio 1.34x) -- the render genuinely produces 2 rows ("PRE" /
+      // "CHORUS") at this width, not 1, confirming the width isolates a
+      // real multi-row wrap rather than a label that happens to fit.
+      // `headerCharWidth` (song_reader_char_metrics.dart) is measured
+      // against an ALL-UPPERCASE sample using the real
+      // `sectionLabelStyle` (which already carries the 0.07em
+      // letterSpacing), so both the uppercasing and the letter-spacing
+      // widening are baked into the estimate through that one shared
+      // measurement, not modelled separately.
+      await runCase(
+        tester,
+        label: 'Pre Chorus',
+        width: 70.0,
+        ceilingMultiplier: 1.4,
+      );
+    });
   });
 }

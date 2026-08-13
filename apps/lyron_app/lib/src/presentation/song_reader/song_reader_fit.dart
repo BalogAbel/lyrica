@@ -720,8 +720,10 @@ double _segmentRowHeight({
   // be ceiled BEFORE multiplying by the row count -- ceiling the SUM instead
   // would only guard the total, not the same per-line rounding the real
   // multi-row render applies to every individual row.
-  final chordH = chordRows * _scaledRowHeight(metrics.chordRowHeight, chordFactor);
-  final lyricH = lyricLines * _scaledRowHeight(metrics.lyricRowHeight, lyricFactor);
+  final chordH =
+      chordRows * _scaledRowHeight(metrics.chordRowHeight, chordFactor);
+  final lyricH =
+      lyricLines * _scaledRowHeight(metrics.lyricRowHeight, lyricFactor);
   final gap = (hasChord && hasLyric) ? metrics.chordToLyricGap : 0.0;
   return chordH + gap + lyricH;
 }
