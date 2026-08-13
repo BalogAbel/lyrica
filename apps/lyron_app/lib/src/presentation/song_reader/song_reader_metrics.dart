@@ -1,5 +1,16 @@
 import 'package:flutter/foundation.dart';
 
+/// The string a section label is actually DRAWN as.
+///
+/// The estimator models this exact string (song_reader_fit.dart's
+/// buildFlowBlocks and estimateSectionHeight), not the source label: uppercase
+/// glyphs are wider, so modelling the source would under-count how many rows a
+/// long label wraps into.
+String songReaderSectionLabelText(String label, int? number) {
+  final composed = number == null ? label : '$label $number';
+  return composed.toUpperCase();
+}
+
 /// Layout metrics shared by the reader renderer and the fit estimator.
 ///
 /// These live in ONE object because the estimator has to reproduce the

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -313,27 +315,51 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                               controller: _scrollController,
                               child: SingleChildScrollView(
                                 controller: _scrollController,
-                                child: Center(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxWidth: widget.maxContentWidth,
-                                    ),
-                                    child: Padding(
-                                      padding: widget.contentPadding,
-                                      child: SongReaderSectionGrid(
-                                        leadingDirectiveText:
-                                            widget.projection.capoDirectiveText,
-                                        sections: widget.projection.sections,
-                                        viewMode: widget.projection.viewMode,
-                                        sharedFontScale:
-                                            widget.projection.sharedFontScale,
-                                        columnCount: widget.contentColumnCount,
-                                        availableHeight:
-                                            availableHeight, // already padding-adjusted
+                                child:
+                                    // A fixed left edge, not a centred shrink-wrap.
+                                    // Center + ConstrainedBox passed LOOSE
+                                    // constraints down, so the section grid's
+                                    // Column sized itself to its own longest
+                                    // line and was then centred -- every
+                                    // section started from a content-dependent
+                                    // left edge. A tight width on the section
+                                    // grid itself is what fixes that; swapping
+                                    // Center for Align around the OLD child
+                                    // would shrink-wrap identically. The outer
+                                    // Align (rather than dropping it) is still
+                                    // needed so the SingleChildScrollView
+                                    // itself stays full viewport width and the
+                                    // scrollbar thumb sits at the physical
+                                    // screen edge -- only the positioned child
+                                    // is tight-width and left-aligned.
+                                    Align(
+                                      alignment: Alignment.topLeft,
+                                      child: SizedBox(
+                                        width: math.min(
+                                          constraints.maxWidth,
+                                          widget.maxContentWidth,
+                                        ),
+                                        child: Padding(
+                                          padding: widget.contentPadding,
+                                          child: SongReaderSectionGrid(
+                                            leadingDirectiveText: widget
+                                                .projection
+                                                .capoDirectiveText,
+                                            sections:
+                                                widget.projection.sections,
+                                            viewMode:
+                                                widget.projection.viewMode,
+                                            sharedFontScale: widget
+                                                .projection
+                                                .sharedFontScale,
+                                            columnCount:
+                                                widget.contentColumnCount,
+                                            availableHeight:
+                                                availableHeight, // already padding-adjusted
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ),
                               ),
                             );
                           },

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
@@ -29,9 +29,19 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.da
 //
 // Measured 2026-07-28, MaterialApp default ThemeData, fontScale = 1.0.
 
-double _measuredLineHeight(WidgetTester tester) =>
-    tester.getSize(find.byType(SongLineView)).height +
-    SongReaderMetrics.legacy.lineGap;
+/// The rendered height of the line widget plus the grid's own trailing gap
+/// after it, which the estimator's line branch also charges.
+///
+/// The gap is read from the SAME resolved tokens the widget rendered with, not
+/// from a constant: the reader's spacing is breakpoint-dependent, and charging
+/// a different gap on the two sides of this comparison would not be a
+/// consistency check at all -- a larger constant on the render side would flag
+/// phantom under-estimates, a smaller one would mask real ones.
+double _measuredLineHeight(WidgetTester tester) {
+  final element = tester.element(find.byType(SongLineView));
+  return tester.getSize(find.byType(SongLineView)).height +
+      ReaderTheme.of(element).metrics.lineGap;
+}
 
 Future<double> _renderAndMeasure(
   WidgetTester tester, {
@@ -171,6 +181,10 @@ double _estimatedLineHeight(
     lyricCharWidth: charWidths.lyricCharWidth,
     chordCharWidth: charWidths.chordCharWidth,
     textScale: charWidths.textScale,
+    // Resolved from the SAME element the widget rendered with. Passing the
+    // legacy default here would compare an estimate built from one set of row
+    // heights against a render built from another.
+    metrics: charWidths.metrics,
   );
 }
 
@@ -395,11 +409,17 @@ void main() {
       // (same flat per-character-average limitation as the first fixture,
       // amplified here since this segment wraps more times), but always
       // stays at or above the render.
+      //
+      // Re-measured 2026-08-12 under the new 600px type-scale breakpoint:
+      // rendered=592.0 estimated=832.0 (ratio 1.41x). The type scale, not a
+      // model regression, moved both numbers (this fixture wraps many more
+      // times at the larger 22px lyric size). Ceiling pinned at 1.45x, just
+      // above the new measured ratio.
       await expectUpperBound(
         tester,
         line: line,
         width: 130.0,
-        ceilingMultiplier: 1.25,
+        ceilingMultiplier: 1.45,
       );
     });
 
@@ -432,6 +452,188 @@ void main() {
         ceilingMultiplier: 1.15,
       );
     });
+  });
+
+  group('SongLineView per-line estimate/render consistency: chip padding, '
+      'letter-spaced labels, and the w500 lyric weight '
+      '(docs/specs/2026-08-09-song-presentation.md Testing section)', () {
+    testWidgets(
+      'two short chords whose combined chip padding is the difference '
+      'between one run and two',
+      (tester) async {
+        // Chord-only line (no lyric text anywhere), so SongLineView takes
+        // the un-grouped branch (widgets/song_line_view.dart's `else`
+        // arm) and lays each chord out as an independent Wrap child
+        // separated by `chordOnlySpacing` (22.0) -- exactly like the
+        // "chord-only instrumental bar" fixture above, just tuned so the
+        // chip's own horizontal padding (3.0px each side --
+        // `SongReaderMetrics.chordChipHorizontalPadding`, see
+        // reader_theme.dart's `_readerMetrics`) is what tips the pair from
+        // one run into two, not the chords' bare glyph width.
+        //
+        // Measured directly with a real TextPainter against the regular
+        // (>=600px) chordStyle (15px, w700) before picking the width:
+        //   'Am' bare width  = 30.2px   'Dm' bare width  = 30.2px
+        //   'Am' chip-padded = 36.2px   'Dm' chip-padded = 36.2px
+        //   (chip-padded = bare + 2 * chordChipHorizontalPadding = bare + 6)
+        // At width=90:
+        //   WITHOUT chip padding (hypothetical): 30.2 + 22 (chordOnlySpacing)
+        //     + 30.2 = 82.4 <= 90 -- both chords would fit on one run.
+        //   WITH chip padding (the real render): 36.2 + 22 + 36.2 = 94.4 > 90
+        //     -- the pair needs a second run.
+        // So a fixture author (or the estimator) that dropped the
+        // `2 * chordChipHorizontalPadding` term from either side of this
+        // comparison would see this pair fit on one row where the real
+        // (and correct) render needs two -- this width is not merely "a
+        // width that happens to wrap", it specifically isolates the chip's
+        // own contribution.
+        final line = SongReaderLyricLineProjection(
+          segments: const [
+            SongReaderSegmentProjection(displayChord: 'Am', text: ''),
+            SongReaderSegmentProjection(displayChord: 'Dm', text: ''),
+          ],
+        );
+
+        // Measured 2026-08-12: rendered=46.0 estimated=46.0 (width=90,
+        // ratio 1.00x) -- exact match, two chord rows on both sides.
+        await expectUpperBound(
+          tester,
+          line: line,
+          width: 90.0,
+          ceilingMultiplier: 1.05,
+        );
+      },
+    );
+
+    testWidgets(
+      'a w500 lyric line at the new 22px regular-breakpoint size wraps '
+      'consistently (weight cannot be isolated on the bundled test font)',
+      (tester) async {
+        // docs/specs/2026-08-09-song-presentation.md's Testing section asks
+        // for "a w500 lyric line at a width where the weight change alone
+        // shifts the wrap point" -- i.e. a fixture that would wrap
+        // differently at w400 than at w500. Checked directly with a real
+        // TextPainter first: rendering this exact sample string at the
+        // reader's lyricStyle with FontWeight.w400, w500, and w700 in turn
+        // (all other style fields, including fontSize, held fixed) produces
+        // the IDENTICAL painter.width (2070.0px) at every weight. The
+        // bundled Flutter test font (Ahem-derived) does not vary glyph
+        // advance by weight at all, so no width or text content can make
+        // the weight change alone move the wrap point in this environment
+        // -- there is no fixture that discriminates on weight here, and
+        // faking one (e.g. by hand-adjusting the estimator's char width for
+        // "the w500 case" so this test passes) would test the fixture's
+        // author, not the estimator.
+        //
+        // What IS real and worth pinning: `ReaderTheme.stageLight` renders
+        // every lyric line at `FontWeight.w500` unconditionally (not w400,
+        // the old default), at the new 22px regular-breakpoint base size.
+        // This fixture is that exact production style (w500, 22px,
+        // >= 600px viewport, the ambient default in this file) at a width
+        // that genuinely wraps across several rows, so it still pins the
+        // one-sided contract at the real style the renderer draws with --
+        // just not in a way that isolates the weight term specifically.
+        final line = SongReaderLyricLineProjection(
+          segments: [
+            const SongReaderSegmentProjection(
+              displayChord: null,
+              text:
+                  'A weighty line of ordinary lyric prose that should wrap '
+                  'across a couple of rows at the new larger lyric size',
+            ),
+          ],
+        );
+
+        // Measured 2026-08-12: rendered=474.0 estimated=498.0 (width=180,
+        // ratio 1.05x).
+        await expectUpperBound(
+          tester,
+          line: line,
+          width: 180.0,
+          ceilingMultiplier: 1.1,
+        );
+      },
+    );
+  });
+
+  group('SongLineView per-line estimate/render consistency: phone breakpoint '
+      '(375px viewport, the compact type-scale token set)', () {
+    // Every fixture above pumps at flutter_test's default 800x600 surface
+    // size, which is >= readerRegularTypeScaleMinWidth (600) -- so every
+    // one of them, without exception, resolves ReaderTheme's REGULAR token
+    // set (22px lyrics, 15px chords, compact=false) and never touches the
+    // compact (19px lyrics, 13px chords) set a phone actually uses, even
+    // though wrapping is the normal state there. This fixture sets the
+    // tester's physical size to 375x812 (matching
+    // song_reader_estimate_render_consistency_test.dart's own phone
+    // viewport) BEFORE pumping, so `MediaQuery.sizeOf` inside
+    // `ReaderTheme.of` resolves the compact set for both the render and the
+    // estimate, the same way `_readerMetrics(compact: true)` and
+    // `ReaderTheme.stageLight(compact: true)` do in the real app on a
+    // phone.
+    testWidgets(
+      'plain wrapping lyric line under the compact (phone) token set',
+      (tester) async {
+        tester.view.physicalSize = const Size(375.0, 812.0);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final line = SongReaderLyricLineProjection(
+          segments: [
+            const SongReaderSegmentProjection(
+              displayChord: null,
+              text:
+                  'This is a long lyric line without any chords and it will '
+                  'definitely wrap across several rows',
+            ),
+          ],
+        );
+
+        // Same text and width as the very first fixture in this file (the
+        // "plain lyric line, no chords, wraps at a narrow width" case
+        // above), which runs at the default >=600px viewport and so
+        // exercises the REGULAR set (rendered=592.0 as of 2026-08-12's
+        // 600px breakpoint re-measurement, per that fixture's own doc).
+        // Here the only variable that changed is the viewport size,
+        // isolating the compact breakpoint's own effect.
+        //
+        // Measured 2026-08-12: rendered=349.0 estimated=370.0 (width=160,
+        // ratio 1.06x). Smaller than the regular-set rendered height above,
+        // as expected (19px lyric rows are shorter than 22px ones), and the
+        // one-sided contract still holds under the compact token set.
+        final rendered = await _renderAndMeasure(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 160.0,
+          fontScale: fontScale,
+        );
+        final estimated = _estimatedLineHeight(
+          tester,
+          line: line,
+          viewMode: viewMode,
+          width: 160.0,
+          fontScale: fontScale,
+        );
+
+        expect(
+          estimated,
+          greaterThanOrEqualTo(rendered),
+          reason:
+              'the estimate must never fall below the real render under the '
+              'compact (phone) token set; rendered=$rendered '
+              'estimated=$estimated',
+        );
+        expect(
+          estimated,
+          lessThan(rendered * 1.1),
+          reason:
+              'the estimate must not be uselessly loose under the compact '
+              'token set either; rendered=$rendered estimated=$estimated '
+              'ceiling=${rendered * 1.1}',
+        );
+      },
+    );
   });
 
   group('SongLineView per-line estimate/render consistency: chord label '
@@ -611,6 +813,12 @@ void main() {
         // needs 3). POST-FIX: rendered=72.0 estimated=72.0 -- exact match
         // (this label's own words happen to line up exactly with the
         // greedy word-wrap model's row boundaries; ceiling pinned tight).
+        //
+        // Re-measured 2026-08-12 under the new 600px type-scale breakpoint:
+        // rendered=44.0 estimated=62.0 (ratio 1.41x). The type scale, not a
+        // model regression, moved both numbers and broke the exact
+        // coincidental alignment noted above. Ceiling pinned at 1.45x, just
+        // above the new measured ratio.
         expect(
           estimated,
           greaterThanOrEqualTo(rendered),
@@ -621,11 +829,11 @@ void main() {
         );
         expect(
           estimated,
-          lessThan(rendered * 1.05),
+          lessThan(rendered * 1.45),
           reason:
               'the estimate must not be uselessly loose either; '
               'rendered=$rendered estimated=$estimated '
-              'ceiling=${rendered * 1.05}',
+              'ceiling=${rendered * 1.45}',
         );
       },
     );
@@ -805,6 +1013,12 @@ void main() {
         // repro, reached through a tab instead.
         // POST-FIX (splitting on the full breakable-whitespace class):
         // rendered=72.0 estimated=72.0 -- exact match.
+        //
+        // Re-measured 2026-08-12 under the new 600px type-scale breakpoint:
+        // rendered=44.0 estimated=62.0 (ratio 1.41x), same numbers and same
+        // cause as the space fixture above. The type scale, not a model
+        // regression, moved both numbers. Ceiling pinned at 1.45x, just
+        // above the new measured ratio.
         expect(
           estimated,
           greaterThanOrEqualTo(rendered),
@@ -815,11 +1029,11 @@ void main() {
         );
         expect(
           estimated,
-          lessThan(rendered * 1.05),
+          lessThan(rendered * 1.45),
           reason:
               'the estimate must not be uselessly loose either; '
               'rendered=$rendered estimated=$estimated '
-              'ceiling=${rendered * 1.05}',
+              'ceiling=${rendered * 1.45}',
         );
       },
     );
@@ -1115,6 +1329,13 @@ void main() {
         // this line at word boundaries changes where it actually wraps at
         // width=160. estimated still never drops below rendered. Ceiling
         // pinned at 1.75x, just above the new measured ratio.
+        //
+        // Re-measured 2026-08-12 under the new 600px type-scale breakpoint:
+        // rendered=606.0 estimated=1300.0 (ratio 2.15x). The type scale, not
+        // a model regression, moved both numbers (larger 22px lyric base
+        // size compounds with the 1.5x ambient scaler more than the old
+        // legacy row heights did). Ceiling pinned at 2.2x, just above the
+        // new measured ratio.
         expect(
           estimated,
           greaterThanOrEqualTo(rendered),
@@ -1125,11 +1346,11 @@ void main() {
         );
         expect(
           estimated,
-          lessThan(rendered * 1.75),
+          lessThan(rendered * 2.2),
           reason:
               'the estimate must not be uselessly loose under a '
               'non-default text scaler either; rendered=$rendered '
-              'estimated=$estimated ceiling=${rendered * 1.75}',
+              'estimated=$estimated ceiling=${rendered * 2.2}',
         );
       },
     );
@@ -1333,6 +1554,11 @@ void main() {
         // width=200/fontScale=1.3. estimated still never drops below
         // rendered. Ceiling pinned at 1.6x, just above the new measured
         // ratio.
+        //
+        // Re-measured 2026-08-12 under the new 600px type-scale breakpoint:
+        // rendered=606.0 estimated=1064.0 (ratio 1.76x). The type scale, not
+        // a model regression, moved both numbers. Ceiling pinned at 1.8x,
+        // just above the new measured ratio.
         expect(
           estimated,
           greaterThanOrEqualTo(rendered),
@@ -1343,11 +1569,11 @@ void main() {
         );
         expect(
           estimated,
-          lessThan(rendered * 1.6),
+          lessThan(rendered * 1.8),
           reason:
               'the estimate must not be uselessly loose either; '
               'rendered=$rendered estimated=$estimated '
-              'ceiling=${rendered * 1.6}',
+              'ceiling=${rendered * 1.8}',
         );
       },
     );

@@ -8,7 +8,7 @@ void main() {
   test('the light theme registers reader tokens', () {
     final theme = buildLightTheme();
 
-    expect(theme.extension<ReaderTheme>(), isNotNull);
+    expect(theme.extension<ReaderThemeSet>(), isNotNull);
     expect(theme.brightness, Brightness.light);
     expect(theme.scaffoldBackgroundColor, const Color(0xFFF7F4EA));
   });
@@ -16,20 +16,34 @@ void main() {
   test('the dark theme registers reader tokens and a black page', () {
     final theme = buildDarkTheme();
 
-    expect(theme.extension<ReaderTheme>(), isNotNull);
+    expect(theme.extension<ReaderThemeSet>(), isNotNull);
     expect(theme.brightness, Brightness.dark);
     expect(theme.scaffoldBackgroundColor, const Color(0xFF000000));
   });
 
-  test('the light tokens equal the fallback, so a tree without the extension '
-      'renders identically to one with it', () {
+  test('the light regular tokens equal the fallback, so a tree without the '
+      'extension renders identically to one with it', () {
     final theme = buildLightTheme();
 
     expect(
-      theme.extension<ReaderTheme>(),
-      ReaderTheme.fromM3(
+      theme.extension<ReaderThemeSet>()!.regular,
+      ReaderTheme.stageLight(
         colorScheme: theme.colorScheme,
         textTheme: theme.textTheme,
+        compact: false,
+      ),
+    );
+  });
+
+  test('the light compact tokens are the registered compact set', () {
+    final theme = buildLightTheme();
+
+    expect(
+      theme.extension<ReaderThemeSet>()!.compact,
+      ReaderTheme.stageLight(
+        colorScheme: theme.colorScheme,
+        textTheme: theme.textTheme,
+        compact: true,
       ),
     );
   });

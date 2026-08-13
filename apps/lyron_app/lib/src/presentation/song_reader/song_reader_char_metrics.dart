@@ -99,8 +99,11 @@ class SongReaderCharWidths {
 const _lyricMeasureSample =
     'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 const _chordMeasureSample = 'ABCDEFG#b/mjasdimug 0123456789';
+// Uppercase, matching songReaderSectionLabelText -- the header style is
+// drawn uppercase with letterSpacing, and uppercase glyphs are wider than
+// mixed-case, so measuring mixed-case here would under-count advance.
 const _headerMeasureSample =
-    'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 
 /// Measures [SongReaderCharWidths] for the current [context]'s theme.
 ///
@@ -160,9 +163,7 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
     headerCharWidth: measure(_headerMeasureSample, headerStyle),
-    // A later task replaces this with tokens.metrics, once ReaderTheme
-    // carries the metrics and resolves them at the 600px breakpoint.
-    metrics: SongReaderMetrics.legacy,
+    metrics: tokens.metrics,
     textScale: SongReaderFitTextScale(
       textScaler: textScaler,
       lyricBaseFontSize: lyricStyle.fontSize ?? 16.0,

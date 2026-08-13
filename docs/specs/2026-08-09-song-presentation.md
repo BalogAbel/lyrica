@@ -105,6 +105,22 @@ longer fits at all, because one wrapped line costs ~50px while the larger type
 buys less than that. 22px is the base; auto-fit may raise it toward that
 ceiling.
 
+**`lineRunSpacing`: 10 → 2.** This value is not in the table above because it
+did not exist as a type-scale decision until the word-boundary-wrapping PR
+(#70) changed what it means. Before #70, a single-segment lyric line was one
+`Text` that wrapped internally at plain text leading, and `lineRunSpacing`
+only ever separated distinct `Wrap` children. Since #70 a line is one box per
+word in the outer `Wrap`, so the same spacing now also lands between a single
+line's OWN wrapped rows. Measured on a 380px column, one wrapped lyric line
+went from **114px to 144px** at the old value of 10 — around 20-30px per line
+on a phone, where wrapping is the normal state (see "Phone behaviour").
+
+It is 2 rather than 0 because the new lyric leading is tight: `height` is
+derived as `lyricRowHeight / lyricSize` (24/22 ≈ 1.09, against 1.25 before),
+so wrapped rows would otherwise nearly touch. At 2 a continuation row sits
+26px below its own line against 24 + 6 = 30px to the next line, so a wrap
+still reads as closer to its own line than to the following one.
+
 ### 2. Chords: tinted chip
 
 Chords render as a filled, low-contrast chip (`chordBg`) with a bold, coloured
@@ -301,6 +317,13 @@ Three of them are traps that will silently under-estimate if missed:
    uppercased string**, since both change glyph advance.
 3. **Lyrics move to `w500`.** `lyricCharWidth` must be measured at the new
    weight; a heavier face is wider than the `w400` measured today.
+4. **A row-height token and its text style must agree.** The estimator charges
+   `lyricRowHeight` / `chordRowHeight` / `sectionLabelRowHeight` per rendered
+   row; a `Text`'s real row height is `fontSize * style.height`. The token
+   factories therefore DERIVE each style's `height` from its row-height metric
+   rather than typing both as literals, and `reader_theme_test.dart` asserts
+   the equality. Two independent literals here is the same class of drift as
+   two independent copies of a style.
 
 These tests are re-run after every visual change, not at the end of the slice.
 
@@ -427,15 +450,15 @@ turned out to be a separate correctness bug rather than a styling consequence.
    reader colour and text style, both themes registered, an in-app light/dark
    switch, ADR-033, UX-7 closed. Light rendering pixel-identical and no
    estimator constant moved.
-2. **Word-boundary wrapping.** The defect above: split segments at internal
-   whitespace so a group is one word, in both the renderer and the estimator,
-   with its own consistency fixtures. Measured against **today's** metrics, so
-   its fixtures prove one thing at a time.
-3. **Type scale.** Two commits: first the estimator's row-height and gap
-   constants become values passed in (defaulted to today's, so no fixture
-   moves — the inert step), then the new values from sections 1-4 with the chip,
-   the uppercased label and the margins. Re-measures the reader-fit deferred
-   doc's tables.
+2. **Word-boundary wrapping.** *(landed: #70)* The defect above: split
+   segments at internal whitespace so a group is one word, in both the
+   renderer and the estimator, with its own consistency fixtures. Measured
+   against **today's** metrics, so its fixtures prove one thing at a time.
+3. **Type scale.** *(landed: #TBD — filled in when this PR opens)* Two commits: first the estimator's
+   row-height and gap constants become values passed in (defaulted to today's,
+   so no fixture moves — the inert step), then the new values from sections
+   1-4 with the chip, the uppercased label and the margins. Re-measures the
+   reader-fit deferred doc's tables.
 4. **Chrome restructure.** Fixed bottom bar, tap-revealed top bar and control
    rail, phone adaptation, safe-area handling. ADR for the chrome model.
 

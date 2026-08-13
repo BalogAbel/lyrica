@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show TextScaler;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
@@ -786,6 +787,23 @@ void main() {
         reason: 'empty unlabeled section has no header and no lines',
       );
     });
+
+    test('a section header block models the uppercased label', () {
+      // The renderer draws "VERSE 1"; uppercase glyphs are wider than the
+      // mixed-case source, so modelling the source string would under-count
+      // how many rows a long label wraps into.
+      final blocks = buildFlowBlocks(
+        sections: [verseSection(1)],
+        hasLeadingDirective: false,
+      );
+
+      expect(
+        blocks
+            .firstWhere((b) => b.kind == FlowBlockKind.sectionHeader)
+            .blockText,
+        'VERSE 1',
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -1531,6 +1549,98 @@ void main() {
     );
   });
 
+  group(
+    'an unbreakable oversized word is quantised at character boundaries',
+    () {
+      // Real line breaking cannot split a glyph: an unbreakable word is cut
+      // at CHARACTER boundaries, so a line holds
+      // floor(effectiveLineWidth / charWidth) whole characters, not the
+      // continuous effectiveLineWidth / charWidth. A plain
+      // `ceil(wordWidth / effectiveLineWidth)` division models a line that
+      // ends mid-glyph, packing more of the word per line than the renderer
+      // manages -- under-counting rows, the one direction this file's
+      // `estimated >= rendered` contract forbids.
+      //
+      // Fixture picked so the two formulas DIVERGE (unlike some pre-existing
+      // fixtures in this file, e.g. "over-wide segment" above, where
+      // columnWidth is a clean multiple of charWidth and both formulas agree
+      // by coincidence): 13 unbreakable characters at the default
+      // characterWidthEstimate (10px/char) in a 45px column.
+      //   continuous: ceil(130 / 45) = ceil(2.888...) = 3 rows
+      //   quantised:  charsPerLine = floor(45 / 10) = 4;
+      //               ceil(13 / 4) = ceil(3.25) = 4 rows
+      // The continuous formula is one row short -- exactly the shortfall
+      // this fix closes. If a future edit reverts to the continuous
+      // division, this test goes red with the row count, not just a pixel
+      // delta, so the failure explains itself.
+      test(
+        'charges ceil(charCount / floor(lineWidth / charWidth)) rows, not '
+        'ceil(wordWidth / lineWidth)',
+        () {
+          const columnWidth = 45.0;
+          const unbreakableWord = 'aaaaaaaaaaaaa'; // 13 chars, no whitespace
+          final section = SongReaderSectionProjection(
+            kind: SongSectionKind.verse,
+            label: 'Unlabeled',
+            number: null,
+            isUnknown: false,
+            lines: [
+              SongReaderLyricLineProjection(
+                segments: const [
+                  SongReaderSegmentProjection(
+                    displayChord: null,
+                    text: unbreakableWord,
+                  ),
+                ],
+              ),
+            ],
+          );
+
+          final height = estimateSectionHeight(
+            section: section,
+            viewMode: viewMode,
+            maxWidth: columnWidth,
+            fontScale: fontScale,
+          );
+
+          const continuousRows = 3; // ceil(130 / 45), the WRONG formula
+          const quantisedRows = 4; // ceil(13 / floor(45 / 10)), the correct one
+
+          // estimateSectionHeight unconditionally adds metrics.sectionGap
+          // once per section (see its final `h + linesHeight +
+          // metrics.sectionGap`), on top of the per-line lineGap and
+          // lineWidgetBottomPadding _lineItemHeight itself charges.
+          final continuousHeight =
+              continuousRows * SongReaderMetrics.legacy.lyricRowHeight * fontScale +
+              SongReaderMetrics.legacy.lineGap +
+              SongReaderMetrics.legacy.lineWidgetBottomPadding +
+              SongReaderMetrics.legacy.sectionGap;
+          final quantisedHeight =
+              quantisedRows * SongReaderMetrics.legacy.lyricRowHeight * fontScale +
+              SongReaderMetrics.legacy.lineGap +
+              SongReaderMetrics.legacy.lineWidgetBottomPadding +
+              SongReaderMetrics.legacy.sectionGap;
+
+          expect(
+            height,
+            moreOrLessEquals(quantisedHeight, epsilon: 0.01),
+            reason:
+                'expected the quantised (character-boundary) row count '
+                '($quantisedRows rows, $quantisedHeight px), got $height px',
+          );
+          expect(
+            height,
+            greaterThan(continuousHeight),
+            reason:
+                'the continuous division under-counts by at least one row '
+                '($continuousRows rows, $continuousHeight px) -- exactly '
+                'the estimate-below-render defect this test pins',
+          );
+        },
+      );
+    },
+  );
+
   group('_lineItemHeight accounts for chord width', () {
     // Narrow enough that a single wide (8-char = 80px) chord segment already
     // occupies most of the run, so two of them can never share a run.
@@ -1625,6 +1735,56 @@ void main() {
             '(long=$longChordHeight, short=$shortChordHeight)',
       );
     });
+
+    test(
+      'chip horizontal padding is the difference between fitting and '
+      'wrapping into an extra run',
+      () {
+        // Two chord-only segments ("AB", 2 chars -> 20px raw at the default
+        // 10px/char estimate), same content and same column width, estimated
+        // once with chordChipHorizontalPadding: 0.0 and once with 3.0 (the
+        // real token value). Occupied width per segment is
+        // `2 * chordCharWidth + 2 * pad`:
+        //   pad=0: 20px, two segments + chordOnlySpacing (22px) between them
+        //          = 20 + 22 + 20 = 62px -- fits in one run at columnWidth 68.
+        //   pad=3: 26px each, 26 + 22 + 26 = 74px -- exceeds columnWidth 68,
+        //          so the second segment is pushed onto its own run.
+        // The extra run is exactly the chip padding's doing: nothing else
+        // differs between the two estimates.
+        const columnWidth = 68.0;
+        final line = chordOnlyLine('AB', 2);
+        final section = unlabeledSection(line);
+
+        final noChipHeight = estimateSectionHeight(
+          section: section,
+          viewMode: SongReaderViewMode.chordsAndLyrics,
+          maxWidth: columnWidth,
+          fontScale: 1.0,
+          metrics: SongReaderMetrics.legacy.copyWith(
+            chordChipHorizontalPadding: 0.0,
+          ),
+        );
+        final chipHeight = estimateSectionHeight(
+          section: section,
+          viewMode: SongReaderViewMode.chordsAndLyrics,
+          maxWidth: columnWidth,
+          fontScale: 1.0,
+          metrics: SongReaderMetrics.legacy.copyWith(
+            chordChipHorizontalPadding: 3.0,
+          ),
+        );
+
+        expect(
+          chipHeight,
+          greaterThan(noChipHeight),
+          reason:
+              'the chip\'s 2 * 3px horizontal padding must be the '
+              'difference between one run (62px, fits at columnWidth '
+              '$columnWidth) and two runs (74px, wraps) -- '
+              'noChip=$noChipHeight chip=$chipHeight',
+        );
+      },
+    );
   });
 
   group('mandatory line break: standalone \\r and U+0085 NEXT LINE (eighth '
@@ -1721,5 +1881,110 @@ void main() {
             'alternative in _mandatoryLineBreak',
       );
     });
+  });
+
+  group('per-line row height rounds up to a whole pixel under a fractional '
+      'scale factor (chord-only instrumental bar under a non-linear text '
+      'scaler)', () {
+    // Pins the mechanism behind the reviewer's chord-only instrumental-bar
+    // fixture (song_line_view_estimate_consistency_test.dart's "under a
+    // NON-LINEAR text scaler" group): rendered=278.0 estimated=275.0, a 3px
+    // shortfall traced to real Flutter text layout ROUNDING each wrapped
+    // row's height to a whole logical pixel, per line -- e.g. a chord label
+    // scaled to fontSize 27.1875 with `height: 1.2` has a naive per-line
+    // height of `27.1875 * 1.2 = 32.625`, but a `TextPainter` probe measures
+    // the real single-line height as exactly `33.0`, and a real two-line
+    // wrap of the same style measures `66.0 == 2 * 33.0`, not
+    // `round(2 * 32.625) == 65.0` -- confirming the rounding is applied PER
+    // LINE, not once over the whole block. Multiplying the flat
+    // `chordRowHeight` metric by the scale factor and leaving the product a
+    // plain (non-integer) double, as the pre-fix code did, under-counts
+    // whenever that product's fractional part would round UP in the real
+    // render.
+    //
+    // This unit test isolates the ARITHMETIC consequence with a plain
+    // TextScaler.linear (so the exact per-line naive product is known
+    // in advance, unlike the reviewer's non-linear scaler fixture) rather
+    // than re-deriving the widget-render numbers: `flowBlockHeight` is
+    // exercised directly, no tester/widget pump needed, so `scripts/verify.sh`
+    // enforces it the same way the other pure-arithmetic groups in this file
+    // are.
+    test(
+      'a chord-only line under a fractional scale factor charges a ceiled '
+      'per-row height, not the raw fractional product',
+      () {
+        // chordRowHeight (legacy metrics) = 20.0. TextScaler.linear(1.075)
+        // gives chordFactor == 1.075 exactly (a linear scaler's ratio is the
+        // same at every size, so the base font size passed to factorFor is
+        // irrelevant here). Naive per-row height = 20.0 * 1.075 = 21.5 -- a
+        // genuine non-integer, the exact shape the reviewer's non-linear
+        // fixture hit. The fix must charge ceil(21.5) == 22.0 per row, not
+        // 21.5.
+        const textScale = SongReaderFitTextScale(
+          textScaler: TextScaler.linear(1.075),
+          lyricBaseFontSize: 16.0,
+          chordBaseFontSize: 14.0,
+          headerBaseFontSize: 22.0,
+          inlineDirectiveBaseFontSize: 12.0,
+        );
+
+        // Chord-only segment (empty lyric text, like the reviewer's
+        // instrumental-bar fixture) so _segmentRowHeight's chordH term is
+        // the only thing contributing rows. chordCharWidth=10.0 (raw) *
+        // chordFactor(1.075) = 10.75 effective px/char; the 10-char label
+        // 'ABCDEFGHIJ' has no internal whitespace, so it is one "word" whose
+        // scaled width (107.5px) exceeds the 60px column and wraps into
+        // exactly ceil(107.5 / 60) == 2 rows on both the pre-fix and
+        // post-fix code (the ROW COUNT here is unaffected by this fix; only
+        // the per-row HEIGHT charged for each of those 2 rows is).
+        final block = FlowBlock(
+          kind: FlowBlockKind.line,
+          sectionIndex: 0,
+          line: SongReaderLyricLineProjection(
+            segments: const [
+              SongReaderSegmentProjection(
+                displayChord: 'ABCDEFGHIJ',
+                text: '',
+              ),
+            ],
+          ),
+        );
+
+        final estimated = flowBlockHeight(
+          block: block,
+          viewMode: SongReaderViewMode.chordsAndLyrics,
+          columnWidth: 60.0,
+          fontScale: 1.0,
+          chordCharWidth: 10.0,
+          textScale: textScale,
+        );
+
+        // Both rows individually oversized -> each is its own run (see
+        // _lineItemHeight's "groupWidth > effectiveLineWidth" branch), so
+        // there is exactly one run of height
+        // `2 rows * ceil(20.0 * 1.075) == 2 * 22.0 == 44.0`, plus legacy
+        // metrics' lineGap (10.0) and lineWidgetBottomPadding (2.0):
+        // 44.0 + 10.0 + 2.0 == 56.0. The pre-fix formula (row count times
+        // the RAW fractional product, `2 * 21.5 == 43.0`) would instead
+        // total 55.0 -- one whole pixel short, reproducing the reviewer's
+        // fixture's under-estimate at a scale this test controls exactly.
+        expect(
+          estimated,
+          equals(56.0),
+          reason:
+              'each of the 2 wrapped chord rows must be charged the CEILED '
+              'per-row height (22.0), not the raw fractional product '
+              '(21.5) -- a real Flutter Text rounds each wrapped row\'s '
+              'height to a whole pixel independently, so undercounting by '
+              'even a fraction of a pixel per row is exactly the '
+              '"estimate below render" failure this file exists to '
+              'prevent; a regression here would silently reintroduce the '
+              'reviewer\'s chord-only-instrumental-bar under-estimate '
+              '(rendered=278.0 estimated=275.0) the next time someone '
+              '"simplifies" the per-row height formula back to a plain '
+              'product',
+        );
+      },
+    );
   });
 }

@@ -94,6 +94,37 @@ class SongReaderFitTextScale {
 
 const double characterWidthEstimate = 10.0;
 
+/// Real Flutter text layout rounds a Text's per-line height to a whole
+/// logical pixel (verified by a `TextPainter` probe: at fontSize 27.1875 --
+/// a chord label scaled by a non-linear ambient text scaler -- with `height:
+/// 1.2`, the naive product `27.1875 * 1.2 = 32.625` renders as a real
+/// single-line height of exactly `33.0`, and this rounds PER LINE, not once
+/// over the whole wrapped block: a real two-line wrap of the same style
+/// measures `66.0 == 2 * 33.0`, not `round(2 * 32.625) == 65.0`). Multiplying
+/// a flat row-height metric constant by [SongReaderFitTextScale.factorFor]'s
+/// scale ratio, as [_segmentRowHeight] does for the chord and lyric rows,
+/// therefore under-estimates whenever that product's fractional part rounds
+/// UP in the real render -- exactly the "estimate below render" failure this
+/// file exists to prevent (measured on the reviewer's chord-only
+/// instrumental-bar fixture under a non-linear scaler: rendered=278
+/// estimated=275, a 3px shortfall traced to exactly this -- 8 wrapped chord
+/// rows each shorted by 0.375px between the naive 32.625 and the real 33.0).
+///
+/// `round(x)` (whatever specific rounding rule the host text engine uses --
+/// round-half-up, round-half-even, or anything else) always equals either
+/// `floor(x)` or `ceil(x)`, so `round(x) <= ceil(x)` for every `x` and every
+/// rounding rule at once. Ceiling the modeled per-line height is therefore a
+/// safe upper bound over any such rule, not a fit to this one probed data
+/// point, and it can only ever ADD to an estimate (a per-line product that is
+/// already a whole pixel, e.g. every unscaled row-height constant in
+/// [SongReaderMetrics] at `factor == 1.0`, is unaffected: `ceil` of an
+/// integer is itself) -- never subtract, so this can only move estimates UP
+/// or leave them unchanged, never below what any currently-passing fixture
+/// measures.
+double _scaledRowHeight(double baseRowHeight, double factor) {
+  return (baseRowHeight * factor).ceilToDouble();
+}
+
 /// Bounds applied to the caller's column width before it is used as the
 /// estimator's `effectiveLineWidth`.
 ///
@@ -233,10 +264,12 @@ List<FlowBlock> buildFlowBlocks({
     final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
 
     if (hasHeader) {
-      // Mirrors song_reader_section_grid.dart's `_sectionLabel`.
-      final headerLabel = section.number == null
-          ? section.label
-          : '${section.label} ${section.number}';
+      // The drawn string -- see songReaderSectionLabelText's doc comment for
+      // why uppercase must be modelled here, not the source label.
+      final headerLabel = songReaderSectionLabelText(
+        section.label,
+        section.number,
+      );
       // The header block is the section start; it carries sectionGap.
       result.add(
         FlowBlock(
@@ -318,10 +351,16 @@ double _segmentPixelWidth(
   required double chordCharWidth,
   required double lyricFactor,
   required double chordFactor,
+  required double chordChipHorizontalPadding,
 }) {
   final lyricWidth = segment.text.length * lyricCharWidth * lyricFactor;
   final chordWidth = (showChords && segment.displayChord != null)
-      ? segment.displayChord!.length * chordCharWidth * chordFactor
+      // The chip's horizontal padding is part of what the label occupies in
+      // the render (song_line_view.dart wraps the Text in a Container with
+      // EdgeInsets.symmetric(horizontal: ...)). Omitting it here lets a chord
+      // that wraps on screen fit in the estimate -- an under-estimate.
+      ? segment.displayChord!.length * chordCharWidth * chordFactor +
+            2 * chordChipHorizontalPadding
       : 0.0;
   return lyricWidth > chordWidth ? lyricWidth : chordWidth;
 }
@@ -555,12 +594,24 @@ int _greedyWrapLineCount({
     final wordWidth = word.length * charWidth;
 
     if (wordWidth > effectiveLineWidth) {
-      // A single word longer than the line occupies
-      // ceil(wordWidth / effectiveLineWidth) lines on its own -- flush
-      // whatever was accumulating on the current line first (it does not
-      // share a line with this oversized word).
+      // A single word longer than the line occupies several lines on its
+      // own -- flush whatever was accumulating on the current line first
+      // (it does not share a line with this oversized word).
       flushLine();
-      lineCount += (wordWidth / effectiveLineWidth).ceil();
+
+      // Real line breaking cannot split a glyph: an unbreakable word is cut
+      // at CHARACTER boundaries, so a line holds floor(lineWidth / charWidth)
+      // whole characters, not lineWidth/charWidth of them. The continuous
+      // division `(wordWidth / effectiveLineWidth).ceil()` models a line
+      // that can end mid-glyph, packing more of the word per line than the
+      // renderer manages and under-counting the rows -- the one direction
+      // this file's `estimated >= rendered` contract forbids. Quantising
+      // can only ever raise the count: for any positive charWidth,
+      // ceil(len / floor(w / cw)) >= ceil(len * cw / w).
+      final charsPerLine = (effectiveLineWidth / charWidth).floor();
+      lineCount += charsPerLine < 1
+          ? word.length
+          : (word.length / charsPerLine).ceil();
       continue;
     }
 
@@ -654,13 +705,23 @@ double _segmentRowHeight({
   final chordRows = hasChord
       ? _wordWrapLineCount(
           text: segment.displayChord!,
-          effectiveLineWidth: effectiveLineWidth,
+          // The chip's padding eats into the width the LABEL itself gets.
+          // Narrowing the modelled width can only add rows (safe); inflating
+          // charWidth instead would mis-model the per-character advance.
+          effectiveLineWidth:
+              (effectiveLineWidth - 2 * metrics.chordChipHorizontalPadding)
+                  .clamp(minEffectiveLineWidth, maxEffectiveLineWidth),
           charWidth: chordCharWidth * chordFactor,
         )
       : 0;
 
-  final chordH = chordRows * metrics.chordRowHeight * chordFactor;
-  final lyricH = lyricLines * metrics.lyricRowHeight * lyricFactor;
+  // Each wrapped row's real rendered height rounds to a whole pixel
+  // independently (see _scaledRowHeight's doc), so the per-row height must
+  // be ceiled BEFORE multiplying by the row count -- ceiling the SUM instead
+  // would only guard the total, not the same per-line rounding the real
+  // multi-row render applies to every individual row.
+  final chordH = chordRows * _scaledRowHeight(metrics.chordRowHeight, chordFactor);
+  final lyricH = lyricLines * _scaledRowHeight(metrics.lyricRowHeight, lyricFactor);
   final gap = (hasChord && hasLyric) ? metrics.chordToLyricGap : 0.0;
   return chordH + gap + lyricH;
 }
@@ -781,6 +842,7 @@ double _lineItemHeight({
                 chordCharWidth: chordCharWidth,
                 lyricFactor: lyricFactor,
                 chordFactor: chordFactor,
+                chordChipHorizontalPadding: metrics.chordChipHorizontalPadding,
               ),
         );
 
@@ -814,6 +876,7 @@ double _lineItemHeight({
               chordCharWidth: chordCharWidth,
               lyricFactor: lyricFactor,
               chordFactor: chordFactor,
+              chordChipHorizontalPadding: metrics.chordChipHorizontalPadding,
             );
             final segHeight = _segmentRowHeight(
               segment: segment,
@@ -1254,9 +1317,12 @@ double estimateSectionHeight({
   // flat constant): mirrors song_reader_section_grid.dart's `_sectionLabel`.
   double h;
   if (hasHeader) {
-    final headerLabel = section.number == null
-        ? section.label
-        : '${section.label} ${section.number}';
+    // The drawn string -- see songReaderSectionLabelText's doc comment for
+    // why uppercase must be modelled here, not the source label.
+    final headerLabel = songReaderSectionLabelText(
+      section.label,
+      section.number,
+    );
     final headerFactor = textScale.factorFor(textScale.headerBaseFontSize, 1.0);
     final headerLines = _wordWrapLineCount(
       text: headerLabel,

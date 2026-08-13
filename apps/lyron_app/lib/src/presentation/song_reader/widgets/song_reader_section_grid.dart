@@ -203,7 +203,10 @@ class SongReaderSectionGrid extends StatelessWidget {
   Widget _buildHeaderWidget(FlowBlock block, BuildContext context) {
     final tokens = ReaderTheme.of(context);
     final section = sections[block.sectionIndex];
-    final label = _sectionLabel(section)!;
+    // The drawn string is composed by the single shared function so the
+    // renderer and the estimator can never diverge on case or spacing.
+    assert(!_isUnlabeled(section), 'sectionHeader block requires a label');
+    final label = songReaderSectionLabelText(section.label, section.number);
     return Text(
       label,
       style: section.isUnknown
@@ -234,14 +237,13 @@ class SongReaderSectionGrid extends StatelessWidget {
     };
   }
 
-  /// Returns a display label for [section], or null if the section is unlabeled.
-  /// Mirrors the [_sectionLabel] logic from [SongSectionView].
-  static String? _sectionLabel(SongReaderSectionProjection section) {
-    final isUnlabeled = section.label == 'Unlabeled' && section.number == null;
-    if (isUnlabeled) return null;
-    if (section.number == null) return section.label;
-    return '${section.label} ${section.number}';
-  }
+  /// Whether [section] carries no label of its own, and so renders no header.
+  ///
+  /// Must stay in step with `buildFlowBlocks`'s own `hasHeader` test
+  /// (song_reader_fit.dart): a section the estimator charges a header for but
+  /// the renderer draws none for -- or the reverse -- puts the two out of sync.
+  static bool _isUnlabeled(SongReaderSectionProjection section) =>
+      section.label == 'Unlabeled' && section.number == null;
 }
 
 class _DirectiveLine extends StatelessWidget {

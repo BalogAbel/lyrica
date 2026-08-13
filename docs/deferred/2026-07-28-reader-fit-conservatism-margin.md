@@ -692,3 +692,78 @@ On a phone, where most lines wrap, this adds roughly 10px per wrapped row to tot
 song height. **Whether that leading is the right typography is a PR3/PR4 question,
 not this PR's** — this PR's job is where lines may break. Flagged here so the
 type-scale work does not rediscover it as a mystery.
+
+## Type scale (2026-08-13, PR3)
+
+Re-measured under this PR's type scale
+(`docs/specs/2026-08-09-song-presentation.md` section 1): 22/19px lyrics at
+`w500`, 15/13px chords in a 3px-padded tinted chip, uppercase letter-spaced
+15/13px section labels, `lineRunSpacing` 10 → 2, and a 600px viewport
+breakpoint switching between the two sets. **This item is still open** — the
+estimator stays a deliberate upper bound; nothing below resolves it.
+
+This PR also found and fixed two real (`estimated < rendered`) defects,
+unrelated to the type scale's numbers but surfaced while re-measuring against
+it:
+
+- **Per-row pixel rounding.** Real text layout rounds each wrapped row's
+  height to a whole logical pixel, per row, not once over a multi-line block.
+  Under a non-linear text scaler the estimator's raw
+  `rows * rowHeight * factor` product can be fractional, and the real render's
+  per-row rounding pushes the true height above that fraction whenever it
+  rounds up. Fixed by ceiling each row's modelled height before multiplying by
+  row count (`_scaledRowHeight` in `song_reader_fit.dart`) — safe because
+  `ceil(x) >= round(x)` unconditionally.
+- **Character quantisation of an unbreakable word.** `_greedyWrapLineCount`'s
+  oversized-word branch used to divide continuously
+  (`ceil(wordWidth / effectiveLineWidth)`), modelling a line that can end
+  mid-glyph. Real line breaking cannot split a glyph, so a line holds
+  `floor(effectiveLineWidth / charWidth)` whole characters and the true row
+  count is `ceil(charCount / charsPerLine)`, which is always `>=` the
+  continuous form. Fixed to quantise at character boundaries.
+
+Both fixes only ever move an estimate up or leave it unchanged; neither
+touched a rendered value. With both landed, no lower-bound failure remains
+anywhere in the three consistency suites as of this PR.
+
+Every ceiling below is re-measured against the wired, breakpoint-resolved
+metrics on both sides (a fixture that resolves the estimate from
+`SongReaderMetrics.legacy` while the render uses the resolved tokens is not a
+consistency check — see the per-fixture comments in the test files for the
+"wired 2026-08-12" note where that gap existed transiently during this PR).
+
+| suite | fixture | old rendered | old estimated | old ratio | new rendered | new estimated | new ratio |
+|---|---|---|---|---|---|---|---|
+| block | comment: short comment, wide column | 30.0 | 34.0 | 1.13 | 26.0 | 54.0 | 2.08 |
+| block | comment: long comment, narrow column | 410.0 | 586.0 | 1.43 | 406.0 | 750.0 | 1.85 |
+| block | inline directive: long value, narrow column | 238.0 | 540.0 | 2.27 | 234.0 | 648.0 | 2.77 |
+| block | leading directive: long capo/tuning, narrow column | 304.0 | 560.0 | 1.84 | 298.0 | 626.0 | 2.10 |
+| estimate/render | whole-song plain fixture, content height | 1082.0 | 1198.0 | 1.11 | 1066.0 | 1080.0 | 1.01 |
+| estimate/render | whole-song chord-heavy fixture, content height | 2574.0 | 2630.0 | 1.02 | 1732.0 | 1746.0 | 1.01 |
+| estimate/render | whole-song plain fixture, tablet-portrait (834x1194, regular set) — new fixture, no prior measurement | — | — | — | 778.0 | 792.0 | 1.02 |
+| line-view | single-segment line, several wraps | 434.0 | 514.0 | 1.18 | 592.0 | 832.0 | 1.41 |
+| line-view | chord label with internal space | 72.0 | 72.0 | 1.00 | 44.0 | 62.0 | 1.41 |
+| line-view | chord label with internal TAB | 72.0 | 72.0 | 1.00 | 44.0 | 62.0 | 1.41 |
+| line-view | plain lyric line, 1.5x linear text scaler | 610.0 | 1026.0 | 1.68 | 606.0 | 1300.0 | 2.15 |
+| line-view | non-linear scaler + 1.3 sharedFontScale | 610.0 | 925.6 | 1.52 | 606.0 | 1064.0 | 1.76 |
+
+The whole-song ratios *tightened* (1.11 → 1.01, 1.02 → 1.01): the estimate
+side now scales its row-height guesses by the same resolved metrics the
+render actually used, closing a gap that used to come from comparing a
+resolved-metrics render against a `SongReaderMetrics.legacy`/identity-scale
+estimate — not from the type scale itself. Several per-line ratios *loosened*
+substantially (up to 2.77x on the long inline directive): the reader's new
+row heights are smaller in absolute terms (18/16 chord rows, 6px line gaps
+against 20/10 before), so a fixed per-fixture overshoot in pixels is now a
+larger fraction of a smaller rendered height. The type scale does not move
+every fixture in the same direction — treat these per-fixture, not as one
+global trend.
+
+Two changes tightened the model in the safe direction rather than loosening
+it: the chord chip's padding is now charged per drawn chord (previously
+absent, an under-estimate risk this PR closed rather than opened — see
+`_segmentPixelWidth`'s `chordChipHorizontalPadding` term), and the section
+label is modelled as the uppercased string it is actually drawn as (previously
+the mixed-case source, also an under-estimate risk this PR closed). Where a
+margin above looks unexpectedly tight, it is because the estimate got MORE
+accurate, not because the floor moved.
