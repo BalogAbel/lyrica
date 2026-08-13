@@ -454,7 +454,7 @@ turned out to be a separate correctness bug rather than a styling consequence.
    segments at internal whitespace so a group is one word, in both the
    renderer and the estimator, with its own consistency fixtures. Measured
    against **today's** metrics, so its fixtures prove one thing at a time.
-3. **Type scale.** *(landed: #TBD — filled in when this PR opens)* Two commits: first the estimator's
+3. **Type scale.** *(landed: #71)* Two commits: first the estimator's
    row-height and gap constants become values passed in (defaulted to today's,
    so no fixture moves — the inert step), then the new values from sections
    1-4 with the chip, the uppercased label and the margins. Re-measures the
