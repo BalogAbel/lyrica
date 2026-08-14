@@ -49,6 +49,61 @@ void main() {
     });
   });
 
+  group('ReaderThemeSet.lerp', () {
+    ReaderTheme markedTheme(Color unknownColor) {
+      return ReaderTheme.stageLight(
+        colorScheme: lightBase.colorScheme,
+        textTheme: lightBase.textTheme,
+        compact: false,
+      ).copyWith(unknownSectionLabelColor: unknownColor);
+    }
+
+    test('interpolates both the compact and regular members', () {
+      final a = ReaderThemeSet(
+        compact: markedTheme(const Color(0xFF000000)),
+        regular: markedTheme(const Color(0xFF111111)),
+      );
+      final b = ReaderThemeSet(
+        compact: markedTheme(const Color(0xFFFFFFFF)),
+        regular: markedTheme(const Color(0xFFEEEEEE)),
+      );
+
+      final mid = a.lerp(b, 0.5);
+
+      expect(
+        mid.compact.unknownSectionLabelColor,
+        Color.lerp(const Color(0xFF000000), const Color(0xFFFFFFFF), 0.5),
+      );
+      expect(
+        mid.regular.unknownSectionLabelColor,
+        Color.lerp(const Color(0xFF111111), const Color(0xFFEEEEEE), 0.5),
+      );
+    });
+
+    test('returns itself unchanged when the other extension is null', () {
+      // ThemeExtension.lerp is called by AnimatedTheme for every registered
+      // extension during a theme transition. `other` is null when the OTHER
+      // ThemeData never registered a ReaderThemeSet at all -- a real,
+      // reachable case (e.g. mid-transition from a bare ThemeData without
+      // the extension) -- and `ReaderThemeSet.lerp`'s `other is!
+      // ReaderThemeSet` guard covers exactly this by falling through the
+      // `is!` check (null is not a ReaderThemeSet). This is the only branch
+      // of that guard Dart's own covariant parameter typing lets a caller
+      // reach at all: `other`'s declared type is `ThemeExtension<
+      // ReaderThemeSet>?`, so any non-null, wrongly-typed value is rejected
+      // by Dart itself before the method body runs, at every call site
+      // (static or dynamic) -- only `null` can actually arrive here.
+      final a = ReaderThemeSet(
+        compact: markedTheme(const Color(0xFF000000)),
+        regular: markedTheme(const Color(0xFF111111)),
+      );
+
+      final result = a.lerp(null, 0.5);
+
+      expect(identical(result, a), isTrue);
+    });
+  });
+
   group('stageDark', () {
     test('uses the stage palette rather than inverting the light one', () {
       final darkBase = ThemeData(

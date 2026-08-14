@@ -121,6 +121,14 @@ const double characterWidthEstimate = 10.0;
 /// integer is itself) -- never subtract, so this can only move estimates UP
 /// or leave them unchanged, never below what any currently-passing fixture
 /// measures.
+///
+/// Used by every branch that charges a flat row-height metric times an
+/// ambient scale factor -- chord/lyric rows (`_segmentRowHeight`), comment
+/// and tab rows, inline and leading directive rows, and section-header rows
+/// (`_lineItemHeight`, `flowBlockHeight`, `estimateSectionHeight`) -- not
+/// only the chord/lyric case that first surfaced the bug: the rounding
+/// mechanism this guards against applies to real Flutter `Text` layout
+/// generally, not to any one style.
 double _scaledRowHeight(double baseRowHeight, double factor) {
   return (baseRowHeight * factor).ceilToDouble();
 }
@@ -996,7 +1004,8 @@ double _lineItemHeight({
         effectiveLineWidth: effectiveLineWidth,
         charWidth: lyricCharWidth * lyricFactor,
       );
-      return commentWrapCount * (metrics.lyricRowHeight * lyricFactor) +
+      return commentWrapCount *
+              _scaledRowHeight(metrics.lyricRowHeight, lyricFactor) +
           metrics.lineGap;
     case SongReaderTabProjection():
       // TabBlockView (widgets/tab_block_view.dart) draws its raw lines
@@ -1007,7 +1016,8 @@ double _lineItemHeight({
       // tab lines at a narrow width" case), so one estimated row per raw
       // line -- with no word-wrap or even-division growth possible -- is
       // already exact, not an approximation to tighten.
-      return item.rawLines.length * (metrics.lyricRowHeight * lyricFactor) +
+      return item.rawLines.length *
+              _scaledRowHeight(metrics.lyricRowHeight, lyricFactor) +
           metrics.lineGap +
           metrics.tabBlockVerticalPadding;
     case SongReaderDirectiveProjection():
@@ -1047,8 +1057,7 @@ double _lineItemHeight({
         charWidth: chordCharWidth * chordFactorAt1,
       );
       return inlineDirectiveLines *
-          metrics.directiveLineHeight *
-          inlineDirectiveFactor;
+          _scaledRowHeight(metrics.directiveLineHeight, inlineDirectiveFactor);
   }
 }
 
@@ -1116,8 +1125,10 @@ double flowBlockHeight({
         charWidth: chordCharWidth * leadingDirectiveFactor,
       );
       return leadingDirectiveLines *
-              metrics.directiveLineHeight *
-              leadingDirectiveFactor +
+              _scaledRowHeight(
+                metrics.directiveLineHeight,
+                leadingDirectiveFactor,
+              ) +
           metrics.sectionGap;
     case FlowBlockKind.sectionHeader:
       // _buildHeaderWidget (song_reader_section_grid.dart) renders at
@@ -1146,7 +1157,8 @@ double flowBlockHeight({
         effectiveLineWidth: effectiveLineWidth,
         charWidth: headerCharWidth * headerFactor,
       );
-      return headerLines * metrics.headerHeight * headerFactor +
+      return headerLines *
+              _scaledRowHeight(metrics.headerHeight, headerFactor) +
           metrics.sectionGap;
     case FlowBlockKind.line:
       final lineH = _lineItemHeight(
@@ -1334,7 +1346,7 @@ double estimateSectionHeight({
       ),
       charWidth: headerCharWidth * headerFactor,
     );
-    h = headerLines * metrics.headerHeight * headerFactor;
+    h = headerLines * _scaledRowHeight(metrics.headerHeight, headerFactor);
   } else {
     h = 0.0;
   }

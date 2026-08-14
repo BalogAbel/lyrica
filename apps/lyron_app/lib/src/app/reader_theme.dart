@@ -12,6 +12,20 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart'
 /// `shortestSide`. 600 is also Material 3's own phone/tablet boundary.
 const double readerRegularTypeScaleMinWidth = 600.0;
 
+/// Font sizes for one breakpoint, shared by [ReaderTheme.stageLight] and
+/// [ReaderTheme.stageDark] so light and dark cannot diverge on the type
+/// scale the same way [_readerMetrics] already keeps them from diverging on
+/// row heights and gaps.
+typedef _ReaderFontSizes = ({double lyric, double chord, double sectionLabel});
+
+_ReaderFontSizes _readerFontSizes({required bool compact}) {
+  return (
+    lyric: compact ? 19.0 : 22.0,
+    chord: compact ? 13.0 : 15.0,
+    sectionLabel: compact ? 13.0 : 15.0,
+  );
+}
+
 /// Builds the row heights and gaps for one breakpoint, shared by
 /// [ReaderTheme.stageLight] and [ReaderTheme.stageDark] so light and dark
 /// cannot diverge on layout.
@@ -137,9 +151,10 @@ class ReaderTheme {
     required bool compact,
   }) {
     final metrics = _readerMetrics(compact: compact);
-    final lyricFontSize = compact ? 19.0 : 22.0;
-    final chordFontSize = compact ? 13.0 : 15.0;
-    final labelFontSize = compact ? 13.0 : 15.0;
+    final fontSizes = _readerFontSizes(compact: compact);
+    final lyricFontSize = fontSizes.lyric;
+    final chordFontSize = fontSizes.chord;
+    final labelFontSize = fontSizes.sectionLabel;
 
     return ReaderTheme(
       // height is DERIVED, never typed as a separate literal: the estimator
@@ -215,9 +230,10 @@ class ReaderTheme {
     const unknownSectionColor = Color(0xFFD8B892);
 
     final metrics = _readerMetrics(compact: compact);
-    final lyricFontSize = compact ? 19.0 : 22.0;
-    final chordFontSize = compact ? 13.0 : 15.0;
-    final labelFontSize = compact ? 13.0 : 15.0;
+    final fontSizes = _readerFontSizes(compact: compact);
+    final lyricFontSize = fontSizes.lyric;
+    final chordFontSize = fontSizes.chord;
+    final labelFontSize = fontSizes.sectionLabel;
 
     return ReaderTheme(
       // height is DERIVED, never typed as a separate literal — see the

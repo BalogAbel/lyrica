@@ -1979,4 +1979,115 @@ void main() {
       );
     });
   });
+
+  group('the per-row ceiling applies to every wrapping kind, not only '
+      'chord/lyric rows', () {
+    // The chord/lyric fix above (_scaledRowHeight) closes the "estimate <
+    // rendered" gap for _segmentRowHeight only. Comment, tab, inline
+    // directive, leading directive and section-header rows are computed by
+    // separate branches of _lineItemHeight/flowBlockHeight/
+    // estimateSectionHeight that multiply a flat row-height metric by an
+    // ambient scale factor and leave the product a plain (possibly
+    // fractional) double -- exactly the shape of bug _scaledRowHeight was
+    // introduced to fix, just in branches that reuse doesn't reach. Under a
+    // non-linear text scaler (or any scaler whose ratio at a given base
+    // font size isn't a "nice" fraction), these branches can undercount the
+    // same way the chord-only fixture did before the fix, above.
+    const textScale = SongReaderFitTextScale(
+      textScaler: TextScaler.linear(1.075),
+      lyricBaseFontSize: 16.0,
+      chordBaseFontSize: 14.0,
+      headerBaseFontSize: 22.0,
+      inlineDirectiveBaseFontSize: 12.0,
+    );
+
+    test('a wrapping comment line charges ceiled per-row heights', () {
+      // lyricRowHeight (legacy) = 24.0; TextScaler.linear(1.075) gives a
+      // scale factor of 1.075 exactly regardless of base size. Naive
+      // per-row height = 24.0 * 1.075 = 25.8, a genuine non-integer. The
+      // comment text is long enough, and the column narrow enough, to force
+      // exactly 2 wrapped rows on both the pre-fix and post-fix formula (the
+      // ROW COUNT is unaffected by this fix; only the per-row height
+      // charged for each of those 2 rows is).
+      final block = FlowBlock(
+        kind: FlowBlockKind.line,
+        sectionIndex: 0,
+        line: const SongReaderCommentProjection(text: 'AAAAAAAAAA BBBBBBBBBB'),
+      );
+
+      final estimated = flowBlockHeight(
+        block: block,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        columnWidth: 120.0,
+        fontScale: 1.0,
+        lyricCharWidth: 10.0,
+        textScale: textScale,
+      );
+
+      // 2 rows * ceil(24.0 * 1.075) == 2 * ceil(25.8) == 2 * 26.0 == 52.0,
+      // plus legacy metrics' lineGap (10.0): 62.0. The pre-fix formula (row
+      // count times the RAW fractional product, 2 * 25.8 == 51.6) would
+      // instead total 61.6 -- under a real render whose two comment rows
+      // each round UP to 26px (52.0 total), that is a genuine
+      // "estimate < rendered" shortfall, the exact failure this file exists
+      // to prevent.
+      expect(
+        estimated,
+        equals(62.0),
+        reason:
+            'each of the 2 wrapped comment rows must be charged the CEILED '
+            'per-row height (26.0), not the raw fractional product (25.8) '
+            '-- the SAME rounding mechanism the chord/lyric fix above '
+            'closes, just reached through the comment branch instead of '
+            '_segmentRowHeight.',
+      );
+    });
+
+    test('a wrapping section header charges a ceiled per-row height', () {
+      // headerHeight (legacy) = sectionLabelRowHeight (28.0) +
+      // sectionLabelToLineGap (12.0) = 40.0. Naive per-row height =
+      // 40.0 * 1.075 = 43.0 exactly -- pick a DIFFERENT scale so the
+      // product is genuinely fractional: TextScaler.linear(1.0125) gives
+      // 40.0 * 1.0125 = 40.5.
+      const headerTextScale = SongReaderFitTextScale(
+        textScaler: TextScaler.linear(1.0125),
+        lyricBaseFontSize: 16.0,
+        chordBaseFontSize: 14.0,
+        headerBaseFontSize: 22.0,
+        inlineDirectiveBaseFontSize: 12.0,
+      );
+
+      final block = FlowBlock(
+        kind: FlowBlockKind.sectionHeader,
+        sectionIndex: 0,
+        isSectionStart: true,
+        // Long enough, and the column narrow enough, to force exactly 2
+        // wrapped header rows on both the pre-fix and post-fix formula.
+        blockText: 'AAAAAAAAAA BBBBBBBBBB',
+      );
+
+      final estimated = flowBlockHeight(
+        block: block,
+        viewMode: SongReaderViewMode.chordsAndLyrics,
+        columnWidth: 120.0,
+        fontScale: 1.0,
+        headerCharWidth: 10.0,
+        textScale: headerTextScale,
+      );
+
+      // 2 rows * ceil(40.0 * 1.0125) == 2 * ceil(40.5) == 2 * 41.0 == 82.0,
+      // plus legacy metrics' sectionGap (20.0): 102.0. The pre-fix formula
+      // (row count times the RAW fractional product, 2 * 40.5 == 81.0)
+      // would instead total 101.0 -- one whole pixel short per the same
+      // rounding mechanism as the chord/lyric and comment cases above.
+      expect(
+        estimated,
+        equals(102.0),
+        reason:
+            'each of the 2 wrapped section-header rows must be charged the '
+            'CEILED per-row height (41.0), not the raw fractional product '
+            '(40.5).',
+      );
+    });
+  });
 }

@@ -205,7 +205,20 @@ class SongReaderSectionGrid extends StatelessWidget {
     final section = sections[block.sectionIndex];
     // The drawn string is composed by the single shared function so the
     // renderer and the estimator can never diverge on case or spacing.
-    assert(!_isUnlabeled(section), 'sectionHeader block requires a label');
+    //
+    // Throws unconditionally, not just in debug (an `assert` would be
+    // stripped from release builds): a sectionHeader block for an unlabeled
+    // section means `_isUnlabeled` here and `buildFlowBlocks`'s `hasHeader`
+    // test (song_reader_fit.dart) have drifted apart -- silently rendering
+    // "UNLABELED" text in a release build would hide that bug instead of
+    // surfacing it. Mirrors the pre-refactor `_sectionLabel(section)!`,
+    // which threw in both debug and release the same way.
+    if (_isUnlabeled(section)) {
+      throw StateError(
+        'sectionHeader block requires a labelled section, got '
+        '"${section.label}" (number: ${section.number})',
+      );
+    }
     final label = songReaderSectionLabelText(section.label, section.number);
     return Text(
       label,
