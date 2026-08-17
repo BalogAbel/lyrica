@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_line_view.dart';
@@ -319,4 +320,96 @@ void main() {
       'Kegyelmed elég, több, mint elég, Igédben bízok én',
     );
   });
+
+  testWidgets('renders a chord inside a tinted, rounded chip', (tester) async {
+    // No ReaderThemeSet registered -- ReaderTheme.of falls back to
+    // ReaderTheme.stageLight, whose chordChipColor is non-null (spec section
+    // 2: a chip in both themes).
+    final line = SongReaderLyricLineProjection(
+      segments: const [
+        SongReaderSegmentProjection(displayChord: 'Am', text: 'Hello'),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongLineView(
+            line: line,
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+          ),
+        ),
+      ),
+    );
+
+    final container = tester.widget<Container>(
+      find.ancestor(of: find.text('Am'), matching: find.byType(Container)),
+    );
+    final decoration = container.decoration as BoxDecoration;
+
+    expect(decoration.borderRadius, BorderRadius.circular(3));
+    expect(decoration.color, isNotNull);
+    expect(container.padding, const EdgeInsets.symmetric(horizontal: 3));
+  });
+
+  testWidgets(
+    'renders a bare chord label when the token set has no chip colour',
+    (tester) async {
+      // Build a token set with chordChipColor cleared to null via direct
+      // construction -- ReaderTheme.copyWith uses `??` and cannot clear a
+      // value back to null, so copyWith cannot express "no chip" starting
+      // from a base theme that has one. Direct construction is the smaller
+      // change: it needs no new API on ReaderTheme, just copying the base
+      // theme's other fields (see report for the alternative considered:
+      // adding a `bool clearChordChipColor` flag to copyWith).
+      final base = ReaderTheme.stageLight(
+        colorScheme: ThemeData.light().colorScheme,
+        textTheme: ThemeData.light().textTheme,
+        compact: false,
+      );
+      final noChipTokens = ReaderTheme(
+        lyricStyle: base.lyricStyle,
+        chordStyle: base.chordStyle,
+        chordChipColor: null,
+        sectionLabelStyle: base.sectionLabelStyle,
+        unknownSectionLabelColor: base.unknownSectionLabelColor,
+        commentStyle: base.commentStyle,
+        directiveStyle: base.directiveStyle,
+        leadingDirectiveStyle: base.leadingDirectiveStyle,
+        tabStyle: base.tabStyle,
+        tabBackgroundColor: base.tabBackgroundColor,
+        metrics: base.metrics,
+      );
+
+      final line = SongReaderLyricLineProjection(
+        segments: const [
+          SongReaderSegmentProjection(displayChord: 'Am', text: 'Hello'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.light().copyWith(
+            extensions: [
+              ReaderThemeSet(compact: noChipTokens, regular: noChipTokens),
+            ],
+          ),
+          home: Scaffold(
+            body: SongLineView(
+              line: line,
+              viewMode: SongReaderViewMode.chordsAndLyrics,
+              sharedFontScale: 1,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Am'), findsOneWidget);
+      expect(
+        find.ancestor(of: find.text('Am'), matching: find.byType(Container)),
+        findsNothing,
+      );
+    },
+  );
 }

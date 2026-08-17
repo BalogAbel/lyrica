@@ -17,9 +17,10 @@ import 'package:lyron_app/src/presentation/song_reader/widgets/tab_block_view.da
 /// from the ambient TextTheme/ColorScheme instead of reading the extension,
 /// these values will not appear.
 ReaderTheme _markedTokens(ThemeData base) {
-  return ReaderTheme.fromM3(
+  return ReaderTheme.stageLight(
     colorScheme: base.colorScheme,
     textTheme: base.textTheme,
+    compact: false,
   ).copyWith(
     lyricStyle: const TextStyle(fontSize: 31, color: Color(0xFFAA0001)),
     chordStyle: const TextStyle(fontSize: 29, color: Color(0xFFAA0002)),
@@ -38,7 +39,15 @@ ReaderTheme _markedTokens(ThemeData base) {
 
 ThemeData _themeWith(ReaderTheme Function(ThemeData) tokens) {
   final base = buildLightTheme();
-  return base.copyWith(extensions: <ThemeExtension<dynamic>>[tokens(base)]);
+  final marked = tokens(base);
+  // Both breakpoints get the same marked tokens: these tests assert widgets
+  // read ReaderTheme at all, not the breakpoint resolution mechanism (that is
+  // reader_theme_test.dart's job), so any width must resolve to the marker.
+  return base.copyWith(
+    extensions: <ThemeExtension<dynamic>>[
+      ReaderThemeSet(compact: marked, regular: marked),
+    ],
+  );
 }
 
 void main() {
@@ -122,9 +131,9 @@ void main() {
       ),
     );
 
-    expect(tester.widget<Text>(find.text('Verse 1')).style!.fontSize, 27);
+    expect(tester.widget<Text>(find.text('VERSE 1')).style!.fontSize, 27);
     expect(
-      tester.widget<Text>(find.text('Verse 1')).style!.color,
+      tester.widget<Text>(find.text('VERSE 1')).style!.color,
       const Color(0xFFAA0003),
     );
     expect(
@@ -160,7 +169,7 @@ void main() {
     );
 
     expect(
-      tester.widget<Text>(find.text('Interlude')).style!.color,
+      tester.widget<Text>(find.text('INTERLUDE')).style!.color,
       const Color(0xFFAA0004),
     );
   });

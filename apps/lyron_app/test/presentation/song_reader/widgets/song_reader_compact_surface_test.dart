@@ -7,6 +7,55 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
 
+SongReaderProjection _buildLabeledProjection({required String lineText}) {
+  return SongReaderProjection(
+    song: ParsedSong(
+      title: 'Song',
+      sourceKey: 'G',
+      sections: [
+        SongSection(
+          kind: SongSectionKind.verse,
+          label: 'Verse',
+          number: 1,
+          lines: [
+            LyricLine(
+              segments: [LyricSegment(leadingChord: 'G', text: lineText)],
+            ),
+          ],
+        ),
+      ],
+      diagnostics: const [],
+    ),
+    state: SongReaderState(),
+  );
+}
+
+Widget _buildLabeledSurface({
+  required SongReaderProjection projection,
+  required EdgeInsetsGeometry contentPadding,
+}) {
+  return MaterialApp(
+    home: Scaffold(
+      body: SongReaderCompactSurface(
+        projection: projection,
+        areControlsVisible: false,
+        currentTitle: 'Song',
+        onSurfaceTap: () {},
+        hasRecoverableWarnings: false,
+        warningCount: 0,
+        contentColumnCount: 1,
+        onTransposeDown: () {},
+        onTransposeUp: () {},
+        onDecreaseFontScale: () {},
+        onIncreaseFontScale: () {},
+        showBottomContextBar: false,
+        maxContentWidth: 960,
+        contentPadding: contentPadding,
+      ),
+    ),
+  );
+}
+
 void main() {
   SongReaderCompactSurface buildSurface({required bool areControlsVisible}) {
     return SongReaderCompactSurface(
@@ -92,5 +141,47 @@ void main() {
       MaterialApp(home: Scaffold(body: buildSurface(areControlsVisible: true))),
     );
     expect(find.byType(SongReaderControlBar), findsOneWidget);
+  });
+
+  testWidgets('content starts at a fixed left edge, not centred on its '
+      'longest line', (tester) async {
+    // Two songs with very different longest-line lengths must put their first
+    // section label at the SAME x. Before this change the shrink-wrap made
+    // that x depend on the content.
+    const contentPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 14);
+
+    await tester.pumpWidget(
+      _buildLabeledSurface(
+        projection: _buildLabeledProjection(lineText: 'Short'),
+        contentPadding: contentPadding,
+      ),
+    );
+    final narrowSongLabelX = tester.getTopLeft(find.text('VERSE 1')).dx;
+
+    await tester.pumpWidget(
+      _buildLabeledSurface(
+        projection: _buildLabeledProjection(
+          lineText: 'A very very very very very very long lyric line',
+        ),
+        contentPadding: contentPadding,
+      ),
+    );
+    final wideSongLabelX = tester.getTopLeft(find.text('VERSE 1')).dx;
+
+    expect(narrowSongLabelX, wideSongLabelX);
+  });
+
+  testWidgets('content padding is 12 horizontal', (tester) async {
+    const contentPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 14);
+
+    await tester.pumpWidget(
+      _buildLabeledSurface(
+        projection: _buildLabeledProjection(lineText: 'Short'),
+        contentPadding: contentPadding,
+      ),
+    );
+    final labelX = tester.getTopLeft(find.text('VERSE 1')).dx;
+
+    expect(labelX, 12.0);
   });
 }

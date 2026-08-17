@@ -138,13 +138,15 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
         maxScale: SongReaderState.maxSharedFontScale,
         allowTwoColumns: widget.contentColumnCount > 1,
         leadingDirectiveHeight: widget.projection.capoDirectiveText != null
-            ? directiveLineHeight + sectionGap
+            ? charWidths.metrics.directiveLineHeight +
+                  charWidths.metrics.sectionGap
             : 0,
         leadingDirectiveText: widget.projection.capoDirectiveText,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
         headerCharWidth: charWidths.headerCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
       _lastAppliedFitScale = fit;
       widget.onSetFontScale?.call(fit);

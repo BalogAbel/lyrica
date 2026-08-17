@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart';
@@ -20,6 +19,11 @@ class SongLineView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = ReaderTheme.of(context);
+    // Resolved from the same tokens that carry the text styles, at the same
+    // breakpoint: `measureSongReaderCharWidths` reads `ReaderTheme.of` from
+    // this widget's own context too, so the spacing the estimator charges and
+    // the spacing drawn here cannot come from different sets.
+    final metrics = tokens.metrics;
     final chordStyle = tokens.chordStyle.copyWith(
       fontSize: (tokens.chordStyle.fontSize ?? 14) * sharedFontScale,
     );
@@ -33,7 +37,7 @@ class SongLineView extends StatelessWidget {
     if (!hasLyricSegments && viewMode == SongReaderViewMode.lyricsOnly) {
       return const SizedBox.shrink();
     }
-    final spacing = hasLyricSegments ? 0.0 : chordOnlySpacing;
+    final spacing = hasLyricSegments ? 0.0 : metrics.chordOnlySpacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -69,7 +73,7 @@ class SongLineView extends StatelessWidget {
                     constraints: BoxConstraints(maxWidth: maxWidth),
                     child: Wrap(
                       spacing: 0,
-                      runSpacing: lineRunSpacing,
+                      runSpacing: metrics.lineRunSpacing,
                       crossAxisAlignment: WrapCrossAlignment.end,
                       children: [
                         for (final segment in group.segments)
@@ -79,6 +83,10 @@ class SongLineView extends StatelessWidget {
                             chordStyle: chordStyle,
                             lyricStyle: lyricStyle,
                             maxWidth: maxWidth,
+                            chordToLyricGap: metrics.chordToLyricGap,
+                            chordChipColor: tokens.chordChipColor,
+                            chordChipHorizontalPadding:
+                                metrics.chordChipHorizontalPadding,
                           ),
                       ],
                     ),
@@ -92,14 +100,18 @@ class SongLineView extends StatelessWidget {
                     chordStyle: chordStyle,
                     lyricStyle: lyricStyle,
                     maxWidth: maxWidth,
+                    chordToLyricGap: metrics.chordToLyricGap,
+                    chordChipColor: tokens.chordChipColor,
+                    chordChipHorizontalPadding:
+                        metrics.chordChipHorizontalPadding,
                   ),
               ];
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 2),
+          padding: EdgeInsets.only(bottom: metrics.lineWidgetBottomPadding),
           child: Wrap(
             spacing: spacing,
-            runSpacing: lineRunSpacing,
+            runSpacing: metrics.lineRunSpacing,
             crossAxisAlignment: WrapCrossAlignment.end,
             children: children,
           ),
@@ -116,6 +128,9 @@ class _SongLineSegmentView extends StatelessWidget {
     required this.chordStyle,
     required this.lyricStyle,
     required this.maxWidth,
+    required this.chordToLyricGap,
+    required this.chordChipColor,
+    required this.chordChipHorizontalPadding,
   });
 
   final SongReaderSegmentProjection segment;
@@ -127,6 +142,11 @@ class _SongLineSegmentView extends StatelessWidget {
   // bound so that a long unbreakable token wraps internally instead of
   // overflowing the line.
   final double maxWidth;
+  final double chordToLyricGap;
+  // Chip fill behind the chord label, or null to draw the bare label -- a
+  // token decision (ReaderTheme.chordChipColor), not a hardcoded one.
+  final Color? chordChipColor;
+  final double chordChipHorizontalPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -144,8 +164,20 @@ class _SongLineSegmentView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showChord) ...[
-          Text(segment.displayChord!, style: chordStyle),
-          if (showLyric) const SizedBox(height: chordToLyricGap),
+          if (chordChipColor == null)
+            Text(segment.displayChord!, style: chordStyle)
+          else
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: chordChipHorizontalPadding,
+              ),
+              decoration: BoxDecoration(
+                color: chordChipColor,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(segment.displayChord!, style: chordStyle),
+            ),
+          if (showLyric) SizedBox(height: chordToLyricGap),
         ],
         if (showLyric)
           ConstrainedBox(

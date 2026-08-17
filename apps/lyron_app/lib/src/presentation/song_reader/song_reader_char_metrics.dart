@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 
 /// Measured average per-character advance (in logical pixels, at the
 /// RAW base point size -- fontScale == 1.0, no ambient scaling) of the
@@ -38,6 +39,7 @@ class SongReaderCharWidths {
     required this.lyricCharWidth,
     required this.chordCharWidth,
     required this.headerCharWidth,
+    required this.metrics,
     required this.textScale,
   });
 
@@ -73,6 +75,14 @@ class SongReaderCharWidths {
   /// prevent. Hence its own real measurement.
   final double headerCharWidth;
 
+  /// The resolved [SongReaderMetrics] for this build's `BuildContext`.
+  ///
+  /// Bundled with the char widths deliberately: both come from the SAME
+  /// `ReaderTheme.of(context)` call, so the row heights the estimator charges
+  /// and the styles the renderer draws with can never be resolved at two
+  /// different breakpoints.
+  final SongReaderMetrics metrics;
+
   /// The ambient [SongReaderFitTextScale] bundle (scaler + every base font
   /// size song_reader_fit.dart's estimator models), captured once per build
   /// alongside the char-width measurements above. Pass this straight through
@@ -89,8 +99,11 @@ class SongReaderCharWidths {
 const _lyricMeasureSample =
     'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 const _chordMeasureSample = 'ABCDEFG#b/mjasdimug 0123456789';
+// Uppercase, matching songReaderSectionLabelText -- the header style is
+// drawn uppercase with letterSpacing, and uppercase glyphs are wider than
+// mixed-case, so measuring mixed-case here would under-count advance.
 const _headerMeasureSample =
-    'abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789';
 
 /// Measures [SongReaderCharWidths] for the current [context]'s theme.
 ///
@@ -150,6 +163,7 @@ SongReaderCharWidths measureSongReaderCharWidths(BuildContext context) {
     lyricCharWidth: measure(_lyricMeasureSample, lyricStyle),
     chordCharWidth: measure(_chordMeasureSample, chordStyle),
     headerCharWidth: measure(_headerMeasureSample, headerStyle),
+    metrics: tokens.metrics,
     textScale: SongReaderFitTextScale(
       textScaler: textScaler,
       lyricBaseFontSize: lyricStyle.fontSize ?? 16.0,

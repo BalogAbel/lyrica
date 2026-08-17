@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -55,9 +56,9 @@ void main() {
       ),
     );
 
-    final a = tester.getTopLeft(find.text('Section A'));
-    final b = tester.getTopLeft(find.text('Section B'));
-    final c = tester.getTopLeft(find.text('Section C'));
+    final a = tester.getTopLeft(find.text('SECTION A'));
+    final b = tester.getTopLeft(find.text('SECTION B'));
+    final c = tester.getTopLeft(find.text('SECTION C'));
 
     expect((b.dx - a.dx).abs(), lessThan(1));
     expect(b.dy, greaterThan(a.dy));
@@ -280,12 +281,13 @@ void main() {
     );
 
     expect(find.text('Unlabeled'), findsNothing);
-    expect(find.text('Verse 1'), findsOneWidget);
+    expect(find.text('VERSE 1'), findsOneWidget);
+    expect(find.text('Verse 1'), findsNothing);
     expect(find.text('E'), findsOneWidget);
     expect(find.text('Line'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('E')).dy,
-      lessThan(tester.getTopLeft(find.text('Verse 1')).dy),
+      lessThan(tester.getTopLeft(find.text('VERSE 1')).dy),
     );
   });
 
@@ -391,6 +393,17 @@ void main() {
         // Old section-atomic guard: forced 1 column (lopsided boundary split).
         // New item-level flow: Verse lines distributed across both columns
         // → balanced split → 2 columns.
+        //
+        // Re-tuned 2026-08-12: this fixture's single-column height was
+        // measured against SongReaderMetrics.legacy's larger row heights and
+        // gaps. The 600px type-scale breakpoint's resolved (regular) metrics
+        // are considerably tighter (e.g. sectionGap 14 vs. legacy 20,
+        // lineGap 6 vs. 10, lineRunSpacing 2 vs. 10), so this content's real
+        // single-column height shrank well below the old 700 threshold and
+        // no longer overflows it -- the split this test exists to exercise
+        // never triggered. Probed empirically: single column fits at
+        // availableHeight>=~670-680, splits into two below that. 620 sits
+        // comfortably below the new threshold with margin.
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
@@ -405,7 +418,7 @@ void main() {
                     viewMode: SongReaderViewMode.chordsAndLyrics,
                     sharedFontScale: 1,
                     columnCount: 2,
-                    availableHeight: 700,
+                    availableHeight: 620,
                   ),
                 ),
               ),
@@ -432,6 +445,13 @@ void main() {
       //   tallestColumn (3 sections) ≈ 504px
       //   availableHeight=900 → 504 <= 1035 (tolerance OK) and 504 <= 907 (useful OK)
       //   → columns-2.
+      //
+      // Re-tuned 2026-08-12: same story as the dominant-section fixture
+      // above -- the resolved (regular) 600px-breakpoint metrics are
+      // considerably tighter than SongReaderMetrics.legacy, so this
+      // fixture's real single-column height (probed empirically:
+      // single-column fits at availableHeight>=~850) dropped below the old
+      // 900 threshold. 800 sits below the new threshold with margin.
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -445,7 +465,7 @@ void main() {
                   viewMode: SongReaderViewMode.chordsAndLyrics,
                   sharedFontScale: 1,
                   columnCount: 2,
-                  availableHeight: 900,
+                  availableHeight: 800,
                 ),
               ),
             ),
@@ -469,6 +489,20 @@ void main() {
   testWidgets('counts the injected capo directive in column height', (
     tester,
   ) async {
+    // Re-tuned 2026-08-12: this fixture's total content (a leading directive
+    // plus two empty section headers) is smaller and more evenly balanced
+    // between the directive block and the two-header block under the
+    // resolved (regular) 600px-breakpoint metrics than under
+    // SongReaderMetrics.legacy (directive 36+sectionGap vs. legacy's larger
+    // sectionGap/headerHeight made the two-column split too lopsided to pass
+    // the tolerance/balance guards in resolveFlowLayout; the tighter regular
+    // metrics narrow that gap enough that the split now passes at the old
+    // availableHeight=70, flipping the result from columns-1 to columns-2).
+    // Probed empirically: the flip is between availableHeight=60 (still
+    // columns-1) and 70 (columns-2). 50 sits below that threshold with
+    // margin, restoring the fallback-to-one-column path this test exists to
+    // exercise while still charging the capo directive's own height toward
+    // the decision.
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -495,7 +529,7 @@ void main() {
               viewMode: SongReaderViewMode.chordsAndLyrics,
               sharedFontScale: 1,
               columnCount: 2,
-              availableHeight: 70,
+              availableHeight: 50,
             ),
           ),
         ),
@@ -510,5 +544,67 @@ void main() {
       find.byKey(const Key('song-reader-section-grid-columns-2')),
       findsNothing,
     );
+  });
+
+  testWidgets('section grid spaces blocks with the reader metrics', (
+    tester,
+  ) async {
+    // Pins the renderer's gaps to the SAME numbers the estimator charges.
+    // Before this test the grid hardcoded 12 after a header and 10 after a
+    // line, while the estimator carried them inside headerHeight/lineGap:
+    // two definitions of one number, which is exactly how estimator drift
+    // starts.
+    //
+    // Re-tuned 2026-08-12: this used to compare against
+    // SongReaderMetrics.legacy directly, which happened to equal the
+    // resolved metrics before the 600px type-scale breakpoint existed. Now
+    // that ReaderTheme.of(context) resolves a breakpoint-dependent metrics
+    // set (the default test viewport is >=600px wide, so this renders with
+    // the "regular" set: sectionLabelToLineGap=4, lineGap=6 -- both smaller
+    // than legacy's 12/10), comparing against the legacy constant is exactly
+    // the same "two definitions of one number" drift this test exists to
+    // catch. Read the SAME resolved metrics the widget rendered with instead.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SongReaderSectionGrid(
+            sections: [
+              SongReaderSectionProjection(
+                kind: SongSectionKind.verse,
+                label: 'Verse',
+                number: 1,
+                isUnknown: false,
+                lines: [
+                  SongReaderLyricLineProjection(
+                    segments: const [
+                      SongReaderSegmentProjection(
+                        displayChord: 'C',
+                        text: 'hello world',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            sharedFontScale: 1,
+            columnCount: 1,
+            availableHeight: 800,
+          ),
+        ),
+      ),
+    );
+
+    final gaps = tester
+        .widgetList<SizedBox>(find.byType(SizedBox))
+        .map((box) => box.height)
+        .whereType<double>()
+        .toSet();
+
+    final metrics = ReaderTheme.of(
+      tester.element(find.byType(SongReaderSectionGrid)),
+    ).metrics;
+    expect(gaps, contains(metrics.sectionLabelToLineGap));
+    expect(gaps, contains(metrics.lineGap));
   });
 }

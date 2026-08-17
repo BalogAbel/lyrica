@@ -47,7 +47,10 @@ class SongReaderBodyShell extends StatelessWidget {
   });
 
   static const _contentWidth = 960.0;
-  static const _contentPadding = EdgeInsets.all(24);
+  static const _contentPadding = EdgeInsets.symmetric(
+    horizontal: 12,
+    vertical: 14,
+  );
 
   final bool isResolvingCatalogContext;
   final AsyncValue<SongReaderResult> readerAsync;

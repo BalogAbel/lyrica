@@ -92,27 +92,46 @@ class SongReaderFitTextScale {
   }
 }
 
-// Height constants shared by the section grid and the fit-scale calculator.
-const double sectionGap = 20.0;
-const double headerHeight = 40.0;
-const double lineGap = 10.0;
 const double characterWidthEstimate = 10.0;
-const double chordRowHeight = 20.0;
-const double lyricRowHeight = 24.0;
-const double directiveLineHeight = 36.0;
-const double tabBlockVerticalPadding = 16.0;
 
-/// `SongLineView`'s own `Padding(padding: const EdgeInsets.only(bottom: 2))`
-/// (widgets/song_line_view.dart), which wraps every lyric line's `Wrap` and is
-/// therefore part of the widget's measured render height -- but was never
-/// added on the estimate side. Measured 2026-07-28: the "chord-only
-/// instrumental bar" per-line fixture rendered at 122px against an estimate
-/// of 120px, a 2px shortfall that reproduced exactly this padding (the
-/// fixture has no lyric-text word-wrap in play at all, so it isolates this
-/// gap from the word-wrap-count fix above). This is not a "just in case"
-/// safety margin: it is this literal, already-present padding value, charged
-/// once per lyric line to match what the widget actually adds.
-const double lineWidgetBottomPadding = 2.0;
+/// Real Flutter text layout rounds a Text's per-line height to a whole
+/// logical pixel (verified by a `TextPainter` probe: at fontSize 27.1875 --
+/// a chord label scaled by a non-linear ambient text scaler -- with `height:
+/// 1.2`, the naive product `27.1875 * 1.2 = 32.625` renders as a real
+/// single-line height of exactly `33.0`, and this rounds PER LINE, not once
+/// over the whole wrapped block: a real two-line wrap of the same style
+/// measures `66.0 == 2 * 33.0`, not `round(2 * 32.625) == 65.0`). Multiplying
+/// a flat row-height metric constant by [SongReaderFitTextScale.factorFor]'s
+/// scale ratio, as [_segmentRowHeight] does for the chord and lyric rows,
+/// therefore under-estimates whenever that product's fractional part rounds
+/// UP in the real render -- exactly the "estimate below render" failure this
+/// file exists to prevent (measured on the reviewer's chord-only
+/// instrumental-bar fixture under a non-linear scaler: rendered=278
+/// estimated=275, a 3px shortfall traced to exactly this -- 8 wrapped chord
+/// rows each shorted by 0.375px between the naive 32.625 and the real 33.0).
+///
+/// `round(x)` (whatever specific rounding rule the host text engine uses --
+/// round-half-up, round-half-even, or anything else) always equals either
+/// `floor(x)` or `ceil(x)`, so `round(x) <= ceil(x)` for every `x` and every
+/// rounding rule at once. Ceiling the modeled per-line height is therefore a
+/// safe upper bound over any such rule, not a fit to this one probed data
+/// point, and it can only ever ADD to an estimate (a per-line product that is
+/// already a whole pixel, e.g. every unscaled row-height constant in
+/// [SongReaderMetrics] at `factor == 1.0`, is unaffected: `ceil` of an
+/// integer is itself) -- never subtract, so this can only move estimates UP
+/// or leave them unchanged, never below what any currently-passing fixture
+/// measures.
+///
+/// Used by every branch that charges a flat row-height metric times an
+/// ambient scale factor -- chord/lyric rows (`_segmentRowHeight`), comment
+/// and tab rows, inline and leading directive rows, and section-header rows
+/// (`_lineItemHeight`, `flowBlockHeight`, `estimateSectionHeight`) -- not
+/// only the chord/lyric case that first surfaced the bug: the rounding
+/// mechanism this guards against applies to real Flutter `Text` layout
+/// generally, not to any one style.
+double _scaledRowHeight(double baseRowHeight, double factor) {
+  return (baseRowHeight * factor).ceilToDouble();
+}
 
 /// Bounds applied to the caller's column width before it is used as the
 /// estimator's `effectiveLineWidth`.
@@ -253,10 +272,12 @@ List<FlowBlock> buildFlowBlocks({
     final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
 
     if (hasHeader) {
-      // Mirrors song_reader_section_grid.dart's `_sectionLabel`.
-      final headerLabel = section.number == null
-          ? section.label
-          : '${section.label} ${section.number}';
+      // The drawn string -- see songReaderSectionLabelText's doc comment for
+      // why uppercase must be modelled here, not the source label.
+      final headerLabel = songReaderSectionLabelText(
+        section.label,
+        section.number,
+      );
       // The header block is the section start; it carries sectionGap.
       result.add(
         FlowBlock(
@@ -338,10 +359,16 @@ double _segmentPixelWidth(
   required double chordCharWidth,
   required double lyricFactor,
   required double chordFactor,
+  required double chordChipHorizontalPadding,
 }) {
   final lyricWidth = segment.text.length * lyricCharWidth * lyricFactor;
   final chordWidth = (showChords && segment.displayChord != null)
-      ? segment.displayChord!.length * chordCharWidth * chordFactor
+      // The chip's horizontal padding is part of what the label occupies in
+      // the render (song_line_view.dart wraps the Text in a Container with
+      // EdgeInsets.symmetric(horizontal: ...)). Omitting it here lets a chord
+      // that wraps on screen fit in the estimate -- an under-estimate.
+      ? segment.displayChord!.length * chordCharWidth * chordFactor +
+            2 * chordChipHorizontalPadding
       : 0.0;
   return lyricWidth > chordWidth ? lyricWidth : chordWidth;
 }
@@ -575,12 +602,24 @@ int _greedyWrapLineCount({
     final wordWidth = word.length * charWidth;
 
     if (wordWidth > effectiveLineWidth) {
-      // A single word longer than the line occupies
-      // ceil(wordWidth / effectiveLineWidth) lines on its own -- flush
-      // whatever was accumulating on the current line first (it does not
-      // share a line with this oversized word).
+      // A single word longer than the line occupies several lines on its
+      // own -- flush whatever was accumulating on the current line first
+      // (it does not share a line with this oversized word).
       flushLine();
-      lineCount += (wordWidth / effectiveLineWidth).ceil();
+
+      // Real line breaking cannot split a glyph: an unbreakable word is cut
+      // at CHARACTER boundaries, so a line holds floor(lineWidth / charWidth)
+      // whole characters, not lineWidth/charWidth of them. The continuous
+      // division `(wordWidth / effectiveLineWidth).ceil()` models a line
+      // that can end mid-glyph, packing more of the word per line than the
+      // renderer manages and under-counting the rows -- the one direction
+      // this file's `estimated >= rendered` contract forbids. Quantising
+      // can only ever raise the count: for any positive charWidth,
+      // ceil(len / floor(w / cw)) >= ceil(len * cw / w).
+      final charsPerLine = (effectiveLineWidth / charWidth).floor();
+      lineCount += charsPerLine < 1
+          ? word.length
+          : (word.length / charsPerLine).ceil();
       continue;
     }
 
@@ -657,6 +696,7 @@ double _segmentRowHeight({
   required double chordCharWidth,
   required double lyricFactor,
   required double chordFactor,
+  required SongReaderMetrics metrics,
 }) {
   final hasChord = showChords && segment.displayChord != null;
   final hasLyric = segment.text.isNotEmpty;
@@ -673,14 +713,26 @@ double _segmentRowHeight({
   final chordRows = hasChord
       ? _wordWrapLineCount(
           text: segment.displayChord!,
-          effectiveLineWidth: effectiveLineWidth,
+          // The chip's padding eats into the width the LABEL itself gets.
+          // Narrowing the modelled width can only add rows (safe); inflating
+          // charWidth instead would mis-model the per-character advance.
+          effectiveLineWidth:
+              (effectiveLineWidth - 2 * metrics.chordChipHorizontalPadding)
+                  .clamp(minEffectiveLineWidth, maxEffectiveLineWidth),
           charWidth: chordCharWidth * chordFactor,
         )
       : 0;
 
-  final chordH = chordRows * chordRowHeight * chordFactor;
-  final lyricH = lyricLines * lyricRowHeight * lyricFactor;
-  final gap = (hasChord && hasLyric) ? chordToLyricGap : 0.0;
+  // Each wrapped row's real rendered height rounds to a whole pixel
+  // independently (see _scaledRowHeight's doc), so the per-row height must
+  // be ceiled BEFORE multiplying by the row count -- ceiling the SUM instead
+  // would only guard the total, not the same per-line rounding the real
+  // multi-row render applies to every individual row.
+  final chordH =
+      chordRows * _scaledRowHeight(metrics.chordRowHeight, chordFactor);
+  final lyricH =
+      lyricLines * _scaledRowHeight(metrics.lyricRowHeight, lyricFactor);
+  final gap = (hasChord && hasLyric) ? metrics.chordToLyricGap : 0.0;
   return chordH + gap + lyricH;
 }
 
@@ -692,6 +744,7 @@ double _lineItemHeight({
   double lyricCharWidth = characterWidthEstimate,
   double chordCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  required SongReaderMetrics metrics,
 }) {
   final effectiveLineWidth = columnWidth.clamp(
     minEffectiveLineWidth,
@@ -761,7 +814,7 @@ double _lineItemHeight({
       // chordOnlySpacing between its children instead of the 0-spacing used
       // for word groups; interGroupSpacing mirrors that gap between groups
       // packed into the same run.
-      final interGroupSpacing = hasLyrics ? 0.0 : chordOnlySpacing;
+      final interGroupSpacing = hasLyrics ? 0.0 : metrics.chordOnlySpacing;
 
       // Per run: the pixel height contributed by its TALLEST segment (Wrap
       // sizes a run to its tallest child), via _segmentRowHeight -- which
@@ -799,6 +852,7 @@ double _lineItemHeight({
                 chordCharWidth: chordCharWidth,
                 lyricFactor: lyricFactor,
                 chordFactor: chordFactor,
+                chordChipHorizontalPadding: metrics.chordChipHorizontalPadding,
               ),
         );
 
@@ -832,6 +886,7 @@ double _lineItemHeight({
               chordCharWidth: chordCharWidth,
               lyricFactor: lyricFactor,
               chordFactor: chordFactor,
+              chordChipHorizontalPadding: metrics.chordChipHorizontalPadding,
             );
             final segHeight = _segmentRowHeight(
               segment: segment,
@@ -841,6 +896,7 @@ double _lineItemHeight({
               chordCharWidth: chordCharWidth,
               lyricFactor: lyricFactor,
               chordFactor: chordFactor,
+              metrics: metrics,
             );
 
             // A segment wider than a whole run still occupies its own run
@@ -884,6 +940,7 @@ double _lineItemHeight({
             chordCharWidth: chordCharWidth,
             lyricFactor: lyricFactor,
             chordFactor: chordFactor,
+            metrics: metrics,
           );
           return max > h ? max : h;
         });
@@ -911,15 +968,15 @@ double _lineItemHeight({
         // separator line" convention (a Wrap with no children still takes
         // the space allotted by lineGap below; the extra lyric row here
         // preserves prior behavior for this edge case).
-        runHeights = [lyricRowHeight * lyricFactor];
+        runHeights = [metrics.lyricRowHeight * lyricFactor];
       }
 
       final runsHeight = runHeights.fold<double>(0.0, (a, b) => a + b);
 
       return runsHeight +
-          (runHeights.length - 1) * lineRunSpacing +
-          lineGap +
-          lineWidgetBottomPadding;
+          (runHeights.length - 1) * metrics.lineRunSpacing +
+          metrics.lineGap +
+          metrics.lineWidgetBottomPadding;
     case SongReaderCommentProjection():
       // CommentLineView (widgets/comment_line_view.dart) renders at
       // `theme.textTheme.bodyMedium` (14px, italic), scaled by
@@ -947,7 +1004,9 @@ double _lineItemHeight({
         effectiveLineWidth: effectiveLineWidth,
         charWidth: lyricCharWidth * lyricFactor,
       );
-      return commentWrapCount * (lyricRowHeight * lyricFactor) + lineGap;
+      return commentWrapCount *
+              _scaledRowHeight(metrics.lyricRowHeight, lyricFactor) +
+          metrics.lineGap;
     case SongReaderTabProjection():
       // TabBlockView (widgets/tab_block_view.dart) draws its raw lines
       // inside a `SingleChildScrollView(scrollDirection: Axis.horizontal)`:
@@ -957,9 +1016,10 @@ double _lineItemHeight({
       // tab lines at a narrow width" case), so one estimated row per raw
       // line -- with no word-wrap or even-division growth possible -- is
       // already exact, not an approximation to tighten.
-      return item.rawLines.length * (lyricRowHeight * lyricFactor) +
-          lineGap +
-          tabBlockVerticalPadding;
+      return item.rawLines.length *
+              _scaledRowHeight(metrics.lyricRowHeight, lyricFactor) +
+          metrics.lineGap +
+          metrics.tabBlockVerticalPadding;
     case SongReaderDirectiveProjection():
       // DirectiveLineView (widgets/directive_line_view.dart) renders this
       // INLINE directive at `theme.textTheme.labelMedium`, with no
@@ -996,7 +1056,8 @@ double _lineItemHeight({
         effectiveLineWidth: effectiveLineWidth,
         charWidth: chordCharWidth * chordFactorAt1,
       );
-      return inlineDirectiveLines * directiveLineHeight * inlineDirectiveFactor;
+      return inlineDirectiveLines *
+          _scaledRowHeight(metrics.directiveLineHeight, inlineDirectiveFactor);
   }
 }
 
@@ -1012,6 +1073,9 @@ double _lineItemHeight({
 ///   - [FlowBlockKind.line] with `isSectionStart=true` → line height + sectionGap
 ///     (only for unlabeled sections whose first line is the section start)
 ///   - [FlowBlockKind.line] with `isSectionStart=false` → line height only
+/// [metrics] carries every row height and gap shared with the renderer;
+/// defaults to [SongReaderMetrics.legacy] so existing callers keep today's
+/// exact numbers, same technique as [textScale] above.
 double flowBlockHeight({
   required FlowBlock block,
   required SongReaderViewMode viewMode,
@@ -1021,6 +1085,7 @@ double flowBlockHeight({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   final effectiveLineWidth = columnWidth.clamp(
     minEffectiveLineWidth,
@@ -1060,9 +1125,11 @@ double flowBlockHeight({
         charWidth: chordCharWidth * leadingDirectiveFactor,
       );
       return leadingDirectiveLines *
-              directiveLineHeight *
-              leadingDirectiveFactor +
-          sectionGap;
+              _scaledRowHeight(
+                metrics.directiveLineHeight,
+                leadingDirectiveFactor,
+              ) +
+          metrics.sectionGap;
     case FlowBlockKind.sectionHeader:
       // _buildHeaderWidget (song_reader_section_grid.dart) renders at
       // `theme.textTheme.titleLarge`, also never scaled by
@@ -1090,7 +1157,9 @@ double flowBlockHeight({
         effectiveLineWidth: effectiveLineWidth,
         charWidth: headerCharWidth * headerFactor,
       );
-      return headerLines * headerHeight * headerFactor + sectionGap;
+      return headerLines *
+              _scaledRowHeight(metrics.headerHeight, headerFactor) +
+          metrics.sectionGap;
     case FlowBlockKind.line:
       final lineH = _lineItemHeight(
         item: block.line!,
@@ -1100,9 +1169,10 @@ double flowBlockHeight({
         lyricCharWidth: lyricCharWidth,
         chordCharWidth: chordCharWidth,
         textScale: textScale,
+        metrics: metrics,
       );
       // For unlabeled sections the first line carries the sectionGap.
-      return block.isSectionStart ? lineH + sectionGap : lineH;
+      return block.isSectionStart ? lineH + metrics.sectionGap : lineH;
   }
 }
 
@@ -1241,6 +1311,9 @@ FlowLayout resolveFlowLayout({
 ///
 /// Delegates per-line height to [_lineItemHeight] so the calculation is
 /// identical to [flowBlockHeight]'s line branch.
+/// [metrics] carries every row height and gap shared with the renderer;
+/// defaults to [SongReaderMetrics.legacy] so existing callers keep today's
+/// exact numbers, same technique as [textScale] above.
 double estimateSectionHeight({
   required SongReaderSectionProjection section,
   required SongReaderViewMode viewMode,
@@ -1250,6 +1323,7 @@ double estimateSectionHeight({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   final hasHeader = !(section.label == 'Unlabeled' && section.number == null);
   // Kept consistent with flowBlockHeight's FlowBlockKind.sectionHeader case
@@ -1257,9 +1331,12 @@ double estimateSectionHeight({
   // flat constant): mirrors song_reader_section_grid.dart's `_sectionLabel`.
   double h;
   if (hasHeader) {
-    final headerLabel = section.number == null
-        ? section.label
-        : '${section.label} ${section.number}';
+    // The drawn string -- see songReaderSectionLabelText's doc comment for
+    // why uppercase must be modelled here, not the source label.
+    final headerLabel = songReaderSectionLabelText(
+      section.label,
+      section.number,
+    );
     final headerFactor = textScale.factorFor(textScale.headerBaseFontSize, 1.0);
     final headerLines = _wordWrapLineCount(
       text: headerLabel,
@@ -1269,7 +1346,7 @@ double estimateSectionHeight({
       ),
       charWidth: headerCharWidth * headerFactor,
     );
-    h = headerLines * headerHeight * headerFactor;
+    h = headerLines * _scaledRowHeight(metrics.headerHeight, headerFactor);
   } else {
     h = 0.0;
   }
@@ -1283,13 +1360,17 @@ double estimateSectionHeight({
       lyricCharWidth: lyricCharWidth,
       chordCharWidth: chordCharWidth,
       textScale: textScale,
+      metrics: metrics,
     );
   }
-  return h + linesHeight + sectionGap;
+  return h + linesHeight + metrics.sectionGap;
 }
 
 /// Returns the estimated total pixel height of [sections] stacked in a single
 /// column at the given [fontScale] and [availableWidth].
+/// [metrics] carries every row height and gap shared with the renderer;
+/// defaults to [SongReaderMetrics.legacy] so existing callers keep today's
+/// exact numbers, same technique as [textScale] above.
 double estimateSongContentHeight({
   required List<SongReaderSectionProjection> sections,
   required SongReaderViewMode viewMode,
@@ -1299,6 +1380,7 @@ double estimateSongContentHeight({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   return sections.fold<double>(
     0.0,
@@ -1313,6 +1395,7 @@ double estimateSongContentHeight({
           chordCharWidth: chordCharWidth,
           headerCharWidth: headerCharWidth,
           textScale: textScale,
+          metrics: metrics,
         ),
   );
 }
@@ -1353,6 +1436,7 @@ FlowLayout resolveFlowLayoutForSections({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   final blocks = buildFlowBlocks(
     sections: sections,
@@ -1370,6 +1454,7 @@ FlowLayout resolveFlowLayoutForSections({
           chordCharWidth: chordCharWidth,
           headerCharWidth: headerCharWidth,
           textScale: textScale,
+          metrics: metrics,
         ),
       )
       .toList(growable: false);
@@ -1413,6 +1498,7 @@ RenderedHeightEstimate estimateRenderedLayout({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   // Single-column total: blocks at full width.
   //
@@ -1441,6 +1527,7 @@ RenderedHeightEstimate estimateRenderedLayout({
           chordCharWidth: chordCharWidth,
           headerCharWidth: headerCharWidth,
           textScale: textScale,
+          metrics: metrics,
         ),
       )
       .fold<double>(0.0, (a, b) => a + b);
@@ -1452,7 +1539,7 @@ RenderedHeightEstimate estimateRenderedLayout({
   }
 
   // Two-column candidate: blocks at tile width.
-  final tileWidth = (availableWidth - sectionGap) / 2;
+  final tileWidth = (availableWidth - metrics.sectionGap) / 2;
   final layout = resolveFlowLayoutForSections(
     sections: sections,
     viewMode: viewMode,
@@ -1466,6 +1553,7 @@ RenderedHeightEstimate estimateRenderedLayout({
     chordCharWidth: chordCharWidth,
     headerCharWidth: headerCharWidth,
     textScale: textScale,
+    metrics: metrics,
   );
 
   if (layout.columnCount == 2) {
@@ -1501,6 +1589,7 @@ double resolveFitFontScale({
   double chordCharWidth = characterWidthEstimate,
   double headerCharWidth = characterWidthEstimate,
   SongReaderFitTextScale textScale = SongReaderFitTextScale.identity,
+  SongReaderMetrics metrics = SongReaderMetrics.legacy,
 }) {
   bool fits(double scale) =>
       estimateRenderedLayout(
@@ -1516,6 +1605,7 @@ double resolveFitFontScale({
         chordCharWidth: chordCharWidth,
         headerCharWidth: headerCharWidth,
         textScale: textScale,
+        metrics: metrics,
       ).height <=
       availableHeight;
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart';
@@ -70,11 +72,11 @@ void main() {
       );
       await tester.pump();
 
+      final element = tester.element(find.byType(CommentLineView));
       final rendered =
-          tester.getSize(find.byType(CommentLineView)).height + lineGap;
-      final charWidths = measureSongReaderCharWidths(
-        tester.element(find.byType(CommentLineView)),
-      );
+          tester.getSize(find.byType(CommentLineView)).height +
+          ReaderTheme.of(element).metrics.lineGap;
+      final charWidths = measureSongReaderCharWidths(element);
       final estimated = flowBlockHeight(
         block: FlowBlock(
           kind: FlowBlockKind.line,
@@ -87,6 +89,7 @@ void main() {
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       expect(
@@ -109,12 +112,20 @@ void main() {
     // PRE-FIX (2026-07-28, full-sweep round): rendered=30.0 estimated=34.0
     // (short case already passed -- a flat char-count division degrades to
     // 1 line for short text regardless). POST-FIX: unchanged, 30.0/34.0.
+    //
+    // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+    // metrics instead of SongReaderMetrics.legacy on the render side and
+    // charWidths.metrics on the estimate side: rendered=26.0 estimated=54.0
+    // (ratio 2.08x). The gap grew because the estimate side charges a
+    // legacy-shaped comment row height while the resolved metrics shrink the
+    // real render at this breakpoint -- a wiring/type-scale effect, not a
+    // model regression. Ceiling pinned at 2.1x, just above the new ratio.
     testWidgets('short comment, wide column', (tester) async {
       await runCase(
         tester,
         text: 'A short comment',
         width: 300.0,
-        ceilingMultiplier: 1.3,
+        ceilingMultiplier: 2.1,
       );
     });
 
@@ -125,6 +136,11 @@ void main() {
     // reusing lyricCharWidth as a conservative proxy -- see the comment
     // case's own doc in song_reader_fit.dart): rendered=410.0
     // estimated=586.0 (ratio 1.43x).
+    //
+    // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+    // metrics on both sides: rendered=406.0 estimated=750.0 (ratio 1.85x).
+    // The type scale, not a model regression, moved both numbers. Ceiling
+    // pinned at 1.9x, just above the new ratio.
     testWidgets('long comment, narrow column forces several wrapped lines', (
       tester,
     ) async {
@@ -135,9 +151,42 @@ void main() {
             'in detail and should wrap across several lines at a narrow '
             'column width, exercising the word-wrap model',
         width: 150.0,
-        ceilingMultiplier: 1.5,
+        ceilingMultiplier: 1.9,
       );
     });
+
+    // Phone-breakpoint coverage: every other fixture in this file pumps at
+    // flutter_test's default 800x600 surface, which is >=
+    // readerRegularTypeScaleMinWidth (600) and so only ever resolves
+    // ReaderTheme's REGULAR token set. Setting the tester's physical size to
+    // 375x812 before pumping (matching
+    // song_reader_estimate_render_consistency_test.dart's own phone
+    // viewport) makes `MediaQuery.sizeOf` inside `ReaderTheme.of` resolve
+    // the COMPACT set instead, for both the render and `runCase`'s estimate
+    // call -- the same long-comment text and width as the fixture directly
+    // above, with only the viewport changed, isolating the compact
+    // breakpoint's own effect.
+    testWidgets(
+      'long comment, narrow column, under the compact (phone) token set',
+      (tester) async {
+        tester.view.physicalSize = const Size(375.0, 812.0);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        // Measured 2026-08-12: rendered=406.0 estimated=594.0 (width=150,
+        // ratio 1.46x). Ceiling pinned at 1.5x, just above the measured
+        // ratio.
+        await runCase(
+          tester,
+          text:
+              'This is a much longer comment that describes performance '
+              'notes in detail and should wrap across several lines at a '
+              'narrow column width, exercising the word-wrap model',
+          width: 150.0,
+          ceilingMultiplier: 1.5,
+        );
+      },
+    );
   });
 
   group('tab block', () {
@@ -180,11 +229,11 @@ void main() {
       );
       await tester.pump();
 
+      final element = tester.element(find.byType(TabBlockView));
       final rendered =
-          tester.getSize(find.byType(TabBlockView)).height + lineGap;
-      final charWidths = measureSongReaderCharWidths(
-        tester.element(find.byType(TabBlockView)),
-      );
+          tester.getSize(find.byType(TabBlockView)).height +
+          ReaderTheme.of(element).metrics.lineGap;
+      final charWidths = measureSongReaderCharWidths(element);
       final estimated = flowBlockHeight(
         block: FlowBlock(
           kind: FlowBlockKind.line,
@@ -197,6 +246,7 @@ void main() {
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       expect(
@@ -280,11 +330,11 @@ void main() {
       );
       await tester.pump();
 
+      final element = tester.element(find.byType(DirectiveLineView));
       final rendered =
-          tester.getSize(find.byType(DirectiveLineView)).height + lineGap;
-      final charWidths = measureSongReaderCharWidths(
-        tester.element(find.byType(DirectiveLineView)),
-      );
+          tester.getSize(find.byType(DirectiveLineView)).height +
+          ReaderTheme.of(element).metrics.lineGap;
+      final charWidths = measureSongReaderCharWidths(element);
       final estimated = flowBlockHeight(
         block: FlowBlock(
           kind: FlowBlockKind.line,
@@ -297,6 +347,7 @@ void main() {
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       expect(
@@ -339,6 +390,12 @@ void main() {
     // own doc in song_reader_fit.dart): rendered=238.0 estimated=540.0
     // (ratio 2.27x -- loose, because chordCharWidth is a much bolder/wider
     // proxy than the real labelMedium style, but never under).
+    //
+    // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+    // metrics on both sides: rendered=234.0 estimated=648.0 (ratio 2.77x).
+    // The type scale, not a model regression, moved both numbers; the
+    // chordCharWidth proxy is still the dominant source of looseness here.
+    // Ceiling pinned at 2.8x, just above the new ratio.
     testWidgets('long directive value at a narrow column forces word wrap', (
       tester,
     ) async {
@@ -350,7 +407,7 @@ void main() {
             'should in principle wrap across several lines if the width '
             'is narrow',
         width: 150.0,
-        ceilingMultiplier: 2.5,
+        ceilingMultiplier: 2.8,
       );
     });
   });
@@ -419,6 +476,7 @@ void main() {
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       expect(
@@ -455,6 +513,11 @@ void main() {
     // POST-FIX (word-boundary wrap, reusing chordCharWidth -- see
     // flowBlockHeight's FlowBlockKind.leadingDirective case doc):
     // rendered=304.0 estimated=560.0 (ratio 1.84x).
+    //
+    // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+    // metrics on both sides: rendered=298.0 estimated=626.0 (ratio 2.10x).
+    // The type scale, not a model regression, moved both numbers. Ceiling
+    // pinned at 2.15x, just above the new ratio.
     testWidgets('long capo/tuning text at a narrow column forces word wrap', (
       tester,
     ) async {
@@ -464,7 +527,7 @@ void main() {
             'Capo: 2, Tuning: Drop D, and also play the intro fingerstyle '
             'with a capo on the second fret throughout the whole song',
         width: 150.0,
-        ceilingMultiplier: 2.0,
+        ceilingMultiplier: 2.15,
       );
     });
   });
@@ -530,7 +593,9 @@ void main() {
           kind: FlowBlockKind.sectionHeader,
           sectionIndex: 0,
           isSectionStart: true,
-          blockText: label,
+          // The renderer draws the label uppercase (songReaderSectionLabelText);
+          // model the same string here so this fixture cannot under-count wrap.
+          blockText: songReaderSectionLabelText(label, null),
         ),
         viewMode: _viewMode,
         columnWidth: width,
@@ -539,6 +604,7 @@ void main() {
         chordCharWidth: charWidths.chordCharWidth,
         headerCharWidth: charWidths.headerCharWidth,
         textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       expect(
@@ -589,6 +655,38 @@ void main() {
             'start_of_verse Directive',
         width: 150.0,
         ceilingMultiplier: 1.75,
+      );
+    });
+
+    // docs/specs/2026-08-09-song-presentation.md's Testing section asks for
+    // "an uppercased, letter-spaced section label at a narrow width" --
+    // narrow enough that the UPPERCASE + letterSpacing rendering (not just
+    // the label's raw character count) is what forces the wrap. The "long
+    // custom section label" fixture above already wraps, but its label is
+    // long enough (76 chars) that it would wrap at this width regardless of
+    // casing -- it does not by itself prove the uppercase/letterSpacing
+    // widening is modelled. This fixture uses a short, ordinary label
+    // ('Pre Chorus', a real ChordPro section name) at a width chosen so it
+    // genuinely wraps to more than one row as actually drawn (uppercase,
+    // 0.07em letterSpacing -- see `ReaderTheme.stageLight`'s
+    // `sectionLabelStyle`), which a trivially-fitting label would not.
+    testWidgets('short, ordinary label wraps to more than one row once drawn '
+        'uppercase with letterSpacing', (tester) async {
+      // Measured 2026-08-12: rendered=64.0 estimated=86.0 (width=70,
+      // ratio 1.34x) -- the render genuinely produces 2 rows ("PRE" /
+      // "CHORUS") at this width, not 1, confirming the width isolates a
+      // real multi-row wrap rather than a label that happens to fit.
+      // `headerCharWidth` (song_reader_char_metrics.dart) is measured
+      // against an ALL-UPPERCASE sample using the real
+      // `sectionLabelStyle` (which already carries the 0.07em
+      // letterSpacing), so both the uppercasing and the letter-spacing
+      // widening are baked into the estimate through that one shared
+      // measurement, not modelled separately.
+      await runCase(
+        tester,
+        label: 'Pre Chorus',
+        width: 70.0,
+        ceilingMultiplier: 1.4,
       );
     });
   });

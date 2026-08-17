@@ -294,7 +294,49 @@ SongReaderProjection _buildChordHeavyFixtureProjection({
   );
 }
 
-const _contentPadding = EdgeInsets.all(24);
+// A single short line, deliberately narrower than the available column.
+//
+// Used ONLY by 'render grid width equals the fit calculator's width' below.
+// _buildFixtureProjection's lines are long enough to wrap, and a line that
+// wraps forces song_line_view.dart's over-wide-group ConstrainedBox fallback
+// to occupy the FULL available width regardless of whether the surrounding
+// Column is shrink-wrapped or tight -- which is exactly what let the shrink-
+// wrap bug this test exists to catch go unnoticed for as long as it did (see
+// the re-enable comment on that test). A fixture that never wraps is the only
+// one this specific check can trust: under a shrink-wrap, the render grid
+// narrows to this one short line's width; under the fixed-width layout, it
+// still equals the full padding-adjusted column width.
+SongReaderProjection _buildNarrowContentFixtureProjection() {
+  final sections = <SongSection>[
+    SongSection(
+      kind: SongSectionKind.verse,
+      label: 'Verse',
+      number: 1,
+      lines: [
+        LyricLine(
+          segments: const [LyricSegment(leadingChord: 'G', text: 'Hi')],
+        ),
+      ],
+    ),
+  ];
+
+  return SongReaderProjection(
+    song: ParsedSong(
+      title: 'Narrow Content Fixture',
+      sourceKey: 'G',
+      sections: sections,
+      diagnostics: const [],
+    ),
+    state: SongReaderState(sharedFontScale: 1.0),
+  );
+}
+
+// Mirrors song_reader_shell.dart's `_contentPadding`. It must track the real
+// shell: this suite checks that the width the render grid gets equals the width
+// the fit calculator models, and both are derived from this padding -- pinning
+// a value the app no longer uses would make the check self-consistent but
+// meaningless.
+const _contentPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 14);
 const _maxContentWidth = 960.0;
 
 Widget _buildSurface({
@@ -325,6 +367,14 @@ Widget _buildSurface({
 }
 
 void main() {
+  // Phone-breakpoint coverage note: every fixture in this file already pumps
+  // at this 375-logical-px viewport, which is BELOW
+  // readerRegularTypeScaleMinWidth (600) -- so every fixture here already
+  // resolves ReaderTheme's COMPACT (phone) token set, not the regular one.
+  // This is the opposite gap from the other two consistency suites (which
+  // both pump at flutter_test's default 800x600 and so only ever exercised
+  // the regular set until this task's additions there): this file needed no
+  // new phone-width fixture, since the whole file already is one.
   const viewportWidth = 375.0;
   const viewportHeight = 812.0;
 
@@ -398,6 +448,12 @@ void main() {
           maxScale: SongReaderState.maxSharedFontScale,
           lyricCharWidth: charWidths.lyricCharWidth,
           chordCharWidth: charWidths.chordCharWidth,
+          // Must match every argument the widget's own double-tap handler
+          // passes (song_reader_compact_surface.dart's _handleDoubleTap),
+          // otherwise this "expected" value is computed from a different
+          // resolved metrics/textScale than the real call under test.
+          textScale: charWidths.textScale,
+          metrics: charWidths.metrics,
         );
         expect(
           expectedFit,
@@ -441,7 +497,7 @@ void main() {
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.reset);
 
-        final projection = _buildFixtureProjection();
+        final projection = _buildNarrowContentFixtureProjection();
 
         await tester.pumpWidget(_buildSurface(projection: projection));
         await tester.pump();
@@ -471,32 +527,31 @@ void main() {
               'calculator uses',
         );
       },
-      // KNOWN GAP, not introduced by word-boundary wrapping (PR2), only
-      // newly exposed by it: song_reader_section_grid.dart's Column
-      // (crossAxisAlignment: start), embedded under
-      // song_reader_compact_surface.dart's Center+ConstrainedBox, receives
-      // loose constraints from that Center and so shrink-wraps to its own
-      // longest rendered line rather than filling the available width --
-      // documented in docs/specs/2026-08-09-song-presentation.md,
-      // "Horizontal layout" (design decision 4), and explicitly scheduled
-      // for PR3 ("Side padding drops to 12px... the Center + ConstrainedBox
-      // shrink-wrap ... is removed").
+      // Re-enabled 2026-08-12, by the type-scale PR that removed the cause.
       //
-      // Before this PR, a line wider than the available width always hit
-      // song_line_view.dart's over-wide-group ConstrainedBox fallback,
-      // which forced that one line (and so the whole Column) to the full
-      // available width -- incidentally masking the shrink-wrap gap in
-      // this fixture. Word-boundary splitting means a group is now at most
-      // one word, so that fallback essentially never fires for ordinary
-      // prose, and greedy word-wrap essentially never lands a row at
-      // exactly the full available width by chance either -- so the mask
-      // is gone and the pre-existing gap shows here for the first time.
-      // Fixing the shrink-wrap itself is PR3's job (Horizontal layout), not
-      // this PR's (word-boundary wrapping only, no layout changes). Do not
-      // "fix" this by loosening the epsilon or hand-picking a fixture line
-      // that happens to fill the width -- re-enable once PR3 removes the
-      // shrink-wrap.
-      skip: true,
+      // This was skipped by the word-boundary-wrapping PR (#70) against a
+      // KNOWN GAP it did not introduce and was not scoped to fix:
+      // song_reader_section_grid.dart's Column (crossAxisAlignment: start),
+      // embedded under song_reader_compact_surface.dart's
+      // Center + ConstrainedBox, received LOOSE constraints from that Center
+      // and so shrink-wrapped to its own longest rendered line instead of
+      // filling the available width. That made "render grid width == fit
+      // calculator width" unholdable through no fault of the estimator.
+      //
+      // #70 only exposed it. Before that PR, a line wider than the available
+      // width always hit song_line_view.dart's over-wide-group ConstrainedBox
+      // fallback, which forced that one line -- and so the whole Column -- to
+      // the full available width, incidentally masking the shrink-wrap.
+      // Word-boundary splitting made a group at most one word, so that
+      // fallback stopped firing for ordinary prose and the mask went with it.
+      //
+      // The compact surface now gives the content a TIGHT width
+      // (`SizedBox(width: min(constraints.maxWidth, maxContentWidth))` inside
+      // a top-left `Align`), which is exactly the precondition this test was
+      // waiting on, so it is live again. It is now the assertion that pins the
+      // fixed left edge's geometric consequence: if anyone reintroduces a
+      // shrink-wrap here, the fit calculator starts modelling a width the grid
+      // never gets.
     );
 
     testWidgets('estimated content height tracks the rendered content height', (
@@ -533,6 +588,8 @@ void main() {
         fontScale: projection.sharedFontScale,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
+        textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       // ---------------------------------------------------------------
@@ -554,6 +611,16 @@ void main() {
       // contentPadding=24 all sides, fontScale=1.0:
       //   rendered=1082.0  estimated=1198.0  ratio=1.107 (10.7% over)
       // Ceiling pinned at 1.2x, just above the measured ratio.
+      //
+      // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+      // metrics and textScale on both sides (previously this call omitted
+      // both, silently comparing a resolved-metrics render against a
+      // SongReaderMetrics.legacy/identity-textScale estimate): rendered=
+      // 1066.0 estimated=1080.0 (ratio 1.013). The gap tightened -- the
+      // type scale, not a model regression -- because the estimate side now
+      // scales its row-height guesses by the same resolved metrics the
+      // render actually used, instead of the legacy constants. Ceiling
+      // pinned at 1.05x, just above the new measured ratio.
       // ---------------------------------------------------------------
       expect(
         estimated,
@@ -567,11 +634,11 @@ void main() {
 
       expect(
         estimated,
-        lessThan(rendered * 1.2),
+        lessThan(rendered * 1.05),
         reason:
             'estimateSongContentHeight must not be uselessly loose; '
             'rendered=$rendered estimated=$estimated '
-            'ceiling=${rendered * 1.2}',
+            'ceiling=${rendered * 1.05}',
       );
     });
 
@@ -606,6 +673,8 @@ void main() {
         fontScale: projection.sharedFontScale,
         lyricCharWidth: charWidths.lyricCharWidth,
         chordCharWidth: charWidths.chordCharWidth,
+        textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
       );
 
       // ---------------------------------------------------------------
@@ -629,6 +698,16 @@ void main() {
       // increase over the render is mostly lineWidgetBottomPadding across
       // its many lines. Ceiling pinned at 1.1x, comfortably above the
       // measured ratio but still tight enough to catch a real regression.
+      //
+      // Re-measured 2026-08-12, wired to the resolved (600px type-scale)
+      // metrics and textScale on both sides (previously this call omitted
+      // both, same gap as the plain fixture above): rendered=1732.0
+      // estimated=1746.0 (ratio 1.008). The type scale, not a model
+      // regression, moved both numbers substantially (this fixture's many
+      // chord-only rows are dominated by chordRowHeight, which the 600px
+      // breakpoint resizes) while keeping the estimate/render gap just as
+      // tight as before. Ceiling pinned at 1.03x, just above the new
+      // measured ratio.
       // ---------------------------------------------------------------
       expect(
         estimated,
@@ -640,11 +719,82 @@ void main() {
       );
       expect(
         estimated,
-        lessThan(rendered * 1.1),
+        lessThan(rendered * 1.03),
         reason:
             'estimateSongContentHeight must not be uselessly loose on a '
             'chord-heavy fixture too; rendered=$rendered estimated=$estimated '
-            'ceiling=${rendered * 1.1}',
+            'ceiling=${rendered * 1.03}',
+      );
+    });
+
+    testWidgets('estimated content height tracks the rendered content height '
+        'at the tablet-portrait target (834x1194)', (tester) async {
+      // Every other fixture in this file pumps at 375x812 (phone, the
+      // COMPACT token set) -- see the "Phone-breakpoint coverage note" above.
+      // 834x1194, tablet portrait, is the PRIMARY target size this type-scale
+      // change was measured against (docs/specs/2026-08-09-song-presentation.md,
+      // "Result at 834x1194: the whole reference song occupies 870px of the
+      // 1130px available"): it is the size the product owner's mockups were
+      // built at, and it resolves the REGULAR token set, which nothing else
+      // in this file exercises. A whole-song estimate/render check at this
+      // size is the single most load-bearing thing this PR must not break.
+      tester.view.physicalSize = const Size(834, 1194);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final projection = _buildFixtureProjection();
+
+      await tester.pumpWidget(_buildSurface(projection: projection));
+      await tester.pump();
+
+      final rendered = tester
+          .getSize(find.byType(SongReaderSectionGrid))
+          .height;
+      final gridWidth = tester
+          .getSize(find.byType(SongReaderSectionGrid))
+          .width;
+
+      final charWidths = measureSongReaderCharWidths(
+        tester.element(find.byType(SongReaderSectionGrid)),
+      );
+      final estimated = estimateSongContentHeight(
+        sections: projection.sections,
+        viewMode: projection.viewMode,
+        availableWidth: gridWidth,
+        fontScale: projection.sharedFontScale,
+        lyricCharWidth: charWidths.lyricCharWidth,
+        chordCharWidth: charWidths.chordCharWidth,
+        textScale: charWidths.textScale,
+        metrics: charWidths.metrics,
+      );
+
+      // ---------------------------------------------------------------
+      // One-sided contract: see the plain fixture above for why direction
+      // matters (resolveFitFontScale must never pick a scale whose estimate
+      // undershoots the real render).
+      //
+      // Measured 2026-08-13, same fixture as the plain 375x812 case above,
+      // at 834x1194 with contentPadding=12 horizontal/14 vertical (the
+      // fixed-left-edge layout) and the REGULAR (>=600px) token set:
+      //   rendered=778.0  estimated=792.0  ratio=1.018 (1.8% over)
+      // Ceiling pinned at 1.03x, just above the measured ratio.
+      // ---------------------------------------------------------------
+      expect(
+        estimated,
+        greaterThanOrEqualTo(rendered),
+        reason:
+            'estimateSongContentHeight must never fall below the rendered '
+            'content height at the tablet-portrait target; rendered=$rendered '
+            'estimated=$estimated',
+      );
+
+      expect(
+        estimated,
+        lessThan(rendered * 1.03),
+        reason:
+            'estimateSongContentHeight must not be uselessly loose at the '
+            'tablet-portrait target; rendered=$rendered estimated=$estimated '
+            'ceiling=${rendered * 1.03}',
       );
     });
   });
