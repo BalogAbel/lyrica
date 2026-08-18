@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -372,6 +373,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Taps the compact surface to reveal its chrome (top bar + control rail).
+  /// After the chrome restructure (song-presentation slice, PR4) the app bar
+  /// content -- back button, title, warnings, overflow menu -- lives inside
+  /// the compact shell's tap-revealed overlay instead of a persistent
+  /// `Scaffold.appBar`, so tests that need those controls must reveal the
+  /// chrome first, the same way a user would.
+  Future<void> revealCompactChrome(WidgetTester tester) async {
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    // A single tap while hidden still arms the surface's double-tap
+    // recognizer (it must wait to see whether a second tap follows before
+    // it can rule out a double-tap-to-fit gesture). Pump past
+    // kDoubleTapTimeout so that pending timer resolves here rather than
+    // leaking past this helper and tripping "Timer still pending" at
+    // tear-down in tests that don't otherwise settle before finishing.
+    await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+  }
+
   testWidgets('shows metadata, sections, and controls by default', (
     tester,
   ) async {
@@ -397,13 +415,19 @@ void main() {
         child: buildApp(result: buildResult()),
       );
 
-      expect(find.byType(SongReaderBottomContextBar), findsNothing);
+      // The bottom bar is always-present layout space now (spec section 6),
+      // independent of the reveal toggle -- unlike the top bar and rail
+      // below, which are the chrome this test title refers to.
+      expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
       expect(find.byType(SongReaderTitleBar), findsNothing);
       expect(find.byType(SongReaderControlBar), findsNothing);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
       expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
-      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      // The app bar (back button, overflow menu) now lives in the same
+      // tap-revealed overlay as the control rail, so it is hidden by default
+      // too -- this is the behaviour the chrome restructure introduced.
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsNothing);
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
       expect(find.text('Song reader'), findsNothing);
       expect(find.text('Lyrics only'), findsNothing);
       expect(find.text('Reader Song'), findsWidgets);
@@ -495,7 +519,9 @@ void main() {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    // Always-present bottom-bar slot (spec section 6): present in the
+    // compact shell regardless of scoped/catalogue mode.
+    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
     tester.view.physicalSize = const Size(1600, 1200);
@@ -550,6 +576,8 @@ void main() {
   ) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
     expect(find.text(AppStrings.songEditAction), findsNothing);
@@ -633,6 +661,8 @@ void main() {
     );
     expect(find.text('Capo 2'), findsOneWidget);
 
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Piano View'));
@@ -664,6 +694,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
@@ -694,6 +726,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
@@ -758,6 +792,8 @@ void main() {
 
     expect(rebuilds, 1);
 
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songDeleteAction));
@@ -788,6 +824,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The app bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
@@ -1020,13 +1058,15 @@ void main() {
   testWidgets('overflow menu toggles the view mode', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.tap(find.byIcon(Icons.more_horiz), warnIfMissed: true);
     await tester.pumpAndSettle();
     expect(
       find.text(AppStrings.songReaderChordsAndLyricsAction),
@@ -1037,6 +1077,8 @@ void main() {
   testWidgets('app bar shows the effective key', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     expect(
       find.textContaining(AppStrings.songReaderKeyLabelPrefix),
@@ -1060,6 +1102,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.warning_amber_outlined));
     await tester.pumpAndSettle();
@@ -1798,6 +1842,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The app bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
@@ -1863,8 +1909,21 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      buildRoutedApp(
+    // Expanded shell (>=1600px): its app bar is still the unchanged
+    // `Scaffold.appBar`, always visible, with no compact-surface reveal
+    // step -- unlike the compact shell, where PR4 moved the overflow menu
+    // into the tap-revealed overlay (see 'immersive mode is not re-applied
+    // when the state is unchanged'... on compact would require revealing
+    // the chrome to reach Edit, which is itself a real visibility change
+    // and would give the de-dup guard nothing to swallow). The expanded
+    // shell reaches Edit without ever touching compact-controls visibility,
+    // so it stays the one path that reproduces this test's premise: the
+    // reader's controls visibility never changes across the whole
+    // push-editor / pop-editor round trip.
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildRoutedApp(
         result: buildResult(),
         songLibraryService: SongLibraryService(
           _ReaderFakeSongRepository(),
@@ -1872,11 +1931,10 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
 
-    // The reader opens with compact controls hidden (see 'compact reader
-    // uses immersive header and hides overlay by default'), so the initial
-    // post-frame sync applies edgeToEdge exactly once.
+    // The reader opens with compact controls hidden (irrelevant to the
+    // expanded shell, but still the state `_areControlsVisible` reports),
+    // so the initial post-frame sync applies edgeToEdge exactly once.
     expect(modeCalls, ['SystemUiMode.edgeToEdge']);
     final callCountAfterOpen = modeCalls.length;
 
@@ -1897,14 +1955,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SongReaderScreen), findsOneWidget);
     expect(modeCalls.length, callCountAfterOpen);
-
-    // Now make a real change: toggling the surface actually flips controls
-    // visibility, so this proves the counter is wired to something real —
-    // it must grow by exactly one.
-    await tester.tap(find.byType(SongReaderCompactSurface));
-    await tester.pump();
-    expect(modeCalls.length, callCountAfterOpen + 1);
-    expect(modeCalls.last, 'SystemUiMode.immersiveSticky');
 
     // Drain any persist-zoom debounce.
     await tester.pump(const Duration(milliseconds: 500));

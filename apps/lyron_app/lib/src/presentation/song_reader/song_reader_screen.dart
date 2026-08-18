@@ -16,6 +16,7 @@ import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_run
 import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_providers.dart';
@@ -386,55 +387,73 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       }
     }
 
+    // Which shell the compact-vs-expanded LayoutBuilder inside
+    // SongReaderBodyShell will pick for this build, resolved off the same
+    // viewport-width threshold. Needed here (above that LayoutBuilder) so we
+    // know whether the app bar goes into Scaffold.appBar (expanded shell,
+    // unchanged) or is handed down as a Positioned overlay inside the compact
+    // shell's Stack (see SongReaderCompactSurface.topBar and the restructure
+    // comment there). MediaQuery width and the body's LayoutBuilder
+    // constraints agree here because nothing between Scaffold and that
+    // LayoutBuilder changes the available width.
+    final shellLayout = resolveSongReaderLayout(
+      viewportWidth: MediaQuery.sizeOf(context).width,
+      isAutoFitEnabled: readerState.isAutoFitEnabled,
+    );
+    final isCompactShell = shellLayout.shell == SongReaderShell.compact;
+
+    final readerAppBar = SongReaderAppBar(
+      title: currentTitle,
+      effectiveKey: projection?.effectiveKey,
+      onBack: () => _handleBack(context),
+      hasRecoverableWarnings: hasRecoverableWarnings,
+      onShowWarnings: () =>
+          _showWarningsDialog(context, recoverableWarningCount),
+      showOverflowMenu: readerResult != null,
+      viewMode: readerState.viewMode,
+      canEditSongs: canEditSongs,
+      isDarkActive: Theme.of(context).brightness == Brightness.dark,
+      onOverflowAction: (action) {
+        switch (action) {
+          case SongReaderOverflowAction.toggleViewMode:
+            _toggleViewMode();
+            break;
+          case SongReaderOverflowAction.guitarView:
+            _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.guitar);
+            break;
+          case SongReaderOverflowAction.pianoView:
+            _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+            break;
+          case SongReaderOverflowAction.toggleTheme:
+            unawaited(
+              ref
+                  .read(themeModeControllerProvider.notifier)
+                  .toggle(Theme.of(context).brightness),
+            );
+            break;
+          case SongReaderOverflowAction.edit:
+            unawaited(
+              _songActions.edit(
+                context,
+                ref,
+                immersiveMode: _immersiveMode,
+                readControlsVisible: () => _areControlsVisible,
+              ),
+            );
+            break;
+          case SongReaderOverflowAction.delete:
+            unawaited(
+              _songActions.delete(context, ref, onDeleted: _handleBack),
+            );
+            break;
+        }
+      },
+    );
+
     return Scaffold(
-      appBar: SongReaderAppBar(
-        title: currentTitle,
-        effectiveKey: projection?.effectiveKey,
-        onBack: () => _handleBack(context),
-        hasRecoverableWarnings: hasRecoverableWarnings,
-        onShowWarnings: () =>
-            _showWarningsDialog(context, recoverableWarningCount),
-        showOverflowMenu: readerResult != null,
-        viewMode: readerState.viewMode,
-        canEditSongs: canEditSongs,
-        isDarkActive: Theme.of(context).brightness == Brightness.dark,
-        onOverflowAction: (action) {
-          switch (action) {
-            case SongReaderOverflowAction.toggleViewMode:
-              _toggleViewMode();
-              break;
-            case SongReaderOverflowAction.guitarView:
-              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.guitar);
-              break;
-            case SongReaderOverflowAction.pianoView:
-              _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
-              break;
-            case SongReaderOverflowAction.toggleTheme:
-              unawaited(
-                ref
-                    .read(themeModeControllerProvider.notifier)
-                    .toggle(Theme.of(context).brightness),
-              );
-              break;
-            case SongReaderOverflowAction.edit:
-              unawaited(
-                _songActions.edit(
-                  context,
-                  ref,
-                  immersiveMode: _immersiveMode,
-                  readControlsVisible: () => _areControlsVisible,
-                ),
-              );
-              break;
-            case SongReaderOverflowAction.delete:
-              unawaited(
-                _songActions.delete(context, ref, onDeleted: _handleBack),
-              );
-              break;
-          }
-        },
-      ),
+      appBar: isCompactShell ? null : readerAppBar,
       body: SongReaderBodyShell(
+        compactTopBar: readerAppBar,
         isResolvingCatalogContext: isResolvingCatalogContext,
         readerAsync: readerAsync,
         isScopedMode: _isScopedMode,

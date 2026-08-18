@@ -44,6 +44,7 @@ class SongReaderBodyShell extends StatelessWidget {
     required this.onPersistFontScale,
     required this.onToggleCompactControls,
     required this.resolveNeighborTap,
+    required this.compactTopBar,
   });
 
   static const _contentWidth = 960.0;
@@ -84,6 +85,13 @@ class SongReaderBodyShell extends StatelessWidget {
     SessionScopedReaderNeighbor? neighbor,
   )
   resolveNeighborTap;
+
+  /// The reader's top bar content, rendered by the compact surface as a
+  /// `Positioned` overlay (see `SongReaderCompactSurface.topBar`). The screen
+  /// builds this once and decides whether it goes here or into
+  /// `Scaffold.appBar`, based on which shell the same width resolves to --
+  /// this widget only places it, it does not decide compact-vs-expanded.
+  final Widget compactTopBar;
 
   @override
   Widget build(BuildContext context) {
@@ -203,6 +211,7 @@ class SongReaderBodyShell extends StatelessWidget {
                               areControlsVisible:
                                   readerState.areCompactControlsVisible,
                               currentTitle: currentTitle,
+                              topBar: compactTopBar,
                               previousTitle: previousTitle,
                               nextTitle: nextTitle,
                               onSurfaceTap: onToggleCompactControls,
