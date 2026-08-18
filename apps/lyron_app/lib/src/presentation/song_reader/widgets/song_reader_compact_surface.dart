@@ -431,7 +431,12 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                               Positioned(
                                 top: 0,
                                 bottom: 0,
-                                right: chromeMetrics.railEdgeInset,
+                                // Plus the right safe-area inset: with no
+                                // ancestor SafeArea, a landscape notch would
+                                // otherwise sit on top of the rail.
+                                right:
+                                    chromeMetrics.railEdgeInset +
+                                    MediaQuery.viewPaddingOf(context).right,
                                 child: Center(
                                   child: SongReaderControlRail(
                                     projection: widget.projection,
@@ -453,26 +458,23 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                       // rail above, this does not depend on
                       // `areControlsVisible` -- it occupies layout space in
                       // the Column at all times (spec section 6, "an
-                      // always-visible bottom bar"). A hard SizedBox height,
-                      // not a minHeight -- SongReaderBottomBar's contents are
-                      // sized to fit `bottomBarHeight` exactly (song-
-                      // presentation slice Task 6).
-                      SizedBox(
-                        height: chromeMetrics.bottomBarHeight,
-                        child: SongReaderBottomBar(
-                          currentTitle: widget.currentTitle,
-                          keyLabel: widget.projection.effectiveKey,
-                          capoLabel: widget.projection.isCapoDirectiveVisible
-                              ? widget.projection.capoDirectiveText
-                              : null,
-                          position: widget.position,
-                          itemCount: widget.itemCount,
-                          isPlanScoped: widget.showBottomContextBar,
-                          previousTitle: widget.previousTitle,
-                          nextTitle: widget.nextTitle,
-                          onPreviousTap: widget.onPreviousTap,
-                          onNextTap: widget.onNextTap,
-                        ),
+                      // always-visible bottom bar"). The bar sizes itself --
+                      // bar height plus the bottom safe-area inset -- so there
+                      // is deliberately no SizedBox here; see
+                      // SongReaderBottomBar's doc comment.
+                      SongReaderBottomBar(
+                        currentTitle: widget.currentTitle,
+                        keyLabel: widget.projection.effectiveKey,
+                        capoLabel: widget.projection.isCapoDirectiveVisible
+                            ? widget.projection.capoDirectiveText
+                            : null,
+                        position: widget.position,
+                        itemCount: widget.itemCount,
+                        isPlanScoped: widget.showBottomContextBar,
+                        previousTitle: widget.previousTitle,
+                        nextTitle: widget.nextTitle,
+                        onPreviousTap: widget.onPreviousTap,
+                        onNextTap: widget.onNextTap,
                       ),
                     ],
                   );

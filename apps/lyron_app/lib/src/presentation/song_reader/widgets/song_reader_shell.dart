@@ -7,7 +7,6 @@ import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
-import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -133,18 +132,14 @@ class SongReaderBodyShell extends StatelessWidget {
       return statusView;
     }
 
-    final chromeMetrics = SongReaderChromeMetrics.resolve(
-      MediaQuery.sizeOf(context).width,
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         compactTopBar,
         Expanded(child: statusView),
-        SizedBox(
-          height: chromeMetrics.bottomBarHeight,
-          child: SongReaderBottomBar(currentTitle: bottomBarTitle),
-        ),
+        // No SizedBox: the bar sizes itself, bar height plus the bottom
+        // safe-area inset. See SongReaderBottomBar's doc comment.
+        SongReaderBottomBar(currentTitle: bottomBarTitle),
       ],
     );
   }
@@ -160,8 +155,15 @@ class SongReaderBodyShell extends StatelessWidget {
 
         onBack(context);
       },
-      child: SafeArea(
-        child: isResolvingCatalogContext
+      // No blanket SafeArea here. Each chrome surface consumes the inset it
+      // sits against -- the bottom bar the home-indicator inset, the top bar
+      // the top inset, the control rail the right inset -- so the bottom bar
+      // can actually be the spec's `58 + inset` instead of finding the inset
+      // already eaten by an ancestor. Song content runs edge to edge
+      // underneath the floating surfaces, which is the point of the
+      // restructure.
+      child: Builder(
+        builder: (context) => isResolvingCatalogContext
             ? _wrapCompactStatus(
                 context,
                 const SongReaderLoadingView(),
@@ -259,75 +261,73 @@ class SongReaderBodyShell extends StatelessWidget {
                   final showCompactBottomContextBar =
                       resolvedScopedContext != null;
 
-                  final readerSurface =
-                      layout.shell == SongReaderShell.expanded
-                          ? SongReaderExpandedSurface(
-                              projection: projection,
-                              showContextPanel: showExpandedContextPanel,
-                              previousTitle: previousTitle,
-                              nextTitle: nextTitle,
-                              contentColumnCount: layout.contentColumnCount,
-                              onTransposeDown: onTransposeDown,
-                              onTransposeUp: onTransposeUp,
-                              onCapoDown: projection.effectiveCapo > 0
-                                  ? onCapoDown
-                                  : null,
-                              onCapoUp: onCapoUp,
-                              onDecreaseFontScale: () =>
-                                  onAdjustSharedFontScale(-0.1),
-                              onIncreaseFontScale: () =>
-                                  onAdjustSharedFontScale(0.1),
-                              onSetFontScale: onSetFontScale,
-                              onPersistFontScale: onPersistFontScale,
-                              onPreviousTap: resolveNeighborTap(
-                                context,
-                                resolvedScopedContext?.previousItem,
-                              ),
-                              onNextTap: resolveNeighborTap(
-                                context,
-                                resolvedScopedContext?.nextItem,
-                              ),
-                              contentPadding: _contentPadding,
-                            )
-                          : SongReaderCompactSurface(
-                              projection: projection,
-                              areControlsVisible:
-                                  readerState.areCompactControlsVisible,
-                              currentTitle: currentTitle,
-                              topBar: compactTopBar,
-                              previousTitle: previousTitle,
-                              nextTitle: nextTitle,
-                              onSurfaceTap: onToggleCompactControls,
-                              hasRecoverableWarnings:
-                                  result.hasRecoverableWarnings,
-                              warningCount: recoverableWarningCount,
-                              contentColumnCount: layout.contentColumnCount,
-                              showBottomContextBar: showCompactBottomContextBar,
-                              onTransposeDown: onTransposeDown,
-                              onTransposeUp: onTransposeUp,
-                              onCapoDown: projection.effectiveCapo > 0
-                                  ? onCapoDown
-                                  : null,
-                              onCapoUp: onCapoUp,
-                              onDecreaseFontScale: () =>
-                                  onAdjustSharedFontScale(-0.1),
-                              onIncreaseFontScale: () =>
-                                  onAdjustSharedFontScale(0.1),
-                              onSetFontScale: onSetFontScale,
-                              onPersistFontScale: onPersistFontScale,
-                              onPreviousTap: resolveNeighborTap(
-                                context,
-                                resolvedScopedContext?.previousItem,
-                              ),
-                              onNextTap: resolveNeighborTap(
-                                context,
-                                resolvedScopedContext?.nextItem,
-                              ),
-                              position: resolvedScopedContext?.position,
-                              itemCount: resolvedScopedContext?.itemCount,
-                              maxContentWidth: _contentWidth,
-                              contentPadding: _contentPadding,
-                            );
+                  final readerSurface = layout.shell == SongReaderShell.expanded
+                      ? SongReaderExpandedSurface(
+                          projection: projection,
+                          showContextPanel: showExpandedContextPanel,
+                          previousTitle: previousTitle,
+                          nextTitle: nextTitle,
+                          contentColumnCount: layout.contentColumnCount,
+                          onTransposeDown: onTransposeDown,
+                          onTransposeUp: onTransposeUp,
+                          onCapoDown: projection.effectiveCapo > 0
+                              ? onCapoDown
+                              : null,
+                          onCapoUp: onCapoUp,
+                          onDecreaseFontScale: () =>
+                              onAdjustSharedFontScale(-0.1),
+                          onIncreaseFontScale: () =>
+                              onAdjustSharedFontScale(0.1),
+                          onSetFontScale: onSetFontScale,
+                          onPersistFontScale: onPersistFontScale,
+                          onPreviousTap: resolveNeighborTap(
+                            context,
+                            resolvedScopedContext?.previousItem,
+                          ),
+                          onNextTap: resolveNeighborTap(
+                            context,
+                            resolvedScopedContext?.nextItem,
+                          ),
+                          contentPadding: _contentPadding,
+                        )
+                      : SongReaderCompactSurface(
+                          projection: projection,
+                          areControlsVisible:
+                              readerState.areCompactControlsVisible,
+                          currentTitle: currentTitle,
+                          topBar: compactTopBar,
+                          previousTitle: previousTitle,
+                          nextTitle: nextTitle,
+                          onSurfaceTap: onToggleCompactControls,
+                          hasRecoverableWarnings: result.hasRecoverableWarnings,
+                          warningCount: recoverableWarningCount,
+                          contentColumnCount: layout.contentColumnCount,
+                          showBottomContextBar: showCompactBottomContextBar,
+                          onTransposeDown: onTransposeDown,
+                          onTransposeUp: onTransposeUp,
+                          onCapoDown: projection.effectiveCapo > 0
+                              ? onCapoDown
+                              : null,
+                          onCapoUp: onCapoUp,
+                          onDecreaseFontScale: () =>
+                              onAdjustSharedFontScale(-0.1),
+                          onIncreaseFontScale: () =>
+                              onAdjustSharedFontScale(0.1),
+                          onSetFontScale: onSetFontScale,
+                          onPersistFontScale: onPersistFontScale,
+                          onPreviousTap: resolveNeighborTap(
+                            context,
+                            resolvedScopedContext?.previousItem,
+                          ),
+                          onNextTap: resolveNeighborTap(
+                            context,
+                            resolvedScopedContext?.nextItem,
+                          ),
+                          position: resolvedScopedContext?.position,
+                          itemCount: resolvedScopedContext?.itemCount,
+                          maxContentWidth: _contentWidth,
+                          contentPadding: _contentPadding,
+                        );
 
                   // The surface itself is full-width; ConstrainedBox and
                   // padding are applied inside the scroll view by each

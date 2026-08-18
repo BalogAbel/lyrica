@@ -70,41 +70,53 @@ class SongReaderTopBar extends StatelessWidget {
         final chromeMetrics = SongReaderChromeMetrics.resolve(
           constraints.maxWidth,
         );
+        // This bar floats over the content and sits at the very top of the
+        // screen (there is no ancestor `SafeArea` -- see
+        // `song_reader_shell.dart`), so it consumes the top safe-area inset
+        // itself, the same way `SongReaderBottomBar` consumes the bottom
+        // one: total height is the bar height plus the inset, with the
+        // inset riding above the bar's own content rather than pushing it
+        // down. `viewPaddingOf`, not `paddingOf` -- the reader has no text
+        // input, so this must not react to a keyboard.
+        final topInset = MediaQuery.viewPaddingOf(context).top;
         return Material(
           key: const Key('song-reader-top-bar-surface'),
           color: readerTheme.floatingChromeBackground,
-          child: SizedBox(
-            height: chromeMetrics.topBarHeight,
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: AppStrings.songReaderBackAction,
-                  onPressed: onBack,
-                  icon: const BackButtonIcon(),
-                ),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleMedium,
-                  ),
-                ),
-                if (hasRecoverableWarnings)
+          child: Padding(
+            padding: EdgeInsets.only(top: topInset),
+            child: SizedBox(
+              height: chromeMetrics.topBarHeight,
+              child: Row(
+                children: [
                   IconButton(
-                    tooltip: AppStrings.songReaderWarningsSemantics,
-                    icon: const Icon(Icons.warning_amber_outlined),
-                    onPressed: onShowWarnings,
+                    tooltip: AppStrings.songReaderBackAction,
+                    onPressed: onBack,
+                    icon: const BackButtonIcon(),
                   ),
-                if (showOverflowMenu)
-                  SongReaderOverflowMenu(
-                    viewMode: viewMode,
-                    canEditSongs: canEditSongs,
-                    isDarkActive: isDarkActive,
-                    onSelected: onOverflowAction!,
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleMedium,
+                    ),
                   ),
-                const SizedBox(width: 4),
-              ],
+                  if (hasRecoverableWarnings)
+                    IconButton(
+                      tooltip: AppStrings.songReaderWarningsSemantics,
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      onPressed: onShowWarnings,
+                    ),
+                  if (showOverflowMenu)
+                    SongReaderOverflowMenu(
+                      viewMode: viewMode,
+                      canEditSongs: canEditSongs,
+                      isDarkActive: isDarkActive,
+                      onSelected: onOverflowAction!,
+                    ),
+                  const SizedBox(width: 4),
+                ],
+              ),
             ),
           ),
         );

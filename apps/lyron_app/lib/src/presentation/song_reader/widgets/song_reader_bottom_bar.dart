@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// The reader's always-visible bottom bar (spec section 6). Occupies layout
@@ -17,10 +18,13 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 /// - **Plan-scoped, phone**: chevrons only, no neighbour titles. Current
 ///   title/key/capo/position stay centred.
 ///
-/// The parent gives this widget its exact height (`SongReaderChromeMetrics
-/// .bottomBarHeight` — 64 tablet / 58 phone, no safe-area inset folded in;
-/// that inset is the parent's job). This widget's job is only to make its
-/// content fit inside whatever height it is given.
+/// This widget sizes itself: `SongReaderChromeMetrics.bottomBarHeight`
+/// (64 tablet / 58 phone) plus the bottom safe-area inset it reads from
+/// `MediaQuery.viewPaddingOf`. The metrics constant deliberately carries the
+/// bar height ONLY, so it stays testable without a fake `MediaQuery`; the
+/// inset is added here, where the `MediaQuery` actually is. Callers must not
+/// wrap this in a `SizedBox` of their own — doing so reintroduces the
+/// mismatch on a notched phone that this arrangement exists to prevent.
 class SongReaderBottomBar extends StatelessWidget {
   const SongReaderBottomBar({
     super.key,
@@ -36,7 +40,9 @@ class SongReaderBottomBar extends StatelessWidget {
     this.onNextTap,
   });
 
-  static const previousSegmentKey = Key('song-reader-bottom-bar-previous-segment');
+  static const previousSegmentKey = Key(
+    'song-reader-bottom-bar-previous-segment',
+  );
   static const nextSegmentKey = Key('song-reader-bottom-bar-next-segment');
   static const disabledSegmentOpacity = 0.5;
 
@@ -71,12 +77,22 @@ class SongReaderBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final readerTheme = ReaderTheme.of(context);
 
     return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
+      color: readerTheme.floatingChromeBackground,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final chromeMetrics = SongReaderChromeMetrics.resolve(
+            constraints.maxWidth,
+          );
+          // The reader has no ancestor `SafeArea` (see
+          // `song_reader_shell.dart`), so this bar consumes the bottom inset
+          // itself: its total height is the bar height plus the inset, and
+          // the inset sits UNDER the bar's content rather than pushing the
+          // labels down. `viewPaddingOf`, not `paddingOf` — the reader has no
+          // text input, so the bar must not move if a keyboard appears.
+          final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
           final isRegular =
               constraints.maxWidth >= readerRegularTypeScaleMinWidth;
           final showNeighborTitles = isPlanScoped && isRegular;
@@ -114,12 +130,19 @@ class SongReaderBottomBar extends StatelessWidget {
             );
           }
 
-          return Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: isRegular ? 8 : 4,
+          final verticalPadding = isRegular ? 8.0 : 4.0;
+
+          return SizedBox(
+            height: chromeMetrics.bottomBarHeight + bottomInset,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                12,
+                verticalPadding,
+                12,
+                verticalPadding + bottomInset,
+              ),
+              child: content,
             ),
-            child: content,
           );
         },
       ),
