@@ -30,14 +30,14 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -552,7 +552,7 @@ void main() {
       // below, which are the chrome this test title refers to.
       expect(find.byType(SongReaderBottomBar), findsOneWidget);
       expect(find.byType(SongReaderTitleBar), findsNothing);
-      expect(find.byType(SongReaderControlBar), findsNothing);
+      expect(find.byType(SongReaderControlRail), findsNothing);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
       expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
       // The app bar (back button, overflow menu) now lives in the same
@@ -585,13 +585,13 @@ void main() {
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump();
 
-    expect(find.byType(SongReaderControlBar), findsOneWidget);
+    expect(find.byType(SongReaderControlRail), findsOneWidget);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
 
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.byType(SongReaderControlBar), findsNothing);
+    expect(find.byType(SongReaderControlRail), findsNothing);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsNothing);
   });
 
@@ -611,7 +611,7 @@ void main() {
       greaterThan(960),
     );
     expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
-    expect(find.byType(SongReaderControlBar), findsNothing);
+    expect(find.byType(SongReaderControlRail), findsNothing);
     expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
@@ -1206,23 +1206,34 @@ void main() {
     );
   });
 
-  testWidgets('app bar shows the effective key', (tester) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
-    // The app bar is a tap-revealed overlay in the compact shell now.
-    await revealCompactChrome(tester);
+  testWidgets(
+    'top bar shows the title, and the bottom bar shows the effective key',
+    (tester) async {
+      await tester.pumpWidget(buildApp(result: buildResult()));
+      await tester.pumpAndSettle();
+      // The top bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
-    // The key now also appears in the always-present bottom bar (spec
-    // section 6), alongside the top bar's own copy -- the same deliberate
-    // duplication the spec calls out for the title.
-    expect(
-      find.descendant(
-        of: find.byType(SongReaderAppBar),
-        matching: find.textContaining(AppStrings.songReaderKeyLabelPrefix),
-      ),
-      findsOneWidget,
-    );
-  });
+      // SongReaderTopBar carries the title (deliberately duplicated with
+      // the bottom bar's own copy -- spec section 6), but not the key --
+      // that stays in the always-visible bottom bar, which this asserts
+      // directly rather than through the top bar.
+      expect(
+        find.descendant(
+          of: find.byType(SongReaderTopBar),
+          matching: find.text('Reader Song'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SongReaderBottomBar),
+          matching: find.textContaining(AppStrings.songReaderKeyLabelPrefix),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('warning action appears and opens a dialog', (tester) async {
     await tester.pumpWidget(

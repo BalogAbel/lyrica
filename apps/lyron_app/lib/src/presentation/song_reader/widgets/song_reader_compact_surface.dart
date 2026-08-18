@@ -9,7 +9,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -433,7 +433,7 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                                 bottom: 0,
                                 right: chromeMetrics.railEdgeInset,
                                 child: Center(
-                                  child: SongReaderControlBar(
+                                  child: SongReaderControlRail(
                                     projection: widget.projection,
                                     onTransposeDown: widget.onTransposeDown,
                                     onTransposeUp: widget.onTransposeUp,

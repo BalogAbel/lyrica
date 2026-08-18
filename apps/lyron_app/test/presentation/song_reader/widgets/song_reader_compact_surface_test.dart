@@ -5,7 +5,7 @@ import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart';
 
 SongReaderProjection _buildLabeledProjection({required String lineText}) {
   return SongReaderProjection(
@@ -127,7 +127,7 @@ void main() {
     expect(surfaceTaps, 1);
   });
 
-  testWidgets('shows the control bar only when controls are visible', (
+  testWidgets('shows the control rail only when controls are visible', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -135,12 +135,12 @@ void main() {
         home: Scaffold(body: buildSurface(areControlsVisible: false)),
       ),
     );
-    expect(find.byType(SongReaderControlBar), findsNothing);
+    expect(find.byType(SongReaderControlRail), findsNothing);
 
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: buildSurface(areControlsVisible: true))),
     );
-    expect(find.byType(SongReaderControlBar), findsOneWidget);
+    expect(find.byType(SongReaderControlRail), findsOneWidget);
   });
 
   testWidgets('content starts at a fixed left edge, not centred on its '
