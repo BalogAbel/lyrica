@@ -8,7 +8,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metric
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart';
@@ -38,6 +38,8 @@ class SongReaderCompactSurface extends StatefulWidget {
     this.nextTitle,
     this.onPreviousTap,
     this.onNextTap,
+    this.position,
+    this.itemCount,
     required this.maxContentWidth,
     required this.contentPadding,
   });
@@ -58,6 +60,15 @@ class SongReaderCompactSurface extends StatefulWidget {
   final String? nextTitle;
   final VoidCallback? onPreviousTap;
   final VoidCallback? onNextTap;
+
+  /// 1-based position of the current item within its session, for the
+  /// bottom bar's plan-scoped "3 / 7" set position. Null when not
+  /// plan-scoped or unknown.
+  final int? position;
+
+  /// Total number of items in the session, alongside [position].
+  final int? itemCount;
+
   final VoidCallback onSurfaceTap;
   final bool hasRecoverableWarnings;
   final int warningCount;
@@ -442,19 +453,21 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                       // rail above, this does not depend on
                       // `areControlsVisible` -- it occupies layout space in
                       // the Column at all times (spec section 6, "an
-                      // always-visible bottom bar"). Its contents are not yet
-                      // restructured for the catalogue/plan-scoped split
-                      // (song-presentation slice Task 6), so today's two-line
-                      // labels can still exceed `bottomBarHeight` -- a
-                      // `minHeight` (rather than a hard `SizedBox`) reserves
-                      // that height without overflowing until Task 6 trims
-                      // the contents to fit it exactly.
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: chromeMetrics.bottomBarHeight,
-                        ),
-                        child: SongReaderBottomContextBar(
+                      // always-visible bottom bar"). A hard SizedBox height,
+                      // not a minHeight -- SongReaderBottomBar's contents are
+                      // sized to fit `bottomBarHeight` exactly (song-
+                      // presentation slice Task 6).
+                      SizedBox(
+                        height: chromeMetrics.bottomBarHeight,
+                        child: SongReaderBottomBar(
                           currentTitle: widget.currentTitle,
+                          keyLabel: widget.projection.effectiveKey,
+                          capoLabel: widget.projection.isCapoDirectiveVisible
+                              ? widget.projection.capoDirectiveText
+                              : null,
+                          position: widget.position,
+                          itemCount: widget.itemCount,
+                          isPlanScoped: widget.showBottomContextBar,
                           previousTitle: widget.previousTitle,
                           nextTitle: widget.nextTitle,
                           onPreviousTap: widget.onPreviousTap,

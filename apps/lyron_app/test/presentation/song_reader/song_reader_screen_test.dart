@@ -30,7 +30,8 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
@@ -418,7 +419,7 @@ void main() {
       // The bottom bar is always-present layout space now (spec section 6),
       // independent of the reveal toggle -- unlike the top bar and rail
       // below, which are the chrome this test title refers to.
-      expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
+      expect(find.byType(SongReaderBottomBar), findsOneWidget);
       expect(find.byType(SongReaderTitleBar), findsNothing);
       expect(find.byType(SongReaderControlBar), findsNothing);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
@@ -480,7 +481,7 @@ void main() {
     );
     expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
     expect(find.byType(SongReaderControlBar), findsNothing);
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
     expect(find.byIcon(Icons.more_horiz), findsOneWidget);
@@ -521,14 +522,14 @@ void main() {
 
     // Always-present bottom-bar slot (spec section 6): present in the
     // compact shell regardless of scoped/catalogue mode.
-    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
+    expect(find.byType(SongReaderBottomBar), findsOneWidget);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
     tester.view.physicalSize = const Size(1600, 1200);
     await tester.pumpAndSettle();
 
     expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
   });
 
   testWidgets(
@@ -1080,8 +1081,14 @@ void main() {
     // The app bar is a tap-revealed overlay in the compact shell now.
     await revealCompactChrome(tester);
 
+    // The key now also appears in the always-present bottom bar (spec
+    // section 6), alongside the top bar's own copy -- the same deliberate
+    // duplication the spec calls out for the title.
     expect(
-      find.textContaining(AppStrings.songReaderKeyLabelPrefix),
+      find.descendant(
+        of: find.byType(SongReaderAppBar),
+        matching: find.textContaining(AppStrings.songReaderKeyLabelPrefix),
+      ),
       findsOneWidget,
     );
   });
@@ -1250,9 +1257,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
-    expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
-    expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+    expect(find.byType(SongReaderBottomBar), findsOneWidget);
+    // The new bar shows chevron icons (tooltipped, not captioned) rather
+    // than the old "Previous song"/"Next song" text labels -- spec section
+    // 6, "previous item (chevron + title) | ... | next item (title +
+    // chevron)".
+    expect(find.byTooltip(AppStrings.scopedReaderPreviousAction), findsOneWidget);
+    expect(find.byTooltip(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
 
   testWidgets('scoped expanded reader shows interactive set context panel', (
@@ -1271,7 +1282,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
@@ -1342,7 +1353,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.widgetWithText(SongReaderBottomContextBar, 'Reader Song'),
+        find.widgetWithText(SongReaderBottomBar, 'Reader Song'),
         findsOneWidget,
       );
     },
@@ -1357,7 +1368,7 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
@@ -1382,19 +1393,19 @@ void main() {
 
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Two'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Three'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Three'), findsWidgets);
   });
@@ -1442,11 +1453,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
   });

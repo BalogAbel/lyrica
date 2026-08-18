@@ -23,7 +23,7 @@ import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -110,9 +110,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Repeated Song'), findsWidgets);
-      expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+      expect(find.byTooltip(AppStrings.scopedReaderNextAction), findsOneWidget);
 
-      await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+      await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
       await tester.pumpAndSettle();
 
       expect(find.text('Second Song'), findsWidgets);
@@ -183,16 +183,16 @@ void main() {
 
     expect(find.text('Repeated Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
 
     expect(find.text('Second Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Second Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Repeated Song'), findsWidgets);
   });

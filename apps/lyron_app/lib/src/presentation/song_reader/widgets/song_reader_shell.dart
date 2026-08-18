@@ -240,6 +240,8 @@ class SongReaderBodyShell extends StatelessWidget {
                                 context,
                                 resolvedScopedContext?.nextItem,
                               ),
+                              position: resolvedScopedContext?.position,
+                              itemCount: resolvedScopedContext?.itemCount,
                               maxContentWidth: _contentWidth,
                               contentPadding: _contentPadding,
                             );
