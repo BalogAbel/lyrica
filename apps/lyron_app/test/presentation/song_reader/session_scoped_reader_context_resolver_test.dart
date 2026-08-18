@@ -50,22 +50,25 @@ void main() {
       );
     });
 
-    test('first item disables previous navigation and reports position 1/n', () {
-      final result =
-          resolveSessionScopedReaderContext(
-                planDetail: _planDetail(),
-                planId: 'plan-1',
-                sessionId: 'session-1',
-                sessionItemId: 'item-10',
-                songId: 'song-1',
-              )
-              as ResolvedSessionScopedReaderContextResult;
+    test(
+      'first item disables previous navigation and reports position 1/n',
+      () {
+        final result =
+            resolveSessionScopedReaderContext(
+                  planDetail: _planDetail(),
+                  planId: 'plan-1',
+                  sessionId: 'session-1',
+                  sessionItemId: 'item-10',
+                  songId: 'song-1',
+                )
+                as ResolvedSessionScopedReaderContextResult;
 
-      expect(result.context.previousItem, isNull);
-      expect(result.context.nextItem?.sessionItemId, 'item-20');
-      expect(result.context.position, 1);
-      expect(result.context.itemCount, 3);
-    });
+        expect(result.context.previousItem, isNull);
+        expect(result.context.nextItem?.sessionItemId, 'item-20');
+        expect(result.context.position, 1);
+        expect(result.context.itemCount, 3);
+      },
+    );
 
     test('middle item reports position 2/n', () {
       final result =

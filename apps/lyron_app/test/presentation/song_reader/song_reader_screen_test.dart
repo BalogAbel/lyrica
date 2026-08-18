@@ -1404,7 +1404,10 @@ void main() {
     // than the old "Previous song"/"Next song" text labels -- spec section
     // 6, "previous item (chevron + title) | ... | next item (title +
     // chevron)".
-    expect(find.byTooltip(AppStrings.scopedReaderPreviousAction), findsOneWidget);
+    expect(
+      find.byTooltip(AppStrings.scopedReaderPreviousAction),
+      findsOneWidget,
+    );
     expect(find.byTooltip(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
 
@@ -2273,89 +2276,102 @@ void main() {
   // below the 1600px expanded-shell threshold) and assert a back control is
   // present and tappable, and that the bottom bar is present.
   group('compact shell chrome frame around non-data states', () {
-    const viewports = {
-      'phone': Size(375, 812),
-      'tablet': Size(800, 1200),
-    };
+    const viewports = {'phone': Size(375, 812), 'tablet': Size(800, 1200)};
 
     for (final viewportEntry in viewports.entries) {
       final viewportLabel = viewportEntry.key;
       final viewportSize = viewportEntry.value;
 
-      testWidgets('loading state on $viewportLabel shows back control and bottom bar', (
-        tester,
-      ) async {
-        await pumpWithViewport(
-          tester,
-          size: viewportSize,
-          child: buildRoutedErrorApp(
-            loadSong: () async => buildResult(),
-            // isResolvingCatalogContext stays true forever (fixed override),
-            // so the reader is pinned on the plain loading view.
-            catalogState: const CatalogSnapshotState(
-              context: null,
-              connectionStatus: CatalogConnectionStatus.unavailable,
-              refreshStatus: CatalogRefreshStatus.refreshing,
-              sessionStatus: CatalogSessionStatus.verified,
-              hasCachedCatalog: false,
+      testWidgets(
+        'loading state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => buildResult(),
+              // isResolvingCatalogContext stays true forever (fixed override),
+              // so the reader is pinned on the plain loading view.
+              catalogState: const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.unavailable,
+                refreshStatus: CatalogRefreshStatus.refreshing,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: false,
+              ),
             ),
-          ),
-        );
+          );
 
-        expect(find.text(AppStrings.songReaderLoadingMessage), findsOneWidget);
-        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          expect(
+            find.text(AppStrings.songReaderLoadingMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
 
-        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
-        await tester.pumpAndSettle();
-        expect(find.text('Home'), findsOneWidget);
-      });
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
 
-      testWidgets('unavailable-song state on $viewportLabel shows back control and bottom bar', (
-        tester,
-      ) async {
-        await pumpWithViewport(
-          tester,
-          size: viewportSize,
-          child: buildRoutedErrorApp(
-            loadSong: () async => throw const SongNotFoundException(songId),
-          ),
-        );
+      testWidgets(
+        'unavailable-song state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => throw const SongNotFoundException(songId),
+            ),
+          );
 
-        expect(
-          find.text(AppStrings.songReaderUnavailableMessage),
-          findsOneWidget,
-        );
-        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          expect(
+            find.text(AppStrings.songReaderUnavailableMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
 
-        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
-        await tester.pumpAndSettle();
-        expect(find.text('Home'), findsOneWidget);
-      });
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
 
-      testWidgets('access-denied state on $viewportLabel shows back control and bottom bar', (
-        tester,
-      ) async {
-        await pumpWithViewport(
-          tester,
-          size: viewportSize,
-          child: buildRoutedErrorApp(
-            loadSong: () async => throw const SongAccessDeniedException(songId),
-          ),
-        );
+      testWidgets(
+        'access-denied state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async =>
+                  throw const SongAccessDeniedException(songId),
+            ),
+          );
 
-        expect(
-          find.text(AppStrings.songReaderAccessDeniedMessage),
-          findsOneWidget,
-        );
-        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          expect(
+            find.text(AppStrings.songReaderAccessDeniedMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
 
-        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
-        await tester.pumpAndSettle();
-        expect(find.text('Home'), findsOneWidget);
-      });
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
 
       testWidgets(
         'retryable backend failure on $viewportLabel shows back control, bottom bar and retry',
@@ -2403,15 +2419,11 @@ void main() {
                 sessionStatus: CatalogSessionStatus.verified,
                 hasCachedCatalog: true,
               ),
-              loadSong: () async =>
-                  throw const SongNotFoundException('song-2'),
+              loadSong: () async => throw const SongNotFoundException('song-2'),
             ),
           );
 
-          expect(
-            find.text(AppStrings.songReaderDeletedTitle),
-            findsOneWidget,
-          );
+          expect(find.text(AppStrings.songReaderDeletedTitle), findsOneWidget);
           expect(
             find.byTooltip(AppStrings.songReaderBackAction),
             findsOneWidget,
@@ -2460,8 +2472,7 @@ void main() {
                 errorCode: SongMutationSyncErrorCode.remoteDeleted,
                 conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
               ),
-              loadSong: () async =>
-                  throw const SongNotFoundException('song-2'),
+              loadSong: () async => throw const SongNotFoundException('song-2'),
             ),
           );
 
@@ -2510,7 +2521,10 @@ void main() {
           // No song is known here -- the bottom bar must fall back to the
           // neutral title, never invent one.
           expect(
-            find.widgetWithText(SongReaderBottomBar, AppStrings.songReaderTitle),
+            find.widgetWithText(
+              SongReaderBottomBar,
+              AppStrings.songReaderTitle,
+            ),
             findsOneWidget,
           );
 

@@ -20,8 +20,10 @@ ParsedSong _song({int baseCapo = 2}) {
   );
 }
 
-Widget _host(SongReaderControlRail rail, {ThemeData? theme}) =>
-    MaterialApp(theme: theme, home: Scaffold(body: Center(child: rail)));
+Widget _host(SongReaderControlRail rail, {ThemeData? theme}) => MaterialApp(
+  theme: theme,
+  home: Scaffold(body: Center(child: rail)),
+);
 
 void main() {
   testWidgets('renders transpose, capo and font controls in guitar mode, '
@@ -200,7 +202,10 @@ void main() {
       await tester.pumpWidget(_host(rail(), theme: buildDarkTheme()));
 
       expect(tester.takeException(), isNull);
-      expect(find.byKey(const Key('song-reader-transpose-value')), findsOneWidget);
+      expect(
+        find.byKey(const Key('song-reader-transpose-value')),
+        findsOneWidget,
+      );
     });
   });
 

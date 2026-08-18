@@ -430,9 +430,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
           );
           break;
         case SongReaderOverflowAction.delete:
-          unawaited(
-            _songActions.delete(context, ref, onDeleted: _handleBack),
-          );
+          unawaited(_songActions.delete(context, ref, onDeleted: _handleBack));
           break;
       }
     }

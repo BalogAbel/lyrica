@@ -7,7 +7,9 @@ Widget _wrap(Widget child, {Size size = const Size(800, 600)}) {
   return MaterialApp(
     home: MediaQuery(
       data: MediaQueryData(size: size),
-      child: Scaffold(body: SizedBox(width: size.width, child: child)),
+      child: Scaffold(
+        body: SizedBox(width: size.width, child: child),
+      ),
     ),
   );
 }
@@ -141,9 +143,7 @@ void main() {
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
 
-    testWidgets('current title/key/capo/position stay centred', (
-      tester,
-    ) async {
+    testWidgets('current title/key/capo/position stay centred', (tester) async {
       await tester.pumpWidget(
         _wrap(
           const SongReaderBottomBar(
@@ -248,7 +248,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _wrap(const SongReaderBottomBar(currentTitle: AppStrings.songReaderTitle)),
+        _wrap(
+          const SongReaderBottomBar(currentTitle: AppStrings.songReaderTitle),
+        ),
       );
 
       expect(find.text(AppStrings.songReaderTitle), findsOneWidget);
