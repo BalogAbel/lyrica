@@ -29,6 +29,43 @@ void main() {
       expect(SongReaderChromeMetrics.resolve(600).railEdgeInset, 12.0);
       expect(SongReaderChromeMetrics.resolve(601).railEdgeInset, 12.0);
     });
+
+    test('bottom bar horizontal padding is constant across the breakpoint', () {
+      expect(
+        SongReaderChromeMetrics.resolve(599).bottomBarHorizontalPadding,
+        12.0,
+      );
+      expect(
+        SongReaderChromeMetrics.resolve(601).bottomBarHorizontalPadding,
+        12.0,
+      );
+    });
+
+    test('bottom bar vertical padding follows the same phone/tablet split', () {
+      expect(
+        SongReaderChromeMetrics.resolve(599).bottomBarVerticalPadding,
+        4.0,
+      );
+      expect(
+        SongReaderChromeMetrics.resolve(600).bottomBarVerticalPadding,
+        8.0,
+      );
+      expect(
+        SongReaderChromeMetrics.resolve(601).bottomBarVerticalPadding,
+        8.0,
+      );
+    });
+
+    test('bottom bar title/subtitle gap is constant across the breakpoint', () {
+      expect(
+        SongReaderChromeMetrics.resolve(599).bottomBarTitleSubtitleGap,
+        2.0,
+      );
+      expect(
+        SongReaderChromeMetrics.resolve(601).bottomBarTitleSubtitleGap,
+        2.0,
+      );
+    });
   });
 
   group('SongReaderChromeMetrics equality', () {
@@ -37,11 +74,17 @@ void main() {
         bottomBarHeight: 58.0,
         topBarHeight: 58.0,
         railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 2.0,
       );
       const b = SongReaderChromeMetrics(
         bottomBarHeight: 58.0,
         topBarHeight: 58.0,
         railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 2.0,
       );
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
@@ -52,11 +95,37 @@ void main() {
         bottomBarHeight: 58.0,
         topBarHeight: 58.0,
         railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 2.0,
       );
       const b = SongReaderChromeMetrics(
         bottomBarHeight: 64.0,
         topBarHeight: 58.0,
         railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 2.0,
+      );
+      expect(a == b, isFalse);
+    });
+
+    test('differing bottom bar padding fields are not ==', () {
+      const a = SongReaderChromeMetrics(
+        bottomBarHeight: 58.0,
+        topBarHeight: 58.0,
+        railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 2.0,
+      );
+      const b = SongReaderChromeMetrics(
+        bottomBarHeight: 58.0,
+        topBarHeight: 58.0,
+        railEdgeInset: 12.0,
+        bottomBarHorizontalPadding: 12.0,
+        bottomBarVerticalPadding: 4.0,
+        bottomBarTitleSubtitleGap: 3.0,
       );
       expect(a == b, isFalse);
     });

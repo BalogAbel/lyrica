@@ -146,6 +146,18 @@ class SongReaderBodyShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ADR-034 scopes the chrome restructure to the COMPACT shell only -- the
+    // expanded shell (>= 1600px) keeps its pre-restructure chrome and has no
+    // per-surface inset handling of its own: `Scaffold.appBar` consumes only
+    // the top inset, so without a SafeArea here the expanded surface (and
+    // its side context/tools panels) would render under the bottom/side
+    // insets on, e.g., an iPad in landscape. Wrapping only the expanded path
+    // restores exactly the coverage the removed blanket SafeArea used to
+    // give it, without reintroducing that blanket over the compact path --
+    // which is the thing this whole restructure removed (see the compact
+    // per-surface inset comments in SongReaderBottomBar/TopBar/ControlRail).
+    final isExpandedShell = shellLayout.shell == SongReaderShell.expanded;
+
     return PopScope<void>(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -155,190 +167,194 @@ class SongReaderBodyShell extends StatelessWidget {
 
         onBack(context);
       },
-      // No blanket SafeArea here. Each chrome surface consumes the inset it
-      // sits against -- the bottom bar the home-indicator inset, the top bar
-      // the top inset, the control rail the right inset -- so the bottom bar
-      // can actually be the spec's `58 + inset` instead of finding the inset
-      // already eaten by an ancestor. Song content runs edge to edge
-      // underneath the floating surfaces, which is the point of the
-      // restructure.
       child: Builder(
-        builder: (context) => isResolvingCatalogContext
-            ? _wrapCompactStatus(
-                context,
-                const SongReaderLoadingView(),
-                bottomBarTitle: AppStrings.songReaderTitle,
-              )
-            : readerAsync.when(
-                loading: () => _wrapCompactStatus(
+        builder: (context) {
+          final body = isResolvingCatalogContext
+              ? _wrapCompactStatus(
                   context,
                   const SongReaderLoadingView(),
                   bottomBarTitle: AppStrings.songReaderTitle,
-                ),
-                error: (error, stackTrace) {
-                  if (isScopedMode) {
-                    if (error is SongNotFoundException) {
-                      if (canShowScopedDeletedTombstone(
-                        catalogState: catalogState,
-                        mutationRecord: mutationRecord,
-                      )) {
-                        final message =
-                            mutationRecord?.isRemoteDeletedConflict == true &&
-                                mutationRecord?.effectiveSyncStatus ==
-                                    SongSyncStatus.pendingUpdate
-                            ? AppStrings.songReaderDeletedConflictMessage
-                            : AppStrings.songReaderDeletedMessage;
-                        return _wrapCompactStatus(
-                          context,
-                          SongReaderDeletedTombstoneView(
-                            title: preservedScopedTitle,
-                            message: message,
-                          ),
-                          bottomBarTitle: preservedScopedTitle,
-                        );
-                      }
-                    }
-                    return _wrapCompactStatus(
-                      context,
-                      const SongReaderScopedUnavailableView(),
-                      bottomBarTitle: AppStrings.songReaderTitle,
-                    );
-                  }
-
-                  if (error is SongAccessDeniedException) {
-                    return _wrapCompactStatus(
-                      context,
-                      const SongReaderAccessDeniedView(),
-                      bottomBarTitle: AppStrings.songReaderTitle,
-                    );
-                  }
-
-                  if (error is SongNotFoundException) {
-                    return _wrapCompactStatus(
-                      context,
-                      const SongReaderNotFoundView(),
-                      bottomBarTitle: AppStrings.songReaderTitle,
-                    );
-                  }
-
-                  return _wrapCompactStatus(
+                )
+              : readerAsync.when(
+                  loading: () => _wrapCompactStatus(
                     context,
-                    SongReaderLoadFailureView(onRetry: onRetry),
+                    const SongReaderLoadingView(),
                     bottomBarTitle: AppStrings.songReaderTitle,
-                  );
-                },
-                data: (SongReaderResult result) {
-                  final projection = SongReaderProjection(
-                    song: result.song,
-                    state: readerState,
-                  );
-                  final recoverableWarningCount = result.song.diagnostics
-                      .where(
-                        (diagnostic) =>
-                            diagnostic.severity ==
-                            ParseDiagnosticSeverity.warning,
-                      )
-                      .length;
-
-                  final currentTitle = resolveCurrentTitle(
-                    scopedContext: resolvedScopedContext,
-                    projection: projection,
-                  );
-                  final previousTitle = resolveNeighborTitle(
-                    resolvedScopedContext?.previousItem?.title,
-                  );
-                  final nextTitle = resolveNeighborTitle(
-                    resolvedScopedContext?.nextItem?.title,
-                  );
-                  final showExpandedContextPanel =
-                      resolvedScopedContext != null;
-
-                  // `shellLayout` is resolved once by the screen and handed
-                  // down (see the field doc) rather than re-derived here off
-                  // a LayoutBuilder's constraints -- so this no longer needs
-                  // its own LayoutBuilder.
-                  final layout = shellLayout;
-                  final showCompactBottomContextBar =
-                      resolvedScopedContext != null;
-
-                  final readerSurface = layout.shell == SongReaderShell.expanded
-                      ? SongReaderExpandedSurface(
-                          projection: projection,
-                          showContextPanel: showExpandedContextPanel,
-                          previousTitle: previousTitle,
-                          nextTitle: nextTitle,
-                          contentColumnCount: layout.contentColumnCount,
-                          onTransposeDown: onTransposeDown,
-                          onTransposeUp: onTransposeUp,
-                          onCapoDown: projection.effectiveCapo > 0
-                              ? onCapoDown
-                              : null,
-                          onCapoUp: onCapoUp,
-                          onDecreaseFontScale: () =>
-                              onAdjustSharedFontScale(-0.1),
-                          onIncreaseFontScale: () =>
-                              onAdjustSharedFontScale(0.1),
-                          onSetFontScale: onSetFontScale,
-                          onPersistFontScale: onPersistFontScale,
-                          onPreviousTap: resolveNeighborTap(
+                  ),
+                  error: (error, stackTrace) {
+                    if (isScopedMode) {
+                      if (error is SongNotFoundException) {
+                        if (canShowScopedDeletedTombstone(
+                          catalogState: catalogState,
+                          mutationRecord: mutationRecord,
+                        )) {
+                          final message =
+                              mutationRecord?.isRemoteDeletedConflict == true &&
+                                  mutationRecord?.effectiveSyncStatus ==
+                                      SongSyncStatus.pendingUpdate
+                              ? AppStrings.songReaderDeletedConflictMessage
+                              : AppStrings.songReaderDeletedMessage;
+                          return _wrapCompactStatus(
                             context,
-                            resolvedScopedContext?.previousItem,
-                          ),
-                          onNextTap: resolveNeighborTap(
-                            context,
-                            resolvedScopedContext?.nextItem,
-                          ),
-                          contentPadding: _contentPadding,
+                            SongReaderDeletedTombstoneView(
+                              title: preservedScopedTitle,
+                              message: message,
+                            ),
+                            bottomBarTitle: preservedScopedTitle,
+                          );
+                        }
+                      }
+                      return _wrapCompactStatus(
+                        context,
+                        const SongReaderScopedUnavailableView(),
+                        bottomBarTitle: AppStrings.songReaderTitle,
+                      );
+                    }
+
+                    if (error is SongAccessDeniedException) {
+                      return _wrapCompactStatus(
+                        context,
+                        const SongReaderAccessDeniedView(),
+                        bottomBarTitle: AppStrings.songReaderTitle,
+                      );
+                    }
+
+                    if (error is SongNotFoundException) {
+                      return _wrapCompactStatus(
+                        context,
+                        const SongReaderNotFoundView(),
+                        bottomBarTitle: AppStrings.songReaderTitle,
+                      );
+                    }
+
+                    return _wrapCompactStatus(
+                      context,
+                      SongReaderLoadFailureView(onRetry: onRetry),
+                      bottomBarTitle: AppStrings.songReaderTitle,
+                    );
+                  },
+                  data: (SongReaderResult result) {
+                    final projection = SongReaderProjection(
+                      song: result.song,
+                      state: readerState,
+                    );
+                    final recoverableWarningCount = result.song.diagnostics
+                        .where(
+                          (diagnostic) =>
+                              diagnostic.severity ==
+                              ParseDiagnosticSeverity.warning,
                         )
-                      : SongReaderCompactSurface(
-                          projection: projection,
-                          areControlsVisible:
-                              readerState.areCompactControlsVisible,
-                          currentTitle: currentTitle,
-                          topBar: compactTopBar,
-                          previousTitle: previousTitle,
-                          nextTitle: nextTitle,
-                          onSurfaceTap: onToggleCompactControls,
-                          hasRecoverableWarnings: result.hasRecoverableWarnings,
-                          warningCount: recoverableWarningCount,
-                          contentColumnCount: layout.contentColumnCount,
-                          showBottomContextBar: showCompactBottomContextBar,
-                          onTransposeDown: onTransposeDown,
-                          onTransposeUp: onTransposeUp,
-                          onCapoDown: projection.effectiveCapo > 0
-                              ? onCapoDown
-                              : null,
-                          onCapoUp: onCapoUp,
-                          onDecreaseFontScale: () =>
-                              onAdjustSharedFontScale(-0.1),
-                          onIncreaseFontScale: () =>
-                              onAdjustSharedFontScale(0.1),
-                          onSetFontScale: onSetFontScale,
-                          onPersistFontScale: onPersistFontScale,
-                          onPreviousTap: resolveNeighborTap(
-                            context,
-                            resolvedScopedContext?.previousItem,
-                          ),
-                          onNextTap: resolveNeighborTap(
-                            context,
-                            resolvedScopedContext?.nextItem,
-                          ),
-                          position: resolvedScopedContext?.position,
-                          itemCount: resolvedScopedContext?.itemCount,
-                          maxContentWidth: _contentWidth,
-                          contentPadding: _contentPadding,
-                        );
+                        .length;
 
-                  // The surface itself is full-width; ConstrainedBox and
-                  // padding are applied inside the scroll view by each
-                  // surface widget so the scrollbar thumb sits at the
-                  // physical screen edge.
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [Expanded(child: readerSurface)],
-                  );
-                },
-              ),
+                    final currentTitle = resolveCurrentTitle(
+                      scopedContext: resolvedScopedContext,
+                      projection: projection,
+                    );
+                    final previousTitle = resolveNeighborTitle(
+                      resolvedScopedContext?.previousItem?.title,
+                    );
+                    final nextTitle = resolveNeighborTitle(
+                      resolvedScopedContext?.nextItem?.title,
+                    );
+                    final showExpandedContextPanel =
+                        resolvedScopedContext != null;
+
+                    // `shellLayout` is resolved once by the screen and handed
+                    // down (see the field doc) rather than re-derived here off
+                    // a LayoutBuilder's constraints -- so this no longer needs
+                    // its own LayoutBuilder.
+                    final layout = shellLayout;
+                    final showCompactBottomContextBar =
+                        resolvedScopedContext != null;
+
+                    final readerSurface =
+                        layout.shell == SongReaderShell.expanded
+                        ? SongReaderExpandedSurface(
+                            projection: projection,
+                            showContextPanel: showExpandedContextPanel,
+                            previousTitle: previousTitle,
+                            nextTitle: nextTitle,
+                            contentColumnCount: layout.contentColumnCount,
+                            onTransposeDown: onTransposeDown,
+                            onTransposeUp: onTransposeUp,
+                            onCapoDown: projection.effectiveCapo > 0
+                                ? onCapoDown
+                                : null,
+                            onCapoUp: onCapoUp,
+                            onDecreaseFontScale: () =>
+                                onAdjustSharedFontScale(-0.1),
+                            onIncreaseFontScale: () =>
+                                onAdjustSharedFontScale(0.1),
+                            onSetFontScale: onSetFontScale,
+                            onPersistFontScale: onPersistFontScale,
+                            onPreviousTap: resolveNeighborTap(
+                              context,
+                              resolvedScopedContext?.previousItem,
+                            ),
+                            onNextTap: resolveNeighborTap(
+                              context,
+                              resolvedScopedContext?.nextItem,
+                            ),
+                            contentPadding: _contentPadding,
+                          )
+                        : SongReaderCompactSurface(
+                            projection: projection,
+                            areControlsVisible:
+                                readerState.areCompactControlsVisible,
+                            currentTitle: currentTitle,
+                            topBar: compactTopBar,
+                            previousTitle: previousTitle,
+                            nextTitle: nextTitle,
+                            onSurfaceTap: onToggleCompactControls,
+                            hasRecoverableWarnings:
+                                result.hasRecoverableWarnings,
+                            warningCount: recoverableWarningCount,
+                            contentColumnCount: layout.contentColumnCount,
+                            showBottomContextBar: showCompactBottomContextBar,
+                            onTransposeDown: onTransposeDown,
+                            onTransposeUp: onTransposeUp,
+                            onCapoDown: projection.effectiveCapo > 0
+                                ? onCapoDown
+                                : null,
+                            onCapoUp: onCapoUp,
+                            onDecreaseFontScale: () =>
+                                onAdjustSharedFontScale(-0.1),
+                            onIncreaseFontScale: () =>
+                                onAdjustSharedFontScale(0.1),
+                            onSetFontScale: onSetFontScale,
+                            onPersistFontScale: onPersistFontScale,
+                            onPreviousTap: resolveNeighborTap(
+                              context,
+                              resolvedScopedContext?.previousItem,
+                            ),
+                            onNextTap: resolveNeighborTap(
+                              context,
+                              resolvedScopedContext?.nextItem,
+                            ),
+                            position: resolvedScopedContext?.position,
+                            itemCount: resolvedScopedContext?.itemCount,
+                            maxContentWidth: _contentWidth,
+                            contentPadding: _contentPadding,
+                          );
+
+                    // The surface itself is full-width; ConstrainedBox and
+                    // padding are applied inside the scroll view by each
+                    // surface widget so the scrollbar thumb sits at the
+                    // physical screen edge.
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [Expanded(child: readerSurface)],
+                    );
+                  },
+                );
+
+          // Compact gets no SafeArea (see the comment above): each of its
+          // chrome surfaces owns the inset it sits against. Expanded gets
+          // one, same as before this branch -- `Scaffold.appBar` already
+          // strips the top inset from the body, so this only ever supplies
+          // bottom/left/right, which nothing else here claims.
+          return isExpandedShell ? SafeArea(child: body) : body;
+        },
       ),
     );
   }

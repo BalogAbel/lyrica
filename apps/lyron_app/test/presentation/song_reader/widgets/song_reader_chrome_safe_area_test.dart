@@ -13,11 +13,18 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metric
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// The iPhone home-indicator inset, in logical pixels.
 const double _homeIndicatorInset = 34.0;
 
+/// A landscape notch-shaped side inset, distinguishable on the left and
+/// right so a widget that swaps them (or drops one) shows up as a geometry
+/// failure rather than a coincidental pass.
+const EdgeInsets _landscapeNotch = EdgeInsets.only(left: 40, right: 60);
+
 const Size _phone = Size(375, 812);
+const Size _phoneLandscape = Size(812, 375);
 const Size _tablet = Size(834, 1194);
 
 Widget _wrap(
@@ -40,6 +47,15 @@ Widget _wrap(
 
 Widget _bottomBar() => const SongReaderBottomBar(currentTitle: 'Song');
 
+Widget _planScopedBottomBar() => const SongReaderBottomBar(
+  currentTitle: 'Song',
+  isPlanScoped: true,
+  previousTitle: 'Before',
+  nextTitle: 'After',
+  onPreviousTap: _noop,
+  onNextTap: _noop,
+);
+
 Widget _topBar() => SongReaderTopBar(
   title: 'Song',
   onBack: () {},
@@ -50,6 +66,8 @@ Widget _topBar() => SongReaderTopBar(
   canEditSongs: false,
   isDarkActive: false,
 );
+
+void _noop() {}
 
 void main() {
   group('bottom bar consumes the home-indicator inset', () {
@@ -193,5 +211,115 @@ void main() {
         SongReaderChromeMetrics.resolve(_tablet.width).topBarHeight,
       );
     });
+  });
+
+  group('landscape side insets', () {
+    // A landscape notch lands on the left or right edge, not top/bottom, so
+    // these pin the left/right half of the same per-surface-inset story the
+    // groups above cover for top/bottom: the top bar's back button and the
+    // bottom bar's chevrons must not render underneath it.
+    testWidgets('top bar: the back button clears the left inset', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(_topBar(), size: _phoneLandscape, viewPadding: _landscapeNotch),
+      );
+
+      final backButton = tester.getRect(
+        find.byTooltip(AppStrings.songReaderBackAction),
+      );
+
+      expect(backButton.left, greaterThanOrEqualTo(_landscapeNotch.left));
+    });
+
+    testWidgets(
+      'top bar: the back button shifts right by exactly the left inset',
+      (tester) async {
+        await tester.pumpWidget(_wrap(_topBar(), size: _phoneLandscape));
+        final withoutInset = tester
+            .getRect(find.byTooltip(AppStrings.songReaderBackAction))
+            .left;
+
+        await tester.pumpWidget(
+          _wrap(_topBar(), size: _phoneLandscape, viewPadding: _landscapeNotch),
+        );
+        final withInset = tester
+            .getRect(find.byTooltip(AppStrings.songReaderBackAction))
+            .left;
+
+        expect(withInset - withoutInset, _landscapeNotch.left);
+      },
+    );
+
+    testWidgets('bottom bar: the previous chevron clears the left inset', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          _planScopedBottomBar(),
+          size: _phoneLandscape,
+          viewPadding: _landscapeNotch,
+        ),
+      );
+
+      final previous = tester.getRect(
+        find.byKey(SongReaderBottomBar.previousSegmentKey),
+      );
+
+      expect(previous.left, greaterThanOrEqualTo(_landscapeNotch.left));
+    });
+
+    testWidgets('bottom bar: the next chevron clears the right inset', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          _planScopedBottomBar(),
+          size: _phoneLandscape,
+          viewPadding: _landscapeNotch,
+        ),
+      );
+
+      final next = tester.getRect(
+        find.byKey(SongReaderBottomBar.nextSegmentKey),
+      );
+
+      expect(
+        next.right,
+        lessThanOrEqualTo(_phoneLandscape.width - _landscapeNotch.right),
+      );
+    });
+
+    testWidgets(
+      'bottom bar: the chevrons shift inward by exactly the side insets',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(_planScopedBottomBar(), size: _phoneLandscape),
+        );
+        final previousWithoutInset = tester
+            .getRect(find.byKey(SongReaderBottomBar.previousSegmentKey))
+            .left;
+        final nextWithoutInset = tester
+            .getRect(find.byKey(SongReaderBottomBar.nextSegmentKey))
+            .right;
+
+        await tester.pumpWidget(
+          _wrap(
+            _planScopedBottomBar(),
+            size: _phoneLandscape,
+            viewPadding: _landscapeNotch,
+          ),
+        );
+        final previousWithInset = tester
+            .getRect(find.byKey(SongReaderBottomBar.previousSegmentKey))
+            .left;
+        final nextWithInset = tester
+            .getRect(find.byKey(SongReaderBottomBar.nextSegmentKey))
+            .right;
+
+        expect(previousWithInset - previousWithoutInset, _landscapeNotch.left);
+        expect(nextWithoutInset - nextWithInset, _landscapeNotch.right);
+      },
+    );
   });
 }

@@ -184,4 +184,47 @@ void main() {
 
     expect(labelX, 12.0);
   });
+
+  group('control rail landscape side inset', () {
+    // The rail already added the right-edge safe-area inset to its
+    // `Positioned` offset (song_reader_compact_surface.dart), but until now
+    // had no test pinning that a landscape notch on the right actually
+    // pushes it clear -- unlike the top bar and bottom bar, which each have
+    // their own coverage in song_reader_chrome_safe_area_test.dart.
+    const landscapeNotchRight = 60.0;
+
+    Widget buildWithViewPadding({required EdgeInsets viewPadding}) {
+      return MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: const Size(1200, 700),
+            viewPadding: viewPadding,
+          ),
+          child: Scaffold(body: buildSurface(areControlsVisible: true)),
+        ),
+      );
+    }
+
+    testWidgets('the rail shifts left by exactly the right inset', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        buildWithViewPadding(viewPadding: EdgeInsets.zero),
+      );
+      final withoutInset = tester
+          .getRect(find.byType(SongReaderControlRail))
+          .right;
+
+      await tester.pumpWidget(
+        buildWithViewPadding(
+          viewPadding: const EdgeInsets.only(right: landscapeNotchRight),
+        ),
+      );
+      final withInset = tester
+          .getRect(find.byType(SongReaderControlRail))
+          .right;
+
+      expect(withoutInset - withInset, landscapeNotchRight);
+    });
+  });
 }

@@ -25,6 +25,9 @@ class SongReaderChromeMetrics {
     required this.bottomBarHeight,
     required this.topBarHeight,
     required this.railEdgeInset,
+    required this.bottomBarHorizontalPadding,
+    required this.bottomBarVerticalPadding,
+    required this.bottomBarTitleSubtitleGap,
   });
 
   /// Resolves the chrome metrics for a compact-shell viewport of [width].
@@ -37,6 +40,9 @@ class SongReaderChromeMetrics {
       bottomBarHeight: isRegular ? 64.0 : 58.0,
       topBarHeight: isRegular ? 64.0 : 58.0,
       railEdgeInset: 12.0,
+      bottomBarHorizontalPadding: 12.0,
+      bottomBarVerticalPadding: isRegular ? 8.0 : 4.0,
+      bottomBarTitleSubtitleGap: 2.0,
     );
   }
 
@@ -65,15 +71,47 @@ class SongReaderChromeMetrics {
   /// content itself already respects.
   final double railEdgeInset;
 
+  /// Horizontal padding inside the bottom bar, on both edges (before any
+  /// left/right safe-area inset is added -- see `SongReaderBottomBar`,
+  /// which adds `MediaQuery.viewPaddingOf(context).left/right` on top of
+  /// this). Constant across breakpoints, unlike [bottomBarVerticalPadding].
+  ///
+  /// ADR-033: reader widgets must not hardcode a spacing constant, so this
+  /// -- like [railEdgeInset] before it -- lives here rather than as a
+  /// literal in `song_reader_bottom_bar.dart`.
+  final double bottomBarHorizontalPadding;
+
+  /// Vertical padding inside the bottom bar, above the title/subtitle block
+  /// and below it (before the bottom safe-area inset, which
+  /// `SongReaderBottomBar` adds only to the bottom side). 8.0 at or above
+  /// [readerRegularTypeScaleMinWidth] (tablet/desktop), 4.0 below it
+  /// (phone) -- the same breakpoint [bottomBarHeight] and [topBarHeight]
+  /// already split on.
+  final double bottomBarVerticalPadding;
+
+  /// Gap between the bottom bar's title line and its subtitle line (key /
+  /// capo / set position), when a subtitle is present.
+  final double bottomBarTitleSubtitleGap;
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is SongReaderChromeMetrics &&
         other.bottomBarHeight == bottomBarHeight &&
         other.topBarHeight == topBarHeight &&
-        other.railEdgeInset == railEdgeInset;
+        other.railEdgeInset == railEdgeInset &&
+        other.bottomBarHorizontalPadding == bottomBarHorizontalPadding &&
+        other.bottomBarVerticalPadding == bottomBarVerticalPadding &&
+        other.bottomBarTitleSubtitleGap == bottomBarTitleSubtitleGap;
   }
 
   @override
-  int get hashCode => Object.hash(bottomBarHeight, topBarHeight, railEdgeInset);
+  int get hashCode => Object.hash(
+    bottomBarHeight,
+    topBarHeight,
+    railEdgeInset,
+    bottomBarHorizontalPadding,
+    bottomBarVerticalPadding,
+    bottomBarTitleSubtitleGap,
+  );
 }

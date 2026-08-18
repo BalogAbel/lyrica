@@ -34,6 +34,7 @@ import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -2690,6 +2691,20 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('A forrasnal'), findsWidgets);
+      // The top bar (and its back control) is hidden by default post-chrome
+      // restructure -- it floats over the content and only shows once
+      // revealed by a tap. Pin that here so a regression that makes it
+      // reappear by default gets caught, not silently tolerated.
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsNothing);
+
+      await tester.tap(find.byType(SongReaderCompactSurface));
+      // A single tap while the chrome is hidden still arms the surface's
+      // double-tap recognizer (it waits to see whether a second tap follows
+      // before ruling out double-tap-to-fit). Pump past kDoubleTapTimeout so
+      // that pending timer resolves here instead of leaking into the next
+      // tap/pumpAndSettle below.
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+
       expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));

@@ -3,10 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-Widget _wrap(Widget child, {Size size = const Size(800, 600)}) {
+Widget _wrap(
+  Widget child, {
+  Size size = const Size(800, 600),
+  TextScaler textScaler = TextScaler.noScaling,
+}) {
   return MaterialApp(
     home: MediaQuery(
-      data: MediaQueryData(size: size),
+      data: MediaQueryData(size: size, textScaler: textScaler),
       child: Scaffold(
         body: SizedBox(width: size.width, child: child),
       ),
@@ -328,5 +332,66 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('never overflows at large text scales', () {
+    // The bar clamps its own text scale (SongReaderBottomBar._maxTextScaleFactor)
+    // rather than letting the fixed-height bar overflow or grow with the
+    // system setting -- see that constant's doc comment for the measured
+    // numbers and the reasoning. These pin the fix at the exact scales that
+    // used to overflow before the clamp existed: 6px at 1.5x and 24px at
+    // 2.0x, on both the phone and tablet bar heights.
+    for (final scale in [1.0, 1.5, 2.0]) {
+      testWidgets('tablet bar height at ${scale}x system text scale', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _wrap(
+            SizedBox(
+              height: 64,
+              child: const SongReaderBottomBar(
+                currentTitle: 'Current Song',
+                keyLabel: 'G',
+                capoLabel: 'Capo 3',
+                position: 3,
+                itemCount: 7,
+                isPlanScoped: true,
+                previousTitle: 'Before',
+                nextTitle: 'After',
+              ),
+            ),
+            textScaler: TextScaler.linear(scale),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('phone bar height at ${scale}x system text scale', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          _wrap(
+            SizedBox(
+              height: 58,
+              child: const SongReaderBottomBar(
+                currentTitle: 'Current Song',
+                keyLabel: 'G',
+                capoLabel: 'Capo 3',
+                position: 3,
+                itemCount: 7,
+                isPlanScoped: true,
+                previousTitle: 'Before',
+                nextTitle: 'After',
+              ),
+            ),
+            size: const Size(375, 812),
+            textScaler: TextScaler.linear(scale),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }

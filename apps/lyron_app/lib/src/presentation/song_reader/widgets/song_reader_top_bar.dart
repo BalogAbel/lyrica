@@ -78,12 +78,26 @@ class SongReaderTopBar extends StatelessWidget {
         // inset riding above the bar's own content rather than pushing it
         // down. `viewPaddingOf`, not `paddingOf` -- the reader has no text
         // input, so this must not react to a keyboard.
-        final topInset = MediaQuery.viewPaddingOf(context).top;
+        //
+        // It also runs edge to edge (no ancestor offsets it -- the compact
+        // surface's `Positioned` for this bar is `left: 0, right: 0`), so a
+        // landscape notch on either side would otherwise sit directly on top
+        // of the leading back button or the trailing overflow menu. Consuming
+        // the left/right insets here, the same way the control rail's
+        // caller adds `viewPaddingOf(context).right` to its edge offset
+        // (`song_reader_compact_surface.dart`), keeps both controls clear of
+        // it.
+        final viewPadding = MediaQuery.viewPaddingOf(context);
         return Material(
           key: const Key('song-reader-top-bar-surface'),
           color: readerTheme.floatingChromeBackground,
           child: Padding(
-            padding: EdgeInsets.only(top: topInset),
+            padding: EdgeInsets.fromLTRB(
+              viewPadding.left,
+              viewPadding.top,
+              viewPadding.right,
+              0,
+            ),
             child: SizedBox(
               height: chromeMetrics.topBarHeight,
               child: Row(

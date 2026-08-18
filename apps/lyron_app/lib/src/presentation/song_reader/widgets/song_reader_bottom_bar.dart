@@ -46,6 +46,21 @@ class SongReaderBottomBar extends StatelessWidget {
   static const nextSegmentKey = Key('song-reader-bottom-bar-next-segment');
   static const disabledSegmentOpacity = 0.5;
 
+  /// Caps the text scale this bar renders at, independent of the system
+  /// setting. The bar's height is chrome the spec pins at 64/58 -- letting
+  /// the two-line title/subtitle block grow with the system text scale
+  /// would either overflow that fixed height (measured: 6px overflow at
+  /// 1.5x, 24px at 2.0x, both breakpoints) or force the bar itself to grow,
+  /// which eats into the song's space -- the exact thing this restructure
+  /// exists to stop (spec section 6, "Space recovered"). Clamping the bar's
+  /// own scale instead means very large system text scales lose some
+  /// legibility in this one fixed-height bar rather than breaking layout or
+  /// shrinking the reading area. 1.2 was chosen empirically: measured against
+  /// this bar's own content at both breakpoints, 1.25 is already the first
+  /// scale that overflows (by 1px at the tablet breakpoint), so 1.2 keeps a
+  /// deliberate margin rather than sitting exactly on the boundary.
+  static const _maxTextScaleFactor = 1.2;
+
   /// The current song's title. Always shown, centred within its column.
   final String currentTitle;
 
@@ -92,7 +107,13 @@ class SongReaderBottomBar extends StatelessWidget {
           // the inset sits UNDER the bar's content rather than pushing the
           // labels down. `viewPaddingOf`, not `paddingOf` — the reader has no
           // text input, so the bar must not move if a keyboard appears.
-          final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+          //
+          // It also runs edge to edge, so a landscape notch on either side
+          // would otherwise sit directly on top of the previous/next chevron
+          // -- consume the left/right insets too, the same way the top bar
+          // and the control rail's caller do.
+          final viewPadding = MediaQuery.viewPaddingOf(context);
+          final bottomInset = viewPadding.bottom;
           final isRegular =
               constraints.maxWidth >= readerRegularTypeScaleMinWidth;
           final showNeighborTitles = isPlanScoped && isRegular;
@@ -103,6 +124,7 @@ class SongReaderBottomBar extends StatelessWidget {
             capoLabel: capoLabel,
             position: isPlanScoped ? position : null,
             itemCount: isPlanScoped ? itemCount : null,
+            titleSubtitleGap: chromeMetrics.bottomBarTitleSubtitleGap,
           );
 
           Widget content;
@@ -130,18 +152,28 @@ class SongReaderBottomBar extends StatelessWidget {
             );
           }
 
-          final verticalPadding = isRegular ? 8.0 : 4.0;
+          final verticalPadding = chromeMetrics.bottomBarVerticalPadding;
+          final horizontalPadding = chromeMetrics.bottomBarHorizontalPadding;
+
+          final clampedTextScaler = MediaQuery.textScalerOf(
+            context,
+          ).clamp(maxScaleFactor: _maxTextScaleFactor);
 
           return SizedBox(
             height: chromeMetrics.bottomBarHeight + bottomInset,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                12,
-                verticalPadding,
-                12,
-                verticalPadding + bottomInset,
+            child: MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: clampedTextScaler),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding + viewPadding.left,
+                  verticalPadding,
+                  horizontalPadding + viewPadding.right,
+                  verticalPadding + bottomInset,
+                ),
+                child: content,
               ),
-              child: content,
             ),
           );
         },
@@ -157,6 +189,7 @@ class _CurrentSongInfo extends StatelessWidget {
     required this.capoLabel,
     required this.position,
     required this.itemCount,
+    required this.titleSubtitleGap,
   });
 
   final String title;
@@ -164,6 +197,11 @@ class _CurrentSongInfo extends StatelessWidget {
   final String? capoLabel;
   final int? position;
   final int? itemCount;
+
+  /// Gap between the title line and the subtitle line, from
+  /// [SongReaderChromeMetrics.bottomBarTitleSubtitleGap] -- ADR-033 forbids
+  /// hardcoding it here as a `SizedBox` literal.
+  final double titleSubtitleGap;
 
   @override
   Widget build(BuildContext context) {
@@ -185,7 +223,7 @@ class _CurrentSongInfo extends StatelessWidget {
           style: theme.textTheme.titleSmall,
         ),
         if (subtitleParts.isNotEmpty) ...[
-          const SizedBox(height: 2),
+          SizedBox(height: titleSubtitleGap),
           Text(
             subtitleParts.join(' · '),
             maxLines: 1,
