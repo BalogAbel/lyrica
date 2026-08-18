@@ -33,6 +33,8 @@ SessionScopedReaderContext _scopedContext({required String selectedTitle}) {
     ),
     previousItem: null,
     nextItem: null,
+    position: 1,
+    itemCount: 1,
   );
 }
 

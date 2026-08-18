@@ -44,11 +44,13 @@ void main() {
             songId: 'song-3',
             title: 'Harmadik',
           ),
+          position: 2,
+          itemCount: 3,
         ),
       );
     });
 
-    test('first item disables previous navigation', () {
+    test('first item disables previous navigation and reports position 1/n', () {
       final result =
           resolveSessionScopedReaderContext(
                 planDetail: _planDetail(),
@@ -61,9 +63,26 @@ void main() {
 
       expect(result.context.previousItem, isNull);
       expect(result.context.nextItem?.sessionItemId, 'item-20');
+      expect(result.context.position, 1);
+      expect(result.context.itemCount, 3);
     });
 
-    test('last item disables next navigation', () {
+    test('middle item reports position 2/n', () {
+      final result =
+          resolveSessionScopedReaderContext(
+                planDetail: _planDetail(),
+                planId: 'plan-1',
+                sessionId: 'session-1',
+                sessionItemId: 'item-20',
+                songId: 'song-2',
+              )
+              as ResolvedSessionScopedReaderContextResult;
+
+      expect(result.context.position, 2);
+      expect(result.context.itemCount, 3);
+    });
+
+    test('last item disables next navigation and reports position n/n', () {
       final result =
           resolveSessionScopedReaderContext(
                 planDetail: _planDetail(),
@@ -76,9 +95,11 @@ void main() {
 
       expect(result.context.previousItem?.sessionItemId, 'item-20');
       expect(result.context.nextItem, isNull);
+      expect(result.context.position, 3);
+      expect(result.context.itemCount, 3);
     });
 
-    test('single-item session disables both directions', () {
+    test('single-item session disables both directions and reports 1/1', () {
       final result =
           resolveSessionScopedReaderContext(
                 planDetail: _singleItemPlanDetail(),
@@ -91,6 +112,8 @@ void main() {
 
       expect(result.context.previousItem, isNull);
       expect(result.context.nextItem, isNull);
+      expect(result.context.position, 1);
+      expect(result.context.itemCount, 1);
     });
 
     test('anchors duplicate-song navigation to session item id', () {
@@ -129,6 +152,45 @@ void main() {
       },
     );
   });
+
+  group('SessionScopedReaderContext equality', () {
+    test('contexts differing only in position are not equal', () {
+      final a = _contextWithPositionAndCount(position: 1, itemCount: 3);
+      final b = _contextWithPositionAndCount(position: 2, itemCount: 3);
+
+      expect(a == b, isFalse);
+    });
+
+    test('contexts differing only in itemCount are not equal', () {
+      final a = _contextWithPositionAndCount(position: 1, itemCount: 3);
+      final b = _contextWithPositionAndCount(position: 1, itemCount: 4);
+
+      expect(a == b, isFalse);
+    });
+  });
+}
+
+SessionScopedReaderContext _contextWithPositionAndCount({
+  required int position,
+  required int itemCount,
+}) {
+  return SessionScopedReaderContext(
+    planId: 'plan-1',
+    planSlug: 'plan-1',
+    sessionId: 'session-1',
+    sessionSlug: 'session-1',
+    sessionItemId: 'item-1',
+    songId: 'song-1',
+    selectedItem: const SessionScopedReaderNeighbor(
+      sessionItemId: 'item-1',
+      songId: 'song-1',
+      title: 'Selected',
+    ),
+    previousItem: null,
+    nextItem: null,
+    position: position,
+    itemCount: itemCount,
+  );
 }
 
 PlanDetail _planDetail() {
