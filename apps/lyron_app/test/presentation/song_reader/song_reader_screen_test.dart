@@ -339,6 +339,94 @@ void main() {
     );
   }
 
+  /// Same route table as [buildScopedReaderApp], but the song load itself is
+  /// driven by [loadSong] (so it can throw) instead of a fixed results map,
+  /// and [mutationRecord]/[catalogState] are settable -- needed to reach the
+  /// scoped error-taxonomy states (tombstone, unresolved conflict, generic
+  /// "scoped context unavailable") that [buildScopedReaderApp] cannot
+  /// produce on its own.
+  Widget buildScopedErrorApp({
+    required PlanDetail planDetail,
+    required Future<SongReaderResult> Function() loadSong,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+    SongMutationRecord? mutationRecord,
+    String initialLocation =
+        '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final router = GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.planDetail.path,
+          builder: (context, state) => PlanDetailScreen(
+            planId: _planIdForSlug(
+              planDetail,
+              state.pathParameters['planSlug']!,
+            ),
+          ),
+        ),
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: AppRoutes.planSessionSongReader.path,
+          builder: (context, state) {
+            final planSlug = state.pathParameters['planSlug']!;
+            final sessionSlug = state.pathParameters['sessionSlug']!;
+            final songSlug = state.pathParameters['songSlug']!;
+            final sessionItemId = _sessionItemIdForScopedRoute(
+              planDetail,
+              sessionSlug: sessionSlug,
+              songSlug: songSlug,
+            );
+
+            return SongReaderScreen(
+              songId: _songIdForScopedRoute(
+                planDetail,
+                sessionSlug: sessionSlug,
+                songSlug: songSlug,
+              ),
+              planId: _planIdForSlug(planDetail, planSlug),
+              sessionId: _sessionIdForSlug(planDetail, sessionSlug),
+              sessionItemId: sessionItemId,
+              warmPlanDetail: planDetail,
+            );
+          },
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        _noopPreferencesStoreOverride,
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        activePlanningContextProvider.overrideWithValue(null),
+        songLibraryListProvider.overrideWith((ref) async {
+          return [
+            for (final session in planDetail.sessions)
+              for (final item in session.items) item.song,
+          ];
+        }),
+        planningPlanDetailProvider(
+          planDetail.plan.id,
+        ).overrideWith((ref) async => planDetail),
+        if (mutationRecord != null)
+          songMutationRecordByIdProvider(
+            mutationRecord.id,
+          ).overrideWith((ref) async => mutationRecord),
+        songLibraryReaderProvider.overrideWith((ref, songId) => loadSong()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+  }
+
   Widget buildErrorApp({
     required Future<SongReaderResult> Function() loadSong,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
@@ -357,6 +445,49 @@ void main() {
         songLibraryReaderProvider.overrideWith((ref, value) => loadSong()),
       ],
       child: const MaterialApp(home: SongReaderScreen(songId: songId)),
+    );
+  }
+
+  /// Same shape as [buildErrorApp], but routed through `GoRouter` so the
+  /// back control's `context.pop()`/`context.replace()` calls have a router
+  /// ancestor to act on -- needed for the compact-shell chrome-frame tests
+  /// below, which tap the back button and assert it actually navigates.
+  Widget buildRoutedErrorApp({
+    required Future<SongReaderResult> Function() loadSong,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final router = GoRouter(
+      initialLocation: '/songs/$songId',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              const Scaffold(body: Center(child: Text('Home'))),
+        ),
+        GoRoute(
+          path: '/songs/:songId',
+          builder: (context, state) =>
+              SongReaderScreen(songId: state.pathParameters['songId']!),
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        _noopPreferencesStoreOverride,
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        songLibraryReaderProvider.overrideWith((ref, value) => loadSong()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
     );
   }
 
@@ -2119,6 +2250,265 @@ void main() {
       greaterThan(0),
       reason: 'increase-font tap must trigger a persisted zoom write',
     );
+  });
+
+  // Findings 1/2 of the reader-chrome-restructure review: the compact
+  // shell's non-data ADR-023/024 states (loading, error, tombstone) render
+  // through `readerAsync.when`'s non-`data` branches, which never built
+  // `SongReaderCompactSurface` -- the only place the top bar and bottom bar
+  // lived after the chrome restructure. That left every one of these states
+  // with no back control and no bottom bar at all on compact widths. These
+  // tests pump each ADR-023/024 state at a phone AND a tablet width (both
+  // below the 1600px expanded-shell threshold) and assert a back control is
+  // present and tappable, and that the bottom bar is present.
+  group('compact shell chrome frame around non-data states', () {
+    const viewports = {
+      'phone': Size(375, 812),
+      'tablet': Size(800, 1200),
+    };
+
+    for (final viewportEntry in viewports.entries) {
+      final viewportLabel = viewportEntry.key;
+      final viewportSize = viewportEntry.value;
+
+      testWidgets('loading state on $viewportLabel shows back control and bottom bar', (
+        tester,
+      ) async {
+        await pumpWithViewport(
+          tester,
+          size: viewportSize,
+          child: buildRoutedErrorApp(
+            loadSong: () async => buildResult(),
+            // isResolvingCatalogContext stays true forever (fixed override),
+            // so the reader is pinned on the plain loading view.
+            catalogState: const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.unavailable,
+              refreshStatus: CatalogRefreshStatus.refreshing,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+        );
+
+        expect(find.text(AppStrings.songReaderLoadingMessage), findsOneWidget);
+        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+        await tester.pumpAndSettle();
+        expect(find.text('Home'), findsOneWidget);
+      });
+
+      testWidgets('unavailable-song state on $viewportLabel shows back control and bottom bar', (
+        tester,
+      ) async {
+        await pumpWithViewport(
+          tester,
+          size: viewportSize,
+          child: buildRoutedErrorApp(
+            loadSong: () async => throw const SongNotFoundException(songId),
+          ),
+        );
+
+        expect(
+          find.text(AppStrings.songReaderUnavailableMessage),
+          findsOneWidget,
+        );
+        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+        await tester.pumpAndSettle();
+        expect(find.text('Home'), findsOneWidget);
+      });
+
+      testWidgets('access-denied state on $viewportLabel shows back control and bottom bar', (
+        tester,
+      ) async {
+        await pumpWithViewport(
+          tester,
+          size: viewportSize,
+          child: buildRoutedErrorApp(
+            loadSong: () async => throw const SongAccessDeniedException(songId),
+          ),
+        );
+
+        expect(
+          find.text(AppStrings.songReaderAccessDeniedMessage),
+          findsOneWidget,
+        );
+        expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
+        expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+        await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+        await tester.pumpAndSettle();
+        expect(find.text('Home'), findsOneWidget);
+      });
+
+      testWidgets(
+        'retryable backend failure on $viewportLabel shows back control, bottom bar and retry',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => throw Exception('backend unavailable'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderLoadFailureMessage),
+            findsOneWidget,
+          );
+          expect(find.text(AppStrings.retryAction), findsOneWidget);
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'preserved-title tombstone on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              catalogState: const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+              loadSong: () async =>
+                  throw const SongNotFoundException('song-2'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderDeletedTitle),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          // The bottom bar carries the preserved title, not the neutral
+          // fallback -- it is legitimately known here.
+          expect(
+            find.widgetWithText(SongReaderBottomBar, 'Song Two'),
+            findsOneWidget,
+          );
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'unresolved remote-delete conflict on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              catalogState: const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+              mutationRecord: const SongMutationRecord(
+                id: 'song-2',
+                organizationId: 'org-1',
+                slug: 'song-two',
+                title: 'Local Draft Title',
+                chordproSource: '{title: Local Draft Title}',
+                version: 2,
+                baseVersion: 2,
+                syncStatus: SongSyncStatus.conflict,
+                errorCode: SongMutationSyncErrorCode.remoteDeleted,
+                conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+              ),
+              loadSong: () async =>
+                  throw const SongNotFoundException('song-2'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderDeletedConflictMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'unavailable planning context on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              // A non-SongNotFoundException scoped failure never qualifies
+              // for the tombstone -- it always renders
+              // SongReaderScopedUnavailableView (shell.dart's fallback for
+              // any scoped read failure).
+              loadSong: () async =>
+                  throw const SongAccessDeniedException('song-2'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.scopedReaderContextUnavailableMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          // No song is known here -- the bottom bar must fall back to the
+          // neutral title, never invent one.
+          expect(
+            find.widgetWithText(SongReaderBottomBar, AppStrings.songReaderTitle),
+            findsOneWidget,
+          );
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+    }
   });
 }
 

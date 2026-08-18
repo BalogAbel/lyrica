@@ -387,15 +387,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       }
     }
 
-    // Which shell the compact-vs-expanded LayoutBuilder inside
-    // SongReaderBodyShell will pick for this build, resolved off the same
-    // viewport-width threshold. Needed here (above that LayoutBuilder) so we
-    // know whether the app bar goes into Scaffold.appBar (expanded shell,
-    // unchanged) or is handed down as a Positioned overlay inside the compact
-    // shell's Stack (see SongReaderCompactSurface.topBar and the restructure
-    // comment there). MediaQuery width and the body's LayoutBuilder
-    // constraints agree here because nothing between Scaffold and that
-    // LayoutBuilder changes the available width.
+    // Resolved once, here, off MediaQuery -- and threaded down into
+    // SongReaderBodyShell as `shellLayout` rather than re-derived. The body
+    // used to re-run resolveSongReaderLayout off its own LayoutBuilder's
+    // constraints.maxWidth, which sits inside the body's SafeArea and can
+    // disagree with this MediaQuery width once SafeArea eats left/right
+    // insets (landscape on a notched device). A single resolution threaded
+    // down cannot disagree with itself.
     final shellLayout = resolveSongReaderLayout(
       viewportWidth: MediaQuery.sizeOf(context).width,
       isAutoFitEnabled: readerState.isAutoFitEnabled,
@@ -453,6 +451,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     return Scaffold(
       appBar: isCompactShell ? null : readerAppBar,
       body: SongReaderBodyShell(
+        shellLayout: shellLayout,
         compactTopBar: readerAppBar,
         isResolvingCatalogContext: isResolvingCatalogContext,
         readerAsync: readerAsync,

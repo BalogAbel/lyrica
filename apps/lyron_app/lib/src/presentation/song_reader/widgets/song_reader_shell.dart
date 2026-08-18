@@ -7,18 +7,21 @@ import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_titles.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_status_views.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// The song reader's body shell: back-gesture handling, the loading/error/
-/// tombstone states, and the `LayoutBuilder`-driven compact-vs-expanded
-/// surface composition.
+/// tombstone states (each wrapped in the compact shell's chrome frame via
+/// [_wrapCompactStatus]), and the compact-vs-expanded surface composition
+/// driven by the [shellLayout] threaded down from the screen.
 ///
 /// Takes only resolved values and callbacks — it does not read any
 /// providers. Capability/route/provider decisions stay in the screen.
@@ -45,6 +48,7 @@ class SongReaderBodyShell extends StatelessWidget {
     required this.onToggleCompactControls,
     required this.resolveNeighborTap,
     required this.compactTopBar,
+    required this.shellLayout,
   });
 
   static const _contentWidth = 960.0;
@@ -93,6 +97,58 @@ class SongReaderBodyShell extends StatelessWidget {
   /// this widget only places it, it does not decide compact-vs-expanded.
   final Widget compactTopBar;
 
+  /// The shell type (compact vs. expanded) and content column count for
+  /// this build, resolved ONCE by the screen off `MediaQuery.sizeOf` and
+  /// threaded down here -- this widget must not re-derive it from its own
+  /// `LayoutBuilder` constraints. See `SongReaderScreen.build`'s comment
+  /// above its `resolveSongReaderLayout` call for why a second resolution
+  /// off a different width source is a bug, not a convenience.
+  final SongReaderLayout shellLayout;
+
+  /// Wraps [statusView] with the compact shell's permanently-visible top bar
+  /// and always-visible bottom bar when [shellLayout] resolves to the
+  /// compact shell. Used for every `readerAsync` state that is NOT `data`
+  /// (loading, access denied, not found, retryable failure, tombstone,
+  /// unresolved conflict, scoped-context-unavailable) -- none of these ever
+  /// built `SongReaderCompactSurface`, which is the only place the chrome
+  /// lived before this wrapper existed, so they rendered with no back
+  /// control and no bottom bar at all on compact widths.
+  ///
+  /// Unlike the data state's tap-revealed overlay, the top bar here is
+  /// unconditional: tap-to-reveal exists so song content can have the full
+  /// screen, and there is no song content in these states. [bottomBarTitle]
+  /// is whatever title is legitimately known (the tombstone's preserved
+  /// title) or the neutral fallback the caller supplies -- never invented.
+  ///
+  /// In the expanded shell this returns [statusView] unchanged:
+  /// `Scaffold.appBar` already carries the back control there (the screen
+  /// only sets it to null for the compact shell), and the expanded shell's
+  /// chrome model is out of scope for this work.
+  Widget _wrapCompactStatus(
+    BuildContext context,
+    Widget statusView, {
+    required String bottomBarTitle,
+  }) {
+    if (shellLayout.shell != SongReaderShell.compact) {
+      return statusView;
+    }
+
+    final chromeMetrics = SongReaderChromeMetrics.resolve(
+      MediaQuery.sizeOf(context).width,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        compactTopBar,
+        Expanded(child: statusView),
+        SizedBox(
+          height: chromeMetrics.bottomBarHeight,
+          child: SongReaderBottomBar(currentTitle: bottomBarTitle),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope<void>(
@@ -106,9 +162,17 @@ class SongReaderBodyShell extends StatelessWidget {
       },
       child: SafeArea(
         child: isResolvingCatalogContext
-            ? const SongReaderLoadingView()
+            ? _wrapCompactStatus(
+                context,
+                const SongReaderLoadingView(),
+                bottomBarTitle: AppStrings.songReaderTitle,
+              )
             : readerAsync.when(
-                loading: () => const SongReaderLoadingView(),
+                loading: () => _wrapCompactStatus(
+                  context,
+                  const SongReaderLoadingView(),
+                  bottomBarTitle: AppStrings.songReaderTitle,
+                ),
                 error: (error, stackTrace) {
                   if (isScopedMode) {
                     if (error is SongNotFoundException) {
@@ -122,24 +186,44 @@ class SongReaderBodyShell extends StatelessWidget {
                                     SongSyncStatus.pendingUpdate
                             ? AppStrings.songReaderDeletedConflictMessage
                             : AppStrings.songReaderDeletedMessage;
-                        return SongReaderDeletedTombstoneView(
-                          title: preservedScopedTitle,
-                          message: message,
+                        return _wrapCompactStatus(
+                          context,
+                          SongReaderDeletedTombstoneView(
+                            title: preservedScopedTitle,
+                            message: message,
+                          ),
+                          bottomBarTitle: preservedScopedTitle,
                         );
                       }
                     }
-                    return const SongReaderScopedUnavailableView();
+                    return _wrapCompactStatus(
+                      context,
+                      const SongReaderScopedUnavailableView(),
+                      bottomBarTitle: AppStrings.songReaderTitle,
+                    );
                   }
 
                   if (error is SongAccessDeniedException) {
-                    return const SongReaderAccessDeniedView();
+                    return _wrapCompactStatus(
+                      context,
+                      const SongReaderAccessDeniedView(),
+                      bottomBarTitle: AppStrings.songReaderTitle,
+                    );
                   }
 
                   if (error is SongNotFoundException) {
-                    return const SongReaderNotFoundView();
+                    return _wrapCompactStatus(
+                      context,
+                      const SongReaderNotFoundView(),
+                      bottomBarTitle: AppStrings.songReaderTitle,
+                    );
                   }
 
-                  return SongReaderLoadFailureView(onRetry: onRetry);
+                  return _wrapCompactStatus(
+                    context,
+                    SongReaderLoadFailureView(onRetry: onRetry),
+                    bottomBarTitle: AppStrings.songReaderTitle,
+                  );
                 },
                 data: (SongReaderResult result) {
                   final projection = SongReaderProjection(
@@ -167,17 +251,16 @@ class SongReaderBodyShell extends StatelessWidget {
                   final showExpandedContextPanel =
                       resolvedScopedContext != null;
 
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final layout = resolveSongReaderLayout(
-                        viewportWidth: constraints.maxWidth,
-                        isAutoFitEnabled: readerState.isAutoFitEnabled,
-                      );
-                      final showCompactBottomContextBar =
-                          resolvedScopedContext != null;
+                  // `shellLayout` is resolved once by the screen and handed
+                  // down (see the field doc) rather than re-derived here off
+                  // a LayoutBuilder's constraints -- so this no longer needs
+                  // its own LayoutBuilder.
+                  final layout = shellLayout;
+                  final showCompactBottomContextBar =
+                      resolvedScopedContext != null;
 
-                      final readerSurface =
-                          layout.shell == SongReaderShell.expanded
+                  final readerSurface =
+                      layout.shell == SongReaderShell.expanded
                           ? SongReaderExpandedSurface(
                               projection: projection,
                               showContextPanel: showExpandedContextPanel,
@@ -246,15 +329,13 @@ class SongReaderBodyShell extends StatelessWidget {
                               contentPadding: _contentPadding,
                             );
 
-                      // The surface itself is full-width; ConstrainedBox and
-                      // padding are applied inside the scroll view by each
-                      // surface widget so the scrollbar thumb sits at the
-                      // physical screen edge.
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [Expanded(child: readerSurface)],
-                      );
-                    },
+                  // The surface itself is full-width; ConstrainedBox and
+                  // padding are applied inside the scroll view by each
+                  // surface widget so the scrollbar thumb sits at the
+                  // physical screen edge.
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [Expanded(child: readerSurface)],
                   );
                 },
               ),
