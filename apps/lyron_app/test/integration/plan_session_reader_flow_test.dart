@@ -1,5 +1,6 @@
 // TODO(auth-invite-sso): stub updated when integration tests rewritten
 // ignore_for_file: non_abstract_class_inherits_abstract_member, override_on_non_overriding_member
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,11 +24,35 @@ import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/router/app_router.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 import '../support/drift_test_setup.dart';
+
+/// Taps the compact surface to reveal its chrome (top bar + control rail).
+/// The reader's top bar (and its back control) is hidden by default post the
+/// chrome restructure, so tests that need it must reveal the chrome first,
+/// the same way a user would. Mirrors the helper of the same name in
+/// `song_reader_screen_test.dart`.
+Future<void> _revealCompactChrome(WidgetTester tester) async {
+  await tester.tap(find.byType(SongReaderCompactSurface));
+  await _settlePendingDoubleTap(tester);
+}
+
+/// Any tap that lands inside the compact surface's ambient GestureDetector
+/// -- including taps on the always-visible bottom bar's previous/next
+/// buttons, which sit inside that same detector -- arms its double-tap
+/// recognizer while the chrome is hidden (it must wait to see whether a
+/// second tap follows before ruling out double-tap-to-fit). Pump past
+/// `kDoubleTapTimeout` so that pending timer resolves before a subsequent
+/// `pumpAndSettle` drives a synchronous router rebuild, or the recognizer's
+/// disposal mid-rebuild throws "setState() or markNeedsBuild() called during
+/// build".
+Future<void> _settlePendingDoubleTap(WidgetTester tester) async {
+  await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+}
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -110,9 +135,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Repeated Song'), findsWidgets);
-      expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+      expect(find.byTooltip(AppStrings.scopedReaderNextAction), findsOneWidget);
 
-      await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+      await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
+      await _settlePendingDoubleTap(tester);
       await tester.pumpAndSettle();
 
       expect(find.text('Second Song'), findsWidgets);
@@ -183,16 +209,19 @@ void main() {
 
     expect(find.text('Repeated Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
+    await _settlePendingDoubleTap(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('Second Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
+    await _settlePendingDoubleTap(tester);
     await tester.pumpAndSettle();
     expect(find.text('Second Song'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
+    await _settlePendingDoubleTap(tester);
     await tester.pumpAndSettle();
     expect(find.text('Repeated Song'), findsWidgets);
   });
@@ -262,6 +291,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Repeated Song 25'), findsWidgets);
+      // Pin the new default: the top bar (and its back control) is hidden
+      // until the chrome is revealed by a tap, not shown up front.
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsNothing);
+
+      await _revealCompactChrome(tester);
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();

@@ -86,6 +86,7 @@ class ReaderTheme {
     required this.leadingDirectiveStyle,
     required this.tabStyle,
     required this.tabBackgroundColor,
+    required this.floatingChromeBackground,
     required this.metrics,
   });
 
@@ -127,6 +128,21 @@ class ReaderTheme {
 
   /// Tab block container fill.
   final Color tabBackgroundColor;
+
+  /// Background for chrome that FLOATS over lyric content rather than
+  /// occupying its own layout space -- the top bar and the control rail
+  /// (spec section 6). Both are `Positioned` overlays drawn on top of
+  /// scrolling song text, so they need a background that keeps their text
+  /// and icons legible over whatever is underneath, in both themes; the
+  /// always-visible bottom bar sits below the content in the `Column`
+  /// instead and does not need this.
+  ///
+  /// Spec section 5's "floating rail surface" row (`#E6E9DF` light /
+  /// `#1A1C18` dark) is this value -- named for the rail there because the
+  /// rail was the only floating surface the spec had described at that
+  /// point; the top bar added by the chrome restructure is the same kind of
+  /// surface and reuses the same token rather than declaring a second one.
+  final Color floatingChromeBackground;
 
   /// Row heights and gaps for this token set's breakpoint.
   ///
@@ -207,6 +223,8 @@ class ReaderTheme {
         color: colorScheme.onSurface,
       ),
       tabBackgroundColor: colorScheme.surfaceContainerHighest,
+      // Spec section 5, "floating rail surface" row.
+      floatingChromeBackground: const Color(0xFFE6E9DF),
       metrics: metrics,
     );
   }
@@ -285,6 +303,8 @@ class ReaderTheme {
         color: lyricColor,
       ),
       tabBackgroundColor: const Color(0xFF1A1C18),
+      // Spec section 5, "floating rail surface" row.
+      floatingChromeBackground: const Color(0xFF1A1C18),
       metrics: metrics,
     );
   }
@@ -324,6 +344,7 @@ class ReaderTheme {
     TextStyle? leadingDirectiveStyle,
     TextStyle? tabStyle,
     Color? tabBackgroundColor,
+    Color? floatingChromeBackground,
     SongReaderMetrics? metrics,
   }) {
     return ReaderTheme(
@@ -339,6 +360,8 @@ class ReaderTheme {
           leadingDirectiveStyle ?? this.leadingDirectiveStyle,
       tabStyle: tabStyle ?? this.tabStyle,
       tabBackgroundColor: tabBackgroundColor ?? this.tabBackgroundColor,
+      floatingChromeBackground:
+          floatingChromeBackground ?? this.floatingChromeBackground,
       metrics: metrics ?? this.metrics,
     );
   }
@@ -371,6 +394,11 @@ class ReaderTheme {
         other.tabBackgroundColor,
         t,
       )!,
+      floatingChromeBackground: Color.lerp(
+        floatingChromeBackground,
+        other.floatingChromeBackground,
+        t,
+      )!,
       // Row heights must stay a coherent set; a half-interpolated metrics
       // object is meaningless, and an in-between row height would put the
       // estimate below the render mid-animation.
@@ -395,6 +423,7 @@ class ReaderTheme {
         other.leadingDirectiveStyle == leadingDirectiveStyle &&
         other.tabStyle == tabStyle &&
         other.tabBackgroundColor == tabBackgroundColor &&
+        other.floatingChromeBackground == floatingChromeBackground &&
         other.metrics == metrics;
   }
 
@@ -410,6 +439,7 @@ class ReaderTheme {
     leadingDirectiveStyle,
     tabStyle,
     tabBackgroundColor,
+    floatingChromeBackground,
     metrics,
   );
 }

@@ -58,8 +58,6 @@ Widget _buildSurface({
         areControlsVisible: false,
         currentTitle: projection.title,
         onSurfaceTap: () {},
-        hasRecoverableWarnings: false,
-        warningCount: 0,
         contentColumnCount: 1,
 
         onTransposeDown: () {},
@@ -165,8 +163,6 @@ void main() {
                   areControlsVisible: false,
                   currentTitle: projection.title,
                   onSurfaceTap: () {},
-                  hasRecoverableWarnings: false,
-                  warningCount: 0,
                   contentColumnCount: 1,
 
                   onTransposeDown: () {},

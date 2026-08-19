@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,13 +30,14 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_context_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
-import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -337,6 +339,94 @@ void main() {
     );
   }
 
+  /// Same route table as [buildScopedReaderApp], but the song load itself is
+  /// driven by [loadSong] (so it can throw) instead of a fixed results map,
+  /// and [mutationRecord]/[catalogState] are settable -- needed to reach the
+  /// scoped error-taxonomy states (tombstone, unresolved conflict, generic
+  /// "scoped context unavailable") that [buildScopedReaderApp] cannot
+  /// produce on its own.
+  Widget buildScopedErrorApp({
+    required PlanDetail planDetail,
+    required Future<SongReaderResult> Function() loadSong,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+    SongMutationRecord? mutationRecord,
+    String initialLocation =
+        '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final router = GoRouter(
+      initialLocation: initialLocation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.planDetail.path,
+          builder: (context, state) => PlanDetailScreen(
+            planId: _planIdForSlug(
+              planDetail,
+              state.pathParameters['planSlug']!,
+            ),
+          ),
+        ),
+        GoRoute(path: '/', builder: (context, state) => const SongListScreen()),
+        GoRoute(
+          path: AppRoutes.planSessionSongReader.path,
+          builder: (context, state) {
+            final planSlug = state.pathParameters['planSlug']!;
+            final sessionSlug = state.pathParameters['sessionSlug']!;
+            final songSlug = state.pathParameters['songSlug']!;
+            final sessionItemId = _sessionItemIdForScopedRoute(
+              planDetail,
+              sessionSlug: sessionSlug,
+              songSlug: songSlug,
+            );
+
+            return SongReaderScreen(
+              songId: _songIdForScopedRoute(
+                planDetail,
+                sessionSlug: sessionSlug,
+                songSlug: songSlug,
+              ),
+              planId: _planIdForSlug(planDetail, planSlug),
+              sessionId: _sessionIdForSlug(planDetail, sessionSlug),
+              sessionItemId: sessionItemId,
+              warmPlanDetail: planDetail,
+            );
+          },
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        _noopPreferencesStoreOverride,
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        activePlanningContextProvider.overrideWithValue(null),
+        songLibraryListProvider.overrideWith((ref) async {
+          return [
+            for (final session in planDetail.sessions)
+              for (final item in session.items) item.song,
+          ];
+        }),
+        planningPlanDetailProvider(
+          planDetail.plan.id,
+        ).overrideWith((ref) async => planDetail),
+        if (mutationRecord != null)
+          songMutationRecordByIdProvider(
+            mutationRecord.id,
+          ).overrideWith((ref) async => mutationRecord),
+        songLibraryReaderProvider.overrideWith((ref, songId) => loadSong()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+  }
+
   Widget buildErrorApp({
     required Future<SongReaderResult> Function() loadSong,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
@@ -358,6 +448,49 @@ void main() {
     );
   }
 
+  /// Same shape as [buildErrorApp], but routed through `GoRouter` so the
+  /// back control's `context.pop()`/`context.replace()` calls have a router
+  /// ancestor to act on -- needed for the compact-shell chrome-frame tests
+  /// below, which tap the back button and assert it actually navigates.
+  Widget buildRoutedErrorApp({
+    required Future<SongReaderResult> Function() loadSong,
+    CatalogSnapshotState catalogState = const CatalogSnapshotState(
+      context: null,
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    ),
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final router = GoRouter(
+      initialLocation: '/songs/$songId',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              const Scaffold(body: Center(child: Text('Home'))),
+        ),
+        GoRoute(
+          path: '/songs/:songId',
+          builder: (context, state) =>
+              SongReaderScreen(songId: state.pathParameters['songId']!),
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [
+        _noopPreferencesStoreOverride,
+        catalogSnapshotStateProvider.overrideWithValue(catalogState),
+        activeCatalogContextProvider.overrideWithValue(catalogState.context),
+        songLibraryReaderProvider.overrideWith((ref, value) => loadSong()),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+  }
+
   Future<void> pumpWithViewport(
     WidgetTester tester, {
     required Size size,
@@ -370,6 +503,23 @@ void main() {
 
     await tester.pumpWidget(child);
     await tester.pumpAndSettle();
+  }
+
+  /// Taps the compact surface to reveal its chrome (top bar + control rail).
+  /// After the chrome restructure (song-presentation slice, PR4) the app bar
+  /// content -- back button, title, warnings, overflow menu -- lives inside
+  /// the compact shell's tap-revealed overlay instead of a persistent
+  /// `Scaffold.appBar`, so tests that need those controls must reveal the
+  /// chrome first, the same way a user would.
+  Future<void> revealCompactChrome(WidgetTester tester) async {
+    await tester.tap(find.byType(SongReaderCompactSurface));
+    // A single tap while hidden still arms the surface's double-tap
+    // recognizer (it must wait to see whether a second tap follows before
+    // it can rule out a double-tap-to-fit gesture). Pump past
+    // kDoubleTapTimeout so that pending timer resolves here rather than
+    // leaking past this helper and tripping "Timer still pending" at
+    // tear-down in tests that don't otherwise settle before finishing.
+    await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
   }
 
   testWidgets('shows metadata, sections, and controls by default', (
@@ -397,13 +547,19 @@ void main() {
         child: buildApp(result: buildResult()),
       );
 
-      expect(find.byType(SongReaderBottomContextBar), findsNothing);
+      // The bottom bar is always-present layout space now (spec section 6),
+      // independent of the reveal toggle -- unlike the top bar and rail
+      // below, which are the chrome this test title refers to.
+      expect(find.byType(SongReaderBottomBar), findsOneWidget);
       expect(find.byType(SongReaderTitleBar), findsNothing);
-      expect(find.byType(SongReaderControlBar), findsNothing);
+      expect(find.byType(SongReaderControlRail), findsNothing);
       expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
       expect(find.byType(SongReaderExpandedToolsPanel), findsNothing);
-      expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
-      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      // The app bar (back button, overflow menu) now lives in the same
+      // tap-revealed overlay as the control rail, so it is hidden by default
+      // too -- this is the behaviour the chrome restructure introduced.
+      expect(find.byTooltip(AppStrings.songReaderBackAction), findsNothing);
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
       expect(find.text('Song reader'), findsNothing);
       expect(find.text('Lyrics only'), findsNothing);
       expect(find.text('Reader Song'), findsWidgets);
@@ -429,13 +585,13 @@ void main() {
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump();
 
-    expect(find.byType(SongReaderControlBar), findsOneWidget);
+    expect(find.byType(SongReaderControlRail), findsOneWidget);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsOneWidget);
 
     await tester.tapAt(compactSurfaceCenter);
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.byType(SongReaderControlBar), findsNothing);
+    expect(find.byType(SongReaderControlRail), findsNothing);
     expect(find.byKey(const Key('song-reader-transpose-up')), findsNothing);
   });
 
@@ -455,8 +611,8 @@ void main() {
       greaterThan(960),
     );
     expect(find.byType(SongReaderExpandedToolsPanel), findsOneWidget);
-    expect(find.byType(SongReaderControlBar), findsNothing);
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderControlRail), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.widgetWithText(AppBar, 'Reader Song'), findsOneWidget);
     expect(find.widgetWithText(AppBar, 'Song reader'), findsNothing);
     expect(find.byIcon(Icons.more_horiz), findsOneWidget);
@@ -495,14 +651,16 @@ void main() {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    // Always-present bottom-bar slot (spec section 6): present in the
+    // compact shell regardless of scoped/catalogue mode.
+    expect(find.byType(SongReaderBottomBar), findsOneWidget);
     expect(find.byType(SongReaderExpandedSurface), findsNothing);
 
     tester.view.physicalSize = const Size(1600, 1200);
     await tester.pumpAndSettle();
 
     expect(find.byType(SongReaderExpandedSurface), findsOneWidget);
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
   });
 
   testWidgets(
@@ -550,6 +708,8 @@ void main() {
   ) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     expect(find.byTooltip(AppStrings.songReaderBackAction), findsOneWidget);
     expect(find.text(AppStrings.songEditAction), findsNothing);
@@ -633,6 +793,8 @@ void main() {
     );
     expect(find.text('Capo 2'), findsOneWidget);
 
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Piano View'));
@@ -664,6 +826,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
@@ -694,6 +858,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
@@ -758,6 +924,8 @@ void main() {
 
     expect(rebuilds, 1);
 
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songDeleteAction));
@@ -788,6 +956,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The app bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
@@ -1020,13 +1190,15 @@ void main() {
   testWidgets('overflow menu toggles the view mode', (tester) async {
     await tester.pumpWidget(buildApp(result: buildResult()));
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
     await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.tap(find.byIcon(Icons.more_horiz), warnIfMissed: true);
     await tester.pumpAndSettle();
     expect(
       find.text(AppStrings.songReaderChordsAndLyricsAction),
@@ -1034,15 +1206,34 @@ void main() {
     );
   });
 
-  testWidgets('app bar shows the effective key', (tester) async {
-    await tester.pumpWidget(buildApp(result: buildResult()));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'top bar shows the title, and the bottom bar shows the effective key',
+    (tester) async {
+      await tester.pumpWidget(buildApp(result: buildResult()));
+      await tester.pumpAndSettle();
+      // The top bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
-    expect(
-      find.textContaining(AppStrings.songReaderKeyLabelPrefix),
-      findsOneWidget,
-    );
-  });
+      // SongReaderTopBar carries the title (deliberately duplicated with
+      // the bottom bar's own copy -- spec section 6), but not the key --
+      // that stays in the always-visible bottom bar, which this asserts
+      // directly rather than through the top bar.
+      expect(
+        find.descendant(
+          of: find.byType(SongReaderTopBar),
+          matching: find.text('Reader Song'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SongReaderBottomBar),
+          matching: find.textContaining(AppStrings.songReaderKeyLabelPrefix),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('warning action appears and opens a dialog', (tester) async {
     await tester.pumpWidget(
@@ -1060,6 +1251,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The app bar is a tap-revealed overlay in the compact shell now.
+    await revealCompactChrome(tester);
 
     await tester.tap(find.byIcon(Icons.warning_amber_outlined));
     await tester.pumpAndSettle();
@@ -1206,9 +1399,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(SongReaderBottomContextBar), findsOneWidget);
-    expect(find.text(AppStrings.scopedReaderPreviousAction), findsOneWidget);
-    expect(find.text(AppStrings.scopedReaderNextAction), findsOneWidget);
+    expect(find.byType(SongReaderBottomBar), findsOneWidget);
+    // The new bar shows chevron icons (tooltipped, not captioned) rather
+    // than the old "Previous song"/"Next song" text labels -- spec section
+    // 6, "previous item (chevron + title) | ... | next item (title +
+    // chevron)".
+    expect(
+      find.byTooltip(AppStrings.scopedReaderPreviousAction),
+      findsOneWidget,
+    );
+    expect(find.byTooltip(AppStrings.scopedReaderNextAction), findsOneWidget);
   });
 
   testWidgets('scoped expanded reader shows interactive set context panel', (
@@ -1227,7 +1427,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.byType(SongReaderExpandedContextPanel), findsOneWidget);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
@@ -1298,7 +1498,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.widgetWithText(SongReaderBottomContextBar, 'Reader Song'),
+        find.widgetWithText(SongReaderBottomBar, 'Reader Song'),
         findsOneWidget,
       );
     },
@@ -1313,7 +1513,7 @@ void main() {
       child: buildApp(result: buildResult()),
     );
 
-    expect(find.byType(SongReaderBottomContextBar), findsNothing);
+    expect(find.byType(SongReaderBottomBar), findsNothing);
     expect(find.byType(SongReaderExpandedContextPanel), findsNothing);
     expect(find.text(AppStrings.scopedReaderPreviousAction), findsNothing);
     expect(find.text(AppStrings.scopedReaderNextAction), findsNothing);
@@ -1338,19 +1538,19 @@ void main() {
 
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Two'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Three'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song Three'), findsWidgets);
   });
@@ -1398,11 +1598,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.previousSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.previousSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
 
-    await tester.tap(find.byKey(SongReaderBottomContextBar.nextSegmentKey));
+    await tester.tap(find.byKey(SongReaderBottomBar.nextSegmentKey));
     await tester.pumpAndSettle();
     expect(find.text('Song One'), findsWidgets);
   });
@@ -1798,6 +1998,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // The app bar is a tap-revealed overlay in the compact shell now.
+      await revealCompactChrome(tester);
 
       await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
       await tester.pumpAndSettle();
@@ -1863,8 +2065,21 @@ void main() {
       ),
     );
 
-    await tester.pumpWidget(
-      buildRoutedApp(
+    // Expanded shell (>=1600px): its app bar is still the unchanged
+    // `Scaffold.appBar`, always visible, with no compact-surface reveal
+    // step -- unlike the compact shell, where PR4 moved the overflow menu
+    // into the tap-revealed overlay (see 'immersive mode is not re-applied
+    // when the state is unchanged'... on compact would require revealing
+    // the chrome to reach Edit, which is itself a real visibility change
+    // and would give the de-dup guard nothing to swallow). The expanded
+    // shell reaches Edit without ever touching compact-controls visibility,
+    // so it stays the one path that reproduces this test's premise: the
+    // reader's controls visibility never changes across the whole
+    // push-editor / pop-editor round trip.
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildRoutedApp(
         result: buildResult(),
         songLibraryService: SongLibraryService(
           _ReaderFakeSongRepository(),
@@ -1872,11 +2087,10 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
 
-    // The reader opens with compact controls hidden (see 'compact reader
-    // uses immersive header and hides overlay by default'), so the initial
-    // post-frame sync applies edgeToEdge exactly once.
+    // The reader opens with compact controls hidden (irrelevant to the
+    // expanded shell, but still the state `_areControlsVisible` reports),
+    // so the initial post-frame sync applies edgeToEdge exactly once.
     expect(modeCalls, ['SystemUiMode.edgeToEdge']);
     final callCountAfterOpen = modeCalls.length;
 
@@ -1897,14 +2111,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SongReaderScreen), findsOneWidget);
     expect(modeCalls.length, callCountAfterOpen);
-
-    // Now make a real change: toggling the surface actually flips controls
-    // visibility, so this proves the counter is wired to something real —
-    // it must grow by exactly one.
-    await tester.tap(find.byType(SongReaderCompactSurface));
-    await tester.pump();
-    expect(modeCalls.length, callCountAfterOpen + 1);
-    expect(modeCalls.last, 'SystemUiMode.immersiveSticky');
 
     // Drain any persist-zoom debounce.
     await tester.pump(const Duration(milliseconds: 500));
@@ -2058,6 +2264,276 @@ void main() {
       greaterThan(0),
       reason: 'increase-font tap must trigger a persisted zoom write',
     );
+  });
+
+  // Findings 1/2 of the reader-chrome-restructure review: the compact
+  // shell's non-data ADR-023/024 states (loading, error, tombstone) render
+  // through `readerAsync.when`'s non-`data` branches, which never built
+  // `SongReaderCompactSurface` -- the only place the top bar and bottom bar
+  // lived after the chrome restructure. That left every one of these states
+  // with no back control and no bottom bar at all on compact widths. These
+  // tests pump each ADR-023/024 state at a phone AND a tablet width (both
+  // below the 1600px expanded-shell threshold) and assert a back control is
+  // present and tappable, and that the bottom bar is present.
+  group('compact shell chrome frame around non-data states', () {
+    const viewports = {'phone': Size(375, 812), 'tablet': Size(800, 1200)};
+
+    for (final viewportEntry in viewports.entries) {
+      final viewportLabel = viewportEntry.key;
+      final viewportSize = viewportEntry.value;
+
+      testWidgets(
+        'loading state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => buildResult(),
+              // isResolvingCatalogContext stays true forever (fixed override),
+              // so the reader is pinned on the plain loading view.
+              catalogState: const CatalogSnapshotState(
+                context: null,
+                connectionStatus: CatalogConnectionStatus.unavailable,
+                refreshStatus: CatalogRefreshStatus.refreshing,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: false,
+              ),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderLoadingMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'unavailable-song state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => throw const SongNotFoundException(songId),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderUnavailableMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'access-denied state on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async =>
+                  throw const SongAccessDeniedException(songId),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderAccessDeniedMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'retryable backend failure on $viewportLabel shows back control, bottom bar and retry',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildRoutedErrorApp(
+              loadSong: () async => throw Exception('backend unavailable'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderLoadFailureMessage),
+            findsOneWidget,
+          );
+          expect(find.text(AppStrings.retryAction), findsOneWidget);
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text('Home'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'preserved-title tombstone on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              catalogState: const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+              loadSong: () async => throw const SongNotFoundException('song-2'),
+            ),
+          );
+
+          expect(find.text(AppStrings.songReaderDeletedTitle), findsOneWidget);
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          // The bottom bar carries the preserved title, not the neutral
+          // fallback -- it is legitimately known here.
+          expect(
+            find.widgetWithText(SongReaderBottomBar, 'Song Two'),
+            findsOneWidget,
+          );
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'unresolved remote-delete conflict on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              catalogState: const CatalogSnapshotState(
+                context: ActiveCatalogContext(
+                  userId: 'user-1',
+                  organizationId: 'org-1',
+                ),
+                connectionStatus: CatalogConnectionStatus.online,
+                refreshStatus: CatalogRefreshStatus.idle,
+                sessionStatus: CatalogSessionStatus.verified,
+                hasCachedCatalog: true,
+              ),
+              mutationRecord: const SongMutationRecord(
+                id: 'song-2',
+                organizationId: 'org-1',
+                slug: 'song-two',
+                title: 'Local Draft Title',
+                chordproSource: '{title: Local Draft Title}',
+                version: 2,
+                baseVersion: 2,
+                syncStatus: SongSyncStatus.conflict,
+                errorCode: SongMutationSyncErrorCode.remoteDeleted,
+                conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+              ),
+              loadSong: () async => throw const SongNotFoundException('song-2'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.songReaderDeletedConflictMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'unavailable planning context on $viewportLabel shows back control and bottom bar',
+        (tester) async {
+          await pumpWithViewport(
+            tester,
+            size: viewportSize,
+            child: buildScopedErrorApp(
+              planDetail: _multiItemPlanDetail(),
+              // A non-SongNotFoundException scoped failure never qualifies
+              // for the tombstone -- it always renders
+              // SongReaderScopedUnavailableView (shell.dart's fallback for
+              // any scoped read failure).
+              loadSong: () async =>
+                  throw const SongAccessDeniedException('song-2'),
+            ),
+          );
+
+          expect(
+            find.text(AppStrings.scopedReaderContextUnavailableMessage),
+            findsOneWidget,
+          );
+          expect(
+            find.byTooltip(AppStrings.songReaderBackAction),
+            findsOneWidget,
+          );
+          expect(find.byType(SongReaderBottomBar), findsOneWidget);
+          // No song is known here -- the bottom bar must fall back to the
+          // neutral title, never invent one.
+          expect(
+            find.widgetWithText(
+              SongReaderBottomBar,
+              AppStrings.songReaderTitle,
+            ),
+            findsOneWidget,
+          );
+
+          await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+          await tester.pumpAndSettle();
+          expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+        },
+      );
+    }
   });
 }
 

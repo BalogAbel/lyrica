@@ -42,6 +42,8 @@ class SessionScopedReaderContext {
     required this.selectedItem,
     required this.previousItem,
     required this.nextItem,
+    required this.position,
+    required this.itemCount,
   });
 
   final String planId;
@@ -54,6 +56,12 @@ class SessionScopedReaderContext {
   final SessionScopedReaderNeighbor? previousItem;
   final SessionScopedReaderNeighbor? nextItem;
 
+  /// 1-based position of [selectedItem] within the session's ordered items.
+  final int position;
+
+  /// Total number of items in the session.
+  final int itemCount;
+
   @override
   bool operator ==(Object other) {
     return other is SessionScopedReaderContext &&
@@ -65,7 +73,9 @@ class SessionScopedReaderContext {
         other.songId == songId &&
         other.selectedItem == selectedItem &&
         other.previousItem == previousItem &&
-        other.nextItem == nextItem;
+        other.nextItem == nextItem &&
+        other.position == position &&
+        other.itemCount == itemCount;
   }
 
   @override
@@ -79,6 +89,8 @@ class SessionScopedReaderContext {
     selectedItem,
     previousItem,
     nextItem,
+    position,
+    itemCount,
   );
 }
 

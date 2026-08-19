@@ -1498,6 +1498,10 @@ from `./scripts/verify.sh`. A `web_build` job was also added to
 - ~~SEC-4: backend-derived shadow metadata.~~ **Done (read-boundary-and-derived-song-metadata).**
 - Schema-vs-app reconciliation; FreeShow; i18n; production-readiness.
 - ~~Design-token layer; dark mode (UX-7).~~ **Done (reader-token-layer-and-dark-theme, ADR-033).**
+- ~~Reader chrome competing with the song for vertical space; revealing the
+  controls resized the fit calculation's input.~~ **Done
+  (reader-chrome-restructure, ADR-034).** No numbered finding covered this —
+  it came out of the song-presentation spec, section 6.
 
 ## 14. Evidence Appendix
 

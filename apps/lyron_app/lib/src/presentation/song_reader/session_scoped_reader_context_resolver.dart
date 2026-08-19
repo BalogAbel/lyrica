@@ -58,6 +58,8 @@ SessionScopedReaderContextResult resolveSessionScopedReaderContext({
       nextItem: selectedIndex < orderedItems.length - 1
           ? _toNeighbor(orderedItems[selectedIndex + 1])
           : null,
+      position: selectedIndex + 1,
+      itemCount: orderedItems.length,
     ),
   );
 }

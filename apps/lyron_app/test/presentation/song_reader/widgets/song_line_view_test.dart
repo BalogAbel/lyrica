@@ -379,6 +379,7 @@ void main() {
         leadingDirectiveStyle: base.leadingDirectiveStyle,
         tabStyle: base.tabStyle,
         tabBackgroundColor: base.tabBackgroundColor,
+        floatingChromeBackground: base.floatingChromeBackground,
         metrics: base.metrics,
       );
 
