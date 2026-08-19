@@ -22,8 +22,6 @@ class SongReaderCompactSurface extends StatefulWidget {
     required this.currentTitle,
     this.topBar,
     required this.onSurfaceTap,
-    required this.hasRecoverableWarnings,
-    required this.warningCount,
     required this.contentColumnCount,
     required this.onTransposeDown,
     required this.onTransposeUp,
@@ -70,8 +68,6 @@ class SongReaderCompactSurface extends StatefulWidget {
   final int? itemCount;
 
   final VoidCallback onSurfaceTap;
-  final bool hasRecoverableWarnings;
-  final int warningCount;
   final int contentColumnCount;
   final bool showBottomContextBar;
   final VoidCallback onTransposeDown;
@@ -310,180 +306,256 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
             onPointerMove: _handlePointerMove,
             onPointerUp: (event) => _handlePointerEnd(event.pointer),
             onPointerCancel: (event) => _handlePointerEnd(event.pointer),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
-              // Disabled while the chrome is revealed: a GestureDetector
-              // with both onTap and onDoubleTap must wait to disambiguate
-              // the two on every tap, including taps on the top bar / rail
-              // buttons nested inside it below (they still hit-test through
-              // this ancestor). That wait was intermittently stealing
-              // repeat taps on those buttons -- e.g. reopening the overflow
-              // menu a second time silently did nothing instead of showing
-              // it, because the ambient double-tap recognizer paired it
-              // with the tap that first opened the menu. Double-tap-to-fit
-              // only makes sense over content anyway, never while the
-              // overlay chrome is up, so gating it here is correct, not
-              // just a workaround.
-              onDoubleTap: widget.areControlsVisible ? null : _handleDoubleTap,
-              child: Builder(
-                builder: (context) {
-                  final chromeMetrics = SongReaderChromeMetrics.resolve(
-                    MediaQuery.sizeOf(context).width,
-                  );
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: Stack(
-                          // NON-NEGOTIABLE: `content` (the LayoutBuilder
-                          // below) must stay the ONLY non-Positioned child of
-                          // this Stack. A Stack sizes itself off its
-                          // non-positioned children only, and hands them
-                          // constraints derived solely from its own incoming
-                          // constraints -- never from sibling Positioned
-                          // children. That is what keeps revealing the top
-                          // bar / rail from changing the `availableHeight`
-                          // the fit LayoutBuilder below sees. Do NOT add a
-                          // second non-Positioned child, do NOT give the
-                          // overlays `StackFit.expand`, and do NOT wrap
-                          // `content` in anything that reads the overlays'
-                          // size. See
-                          // test/presentation/song_reader/widgets/song_reader_chrome_geometry_test.dart,
-                          // which fails the instant this invariant breaks.
-                          children: [
+            // The tap/double-tap GestureDetector used to wrap this entire
+            // surface (including the floating top bar / rail below), which
+            // meant every tap on those nested buttons -- e.g. reopening the
+            // overflow menu -- also had to sit through this detector's
+            // tap-vs-double-tap arena wait. That intermittently stole repeat
+            // taps on those buttons: reopening the overflow menu a second
+            // time silently did nothing because the ambient double-tap
+            // recognizer paired it with the tap that first opened the menu.
+            // The old fix gated `onDoubleTap` to null while the chrome was
+            // revealed, but that broke double-tap-to-fit entirely: revealing
+            // the chrome (driven by the ambient `Listener`'s pointer-up
+            // handler below, which fires before the arena resolves tap vs.
+            // double-tap) rebuilt this widget with `onDoubleTap: null`
+            // between the two taps, disposing the in-flight recognizer.
+            // Scoping the detector to the CONTENT child inside the `Stack`
+            // (below, wrapping the LayoutBuilder) fixes both: chrome button
+            // taps never hit-test through this detector at all, so the
+            // arena-steal bug cannot recur, and `onDoubleTap` can stay
+            // registered unconditionally so the recognizer survives the
+            // reveal.
+            child: Builder(
+              builder: (context) {
+                final chromeMetrics = SongReaderChromeMetrics.resolve(
+                  MediaQuery.sizeOf(context).width,
+                );
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        // NON-NEGOTIABLE: `content` (the LayoutBuilder
+                        // below) must stay the ONLY non-Positioned child of
+                        // this Stack. A Stack sizes itself off its
+                        // non-positioned children only, and hands them
+                        // constraints derived solely from its own incoming
+                        // constraints -- never from sibling Positioned
+                        // children. That is what keeps revealing the top
+                        // bar / rail from changing the `availableHeight`
+                        // the fit LayoutBuilder below sees. Do NOT add a
+                        // second non-Positioned child, do NOT give the
+                        // overlays `StackFit.expand`, and do NOT wrap
+                        // `content` in anything that reads the overlays'
+                        // size. See
+                        // test/presentation/song_reader/widgets/song_reader_chrome_geometry_test.dart,
+                        // which fails the instant this invariant breaks.
+                        children: [
+                          // Wrapped in the tap/double-tap GestureDetector
+                          // here -- see _wrapContentGestures and the
+                          // comment above this widget's `build` -- rather
+                          // than around the whole Stack, so chrome button
+                          // taps never hit-test through it and the Stack's
+                          // non-Positioned-child invariant above still
+                          // holds (this GestureDetector, wrapping the
+                          // LayoutBuilder, is that one child).
+                          _wrapContentGestures(
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 // Store constraints and resolved padding so
                                 // _handleDoubleTap can use the viewport
                                 // dimensions without capturing a stale
                                 // BuildContext.
-                                final resolved = widget.contentPadding.resolve(
-                                  Directionality.maybeOf(context) ??
-                                      TextDirection.ltr,
+                                final basePadding = widget.contentPadding
+                                    .resolve(
+                                      Directionality.maybeOf(context) ??
+                                          TextDirection.ltr,
+                                    );
+                                // Unlike the top bar / rail / bottom bar
+                                // (each a `Positioned` overlay or its own
+                                // Column slot that already consumes the
+                                // inset it sits against), this content fills
+                                // the whole screen with no ancestor
+                                // SafeArea, so it has to add the top/left/
+                                // right safe-area insets itself or the first
+                                // lyric line/leading characters render under
+                                // the status bar or a landscape notch. The
+                                // BOTTOM inset is deliberately excluded: the
+                                // bottom bar already occupies real layout
+                                // space below this content in the outer
+                                // Column (it is not an overlay the content
+                                // sits under), so adding it again here would
+                                // double-count it.
+                                final viewPadding = MediaQuery.viewPaddingOf(
+                                  context,
+                                );
+                                final resolved = EdgeInsets.fromLTRB(
+                                  basePadding.left + viewPadding.left,
+                                  basePadding.top + viewPadding.top,
+                                  basePadding.right + viewPadding.right,
+                                  basePadding.bottom,
                                 );
                                 _contentPaddingH = resolved.horizontal;
                                 _contentPaddingV = resolved.vertical;
                                 _contentConstraints = constraints;
                                 final availableHeight =
                                     constraints.maxHeight - _contentPaddingV;
-                                return Scrollbar(
-                                  controller: _scrollController,
-                                  child: SingleChildScrollView(
+                                // Sized to the full incoming constraints
+                                // (not left to shrink to the scroll view's
+                                // natural content size) so the wrapping tap/
+                                // double-tap GestureDetector's opaque hit
+                                // region covers the WHOLE content area, the
+                                // same full-bleed coverage the single
+                                // whole-surface GestureDetector used to give
+                                // for free. Without this, a short song (whose
+                                // SingleChildScrollView is only as tall as
+                                // its few lines) left the rest of the screen
+                                // -- everything below the last lyric line --
+                                // completely untappable: no reveal, no
+                                // double-tap-to-fit, no pinch, because there
+                                // was no opaque descendant there for the
+                                // ambient Listener/RawGestureDetector to hit
+                                // through. `width`/`height` mirror the exact
+                                // values `availableHeight` above and the fit
+                                // calculation already use, so this changes
+                                // nothing about what either measures.
+                                return SizedBox(
+                                  width: constraints.maxWidth,
+                                  height: constraints.maxHeight,
+                                  child: Scrollbar(
                                     controller: _scrollController,
-                                    child:
-                                        // A fixed left edge, not a centred shrink-wrap.
-                                        // Center + ConstrainedBox passed LOOSE
-                                        // constraints down, so the section grid's
-                                        // Column sized itself to its own longest
-                                        // line and was then centred -- every
-                                        // section started from a content-dependent
-                                        // left edge. A tight width on the section
-                                        // grid itself is what fixes that; swapping
-                                        // Center for Align around the OLD child
-                                        // would shrink-wrap identically. The outer
-                                        // Align (rather than dropping it) is still
-                                        // needed so the SingleChildScrollView
-                                        // itself stays full viewport width and the
-                                        // scrollbar thumb sits at the physical
-                                        // screen edge -- only the positioned child
-                                        // is tight-width and left-aligned.
-                                        Align(
-                                          alignment: Alignment.topLeft,
-                                          child: SizedBox(
-                                            width: math.min(
-                                              constraints.maxWidth,
-                                              widget.maxContentWidth,
-                                            ),
-                                            child: Padding(
-                                              padding: widget.contentPadding,
-                                              child: SongReaderSectionGrid(
-                                                leadingDirectiveText: widget
-                                                    .projection
-                                                    .capoDirectiveText,
-                                                sections:
-                                                    widget.projection.sections,
-                                                viewMode:
-                                                    widget.projection.viewMode,
-                                                sharedFontScale: widget
-                                                    .projection
-                                                    .sharedFontScale,
-                                                columnCount:
-                                                    widget.contentColumnCount,
-                                                availableHeight:
-                                                    availableHeight, // already padding-adjusted
+                                    child: SingleChildScrollView(
+                                      controller: _scrollController,
+                                      child:
+                                          // A fixed left edge, not a centred shrink-wrap.
+                                          // Center + ConstrainedBox passed LOOSE
+                                          // constraints down, so the section grid's
+                                          // Column sized itself to its own longest
+                                          // line and was then centred -- every
+                                          // section started from a content-dependent
+                                          // left edge. A tight width on the section
+                                          // grid itself is what fixes that; swapping
+                                          // Center for Align around the OLD child
+                                          // would shrink-wrap identically. The outer
+                                          // Align (rather than dropping it) is still
+                                          // needed so the SingleChildScrollView
+                                          // itself stays full viewport width and the
+                                          // scrollbar thumb sits at the physical
+                                          // screen edge -- only the positioned child
+                                          // is tight-width and left-aligned.
+                                          Align(
+                                            alignment: Alignment.topLeft,
+                                            child: SizedBox(
+                                              width: math.min(
+                                                constraints.maxWidth,
+                                                widget.maxContentWidth,
+                                              ),
+                                              child: Padding(
+                                                padding: resolved,
+                                                child: SongReaderSectionGrid(
+                                                  leadingDirectiveText: widget
+                                                      .projection
+                                                      .capoDirectiveText,
+                                                  sections: widget
+                                                      .projection
+                                                      .sections,
+                                                  viewMode: widget
+                                                      .projection
+                                                      .viewMode,
+                                                  sharedFontScale: widget
+                                                      .projection
+                                                      .sharedFontScale,
+                                                  columnCount:
+                                                      widget.contentColumnCount,
+                                                  availableHeight:
+                                                      availableHeight, // already padding-adjusted
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
+                                    ),
                                   ),
                                 );
                               },
                             ),
-                            if (widget.areControlsVisible &&
-                                widget.topBar != null)
-                              Positioned(
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                child: widget.topBar!,
-                              ),
-                            if (widget.areControlsVisible)
-                              Positioned(
-                                top: 0,
-                                bottom: 0,
-                                // Plus the right safe-area inset: with no
-                                // ancestor SafeArea, a landscape notch would
-                                // otherwise sit on top of the rail.
-                                right:
-                                    chromeMetrics.railEdgeInset +
-                                    MediaQuery.viewPaddingOf(context).right,
-                                child: Center(
-                                  child: SongReaderControlRail(
-                                    projection: widget.projection,
-                                    onTransposeDown: widget.onTransposeDown,
-                                    onTransposeUp: widget.onTransposeUp,
-                                    onCapoDown: widget.onCapoDown,
-                                    onCapoUp: widget.onCapoUp,
-                                    onDecreaseFontScale:
-                                        widget.onDecreaseFontScale,
-                                    onIncreaseFontScale:
-                                        widget.onIncreaseFontScale,
-                                  ),
+                          ),
+                          if (widget.areControlsVisible &&
+                              widget.topBar != null)
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: widget.topBar!,
+                            ),
+                          if (widget.areControlsVisible)
+                            Positioned(
+                              top: 0,
+                              bottom: 0,
+                              // Plus the right safe-area inset: with no
+                              // ancestor SafeArea, a landscape notch would
+                              // otherwise sit on top of the rail.
+                              right:
+                                  chromeMetrics.railEdgeInset +
+                                  MediaQuery.viewPaddingOf(context).right,
+                              child: Center(
+                                child: SongReaderControlRail(
+                                  projection: widget.projection,
+                                  onTransposeDown: widget.onTransposeDown,
+                                  onTransposeUp: widget.onTransposeUp,
+                                  onCapoDown: widget.onCapoDown,
+                                  onCapoUp: widget.onCapoUp,
+                                  onDecreaseFontScale:
+                                      widget.onDecreaseFontScale,
+                                  onIncreaseFontScale:
+                                      widget.onIncreaseFontScale,
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
-                      // Always-present bottom bar slot: unlike the top bar and
-                      // rail above, this does not depend on
-                      // `areControlsVisible` -- it occupies layout space in
-                      // the Column at all times (spec section 6, "an
-                      // always-visible bottom bar"). The bar sizes itself --
-                      // bar height plus the bottom safe-area inset -- so there
-                      // is deliberately no SizedBox here; see
-                      // SongReaderBottomBar's doc comment.
-                      SongReaderBottomBar(
-                        currentTitle: widget.currentTitle,
-                        keyLabel: widget.projection.effectiveKey,
-                        capoLabel: widget.projection.isCapoDirectiveVisible
-                            ? widget.projection.capoDirectiveText
-                            : null,
-                        position: widget.position,
-                        itemCount: widget.itemCount,
-                        isPlanScoped: widget.showBottomContextBar,
-                        previousTitle: widget.previousTitle,
-                        nextTitle: widget.nextTitle,
-                        onPreviousTap: widget.onPreviousTap,
-                        onNextTap: widget.onNextTap,
-                      ),
-                    ],
-                  );
-                },
-              ),
+                    ),
+                    // Always-present bottom bar slot: unlike the top bar and
+                    // rail above, this does not depend on
+                    // `areControlsVisible` -- it occupies layout space in
+                    // the Column at all times (spec section 6, "an
+                    // always-visible bottom bar"). The bar sizes itself --
+                    // bar height plus the bottom safe-area inset -- so there
+                    // is deliberately no SizedBox here; see
+                    // SongReaderBottomBar's doc comment.
+                    SongReaderBottomBar(
+                      currentTitle: widget.currentTitle,
+                      keyLabel: widget.projection.effectiveKey,
+                      capoLabel: widget.projection.isCapoDirectiveVisible
+                          ? widget.projection.capoDirectiveText
+                          : null,
+                      position: widget.position,
+                      itemCount: widget.itemCount,
+                      isPlanScoped: widget.showBottomContextBar,
+                      previousTitle: widget.previousTitle,
+                      nextTitle: widget.nextTitle,
+                      onPreviousTap: widget.onPreviousTap,
+                      onNextTap: widget.onNextTap,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _wrapContentGestures(Widget content) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
+      // Registered unconditionally (never null) so the recognizer survives
+      // a rebuild mid double-tap -- see the comment above this widget's
+      // `build` for why gating it on `areControlsVisible` broke double-tap
+      // entirely.
+      onDoubleTap: _handleDoubleTap,
+      child: content,
     );
   }
 }

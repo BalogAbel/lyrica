@@ -63,8 +63,6 @@ Widget _buildSurface({required bool areControlsVisible}) {
         areControlsVisible: areControlsVisible,
         currentTitle: 'Song',
         onSurfaceTap: () {},
-        hasRecoverableWarnings: false,
-        warningCount: 0,
         contentColumnCount: 1,
         onTransposeDown: () {},
         onTransposeUp: () {},

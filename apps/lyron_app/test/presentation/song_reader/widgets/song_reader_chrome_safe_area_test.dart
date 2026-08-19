@@ -9,9 +9,13 @@
 // exact rather than approximate.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_section_grid.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -319,6 +323,111 @@ void main() {
 
         expect(previousWithInset - previousWithoutInset, _landscapeNotch.left);
         expect(nextWithoutInset - nextWithInset, _landscapeNotch.right);
+      },
+    );
+  });
+
+  group('scrolling content consumes the top/left/right safe-area insets', () {
+    // The compact surface's content is the thing filling the whole screen
+    // (not one of the three chrome surfaces that already handle their own
+    // insets), so with the chrome hidden by default and no ancestor
+    // SafeArea, it must add the top/left/right view padding itself or the
+    // first lyric line/leading characters render under the status bar or a
+    // landscape notch.
+    const contentPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 14);
+
+    SongReaderProjection projection() {
+      return SongReaderProjection(
+        song: ParsedSong(
+          title: 'Song',
+          sourceKey: 'G',
+          sections: [
+            SongSection(
+              kind: SongSectionKind.verse,
+              label: 'Verse',
+              number: 1,
+              lines: [
+                LyricLine(
+                  segments: [
+                    LyricSegment(leadingChord: 'G', text: 'A lyric line'),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          diagnostics: const [],
+        ),
+        state: SongReaderState(),
+      );
+    }
+
+    Widget buildSurface({required EdgeInsets viewPadding, required Size size}) {
+      return MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(size: size, viewPadding: viewPadding),
+          child: Scaffold(
+            body: SongReaderCompactSurface(
+              projection: projection(),
+              areControlsVisible: false,
+              currentTitle: 'Song',
+              onSurfaceTap: () {},
+              contentColumnCount: 1,
+              onTransposeDown: () {},
+              onTransposeUp: () {},
+              onDecreaseFontScale: () {},
+              onIncreaseFontScale: () {},
+              showBottomContextBar: false,
+              maxContentWidth: 960,
+              contentPadding: contentPadding,
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('the content rect shifts right/down by the left/top insets', (
+      tester,
+    ) async {
+      const size = Size(834, 1194);
+      const viewPadding = EdgeInsets.only(
+        top: 47,
+        left: 44,
+        right: 44,
+        bottom: 34,
+      );
+
+      await tester.pumpWidget(
+        buildSurface(viewPadding: EdgeInsets.zero, size: size),
+      );
+      final withoutInset = tester.getRect(find.byType(SongReaderSectionGrid));
+
+      await tester.pumpWidget(
+        buildSurface(viewPadding: viewPadding, size: size),
+      );
+      final withInset = tester.getRect(find.byType(SongReaderSectionGrid));
+
+      expect(withInset.left - withoutInset.left, viewPadding.left);
+      expect(withInset.top - withoutInset.top, viewPadding.top);
+    });
+
+    testWidgets(
+      'the bottom inset is NOT added to the content -- the bottom bar '
+      'already consumes it',
+      (tester) async {
+        const size = Size(834, 1194);
+        const viewPadding = EdgeInsets.only(bottom: 34);
+
+        await tester.pumpWidget(
+          buildSurface(viewPadding: EdgeInsets.zero, size: size),
+        );
+        final withoutInset = tester.getRect(find.byType(SongReaderSectionGrid));
+
+        await tester.pumpWidget(
+          buildSurface(viewPadding: viewPadding, size: size),
+        );
+        final withInset = tester.getRect(find.byType(SongReaderSectionGrid));
+
+        expect(withInset.top, withoutInset.top);
       },
     );
   });

@@ -121,7 +121,13 @@ class SongReaderTopBar extends StatelessWidget {
                       icon: const Icon(Icons.warning_amber_outlined),
                       onPressed: onShowWarnings,
                     ),
-                  if (showOverflowMenu)
+                  // `showOverflowMenu` and `onOverflowAction` are independent
+                  // params (one required, one optional), so a caller can pass
+                  // showOverflowMenu: true without a callback. Render the
+                  // menu only when both are actually present rather than
+                  // force-unwrapping onOverflowAction, which used to throw
+                  // during build in that case.
+                  if (showOverflowMenu && onOverflowAction != null)
                     SongReaderOverflowMenu(
                       viewMode: viewMode,
                       canEditSongs: canEditSongs,

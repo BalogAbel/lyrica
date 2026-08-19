@@ -126,6 +126,31 @@ void main() {
     expect(find.byIcon(Icons.more_horiz), findsOneWidget);
   });
 
+  testWidgets(
+    'showOverflowMenu true with no onOverflowAction does not throw and '
+    'renders no menu (the two are independent optional/required params -- '
+    'this is the pairing the LOW finding on song_reader_top_bar.dart:129 '
+    'flagged)',
+    (tester) async {
+      await tester.pumpWidget(
+        _host(
+          SongReaderTopBar(
+            title: 'Song',
+            onBack: () {},
+            showOverflowMenu: true,
+            viewMode: SongReaderViewMode.chordsAndLyrics,
+            canEditSongs: false,
+            isDarkActive: false,
+            // onOverflowAction deliberately omitted.
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
+    },
+  );
+
   testWidgets('overflow menu selection invokes onOverflowAction', (
     tester,
   ) async {
@@ -238,8 +263,6 @@ void main() {
             currentTitle: 'Song',
             topBar: _bar(),
             onSurfaceTap: () {},
-            hasRecoverableWarnings: false,
-            warningCount: 0,
             contentColumnCount: 1,
             onTransposeDown: () {},
             onTransposeUp: () {},

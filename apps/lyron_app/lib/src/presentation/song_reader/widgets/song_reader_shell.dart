@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
-import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
@@ -238,14 +237,6 @@ class SongReaderBodyShell extends StatelessWidget {
                       song: result.song,
                       state: readerState,
                     );
-                    final recoverableWarningCount = result.song.diagnostics
-                        .where(
-                          (diagnostic) =>
-                              diagnostic.severity ==
-                              ParseDiagnosticSeverity.warning,
-                        )
-                        .length;
-
                     final currentTitle = resolveCurrentTitle(
                       scopedContext: resolvedScopedContext,
                       projection: projection,
@@ -306,9 +297,6 @@ class SongReaderBodyShell extends StatelessWidget {
                             previousTitle: previousTitle,
                             nextTitle: nextTitle,
                             onSurfaceTap: onToggleCompactControls,
-                            hasRecoverableWarnings:
-                                result.hasRecoverableWarnings,
-                            warningCount: recoverableWarningCount,
                             contentColumnCount: layout.contentColumnCount,
                             showBottomContextBar: showCompactBottomContextBar,
                             onTransposeDown: onTransposeDown,
