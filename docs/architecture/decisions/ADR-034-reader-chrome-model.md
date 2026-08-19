@@ -54,6 +54,8 @@ Scoping the recognizers to the content fixes both: chrome taps never reach them,
 
 One consequence is worth stating plainly rather than leaving to be rediscovered: **a double-tap starting from hidden chrome both reveals the chrome and applies the fit.** Tap one reveals on pointer-up, and the gesture then completes as a double-tap. Suppressing the reveal would mean routing it through `GestureDetector.onTap`, which adds the tap-versus-double-tap arena wait to every single-tap reveal — unacceptable latency for a control someone reaches for mid-song. The combined outcome is pinned by a test so it stays intentional.
 
+Scoping the recognizers also changed what dismisses the chrome: a tap on the top bar's or the rail's own empty area no longer does, only a tap on the content. The old whole-surface detector dismissed from anywhere. Keeping it that way would mean reaching for a control, missing it by a few pixels, and having the control vanish — the same failure mode the no-auto-hide rule exists to prevent. Also pinned by a test.
+
 **The non-data states get a plain chrome frame, not the overlay model.** Moving the top bar into the reveal initially left the loading view and every ADR-023/024 error state — unavailable song, access denied, retryable backend failure, preserved-title tombstone, unresolved remote-delete conflict, unavailable planning context — with no back control at all, because the overlay only exists inside the surface that renders song content. Those states now render as `Column[top bar, Expanded(status view), bottom bar]` with the top bar **permanently visible**: tap-to-reveal exists so song content can have the screen, and these states have no song content to give it to.
 
 ## Consequences

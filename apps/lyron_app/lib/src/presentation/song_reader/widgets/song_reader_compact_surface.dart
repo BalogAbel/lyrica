@@ -549,6 +549,12 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
   Widget _wrapContentGestures(Widget content) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      // Dismiss-on-tap lives here, on the content, so a tap on the top bar's
+      // or the rail's own empty area does NOT dismiss the chrome -- only a
+      // tap on the song does. The old whole-surface detector dismissed from
+      // anywhere, which meant reaching for a control, missing it slightly,
+      // and watching the control disappear. Deliberate; see ADR-034 and
+      // song_reader_compact_surface_double_tap_test.dart.
       onTap: widget.areControlsVisible ? widget.onSurfaceTap : null,
       // Registered unconditionally (never null) so the recognizer survives
       // a rebuild mid double-tap -- see the comment above this widget's
