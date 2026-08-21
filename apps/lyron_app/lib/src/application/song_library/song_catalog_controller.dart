@@ -17,6 +17,14 @@ typedef AppAuthSessionReader = AppAuthSession? Function();
 typedef ActiveOrganizationReader = Future<String?> Function();
 typedef CatalogSessionVerifier = Future<CatalogSessionStatus> Function();
 
+// Reads the (userId, organizationId) pair last seen while authenticated, if
+// any is on record. Deliberately a plain record rather than a dependency on
+// the auth layer's LastKnownIdentity type, so this controller stays decoupled
+// from that module. See docs/specs/2026-08-19-local-data-durability-contract.md
+// (D3).
+typedef LastKnownIdentityReader =
+    ({String userId, String? organizationId})? Function();
+
 const _defaultRefreshInterval = Duration(minutes: 5);
 
 class SongCatalogController extends ChangeNotifier {
@@ -27,6 +35,7 @@ class SongCatalogController extends ChangeNotifier {
     required this._organizationReader,
     required this._sessionVerifier,
     this._onVerifiedEmptyMembership,
+    this._lastKnownIdentityReader,
     AppForegroundState? foregroundState,
     this._refreshInterval = _defaultRefreshInterval,
   }) : _foregroundState = foregroundState ?? _AlwaysForegroundState(),
@@ -44,6 +53,7 @@ class SongCatalogController extends ChangeNotifier {
   final CatalogSessionVerifier _sessionVerifier;
   final Future<void> Function({required String userId})?
   _onVerifiedEmptyMembership;
+  final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
   final Duration _refreshInterval;
 
@@ -365,6 +375,62 @@ class SongCatalogController extends ChangeNotifier {
   void handleSessionExpired() {
     _resetSessionLifecycle();
     _setState(_state.copyWith(sessionStatus: CatalogSessionStatus.expired));
+  }
+
+  // Offline-authenticated cold start (D3): establishes context from the last
+  // known identity purely from local data, with no network call and no
+  // session check. This is a gap-filler for the sessionExpired path, not a
+  // general re-resolution mechanism -- it never overwrites an already-valid
+  // context, and if no local snapshot exists for the identity it leaves the
+  // state exactly as handleSessionExpired() already set it (expired, no
+  // context, nothing to show).
+  Future<void> handleOfflineAuthenticated() async {
+    if (_state.context != null) {
+      return;
+    }
+
+    final identity = _lastKnownIdentityReader?.call();
+    if (identity == null) {
+      return;
+    }
+    final organizationId = identity.organizationId;
+    if (organizationId == null) {
+      return;
+    }
+
+    final generation = _refreshGeneration;
+    final context = ActiveCatalogContext(
+      userId: identity.userId,
+      organizationId: organizationId,
+    );
+    final hasCachedCatalog = await _hasCachedCatalog(context);
+    if (_isStale(generation)) {
+      return;
+    }
+    if (_state.context != null) {
+      // A concurrent refreshCatalog() -- e.g. connectivity returned moments
+      // after a cold start -- may have already established a real, live
+      // context while the read above was in flight. An ordinary successful
+      // refresh does not bump _refreshGeneration, so the staleness check
+      // above cannot catch that on its own; re-check the same guard this
+      // method already applies up front, so this offline gap-filler can
+      // never clobber a context a newer online refresh just set.
+      return;
+    }
+    if (!hasCachedCatalog) {
+      return;
+    }
+
+    _setStateIfCurrent(
+      generation,
+      _state.copyWith(
+        context: context,
+        connectionStatus: CatalogConnectionStatus.offlineCached,
+        refreshStatus: CatalogRefreshStatus.idle,
+        sessionStatus: CatalogSessionStatus.expired,
+        hasCachedCatalog: true,
+      ),
+    );
   }
 
   void handleSessionAvailable() {

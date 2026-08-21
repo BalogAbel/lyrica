@@ -10,7 +10,14 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 
 class AppAuthController extends ChangeNotifier {
   AppAuthController(this._repository, {this._lastKnownIdentityStore})
-    : _state = const AppAuthState(status: AppAuthStatus.initializing);
+    : _state = const AppAuthState(status: AppAuthStatus.initializing) {
+    // Kick the identity read off before the subscription goes live, so a
+    // stream event that arrives before this settles can be buffered
+    // (see _handleSessionUpdate) instead of being evaluated against an
+    // unknown identity.
+    _identityLoadFuture = _loadIdentity();
+    _subscription = _repository.watchSession().listen(_handleSessionUpdate);
+  }
 
   final AuthRepository _repository;
   final LastKnownIdentityStore? _lastKnownIdentityStore;
@@ -23,13 +30,90 @@ class AppAuthController extends ChangeNotifier {
   AppAuthSession? _pendingReauthCancelSession;
   int? _pendingReauthCancelGeneration;
 
+  // Read cache populated once from the store while loading, in construction
+  // order, and kept in sync afterwards by [noteLastKnownIdentity] -- the
+  // sole additional writer, called alongside every durable-store
+  // identityStore.write()/clear() from both of that store's owners:
+  // auth_providers.dart's persistIdentity (every signedIn/signedOut write
+  // and clear) and planning_providers.dart's
+  // VerifiedEmptyMembershipCleanupCoordinator (the verified-empty-membership
+  // clear), so this cache and the durable store never diverge within a
+  // running process. Before that wiring existed, a signedIn edge could
+  // persist an identity to the durable store (via persistIdentity's
+  // asynchronous, post-signedIn resolution) that this controller never
+  // learned about; a later session-expiry stream event would then read this
+  // field, still null, and wrongly conclude there was no identity to
+  // protect -- mapping to signedOut instead of sessionExpired and bouncing
+  // an offline-authenticated user to the sign-in screen (see _stateForSession
+  // below and the regression this fixed). The verified-empty-membership gap
+  // was the mirror image: that clear used to update only the durable store,
+  // leaving this cache holding a purged identity that a later null-session
+  // stream event would misread as "identity present, protect it," wrongly
+  // producing sessionExpired instead of signedOut.
+  LastKnownIdentity? _identity;
+  bool _identityLoaded = false;
+  late final Future<void> _identityLoadFuture;
+  final List<AppAuthSession?> _pendingStreamEvents = [];
+
   AppAuthState get state => _state;
 
+  /// The most recently loaded identity, readable synchronously. Null both
+  /// before the load has settled and when there genuinely is none.
+  LastKnownIdentity? get lastKnownIdentity => _identity;
+
+  /// Updates the in-memory identity cache to match a write or clear that
+  /// [_lastKnownIdentityStore]'s owner just made to the durable store from
+  /// outside this class. Pass the identity that was just written, or `null`
+  /// for a clear. See the class-level note on [_identity].
+  ///
+  /// Callers only ever make the underlying store write/clear once this
+  /// controller has already reached a non-initializing status (persisting
+  /// an identity happens in reaction to a signedIn transition this
+  /// controller itself already published), which in turn only ever happens
+  /// after [_identityLoadFuture] has settled -- see [_handleSessionUpdate]'s
+  /// buffering and [restoreSession]'s explicit await. So by the time this
+  /// is called, the one-time load has always already completed and this
+  /// update is a pure, race-free overwrite of the cache.
+  void noteLastKnownIdentity(LastKnownIdentity? identity) {
+    _identity = identity;
+  }
+
+  Future<void> _loadIdentity() async {
+    final store = _lastKnownIdentityStore;
+    try {
+      _identity = store == null ? null : await store.read();
+    } catch (error, stackTrace) {
+      // A failed read must not strand the controller in `initializing`
+      // forever: every buffered and future stream event depends on
+      // _identityLoaded becoming true. Fail open to "no identity known" --
+      // the same fallback D2 already uses when no store is wired at all --
+      // rather than let a transient storage error hang the whole auth flow.
+      _identity = null;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'AppAuthController',
+          context: ErrorDescription(
+            '_loadIdentity: reading LastKnownIdentityStore failed; '
+            'proceeding as if no identity is on file',
+          ),
+        ),
+      );
+    }
+    _identityLoaded = true;
+    final pending = List<AppAuthSession?>.of(_pendingStreamEvents);
+    _pendingStreamEvents.clear();
+    for (final session in pending) {
+      _processSessionUpdate(session);
+    }
+  }
+
   Future<void> restoreSession() async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     final generation = _authGeneration;
     final session = await _repository.restoreSession();
-    final nextState = await _stateForRestoredSession(session);
+    await _identityLoadFuture;
+    final nextState = _stateForSession(session);
     if (generation == _authGeneration) {
       _setState(nextState);
     }
@@ -39,7 +123,6 @@ class AppAuthController extends ChangeNotifier {
     SignInMethod method, {
     required String redirectTo,
   }) async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     await _repository.signInWithOAuth(method, redirectTo: redirectTo);
   }
 
@@ -47,7 +130,6 @@ class AppAuthController extends ChangeNotifier {
     required String email,
     required String redirectTo,
   }) async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     await _repository.sendMagicLink(email: email, redirectTo: redirectTo);
   }
 
@@ -160,6 +242,18 @@ class AppAuthController extends ChangeNotifier {
   }
 
   void _handleSessionUpdate(AppAuthSession? session) {
+    if (!_identityLoaded) {
+      // Buffer until the identity load settles, then replay in arrival
+      // order from _loadIdentity -- see the class-level note on
+      // _identity. This is what stops a null event from being evaluated
+      // against an unknown identity during cold start.
+      _pendingStreamEvents.add(session);
+      return;
+    }
+    _processSessionUpdate(session);
+  }
+
+  void _processSessionUpdate(AppAuthSession? session) {
     final pendingCancel = _pendingReauthCancelSession;
     final pendingGeneration = _pendingReauthCancelGeneration;
     if (pendingCancel != null) {
@@ -188,47 +282,82 @@ class AppAuthController extends ChangeNotifier {
       }
     }
     _authGeneration += 1;
-    _setState(_stateForSession(session, fromStream: true));
+    _setState(_stateForSession(session));
   }
 
-  Future<AppAuthState> _stateForRestoredSession(AppAuthSession? session) async {
+  // D2 (docs/specs/2026-08-19-local-data-durability-contract.md): a null
+  // session maps to signedOut only when the app itself initiated the
+  // sign-out, or when there is no LastKnownIdentity -- i.e. no user whose
+  // data could be protected. In every other case (cold start, an
+  // already-sessionExpired app, a token that merely expired) it maps to
+  // sessionExpired instead, so the app stays offline-authenticated rather
+  // than being destructively wiped.
+  //
+  // The signedOut-vs-sessionExpired DECISION is deliberately gated on
+  // _identity alone, never on _state.session/_state.lastKnownSession --
+  // even though a live signedIn session is itself proof someone is signed
+  // in. The reason: _identity being null is also how a deliberate purge
+  // (VerifiedEmptyMembershipCleanupCoordinator, via noteLastKnownIdentity)
+  // is observed, and that purge does NOT touch this controller's own
+  // _state -- a signedIn app whose identity was just authoritatively wiped
+  // still has _state.status == signedIn and a non-null _state.session at
+  // that moment. Trusting _state.session here would let that stale,
+  // pre-purge session resurrect an offline-authenticated state for a user
+  // ADR-020/D1 says has already lost access -- verified by the "verified-
+  // empty cleanup clears the controller cache so a later null session maps
+  // to signedOut" test. _identity is the one signal both cases actually
+  // agree on: not-yet-persisted (transient, PR #73 review finding 4 --
+  // narrower/lower-impact by that same finding's own admission, since a
+  // brand-new sign-in this device has no persisted identity for yet almost
+  // certainly has no cached local data at stake either) and
+  // deliberately-purged (permanent) are indistinguishable from a bare
+  // nullable field, and the purge's finality has to win that tie.
+  //
+  // Once _identity says there IS someone to protect, though, prefer
+  // whichever the current in-memory state already knows -- _state.session
+  // or _state.lastKnownSession -- over re-synthesizing from the identity
+  // cache: a *second* consecutive null event, arriving while already
+  // sessionExpired, then reuses the exact lastKnownSession from the first
+  // transition (including linkedProviders) instead of losing it.
+  //
+  // Serves both restoreSession() (called with _state still `initializing`,
+  // so neither field is set and this collapses to the identity-only
+  // fallback) and every stream event. Only ever runs once _identity has
+  // settled for the latter -- _handleSessionUpdate buffers stream events
+  // until the identity load completes -- so reading the cache field
+  // directly here (not the public getter, whose null is ambiguous between
+  // "not loaded yet" and "genuinely absent") is safe.
+  AppAuthState _stateForSession(AppAuthSession? session) {
     if (session != null) {
       return AppAuthState(status: AppAuthStatus.signedIn, session: session);
     }
-    final identityStore = _lastKnownIdentityStore;
-    if (identityStore == null) {
+    if (_isSigningOut) {
       return const AppAuthState(status: AppAuthStatus.signedOut);
     }
-    final identity = await identityStore.read();
+    if (_state.status == AppAuthStatus.signedOut) {
+      // Sticky: once explicitly signed out, a later null-session event --
+      // including a delayed stream side effect of the sign-out call
+      // itself, arriving after _isSigningOut has already reset to false --
+      // must not resurrect an offline-authenticated state. Nothing has
+      // changed: still no live session, still no new sign-in.
+      return const AppAuthState(status: AppAuthStatus.signedOut);
+    }
+    final identity = _identity;
     if (identity == null) {
       return const AppAuthState(status: AppAuthStatus.signedOut);
     }
+    final lastKnownSession =
+        _state.session ??
+        _state.lastKnownSession ??
+        AppAuthSession(
+          userId: identity.userId,
+          email: identity.email,
+          linkedProviders: const [],
+        );
     return AppAuthState(
       status: AppAuthStatus.sessionExpired,
-      lastKnownSession: AppAuthSession(
-        userId: identity.userId,
-        email: identity.email,
-        linkedProviders: const [],
-      ),
+      lastKnownSession: lastKnownSession,
     );
-  }
-
-  AppAuthState _stateForSession(
-    AppAuthSession? session, {
-    required bool fromStream,
-  }) {
-    if (session != null) {
-      return AppAuthState(status: AppAuthStatus.signedIn, session: session);
-    }
-    if (fromStream &&
-        !_isSigningOut &&
-        _state.status == AppAuthStatus.signedIn) {
-      return AppAuthState(
-        status: AppAuthStatus.sessionExpired,
-        lastKnownSession: _state.session,
-      );
-    }
-    return const AppAuthState(status: AppAuthStatus.signedOut);
   }
 
   void _setState(AppAuthState nextState) {

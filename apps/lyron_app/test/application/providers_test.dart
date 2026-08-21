@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
@@ -337,7 +338,16 @@ void main() {
     'session expired keeps the cached catalog and active song context readable',
     () async {
       final authRepository = _ControllableAuthRepository();
-      final authController = AppAuthController(authRepository);
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        );
+      final authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
       await authController.restoreSession();
       final songDatabase = SongCatalogDatabase.inMemory();
       final songStore = DriftSongCatalogStore(songDatabase);
@@ -817,7 +827,16 @@ void main() {
     'session-expired cleanup does not delete planning data restored by a newer signed-in generation',
     () async {
       final authRepository = _ControllableAuthRepository();
-      final authController = AppAuthController(authRepository);
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        );
+      final authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
       await authController.restoreSession();
       final database = PlanningLocalDatabase.inMemory();
       final baseStore = DriftPlanningLocalStore(database);
@@ -1529,6 +1548,23 @@ class _ControllableAuthRepository implements AuthRepository {
 
   void emitSession(AppAuthSession? session) {
     _controller.add(session);
+  }
+}
+
+class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
+  LastKnownIdentity? value;
+
+  @override
+  Future<LastKnownIdentity?> read() async => value;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) async {
+    value = identity;
+  }
+
+  @override
+  Future<void> clear() async {
+    value = null;
   }
 }
 

@@ -37,12 +37,14 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     required this._songCatalogStore,
     required this._lastKnownIdentityStore,
     required this._invalidateLastKnownIdentityPersistence,
+    required this._noteLastKnownIdentity,
   });
 
   final PlanningLocalStore _planningLocalStore;
   final SongCatalogStore _songCatalogStore;
   final LastKnownIdentityStore _lastKnownIdentityStore;
   final void Function() _invalidateLastKnownIdentityPersistence;
+  final void Function(LastKnownIdentity?) _noteLastKnownIdentity;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -63,10 +65,19 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
             handlers: handlers,
           );
 
+    // Mirror the durable clear into AppAuthController's in-memory cache
+    // only after the clear itself has actually succeeded, not before it --
+    // updating the cache first would let it observe a purge that never
+    // durably committed if the store write then failed (see the
+    // class-level note on AppAuthController._identity).
+    final identityClear = _lastKnownIdentityStore.clear().then((_) {
+      _noteLastKnownIdentity(null);
+    });
+
     return Future.wait([
       planningCleanup,
       _songCatalogStore.deleteCatalogsForUser(userId: userId),
-      _lastKnownIdentityStore.clear(),
+      identityClear,
     ]);
   }
 
@@ -97,6 +108,9 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
         lastKnownIdentityStore: ref.watch(lastKnownIdentityStoreProvider),
         invalidateLastKnownIdentityPersistence: () {
           ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
+        noteLastKnownIdentity: (identity) {
+          ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
         },
       );
     });
@@ -280,6 +294,14 @@ final planningSyncControllerProvider =
         remoteRepository: () =>
             ref.read(planningRemoteRefreshRepositoryProvider),
         authSessionReader: () => authController.state.session,
+        lastKnownIdentityReader: () {
+          final identity = authController.lastKnownIdentity;
+          if (identity == null) return null;
+          return (
+            userId: identity.userId,
+            organizationId: identity.organizationId,
+          );
+        },
       );
       Future<void> handleVerifiedEmptyMembership({required String userId}) {
         return controller.handleVerifiedEmptyMembership(userId: userId);
@@ -299,6 +321,7 @@ final planningSyncControllerProvider =
             return;
           case AppAuthStatus.sessionExpired:
             unawaited(controller.handleSessionExpired());
+            unawaited(controller.handleOfflineAuthenticated());
             return;
           case AppAuthStatus.signedIn:
             return;

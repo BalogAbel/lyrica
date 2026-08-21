@@ -80,6 +80,14 @@ final songCatalogControllerProvider =
         onVerifiedEmptyMembership: ({required userId}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
             .handleVerifiedEmptyMembership(userId: userId),
+        lastKnownIdentityReader: () {
+          final identity = authController.lastKnownIdentity;
+          if (identity == null) return null;
+          return (
+            userId: identity.userId,
+            organizationId: identity.organizationId,
+          );
+        },
         foregroundState: ref.watch(appForegroundStateProvider),
       );
 
@@ -92,6 +100,7 @@ final songCatalogControllerProvider =
             return;
           case AppAuthStatus.sessionExpired:
             controller.handleSessionExpired();
+            unawaited(controller.handleOfflineAuthenticated());
             return;
           case AppAuthStatus.signedIn:
             controller.handleSessionAvailable();

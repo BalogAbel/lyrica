@@ -13,11 +13,20 @@ typedef PlanningLocalStoreReader = PlanningLocalStore Function();
 typedef PlanningRemoteRefreshRepositoryReader =
     PlanningRemoteRefreshRepository Function();
 
+// Reads the (userId, organizationId) pair last seen while authenticated, if
+// any is on record. Deliberately a plain record rather than a dependency on
+// the auth layer's LastKnownIdentity type, so this controller stays decoupled
+// from that module. Mirrors SongCatalogController's identically-shaped
+// typedef. See docs/specs/2026-08-19-local-data-durability-contract.md (D3).
+typedef LastKnownIdentityReader =
+    ({String userId, String? organizationId})? Function();
+
 class PlanningSyncController extends ChangeNotifier {
   PlanningSyncController({
     required this._localStore,
     required this._remoteRepository,
     required this._authSessionReader,
+    this._lastKnownIdentityReader,
     DateTime Function()? clock,
   }) : _clock = clock ?? (() => DateTime.now().toUtc()),
        _state = const PlanningSyncState.initial();
@@ -25,6 +34,7 @@ class PlanningSyncController extends ChangeNotifier {
   final PlanningLocalStoreReader _localStore;
   final PlanningRemoteRefreshRepositoryReader _remoteRepository;
   final PlanningAuthSessionReader _authSessionReader;
+  final LastKnownIdentityReader? _lastKnownIdentityReader;
   final DateTime Function() _clock;
 
   PlanningSyncState _state;
@@ -256,6 +266,58 @@ class PlanningSyncController extends ChangeNotifier {
     _setState(
       const PlanningSyncState.initial().copyWith(
         accessStatus: PlanningAccessStatus.signedIn,
+      ),
+    );
+  }
+
+  // Offline-authenticated cold start (D3): establishes a read context from
+  // the last known identity purely from local data, with no network call and
+  // no session check. This is a gap-filler for the sessionExpired path, not a
+  // general re-resolution mechanism -- it never overwrites an already-valid
+  // context, and if no local projection exists for the identity it leaves the
+  // state exactly as handleSessionExpired() already set it (no context,
+  // nothing to show).
+  //
+  // Generation guard: this call does not establish a new boundary itself --
+  // it passively resolves the current unresolved one from local data -- so it
+  // captures _boundaryGeneration without advancing it, then checks
+  // _isStaleBoundary against that captured value after the local read
+  // completes. Advancing the generation here would be wrong: it would
+  // invalidate a concurrent handleActiveContextChanged call that is
+  // legitimately establishing a new boundary at the same time.
+  Future<void> handleOfflineAuthenticated() async {
+    if (_state.userId != null && _state.organizationId != null) {
+      return;
+    }
+
+    final identity = _lastKnownIdentityReader?.call();
+    if (identity == null) {
+      return;
+    }
+    final organizationId = identity.organizationId;
+    if (organizationId == null) {
+      return;
+    }
+
+    final boundaryGeneration = _boundaryGeneration;
+    final hasProjection = await _localStore().hasProjection(
+      userId: identity.userId,
+      organizationId: organizationId,
+    );
+    if (_isStaleBoundary(boundaryGeneration)) {
+      return;
+    }
+    if (!hasProjection) {
+      return;
+    }
+
+    _setState(
+      _state.copyWith(
+        userId: identity.userId,
+        organizationId: organizationId,
+        accessStatus: PlanningAccessStatus.signedIn,
+        refreshStatus: PlanningRefreshStatus.idle,
+        hasLocalPlanningData: true,
       ),
     );
   }

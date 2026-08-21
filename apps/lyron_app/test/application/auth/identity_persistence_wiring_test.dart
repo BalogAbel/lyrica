@@ -166,6 +166,21 @@ void main() {
         userId: 'user-1',
         email: 'user@example.com',
       );
+      // See the D2-rule comment in the 'sessionExpired does not clear the
+      // stored identity' test above: the controller needs its own seeded
+      // identity for the null event below to land on sessionExpired rather
+      // than signedOut.
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
       final container = ProviderContainer(
         overrides: [
           appAuthControllerProvider.overrideWith((_) => authController),
@@ -241,10 +256,154 @@ void main() {
     },
   );
 
+  test('verified-empty cleanup clears the controller cache so a later null '
+      'session maps to signedOut, not sessionExpired', () async {
+    // Seed the controller with a prior identity, the same way
+    // 'sessionExpired does not clear the stored identity' does, so a null
+    // session would map to sessionExpired if the cache were never
+    // updated -- isolating the coordinator's own cache write as the thing
+    // under test.
+    identityStore.seed(
+      const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'user@example.com',
+        organizationId: 'org-1',
+      ),
+    );
+    authController = AppAuthController(
+      authRepository,
+      lastKnownIdentityStore: identityStore,
+    );
+    authRepository.currentSession = const AppAuthSession(
+      userId: 'user-1',
+      email: 'user@example.com',
+    );
+    final planningDatabase = PlanningLocalDatabase.inMemory();
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        activeOrganizationResolutionProvider.overrideWithValue(
+          () async => const ActiveOrganizationResolution.selected('org-1'),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await planningDatabase.close();
+      await songDatabase.close();
+    });
+
+    container.read(appAuthListenableProvider);
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(authController.lastKnownIdentity, isNotNull);
+
+    await container
+        .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+        .handleVerifiedEmptyMembership(userId: 'user-1');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(identityStore.clearCount, 1);
+    // The purge must be visible to the controller's cache synchronously
+    // with the durable clear, not just eventually -- see the class-level
+    // note on AppAuthController._identity.
+    expect(authController.lastKnownIdentity, isNull);
+
+    authRepository.emit(null);
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(authController.state.status, AppAuthStatus.signedOut);
+  });
+
+  test("verified-empty cleanup's durable-clear failure leaves the "
+      'controller cache untouched -- PR #73 review finding 2: the cache '
+      'must not be nulled before the durable clear it mirrors has actually '
+      'succeeded', () async {
+    identityStore.seed(
+      const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'user@example.com',
+        organizationId: 'org-1',
+      ),
+    );
+    authController = AppAuthController(
+      authRepository,
+      lastKnownIdentityStore: identityStore,
+    );
+    authRepository.currentSession = const AppAuthSession(
+      userId: 'user-1',
+      email: 'user@example.com',
+    );
+    final planningDatabase = PlanningLocalDatabase.inMemory();
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        activeOrganizationResolutionProvider.overrideWithValue(
+          () async => const ActiveOrganizationResolution.selected('org-1'),
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await planningDatabase.close();
+      await songDatabase.close();
+    });
+
+    container.read(appAuthListenableProvider);
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(authController.lastKnownIdentity, isNotNull);
+
+    identityStore.throwOnClear = true;
+    await expectLater(
+      container
+          .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+          .handleVerifiedEmptyMembership(userId: 'user-1'),
+      throwsStateError,
+    );
+
+    // The durable clear never actually committed -- the cache must not
+    // have been nulled either, or it would diverge from a store that
+    // still (as far as this failure proves) holds the old identity.
+    expect(identityStore.clearCount, 0);
+    expect(authController.lastKnownIdentity, isNotNull);
+    expect(authController.lastKnownIdentity?.userId, 'user-1');
+  });
+
   test('sessionExpired does not clear the stored identity', () async {
     authRepository.currentSession = const AppAuthSession(
       userId: 'user-1',
       email: 'user@example.com',
+    );
+    // Under the D2 rule, a null session only stays offline-authenticated
+    // (sessionExpired) when AppAuthController's own identity cache has
+    // something to protect. Seed it directly (bypassing write/clearCount
+    // recording) to model an identity already persisted from a prior
+    // session, and rebuild the controller wired to this store -- the
+    // default from setUp has none wired at all.
+    identityStore.seed(
+      const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'user@example.com',
+        organizationId: 'org-1',
+      ),
+    );
+    authController = AppAuthController(
+      authRepository,
+      lastKnownIdentityStore: identityStore,
     );
     final container = ProviderContainer(
       overrides: [
@@ -1269,6 +1428,13 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   /// left them (empty), never recorded as if it had applied.
   bool throwOnWrite = false;
 
+  /// Makes the NEXT [clear] throw instead of applying, to model a storage
+  /// failure on a verified-empty-membership purge -- see PR #73 review
+  /// finding 2. Thrown before touching [clearCount]/[_current], so a
+  /// throwing clear leaves both exactly as they were, never recorded as if
+  /// it had applied.
+  bool throwOnClear = false;
+
   Future<void> get clearStarted => _clearStarted!.future;
 
   void blockNextClear() {
@@ -1311,6 +1477,9 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
 
   @override
   Future<void> clear() async {
+    if (throwOnClear) {
+      throw StateError('storage failure: clear');
+    }
     final started = _clearStarted;
     final gate = _clearGate;
     if (started != null && gate != null) {

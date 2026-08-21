@@ -1,5 +1,10 @@
 # Refresh-Token TTL Is the Real Offline Ceiling (LF-T2)
 
+**Status:** Closed as a data-durability concern, 2026-08-21. See "Correction"
+and "Update" below — the refresh-token TTL bounds *sync*, never *local data*,
+and the two claims in this document that asserted local-data safety was
+already true are corrected in place. The document otherwise stands.
+
 **Slice:** offline-durability-phase4 (S15)
 **Finding:** `LF-T2` (`docs/architecture/repository-review-2026-06-22.md`)
 **Files:**
@@ -7,8 +12,11 @@
   (`onAuthStateChange` → `null` session mapping; this is where a refresh failure
   surfaces)
 - `apps/lyron_app/lib/src/application/auth/app_auth_controller.dart:168-206`
-  (`_stateForRestoredSession`, `_stateForSession` — both map a `null` session to
-  `AppAuthStatus.sessionExpired`, never to data loss)
+  (`_stateForRestoredSession`, `_stateForSession` — as of Phase 1 of
+  `docs/specs/2026-08-19-local-data-durability-contract.md`, both map a `null`
+  session to `AppAuthStatus.sessionExpired`, never to data loss; see
+  "Correction" below — this document originally claimed that as already true,
+  and it was not)
 - `apps/lyron_app/lib/src/application/auth/last_known_identity.dart` (the durable
   identity seam that lets cold start recognize a known user without a live session)
 - `apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart:255-263`
@@ -49,13 +57,41 @@ leave the projection/cache/pending-mutation data untouched
 (`planning_sync_controller.dart:255-263`,
 `song_catalog_controller.dart:322-325`). No screen other than the re-auth banner
 and the sign-in screen branches on `sessionExpired`
-(`presentation/auth/reauth_banner.dart`, `presentation/auth/sign_in_screen.dart`)
-— no read path and no edit path in the app gates on live session validity, so a
-user who is offline-authenticated keeps full read access to cached songs and
-plans, and keeps editing: local writes go into the mutation store, which needs
-only device storage, not a live JWT. This is exactly what a refresh-token TTL
-exhaustion looks like at runtime, since it is just another `null`-session event
-delivered through the same stream LF-T1 already made non-destructive.
+(`presentation/auth/reauth_banner.dart`, `presentation/auth/sign_in_screen.dart`).
+
+## Correction (2026-08-21)
+
+This document, as originally written, claimed the paragraph above already
+meant "no read path and no edit path in the app gates on live session
+validity" — stated as a present-tense fact about the code at the time. **That
+claim was false when written.** The Local Data Durability Contract
+(`docs/specs/2026-08-19-local-data-durability-contract.md`, finding F1) traced
+the actual code and found `AppAuthController._stateForSession` mapped a
+`null` session to the destructive `signedOut` — not `sessionExpired` — in two
+cases this paragraph did not account for: during cold start, before
+`restoreSession()` had settled (`initializing`), and when the app was already
+`sessionExpired`. Both are ordinary, non-error states, not edge cases, and
+`signedOut` in turn drove `handleExplicitSignOut()` to delete the catalog, the
+planning projection, and the identity record — the exact "empty catalog after
+an offline day or two" symptom this document's own scenario describes.
+Separately, `songLibraryListProvider`'s read gate depended on
+`SongCatalogController`'s `context`, which was never populated in
+`sessionExpired` at all (F2) — so even a correctly-computed `sessionExpired`
+state left the UI showing nothing, independent of F1.
+
+Both gaps are closed now, as of Phase 1 of that spec
+(`docs/architecture/decisions/ADR-035-local-data-purge-contract.md`, D2 and
+D3) — not because the pre-existing `_stateForSession`/`_stateForRestoredSession`
+split was already sufficient, which is what this document originally implied.
+D2 removed the `_state.status == AppAuthStatus.signedIn` condition that made
+`_stateForSession` destructive in `initializing`/`sessionExpired`; D3 gave
+`SongCatalogController` and `PlanningSyncController` an
+`handleOfflineAuthenticated()` path that establishes read context from
+`LastKnownIdentity` against the local database, with no live session check.
+The sentence "no read path and no edit path in the app gates on live session
+validity" is accurate as a description of the code **today**, as a
+consequence of that phase's changes — not as an inherent property of the
+split this document originally cited it for.
 
 ## What Genuinely Remains
 
@@ -79,7 +115,9 @@ ability to sync?**
 
 Established from the code cited above: only **sync**. Once the refresh token can
 no longer be renewed, `onAuthStateChange` delivers `null`, the app lands in
-`sessionExpired`/offline-authenticated (not `signedOut`), and:
+`sessionExpired`/offline-authenticated (not `signedOut`), and, as of Phase 1 of
+the Local Data Durability Contract (see "Correction" above) — this was not
+true when this document was originally written:
 - Cached songs and plans remain fully readable — nothing in the read path checks
   live session validity.
 - New edits keep working — they queue as local mutations, which require only
@@ -99,6 +137,21 @@ automatically can no longer happen, and the user must pass through the re-auth
 banner's sign-in flow once connectivity returns. Local data is not at risk
 either way: it survives until explicit sign-out or an authoritative
 verified-empty-membership revocation, per ADR-020's policy matrix.
+
+## Update (2026-08-21)
+
+This closes `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md` as a
+data-durability concern: the refresh-token TTL bounds *sync*, never *local
+data* — per D2 of `docs/specs/2026-08-19-local-data-durability-contract.md`.
+The two sections above are corrected in place rather than the conclusion
+being restated fresh, because the underlying conclusion does not change: it
+is simply more true now than when this document was written, since the read
+path it describes no longer has the two gaps (F1, F2) that would have made it
+false in the offline-authenticated cases that matter most. What "Deferred
+Because" and "Trigger Condition" below still hold as sync-only concerns: the
+refresh-token TTL itself is unaddressed, unmeasured, and out of this
+repository's control, and closing *that* — if it is ever needed — remains a
+Supabase Auth project-configuration action, not a data-durability one.
 
 ## Deferred Because
 
