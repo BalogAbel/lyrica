@@ -141,8 +141,12 @@ no assertions changed. Full `test/application/` tree (369 tests) green.
 `apps/lyron_app/lib/src/application/planning_providers.dart`, plus tests under
 `apps/lyron_app/test/application/planning/`
 
-- [ ] Same shape as 1.3 for the planning projection: `sessionExpired` resolves a
-  read context from `LastKnownIdentity` without network access.
+- [x] Same shape as 1.3 for the planning projection: `sessionExpired` resolves a
+  read context from `LastKnownIdentity` without network access. Commit
+  a98b4e5. `PlanningSyncController.handleOfflineAuthenticated()` mirrors
+  `SongCatalogController`'s; captures (does not advance) `_boundaryGeneration`
+  to detect a concurrent `handleActiveContextChanged` establishing a real
+  boundary while the local read is in flight. Reviewed clean.
 
 ## Task 1.5 — Cold-start integration test
 
