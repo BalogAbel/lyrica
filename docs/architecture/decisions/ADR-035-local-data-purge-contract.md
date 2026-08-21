@@ -194,6 +194,44 @@ with the coordinator-based `VerifiedEmptyMembershipCleanupCoordinator` path
 (`planning_providers.dart`), which is the certain, unambiguous
 `membershipRevokedConfirmed` handler.
 
+**A real regression the gate introduced, found and fixed before merge.** A
+whole-branch review found that `purgeSongCatalog`/`purgePlanningData`/
+`clearIdentity` awaited the audit-record write with no try/catch AFTER the
+destructive part had already committed: an audit-write failure made the
+whole method throw even though the deletion/clear genuinely succeeded. For
+`clearIdentity` specifically, this could invert
+`wipePriorAndProceedFor`'s documented failure-handling invariant — its catch
+block assumes an exception means the clear did not land, and falls back to
+treating the device as still signed in as the prior user; an audit-write
+failure could trigger that fallback after the clear had already happened,
+asserting an offline-authenticated identity for a user whose local trace was
+already gone. Fixed (`5ba06be`) with a shared best-effort helper: the audit
+write is still attempted, but a failure in it is reported
+(`FlutterError.reportError`) and never rethrown, so a purge/clear that
+committed can never be misreported as failed by the logging that describes
+it afterwards. The same review found `clearIdentity`'s original design (an
+internal identity-store `read()` before the `clear()`, added solely to
+attribute a `userId` on the audit row) introduced its own new failure mode
+and widened a race window; fixed by taking an optional `userId` parameter
+from the caller instead, populated at the three call sites that have one in
+scope.
+
+**Residual, deliberately-deferred hardening**, not required for this phase's
+no-behaviour-change bar but worth tracking for whenever the audit trail's
+own robustness next gets attention:
+
+- The audit database currently opens lazily on the first purge, inside the
+  destructive path. Opening it eagerly at app startup would mean a purge is
+  never the first thing to hit a cold-open failure on that file.
+- `local_data_events` has no retention or trim policy — it is unbounded
+  append-only growth. Not a durability risk (that is the point of the
+  table), but a storage-footprint one over a long device lifetime.
+- The architecture test's `.clear()`/`.write()` patterns (see above) are
+  scoped to same-line receiver-name matching and would not catch a call
+  split across a `dart format`-introduced line break on a differently-named
+  local variable. Still an accepted gap, now with a concrete repro shape on
+  record.
+
 ### Decided, not yet implemented (Phases 3–4)
 
 The remaining four decisions are settled — confirmed with the product owner

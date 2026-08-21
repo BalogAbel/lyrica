@@ -348,6 +348,24 @@ explicitly) fixed directly post-review. `flutter test`: 1407 → 1414 passed
 skipped (commit d156c5a, after clearing one incidental `flutter analyze`
 info-level lint unrelated to any task's own scope).
 
+**Final whole-branch review (opus, the phase's single opus-tier call) found
+one real regression, fixed before merge.** Scrutinizing `main..HEAD` against
+the sole question "does this diff change observable behaviour anywhere?" —
+with line-by-line focus on `wipePriorAndProceedFor` — it found that
+`wipePriorAndProceedFor` itself was a verbatim substitution (confirmed
+clean), but `LocalDataLifecycle`'s own methods introduced a real behaviour
+change: an audit-write failure, occurring AFTER a purge/clear had already
+committed, made the whole gate method throw as if the purge had failed. Fixed
+in commit 5ba06be (best-effort audit write; `clearIdentity` takes an optional
+caller-supplied `userId` instead of reading the identity store internally).
+Re-verified: `flutter analyze` clean, `flutter test` green at 1416 passed /
+18 skipped, and a follow-up sonnet-tier review of the fix commit itself
+approved with zero findings. See ADR-035 for full detail, including three
+lower-severity residual risks the same review surfaced and this phase
+deliberately defers (audit DB lazy-open inside the destructive path, no
+retention policy on `local_data_events`, and a sharper repro for the
+architecture test's already-documented `.clear()`/`.write()` scan gap).
+
 ---
 
 # Phase 3 — Write-path protection (D4, D6)
