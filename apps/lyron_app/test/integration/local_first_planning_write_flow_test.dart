@@ -2,19 +2,55 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
 
 import '../support/drift_test_setup.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real planning store, for
+// tests that only exercise planning refresh/sign-out -- song catalog/
+// identity/events deps are never invoked by these flows.
+LocalDataLifecycle _lifecycleFor(PlanningLocalStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: _NoopSongCatalogStore(),
+    planningLocalStore: store,
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopSongCatalogStore implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 void main() {
   test(
@@ -210,6 +246,7 @@ void main() {
 
         final refreshController = PlanningSyncController(
           localStore: () => localStore,
+          localDataLifecycle: _lifecycleFor(localStore),
           remoteRepository: () => const _EmptyPlanningRemoteRepository(),
           authSessionReader: () =>
               AppAuthSession(userId: context.userId, email: 'demo@lyron.local'),
@@ -229,6 +266,7 @@ void main() {
 
         final syncController = PlanningSyncController(
           localStore: () => localStore,
+          localDataLifecycle: _lifecycleFor(localStore),
           remoteRepository: () => const _EmptyPlanningRemoteRepository(),
           authSessionReader: () =>
               AppAuthSession(userId: context.userId, email: 'demo@lyron.local'),

@@ -75,12 +75,19 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
   construction, before the `watchSession()` subscription goes live. Buffer stream
   events until that load settles.
 - [x] Keep the store as the durable source; the in-memory copy is a read cache.
-  Live-sync on every external write/clear is deferred to Phase 2 (D7's single
-  gate) — writes today happen only outside this class
-  (`auth_providers.dart`), and centralizing them is Phase 2's job, not
-  Phase 1's. Not a gap for Phase 1's acceptance criteria: they are all
-  cold-start scenarios, where the cache is populated fresh at construction
-  from the durable store before it is ever read.
+  **Correction (Phase 2 closeout):** the "live-sync deferred to Phase 2"
+  framing below was wrong — it was not deferrable. Post-Task-1.6 verification
+  (commit 3231139) found an in-session token-expiry regression caused by
+  exactly this gap: `LastKnownIdentity` is loaded once at construction but
+  external writers (`auth_providers.dart`, `planning_providers.dart`) mutate
+  the durable store later in the same process without updating the in-memory
+  cache. Phase 1 closed it with `AppAuthController.noteLastKnownIdentity(...)`,
+  called from every identity-store write/clear site (six call sites: five in
+  `auth_providers.dart`, one in `planning_providers.dart`). Phase 2 (Task 2.3)
+  absorbs those six call sites behind the `LocalDataLifecycle` gate as part of
+  routing every purge primitive through one seam — the gate now owns "mutate
+  the durable identity" and "sync the in-memory cache" as one indivisible
+  operation instead of two call sites that can drift apart.
 
 ## Task 1.2 — `signedOut` requires an explicit act (D2)
 

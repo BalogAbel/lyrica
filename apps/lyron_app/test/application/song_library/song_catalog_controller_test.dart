@@ -4,16 +4,19 @@ import 'dart:io';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -25,11 +28,19 @@ void main() {
     late SongCatalogDatabase database;
     late DriftSongCatalogStore store;
     late _FakeSongRepository remoteRepository;
+    late LocalDataLifecycle lifecycle;
 
     setUp(() {
       database = SongCatalogDatabase.inMemory();
       store = DriftSongCatalogStore(database);
       remoteRepository = _FakeSongRepository();
+      lifecycle = LocalDataLifecycle(
+        songCatalogStore: store,
+        planningLocalStore: _NoopPlanningLocalStore(),
+        identityStore: _NoopLastKnownIdentityStore(),
+        noteLastKnownIdentity: (_) {},
+        eventsRecorder: _NoopLocalDataEventsRecorder(),
+      );
     });
 
     tearDown(() async {
@@ -41,6 +52,7 @@ void main() {
       () async {
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -77,6 +89,7 @@ void main() {
     test('keeps the previous active snapshot when refresh fails', () async {
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -112,6 +125,7 @@ void main() {
       () async {
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -156,6 +170,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -201,6 +216,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -253,6 +269,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -312,6 +329,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -344,6 +362,7 @@ void main() {
         final organizationReaderState = _MutableOrganizationReader('org-1');
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -397,6 +416,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -433,6 +453,7 @@ void main() {
         var organizationCalls = 0;
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -473,6 +494,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
           authSessionReader: () => session,
           organizationReader: () async => 'org-1',
@@ -515,6 +537,7 @@ void main() {
     test('explicit sign-out deletes the cached catalog', () async {
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -551,6 +574,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -582,6 +606,7 @@ void main() {
         final foregroundState = _TestAppForegroundState();
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -620,6 +645,7 @@ void main() {
           final foregroundState = _TestAppForegroundState();
           final controller = SongCatalogController(
             store: store,
+            localDataLifecycle: lifecycle,
             remoteRepository: delayedRepository,
             authSessionReader: () => const AppAuthSession(
               userId: 'user-1',
@@ -660,6 +686,7 @@ void main() {
         final foregroundState = _TestAppForegroundState();
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -701,6 +728,7 @@ void main() {
       fakeAsync((async) {
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -725,6 +753,7 @@ void main() {
           final foregroundState = _TestAppForegroundState(isForeground: false);
           final controller = SongCatalogController(
             store: store,
+            localDataLifecycle: lifecycle,
             remoteRepository: remoteRepository,
             authSessionReader: () => const AppAuthSession(
               userId: 'user-1',
@@ -765,6 +794,7 @@ void main() {
         );
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
           authSessionReader: () => session,
           organizationReader: () async => 'org-1',
@@ -800,6 +830,7 @@ void main() {
           );
           final controller = SongCatalogController(
             store: store,
+            localDataLifecycle: lifecycle,
             remoteRepository: delayedRepository,
             authSessionReader: () => session,
             organizationReader: () async => 'org-1',
@@ -844,6 +875,7 @@ void main() {
       AppAuthSession? session;
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () => session,
         organizationReader: () async => 'org-1',
@@ -873,6 +905,7 @@ void main() {
       final delayedRepository = _DelayedSongRepository();
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: delayedRepository,
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -907,6 +940,7 @@ void main() {
         );
         final controller = SongCatalogController(
           store: store,
+          localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
           authSessionReader: () => session,
           organizationReader: () async => 'org-1',
@@ -960,6 +994,7 @@ void main() {
 
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () => null,
         organizationReader: () async =>
@@ -997,6 +1032,7 @@ void main() {
         'for the last known identity', () async {
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () => null,
         organizationReader: () async => 'org-1',
@@ -1017,6 +1053,7 @@ void main() {
         'context', () async {
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -1173,6 +1210,29 @@ class _MultiPhaseSongRepository implements SongRepository {
       completer.complete(songs);
     }
   }
+}
+
+// Trivial LocalDataLifecycle deps for tests that only exercise the song
+// catalog purge path -- these are never called by SongCatalogController, so
+// the noSuchMethod forwarding is unreachable in practice.
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
 }
 
 class _TestAppForegroundState implements AppForegroundState {

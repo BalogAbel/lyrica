@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
@@ -30,6 +31,7 @@ const _defaultRefreshInterval = Duration(minutes: 5);
 class SongCatalogController extends ChangeNotifier {
   SongCatalogController({
     required this._store,
+    required this._localDataLifecycle,
     required this._remoteRepository,
     required this._authSessionReader,
     required this._organizationReader,
@@ -47,6 +49,7 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   final SongCatalogStore _store;
+  final LocalDataLifecycle _localDataLifecycle;
   final SongRepository _remoteRepository;
   final AppAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;
@@ -220,7 +223,10 @@ class SongCatalogController extends ChangeNotifier {
       if (handler != null) {
         await handler(userId: session.userId);
       } else {
-        await _store.deleteCatalogsForUser(userId: session.userId);
+        await _localDataLifecycle.purgeSongCatalog(
+          userId: session.userId,
+          reason: PurgeReason.membershipRevokedConfirmed,
+        );
       }
       if (_isStale(generation)) {
         return;
@@ -368,7 +374,14 @@ class SongCatalogController extends ChangeNotifier {
         _lastAuthenticatedUserId;
     _setState(const CatalogSnapshotState.initial());
     if (userId != null) {
-      await _store.deleteCatalogsForUser(userId: userId);
+      // Same accountDeleted-vs-userSignOut caveat as
+      // lastKnownIdentityPersistenceProvider's signedOut case: this code
+      // cannot currently distinguish an explicit sign-out from account
+      // deletion, so userSignOut is used for both today.
+      await _localDataLifecycle.purgeSongCatalog(
+        userId: userId,
+        reason: PurgeReason.userSignOut,
+      );
     }
   }
 

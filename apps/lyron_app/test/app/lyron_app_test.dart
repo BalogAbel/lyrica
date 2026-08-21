@@ -9,11 +9,13 @@ import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
@@ -382,6 +384,13 @@ class _NoopPlanningSyncController extends PlanningSyncController {
   _NoopPlanningSyncController()
     : super(
         localStore: () => _NoopPlanningLocalStore(),
+        localDataLifecycle: LocalDataLifecycle(
+          songCatalogStore: _NoopSongCatalogStoreForLifecycle(),
+          planningLocalStore: _NoopPlanningLocalStore(),
+          identityStore: _NoopLastKnownIdentityStoreForLifecycle(),
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorderForLifecycle(),
+        ),
         remoteRepository: () => const _NoopPlanningRemoteRepository(),
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -389,6 +398,30 @@ class _NoopPlanningSyncController extends PlanningSyncController {
 
   @override
   Future<void> handleExplicitSignOut() async {}
+}
+
+// Trivial LocalDataLifecycle deps for _NoopPlanningSyncController, which
+// overrides every method that would touch them -- never actually invoked.
+class _NoopSongCatalogStoreForLifecycle implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStoreForLifecycle
+    implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorderForLifecycle
+    implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {

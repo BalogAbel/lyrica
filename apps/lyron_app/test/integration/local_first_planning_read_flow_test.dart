@@ -2,20 +2,56 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../support/drift_test_setup.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real planning store, for
+// tests that only exercise planning refresh/sign-out -- song catalog/
+// identity/events deps are never invoked by these flows.
+LocalDataLifecycle _lifecycleFor(PlanningLocalStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: _NoopSongCatalogStore(),
+    planningLocalStore: store,
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopSongCatalogStore implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -66,6 +102,7 @@ void main() {
         final userId = client.auth.currentSession!.user.id;
         final onlineController = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: _lifecycleFor(store),
           remoteRepository: () => SupabasePlanningRepository(client),
           authSessionReader: _currentSessionReader(client),
         );
@@ -103,6 +140,7 @@ void main() {
 
         final offlineController = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: _lifecycleFor(store),
           remoteRepository: () => _ThrowingPlanningRemoteRepository(
             const SocketException('offline'),
           ),
@@ -166,6 +204,7 @@ void main() {
 
       final controller = PlanningSyncController(
         localStore: () => store,
+        localDataLifecycle: _lifecycleFor(store),
         remoteRepository: () => SupabasePlanningRepository(client),
         authSessionReader: _currentSessionReader(client),
       );

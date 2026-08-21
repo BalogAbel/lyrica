@@ -2,17 +2,53 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real song catalog store, for
+// tests that only exercise catalog refresh -- the purge path is never
+// triggered by these flows, so planning/identity/events deps are no-ops.
+LocalDataLifecycle _lifecycleFor(SongCatalogStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: store,
+    planningLocalStore: _NoopPlanningLocalStore(),
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -100,6 +136,7 @@ void main() {
       await _signInDemoUser(client);
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: _lifecycleFor(store),
         remoteRepository: SupabaseSongRepository(client),
         authSessionReader: _currentSessionReader(client),
         organizationReader: _organizationReader(client),
@@ -161,6 +198,7 @@ void main() {
       await _signInDemoUser(client);
       final controller = SongCatalogController(
         store: store,
+        localDataLifecycle: _lifecycleFor(store),
         remoteRepository: SupabaseSongRepository(client),
         authSessionReader: _currentSessionReader(client),
         organizationReader: _organizationReader(client),
