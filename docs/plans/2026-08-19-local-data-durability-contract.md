@@ -192,6 +192,39 @@ original conclusion.
 
 **Phase 1 complete: Tasks 1.1-1.6 all done, reviewed, committed.**
 
+### Post-Task-1.6 verification found a real regression, now fixed
+
+Running the FULL `flutter test` (not just `test/application/`, which every
+task's own verification had been scoped to) surfaced one genuine regression
+in a pre-existing widget test outside that narrower scope, plus one related
+gap a review then found on top of the fix:
+
+- **Commit 3231139** — `test/integration/song_reader_flow_test.dart` (predates
+  this branch, untouched by it) started failing: an in-session token-expiry
+  event was misclassified as `signedOut` instead of `sessionExpired`, bouncing
+  the user to sign-in. Root cause: `AppAuthController`'s in-memory
+  `LastKnownIdentity` cache (Task 1.1) is loaded once at construction and was
+  never updated when `auth_providers.dart`'s `lastKnownIdentityPersistenceProvider`
+  writes the identity to the durable store from outside the controller, later
+  in the same process — a within-session write/read race Task 1.1's own
+  "deferred to Phase 2" framing had wrongly assumed was out of Phase 1's reach.
+  Fixed by adding `AppAuthController.noteLastKnownIdentity(...)`, called from
+  every identity-store write/clear site.
+- **Commit df71d78** — review of 3231139 found a sixth, unpaired writer
+  (`VerifiedEmptyMembershipCleanupCoordinator.handleVerifiedEmptyMembership`,
+  planning_providers.dart) with the same staleness class in the opposite
+  direction. Closed the same way.
+
+Full `flutter test` (1384 passed, 18 skipped — pre-existing real-backend
+integration tests needing a local Supabase stack, unrelated to this branch,
+0 failed) and `flutter analyze` (clean) both verified green after both fixes.
+
+**Lesson for later phases:** scope every task's own verification to
+`flutter test` in full, not a narrower subdirectory — the acceptance-criteria
+tests and the `test/application/` sweep both missed this because neither
+exercises a real widget tree wired through the full provider graph the way
+`test/integration/` does.
+
 ---
 
 # Phase 2 — `LocalDataLifecycle` gate and audit trail (D7)
