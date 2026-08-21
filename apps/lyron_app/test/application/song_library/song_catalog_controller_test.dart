@@ -943,6 +943,109 @@ void main() {
         async.flushMicrotasks();
       });
     });
+
+    test(
+      'handleOfflineAuthenticated establishes context and cached summaries '
+      'from a local snapshot when the session is expired, without touching '
+      'the network',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+        remoteRepository.listSongsError = StateError('network unreachable');
+
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async =>
+              throw StateError('must not be called offline'),
+          sessionVerifier: () async =>
+              throw StateError('must not be called offline'),
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(remoteRepository.listSongsCalls, 0);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        );
+      },
+    );
+
+    test(
+      'handleOfflineAuthenticated is a no-op when no local snapshot exists '
+      'for the last known identity',
+      () async {
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isFalse);
+      },
+    );
+
+    test(
+      'handleOfflineAuthenticated never clobbers an already-established '
+      'context',
+      () async {
+        final controller = SongCatalogController(
+          store: store,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.refreshCatalog();
+        expect(controller.state.context, isNotNull);
+
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+      },
+    );
   });
 }
 
