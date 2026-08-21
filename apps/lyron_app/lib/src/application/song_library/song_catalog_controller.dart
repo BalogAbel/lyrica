@@ -407,6 +407,16 @@ class SongCatalogController extends ChangeNotifier {
     if (_isStale(generation)) {
       return;
     }
+    if (_state.context != null) {
+      // A concurrent refreshCatalog() -- e.g. connectivity returned moments
+      // after a cold start -- may have already established a real, live
+      // context while the read above was in flight. An ordinary successful
+      // refresh does not bump _refreshGeneration, so the staleness check
+      // above cannot catch that on its own; re-check the same guard this
+      // method already applies up front, so this offline gap-filler can
+      // never clobber a context a newer online refresh just set.
+      return;
+    }
     if (!hasCachedCatalog) {
       return;
     }

@@ -41,6 +41,7 @@ import 'package:lyron_app/src/application/song_library/active_catalog_context.da
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
@@ -363,6 +364,93 @@ void main() {
       expect(countingStore.totalDeleteCalls, 0);
     },
   );
+
+  test(
+    'a concurrent online refreshCatalog() completing while '
+    "handleOfflineAuthenticated()'s local read is still in flight is not "
+    'clobbered once that stale read resolves -- PR #73 review finding 1',
+    () async {
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final baseStore = DriftSongCatalogStore(songDatabase);
+      final gatedStore = _DeleteCountingSongCatalogStore(baseStore);
+      addTearDown(() async {
+        await songDatabase.close();
+      });
+
+      await baseStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 8, 1, 12),
+      );
+
+      AppAuthSession? currentSession; // starts null: offline cold start.
+      final remoteRepository = SupabaseSongRepository.testing(
+        listSongsRows: () async => const [
+          {
+            'id': 'song-1',
+            'slug': 'cached-song',
+            'title': 'Cached Song',
+            'version': 1,
+          },
+        ],
+        getSongRow: (id) async => const {
+          'id': 'song-1',
+          'slug': 'cached-song',
+          'chordpro_source': '{title: Cached Song}',
+        },
+      );
+      final controller = SongCatalogController(
+        store: gatedStore,
+        remoteRepository: remoteRepository,
+        authSessionReader: () => currentSession,
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        lastKnownIdentityReader: () =>
+            (userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      // Mirrors song_catalog_providers.dart's sessionExpired wiring:
+      // handleSessionExpired() then handleOfflineAuthenticated(). Its local
+      // read is the NEXT call to readActiveSummaries(), which the gate
+      // holds open.
+      final gate = Completer<void>();
+      gatedStore.readActiveSummariesGate = gate;
+      controller.handleSessionExpired();
+      final offlineFuture = controller.handleOfflineAuthenticated();
+
+      // Connectivity returns moments later: the auth stream flips to
+      // signedIn and a real refresh runs to completion BEFORE the offline
+      // read above has resolved. Its own call to readActiveSummaries() is
+      // NOT gated (the gate is consumed by the first call, above), so it
+      // proceeds and finishes normally.
+      currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+      );
+      controller.handleSessionAvailable();
+      await controller.refreshCatalog();
+
+      expect(controller.state.connectionStatus, CatalogConnectionStatus.online);
+      expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+
+      // Now release the stale offline read.
+      gate.complete();
+      await offlineFuture;
+
+      // The fresh online state must survive -- not be clobbered by the
+      // now-resolving, now-stale offline result.
+      expect(controller.state.connectionStatus, CatalogConnectionStatus.online);
+      expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+      expect(
+        controller.state.context,
+        const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+    },
+  );
 }
 
 /// Shared drive-and-assert body for acceptances 1, 2, and 3: builds the
@@ -559,6 +647,12 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
   int deleteCatalogCalls = 0;
   int clearSongMutationCalls = 0;
   int resolveCancelledSongCreateDiscardCalls = 0;
+  // When set, the NEXT call to readActiveSummaries() awaits this before
+  // delegating (only the next one -- consumed on first use, so a second,
+  // later call is never blocked by it). Lets a test hold
+  // handleOfflineAuthenticated()'s local read mid-flight to interleave it
+  // with a concurrent refreshCatalog()'s own call to the same method.
+  Completer<void>? readActiveSummariesGate;
 
   int get totalDeleteCalls =>
       deleteSongCalls +
@@ -586,10 +680,17 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
   Future<List<SongSummary>> readActiveSummaries({
     required String userId,
     required String organizationId,
-  }) => _delegate.readActiveSummaries(
-    userId: userId,
-    organizationId: organizationId,
-  );
+  }) async {
+    final gate = readActiveSummariesGate;
+    if (gate != null) {
+      readActiveSummariesGate = null;
+      await gate.future;
+    }
+    return _delegate.readActiveSummaries(
+      userId: userId,
+      organizationId: organizationId,
+    );
+  }
 
   @override
   Future<SongSummary?> readActiveSummaryBySlug({

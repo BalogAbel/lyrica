@@ -77,9 +77,14 @@ class _FakeAuthRepository implements AuthRepository {
 class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   LastKnownIdentity? value;
   Completer<LastKnownIdentity?>? readCompleter;
+  Object? readError;
 
   @override
   Future<LastKnownIdentity?> read() async {
+    final error = readError;
+    if (error != null) {
+      throw error;
+    }
     final completer = readCompleter;
     if (completer != null) {
       return completer.future;
@@ -641,4 +646,137 @@ void main() {
       expect(controller.state.lastKnownSession?.userId, 'u1');
     },
   );
+
+  test('a failed identity-store read does not strand the controller in '
+      'initializing forever -- it fails open to "no identity known" and '
+      'still processes subsequent events', () async {
+    final repo = _FakeAuthRepository();
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..readError = StateError('disk I/O error');
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
+
+    final originalOnError = FlutterError.onError;
+    final reportedErrors = <Object>[];
+    FlutterError.onError = (details) => reportedErrors.add(details.exception);
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    await controller.restoreSession();
+
+    // No identity could be read, and no session was restored: nothing to
+    // protect, so this correctly resolves to signedOut -- the important
+    // part is that it resolves AT ALL, rather than hanging.
+    expect(controller.state.status, AppAuthStatus.signedOut);
+    expect(reportedErrors, isNotEmpty);
+
+    // A subsequent live session must still be processed normally --
+    // proving the buffer actually drained and the controller did not get
+    // stuck treating every future event as still-loading.
+    repo.emit(const AppAuthSession(userId: 'u', email: 'e@x'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.signedIn);
+    expect(controller.state.session?.userId, 'u');
+  });
+
+  test('a signedIn session that expires before its identity is durably '
+      'persisted maps to signedOut, not sessionExpired -- a KNOWN, accepted '
+      'gap (PR #73 review finding 4), documented here rather than fixed: '
+      'making the live session in _state count as "someone to protect" '
+      'independent of _identity would also make a just-purged identity '
+      '(VerifiedEmptyMembershipCleanupCoordinator, still signedIn at the '
+      '_state level -- it never touches _state itself) wrongly count too, '
+      'reopening D1\'s purge finality. See the class-level note above '
+      '_stateForSession. Practical impact of the gap this test documents is '
+      'narrow: a brand-new sign-in with no durably persisted identity yet '
+      'almost certainly also has no cached local data at stake.', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(userId: 'u', email: 'e@x');
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: _FakeLastKnownIdentityStore(),
+    );
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
+
+  test('a second consecutive null-session event while already sessionExpired '
+      'reuses the lastKnownSession from the first transition, including '
+      'linkedProviders, instead of re-synthesizing a poorer one from the '
+      'identity cache alone', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(
+      userId: 'u',
+      email: 'e@x',
+      linkedProviders: ['google'],
+    );
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..value = const LastKnownIdentity(
+        userId: 'u',
+        email: 'e@x',
+        organizationId: null,
+      );
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
+    await controller.restoreSession();
+
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.linkedProviders, ['google']);
+
+    // A second null event lands while already sessionExpired --
+    // _state.session is null at this point (only set on signedIn), so a
+    // naive implementation falls back to the identity cache alone and
+    // silently drops linkedProviders.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u');
+    expect(controller.state.lastKnownSession?.linkedProviders, ['google']);
+  });
+
+  test('signedOut is sticky against a late null-session stream event -- e.g. '
+      'the auth SDK\'s own side-effect of signOut() arriving after '
+      '_isSigningOut has already reset -- so a just-signed-out user is never '
+      'resurrected as offline-authenticated', () async {
+    final repo = _FakeAuthRepository();
+    repo.currentSession = const AppAuthSession(userId: 'u', email: 'e@x');
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..value = const LastKnownIdentity(
+        userId: 'u',
+        email: 'e@x',
+        organizationId: null,
+      );
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    await controller.signOut();
+    expect(controller.state.status, AppAuthStatus.signedOut);
+
+    // The identity cache is deliberately NOT nulled here (nothing in
+    // this controller-level test drives auth_providers.dart's reactive
+    // listener) -- this is exactly the production race window: the
+    // durable clear + cache update run asynchronously in reaction to the
+    // signedOut state and are not guaranteed to land before a delayed
+    // stream side effect of the same signOut() call arrives.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
 }

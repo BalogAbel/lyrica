@@ -57,11 +57,6 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
     _invalidateLastKnownIdentityPersistence();
-    // Mirror the durable clear below into AppAuthController's in-memory
-    // cache synchronously, right alongside the store write it accompanies,
-    // so the cache can never be observed holding a purged identity (see the
-    // class-level note on AppAuthController._identity).
-    _noteLastKnownIdentity(null);
     final handlers = _handlers.toList(growable: false);
     final planningCleanup = handlers.isEmpty
         ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
@@ -70,10 +65,19 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
             handlers: handlers,
           );
 
+    // Mirror the durable clear into AppAuthController's in-memory cache
+    // only after the clear itself has actually succeeded, not before it --
+    // updating the cache first would let it observe a purge that never
+    // durably committed if the store write then failed (see the
+    // class-level note on AppAuthController._identity).
+    final identityClear = _lastKnownIdentityStore.clear().then((_) {
+      _noteLastKnownIdentity(null);
+    });
+
     return Future.wait([
       planningCleanup,
       _songCatalogStore.deleteCatalogsForUser(userId: userId),
-      _lastKnownIdentityStore.clear(),
+      identityClear,
     ]);
   }
 
