@@ -7,6 +7,7 @@ enum AppRoutes {
   inviteRequired('/invite-required'),
   redeem('/redeem'),
   account('/account'),
+  localDataEvents('/account/local-data-events'),
   planList('/plans'),
   planDetail('/plans/:planSlug'),
   planSessionSongReader(

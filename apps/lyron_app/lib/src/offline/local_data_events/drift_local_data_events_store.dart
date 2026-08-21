@@ -3,7 +3,36 @@ import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 
 import 'local_data_events_database.dart';
 
-class DriftLocalDataEventsStore implements LocalDataEventsRecorder {
+/// A single row of the [LocalDataEvents] audit trail, read back for display
+/// (e.g. the diagnostics screen) rather than for further mutation.
+class LocalDataEventRecord {
+  const LocalDataEventRecord({
+    required this.id,
+    required this.occurredAt,
+    required this.kind,
+    required this.target,
+    required this.reason,
+    required this.userId,
+    required this.rowsAffected,
+  });
+
+  final int id;
+  final DateTime occurredAt;
+  final String kind;
+  final String target;
+  final String? reason;
+  final String? userId;
+  final int? rowsAffected;
+}
+
+/// Read-only access to the [LocalDataEvents] audit trail, separate from
+/// [LocalDataEventsRecorder]'s write-only contract.
+abstract interface class LocalDataEventsReader {
+  Future<List<LocalDataEventRecord>> readRecent({int limit});
+}
+
+class DriftLocalDataEventsStore
+    implements LocalDataEventsRecorder, LocalDataEventsReader {
   const DriftLocalDataEventsStore(this._database);
 
   final LocalDataEventsDatabase _database;
@@ -53,5 +82,29 @@ class DriftLocalDataEventsStore implements LocalDataEventsRecorder {
         rowsAffected: Value(rowsAffected),
       ),
     );
+  }
+
+  @override
+  Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
+    final query = _database.select(_database.localDataEvents)
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.occurredAt),
+        (t) => OrderingTerm.desc(t.id),
+      ])
+      ..limit(limit);
+    final rows = await query.get();
+    return rows
+        .map(
+          (row) => LocalDataEventRecord(
+            id: row.id,
+            occurredAt: row.occurredAt,
+            kind: row.kind,
+            target: row.target,
+            reason: row.reason,
+            userId: row.userId,
+            rowsAffected: row.rowsAffected,
+          ),
+        )
+        .toList();
   }
 }

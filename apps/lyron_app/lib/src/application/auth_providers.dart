@@ -22,6 +22,7 @@ import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
@@ -94,6 +95,19 @@ final localDataEventsRecorderProvider = Provider<LocalDataEventsRecorder>((
 ) {
   return DriftLocalDataEventsStore(ref.watch(localDataEventsDatabaseProvider));
 });
+
+final localDataEventsReaderProvider = Provider<LocalDataEventsReader>((ref) {
+  return DriftLocalDataEventsStore(ref.watch(localDataEventsDatabaseProvider));
+});
+
+/// autoDispose: this backs a diagnostics-only screen, so the query result
+/// need not be kept alive once nothing is watching it (matches
+/// songCatalogControllerProvider's autoDispose convention for one-off screen
+/// data elsewhere in this file's neighborhood).
+final localDataEventsRecordsProvider =
+    FutureProvider.autoDispose<List<LocalDataEventRecord>>((ref) {
+      return ref.watch(localDataEventsReaderProvider).readRecent(limit: 200);
+    }, retry: noAutomaticProviderRetry);
 
 final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
   return LocalDataLifecycle(

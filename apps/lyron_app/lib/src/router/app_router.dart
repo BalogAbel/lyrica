@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/presentation/account/account_screen.dart';
+import 'package:lyron_app/src/presentation/account/local_data_events_screen.dart';
 import 'package:lyron_app/src/presentation/auth/invite_required_screen.dart';
 import 'package:lyron_app/src/presentation/auth/magic_link_sent_screen.dart';
 import 'package:lyron_app/src/presentation/auth/membership_gate.dart';
@@ -148,6 +149,10 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.account.path,
         builder: (context, _) => const AccountScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.localDataEvents.path,
+        builder: (context, _) => const LocalDataEventsScreen(),
       ),
       GoRoute(
         path: AppRoutes.planList.path,

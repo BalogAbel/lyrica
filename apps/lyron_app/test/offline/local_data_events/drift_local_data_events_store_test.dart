@@ -108,4 +108,71 @@ void main() {
       {'songCatalog', 'planningData', 'identity'},
     );
   });
+
+  test('readRecent returns empty list on an empty store', () async {
+    final records = await store.readRecent();
+
+    expect(records, isEmpty);
+  });
+
+  test('readRecent orders records newest-first', () async {
+    await store.recordPurge(
+      target: PurgeTarget.songCatalog,
+      reason: PurgeReason.userSignOut,
+      userId: 'u1',
+    );
+    await store.recordPurge(
+      target: PurgeTarget.planningData,
+      reason: PurgeReason.accountDeleted,
+      userId: 'u2',
+    );
+    await store.recordEviction(target: 'cachedCatalogSources', userId: 'u3');
+
+    final records = await store.readRecent();
+
+    expect(records, hasLength(3));
+    expect(records[0].target, 'cachedCatalogSources');
+    expect(records[1].target, 'planningData');
+    expect(records[2].target, 'songCatalog');
+  });
+
+  test('readRecent respects limit', () async {
+    for (var i = 0; i < 5; i++) {
+      await store.recordPurge(
+        target: PurgeTarget.songCatalog,
+        reason: PurgeReason.userSignOut,
+        userId: 'u$i',
+      );
+    }
+
+    final records = await store.readRecent(limit: 2);
+
+    expect(records, hasLength(2));
+  });
+
+  test('readRecent round-trips all fields correctly including nulls', () async {
+    await store.recordPurge(
+      target: PurgeTarget.identity,
+      reason: PurgeReason.accountDeleted,
+      userId: 'u1',
+      rowsAffected: 3,
+    );
+    await store.recordEviction(target: 'cachedCatalogSources');
+
+    final records = await store.readRecent();
+
+    final purgeRecord = records.firstWhere((r) => r.kind == 'purge');
+    expect(purgeRecord.id, isPositive);
+    expect(purgeRecord.occurredAt, isA<DateTime>());
+    expect(purgeRecord.target, 'identity');
+    expect(purgeRecord.reason, 'accountDeleted');
+    expect(purgeRecord.userId, 'u1');
+    expect(purgeRecord.rowsAffected, 3);
+
+    final evictionRecord = records.firstWhere((r) => r.kind == 'eviction');
+    expect(evictionRecord.target, 'cachedCatalogSources');
+    expect(evictionRecord.reason, isNull);
+    expect(evictionRecord.userId, isNull);
+    expect(evictionRecord.rowsAffected, isNull);
+  });
 }
