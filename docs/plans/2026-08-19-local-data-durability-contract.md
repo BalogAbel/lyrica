@@ -176,15 +176,21 @@ Acceptance-1's premise (led to the correction above); second round clean.
 
 ## Task 1.6 — Documentation
 
-- [ ] Write `docs/architecture/decisions/ADR-035-local-data-purge-contract.md`
+- [x] Write `docs/architecture/decisions/ADR-035-local-data-purge-contract.md`
   carrying D1–D8. Mark it as enforcing ADR-020 rather than superseding it.
-- [ ] Correct `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`: its claims
+- [x] Correct `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`: its claims
   that `_stateForSession` never maps to data loss and that no read path gates on
   session validity were false. Record what was actually true, and close it as a
   durability concern (it remains a sync-resumption note only).
-- [ ] Update `docs/architecture/architecture.md` with the purge-contract seam.
-- [ ] Add a release note: expired refresh tokens no longer bounce the user to
+- [x] Update `docs/architecture/architecture.md` with the purge-contract seam.
+- [x] Add a release note: expired refresh tokens no longer bounce the user to
   sign-in; they stay offline-authenticated and sync resumes after re-auth.
+
+Commit fc09bfb. Reviewed clean — no overclaiming of Phase 2-4 work, citations
+verified against ADR-016/ADR-020 source, LF-T2 correction preserves the
+original conclusion.
+
+**Phase 1 complete: Tasks 1.1-1.6 all done, reviewed, committed.**
 
 ---
 
