@@ -164,107 +164,95 @@ void main() {
     },
   );
 
-  test(
-    'stream null from initializing with identity present maps to '
-    'sessionExpired, not signedOut',
-    () async {
-      final repo = _FakeAuthRepository();
-      final identityStore = _FakeLastKnownIdentityStore()
-        ..value = const LastKnownIdentity(
-          userId: 'u1',
-          email: 'e@x',
-          organizationId: null,
-        );
-      final controller = AppAuthController(
-        repo,
-        lastKnownIdentityStore: identityStore,
+  test('stream null from initializing with identity present maps to '
+      'sessionExpired, not signedOut', () async {
+    final repo = _FakeAuthRepository();
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..value = const LastKnownIdentity(
+        userId: 'u1',
+        email: 'e@x',
+        organizationId: null,
       );
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
 
-      // Let the identity load settle before emitting, so the event below is
-      // processed immediately rather than buffered.
-      await Future<void>.delayed(Duration.zero);
+    // Let the identity load settle before emitting, so the event below is
+    // processed immediately rather than buffered.
+    await Future<void>.delayed(Duration.zero);
 
-      // No restoreSession() call: the app never got a signedIn status, it's
-      // still `initializing` when this null event lands.
-      repo.emit(null);
-      await Future<void>.delayed(Duration.zero);
+    // No restoreSession() call: the app never got a signedIn status, it's
+    // still `initializing` when this null event lands.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
 
-      expect(controller.state.status, AppAuthStatus.sessionExpired);
-      expect(controller.state.lastKnownSession?.userId, 'u1');
-      expect(controller.state.lastKnownSession?.email, 'e@x');
-    },
-  );
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+    expect(controller.state.lastKnownSession?.email, 'e@x');
+  });
 
-  test(
-    'stream null while already sessionExpired with identity present stays '
-    'sessionExpired',
-    () async {
-      final repo = _FakeAuthRepository();
-      final identityStore = _FakeLastKnownIdentityStore()
-        ..value = const LastKnownIdentity(
-          userId: 'u1',
-          email: 'e@x',
-          organizationId: null,
-        );
-      final controller = AppAuthController(
-        repo,
-        lastKnownIdentityStore: identityStore,
+  test('stream null while already sessionExpired with identity present stays '
+      'sessionExpired', () async {
+    final repo = _FakeAuthRepository();
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..value = const LastKnownIdentity(
+        userId: 'u1',
+        email: 'e@x',
+        organizationId: null,
       );
-      await Future<void>.delayed(Duration.zero);
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
+    await Future<void>.delayed(Duration.zero);
 
-      repo.emit(null);
-      await Future<void>.delayed(Duration.zero);
-      expect(controller.state.status, AppAuthStatus.sessionExpired);
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
 
-      // A second, independent null event while already sessionExpired must
-      // not do anything more destructive.
-      repo.emit(null);
-      await Future<void>.delayed(Duration.zero);
+    // A second, independent null event while already sessionExpired must
+    // not do anything more destructive.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
 
-      expect(controller.state.status, AppAuthStatus.sessionExpired);
-      expect(controller.state.lastKnownSession?.userId, 'u1');
-    },
-  );
+    expect(controller.state.status, AppAuthStatus.sessionExpired);
+    expect(controller.state.lastKnownSession?.userId, 'u1');
+  });
 
-  test(
-    'stream null from initializing with no identity maps to signedOut -- '
-    'nothing to protect',
-    () async {
-      final repo = _FakeAuthRepository();
-      final controller = AppAuthController(repo); // no identity store wired
-      await Future<void>.delayed(Duration.zero);
+  test('stream null from initializing with no identity maps to signedOut -- '
+      'nothing to protect', () async {
+    final repo = _FakeAuthRepository();
+    final controller = AppAuthController(repo); // no identity store wired
+    await Future<void>.delayed(Duration.zero);
 
-      repo.emit(null);
-      await Future<void>.delayed(Duration.zero);
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
 
-      expect(controller.state.status, AppAuthStatus.signedOut);
-    },
-  );
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
 
-  test(
-    'null session delivered synchronously during signOut() maps to '
-    'signedOut even though an identity is present to protect',
-    () async {
-      final repo = _FakeAuthRepository()..emitNullOnSignOut = true;
-      final identityStore = _FakeLastKnownIdentityStore()
-        ..value = const LastKnownIdentity(
-          userId: 'u1',
-          email: 'e@x',
-          organizationId: null,
-        );
-      repo.currentSession = const AppAuthSession(userId: 'u1', email: 'e@x');
-      final controller = AppAuthController(
-        repo,
-        lastKnownIdentityStore: identityStore,
+  test('null session delivered synchronously during signOut() maps to '
+      'signedOut even though an identity is present to protect', () async {
+    final repo = _FakeAuthRepository()..emitNullOnSignOut = true;
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..value = const LastKnownIdentity(
+        userId: 'u1',
+        email: 'e@x',
+        organizationId: null,
       );
-      await controller.restoreSession();
-      expect(controller.state.status, AppAuthStatus.signedIn);
+    repo.currentSession = const AppAuthSession(userId: 'u1', email: 'e@x');
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
+    await controller.restoreSession();
+    expect(controller.state.status, AppAuthStatus.signedIn);
 
-      await controller.signOut();
+    await controller.signOut();
 
-      expect(controller.state.status, AppAuthStatus.signedOut);
-    },
-  );
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
 
   test(
     'a null stream event arriving mid-restoreSession() cannot leave a more '
@@ -365,44 +353,41 @@ void main() {
     expect(controller.state.status, AppAuthStatus.signedOut);
   });
 
-  test(
-    'a stream event arriving before the identity load settles is buffered '
-    'and only evaluated once the load completes -- proven by state staying '
-    'untouched beforehand and a log showing the read complete strictly '
-    'before the resulting notification',
-    () async {
-      final repo = _FakeAuthRepository();
-      final identityRead = Completer<LastKnownIdentity?>();
-      final identityStore = _FakeLastKnownIdentityStore()
-        ..readCompleter = identityRead;
-      final controller = AppAuthController(
-        repo,
-        lastKnownIdentityStore: identityStore,
-      );
+  test('a stream event arriving before the identity load settles is buffered '
+      'and only evaluated once the load completes -- proven by state staying '
+      'untouched beforehand and a log showing the read complete strictly '
+      'before the resulting notification', () async {
+    final repo = _FakeAuthRepository();
+    final identityRead = Completer<LastKnownIdentity?>();
+    final identityStore = _FakeLastKnownIdentityStore()
+      ..readCompleter = identityRead;
+    final controller = AppAuthController(
+      repo,
+      lastKnownIdentityStore: identityStore,
+    );
 
-      final log = <Object>[];
-      controller.addListener(() => log.add(controller.state.status));
+    final log = <Object>[];
+    controller.addListener(() => log.add(controller.state.status));
 
-      // The stream event arrives immediately, well before the identity
-      // load resolves.
-      repo.emit(null);
-      await Future<void>.delayed(Duration.zero);
+    // The stream event arrives immediately, well before the identity
+    // load resolves.
+    repo.emit(null);
+    await Future<void>.delayed(Duration.zero);
 
-      // Not evaluated yet: state is untouched and nothing notified.
-      expect(controller.state.status, AppAuthStatus.initializing);
-      expect(log, isEmpty);
+    // Not evaluated yet: state is untouched and nothing notified.
+    expect(controller.state.status, AppAuthStatus.initializing);
+    expect(log, isEmpty);
 
-      log.add('read-completing');
-      identityRead.complete(null);
-      await Future<void>.delayed(Duration.zero);
+    log.add('read-completing');
+    identityRead.complete(null);
+    await Future<void>.delayed(Duration.zero);
 
-      // Only now, after the identity load settles, is the buffered event
-      // evaluated -- the log proves the read completed strictly before the
-      // resulting notification, not concurrently or before.
-      expect(log, ['read-completing', AppAuthStatus.signedOut]);
-      expect(controller.state.status, AppAuthStatus.signedOut);
-    },
-  );
+    // Only now, after the identity load settles, is the buffered event
+    // evaluated -- the log proves the read completed strictly before the
+    // resulting notification, not concurrently or before.
+    expect(log, ['read-completing', AppAuthStatus.signedOut]);
+    expect(controller.state.status, AppAuthStatus.signedOut);
+  });
 
   test(
     'multiple stream events arriving before the identity load settles are '
