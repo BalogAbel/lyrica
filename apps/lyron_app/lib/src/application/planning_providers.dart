@@ -280,6 +280,14 @@ final planningSyncControllerProvider =
         remoteRepository: () =>
             ref.read(planningRemoteRefreshRepositoryProvider),
         authSessionReader: () => authController.state.session,
+        lastKnownIdentityReader: () {
+          final identity = authController.lastKnownIdentity;
+          if (identity == null) return null;
+          return (
+            userId: identity.userId,
+            organizationId: identity.organizationId,
+          );
+        },
       );
       Future<void> handleVerifiedEmptyMembership({required String userId}) {
         return controller.handleVerifiedEmptyMembership(userId: userId);
@@ -299,6 +307,7 @@ final planningSyncControllerProvider =
             return;
           case AppAuthStatus.sessionExpired:
             unawaited(controller.handleSessionExpired());
+            unawaited(controller.handleOfflineAuthenticated());
             return;
           case AppAuthStatus.signedIn:
             return;

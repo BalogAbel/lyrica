@@ -550,6 +550,102 @@ void main() {
     );
 
     test(
+      'handleOfflineAuthenticated establishes a read context and cached '
+      'planning data from a local snapshot when the session is expired, '
+      'without touching the network',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-org-1',
+              name: 'Plan org-1',
+              description: 'Description org-1',
+              scheduledFor: DateTime.utc(2026, 4, 5, 9),
+              updatedAt: DateTime.utc(2026, 4, 3, 12),
+              version: 1,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+        remoteRepository.error = StateError('network unreachable');
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+        expect(controller.state.refreshStatus, PlanningRefreshStatus.idle);
+        expect(controller.state.hasLocalPlanningData, isTrue);
+        expect(remoteRepository.fetchCallCount, 0);
+      },
+    );
+
+    test(
+      'handleOfflineAuthenticated is a no-op when no local snapshot exists '
+      'for the last known identity',
+      () async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.userId, isNull);
+        expect(controller.state.organizationId, isNull);
+        expect(controller.state.hasLocalPlanningData, isFalse);
+        expect(remoteRepository.fetchCallCount, 0);
+      },
+    );
+
+    test(
+      'handleOfflineAuthenticated never clobbers an already-established '
+      'read context',
+      () async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+        expect(controller.state.organizationId, 'org-1');
+        final fetchCallCountBefore = remoteRepository.fetchCallCount;
+
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(remoteRepository.fetchCallCount, fetchCallCountBefore);
+      },
+    );
+
+    test(
       'switching to a new active organization that fails to refresh does not expose the previous organization projection',
       () async {
         final controller = PlanningSyncController(
