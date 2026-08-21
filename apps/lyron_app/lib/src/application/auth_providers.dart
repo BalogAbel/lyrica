@@ -121,6 +121,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
       case AppAuthStatus.signedOut:
         if (!isCurrent(generation, AppAuthStatus.signedOut, null)) return;
         await identityStore.clear();
+        authController.noteLastKnownIdentity(null);
         return;
       case AppAuthStatus.sessionExpired:
         return;
@@ -175,31 +176,32 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              await identityStore.write(
-                LastKnownIdentity(
-                  userId: session.userId,
-                  email: session.email,
-                  organizationId: organizationId,
-                ),
+              final identity = LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: organizationId,
               );
+              await identityStore.write(identity);
+              authController.noteLastKnownIdentity(identity);
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
               await identityStore.clear();
+              authController.noteLastKnownIdentity(null);
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
             case null:
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              await identityStore.write(
-                LastKnownIdentity(
-                  userId: session.userId,
-                  email: session.email,
-                  organizationId: null,
-                ),
+              final identity = LastKnownIdentity(
+                userId: session.userId,
+                email: session.email,
+                organizationId: null,
               );
+              await identityStore.write(identity);
+              authController.noteLastKnownIdentity(identity);
           }
           return true;
         }
@@ -296,6 +298,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               return false;
             }
             await identityStore.clear();
+            authController.noteLastKnownIdentity(null);
           } catch (error, stackTrace) {
             // A song/planning deletion failed, or identityStore.clear()
             // itself failed. Either way the destructive part did not fully

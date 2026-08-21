@@ -30,11 +30,20 @@ class AppAuthController extends ChangeNotifier {
   AppAuthSession? _pendingReauthCancelSession;
   int? _pendingReauthCancelGeneration;
 
-  // Read cache populated once from the store while loading, in
-  // construction order. It is NOT kept live-synced with writes/clears made
-  // elsewhere (e.g. auth_providers.dart's identityStore.write()/clear()) --
-  // that cross-file wiring is deferred to Phase 2, which centralizes all
-  // writes through one gate.
+  // Read cache populated once from the store while loading, in construction
+  // order, and kept in sync afterwards by [noteLastKnownIdentity] -- the
+  // sole additional writer, called by auth_providers.dart's
+  // lastKnownIdentityPersistenceProvider alongside every one of its own
+  // identityStore.write()/clear() calls, so this cache and the durable
+  // store never diverge within a running process. Before that wiring
+  // existed, a signedIn edge could persist an identity to the durable store
+  // (via persistIdentity's asynchronous, post-signedIn resolution) that
+  // this controller never learned about; a later session-expiry stream
+  // event would then read this field, still null, and wrongly conclude
+  // there was no identity to protect -- mapping to signedOut instead of
+  // sessionExpired and bouncing an offline-authenticated user to the
+  // sign-in screen (see _stateForSession below and the regression this
+  // fixed).
   LastKnownIdentity? _identity;
   bool _identityLoaded = false;
   late final Future<void> _identityLoadFuture;
@@ -45,6 +54,23 @@ class AppAuthController extends ChangeNotifier {
   /// The most recently loaded identity, readable synchronously. Null both
   /// before the load has settled and when there genuinely is none.
   LastKnownIdentity? get lastKnownIdentity => _identity;
+
+  /// Updates the in-memory identity cache to match a write or clear that
+  /// [_lastKnownIdentityStore]'s owner just made to the durable store from
+  /// outside this class. Pass the identity that was just written, or `null`
+  /// for a clear. See the class-level note on [_identity].
+  ///
+  /// Callers only ever make the underlying store write/clear once this
+  /// controller has already reached a non-initializing status (persisting
+  /// an identity happens in reaction to a signedIn transition this
+  /// controller itself already published), which in turn only ever happens
+  /// after [_identityLoadFuture] has settled -- see [_handleSessionUpdate]'s
+  /// buffering and [restoreSession]'s explicit await. So by the time this
+  /// is called, the one-time load has always already completed and this
+  /// update is a pure, race-free overwrite of the cache.
+  void noteLastKnownIdentity(LastKnownIdentity? identity) {
+    _identity = identity;
+  }
 
   Future<void> _loadIdentity() async {
     final store = _lastKnownIdentityStore;
