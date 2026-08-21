@@ -115,16 +115,25 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
 `apps/lyron_app/lib/src/application/song_catalog_providers.dart`,
 `apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart`
 
-- [ ] Write a failing test: a controller in `sessionExpired`, with a stored
+- [x] Write a failing test: a controller in `sessionExpired`, with a stored
   snapshot for `LastKnownIdentity`'s `(userId, organizationId)` and a remote
   repository that throws on every call, exposes a non-null `context` and the
   cached summaries.
-- [ ] Implement `handleOfflineAuthenticated()`: establish `context` from
+- [x] Implement `handleOfflineAuthenticated()`: establish `context` from
   `LastKnownIdentity` when a local snapshot exists for that pair. No network
   call, no session check.
-- [ ] Wire it into the `sessionExpired` branch of `handleAuthStateChanged`
+- [x] Wire it into the `sessionExpired` branch of `handleAuthStateChanged`
   alongside the existing `handleSessionExpired()`.
-- [ ] Verify `songLibraryListProvider` yields the cached songs in this state.
+- [x] Verify `songLibraryListProvider` yields the cached songs in this state.
+  (Verified transitively via the controller test — the provider's existing
+  pass-through on `context` needed no code change.)
+
+Commit 8d63824. Follow-up: this task's `flutter test test/application/`
+sweep surfaced 2 pre-existing tests in `providers_test.dart` that broke as a
+latent consequence of Task 1.2's D2 change (fixture gap: `AppAuthController`
+built with no identity store, same category Task 1.2 already fixed
+elsewhere but missed in this file). Fixed in commit fc52c70 — fixture-only,
+no assertions changed. Full `test/application/` tree (369 tests) green.
 
 ## Task 1.4 — Planning mirror
 
