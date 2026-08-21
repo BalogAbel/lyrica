@@ -65,6 +65,22 @@ void main() {
         expect(eventsRecorder.purgeCalls, isEmpty);
       },
     );
+
+    test(
+      'when the audit recorder throws, the deletion that already committed '
+      'is NOT reported as a failure -- the method completes without '
+      'throwing',
+      () async {
+        eventsRecorder.throwOnRecord = true;
+
+        await lifecycle.purgeSongCatalog(
+          userId: 'user-1',
+          reason: PurgeReason.userSignOut,
+        );
+
+        expect(songCatalogStore.deleteCalls, ['user-1']);
+      },
+    );
   });
 
   group('purgePlanningData', () {
@@ -130,24 +146,35 @@ void main() {
         expect(eventsRecorder.purgeCalls, isEmpty);
       },
     );
+
+    test(
+      'when the audit recorder throws, the deletion that already committed '
+      'is NOT reported as a failure -- the method completes without '
+      'throwing',
+      () async {
+        eventsRecorder.throwOnRecord = true;
+
+        await lifecycle.purgePlanningData(
+          userId: 'user-2',
+          reason: PurgeReason.userSignOut,
+        );
+
+        expect(planningLocalStore.deleteCalls, hasLength(1));
+      },
+    );
   });
 
   group('clearIdentity', () {
     test(
-      'reads the identity first to capture userId on the audit row, clears, '
-      'and notes null',
+      'clears, notes null, and records the caller-supplied userId on the '
+      'audit row -- no internal identity read',
       () async {
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-3',
-            email: 'user3@example.com',
-            organizationId: 'org-3',
-          ),
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.accountDeleted,
+          userId: 'user-3',
         );
 
-        await lifecycle.clearIdentity(reason: PurgeReason.accountDeleted);
-
-        expect(identityStore.callLog, ['read', 'clear']);
+        expect(identityStore.callLog, ['clear']);
         expect(notedIdentities, [null]);
         expect(eventsRecorder.purgeCalls, hasLength(1));
         final recorded = eventsRecorder.purgeCalls.single;
@@ -158,27 +185,23 @@ void main() {
       },
     );
 
-    test('when there was no identity to begin with, records a null userId', () async {
-      await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
-
-      expect(eventsRecorder.purgeCalls, hasLength(1));
-      expect(eventsRecorder.purgeCalls.single.userId, isNull);
-    });
-
     test(
-      'when read throws, the exception propagates and neither clear, note, '
-      'nor record happen',
+      'when the caller has no userId to supply, records a null userId '
+      '(does not read the identity store to derive one)',
       () async {
-        identityStore.throwOnRead = true;
-
-        await expectLater(
-          () => lifecycle.clearIdentity(reason: PurgeReason.userSignOut),
-          throwsA(isA<StateError>()),
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-3',
+            email: 'user3@example.com',
+            organizationId: 'org-3',
+          ),
         );
 
-        expect(identityStore.callLog, ['read']);
-        expect(notedIdentities, isEmpty);
-        expect(eventsRecorder.purgeCalls, isEmpty);
+        await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
+
+        expect(identityStore.callLog, ['clear']);
+        expect(eventsRecorder.purgeCalls, hasLength(1));
+        expect(eventsRecorder.purgeCalls.single.userId, isNull);
       },
     );
 
@@ -186,25 +209,36 @@ void main() {
       'when clear throws, the exception propagates and neither note nor '
       'record happen',
       () async {
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-4',
-            email: 'e@x',
-            organizationId: 'org-4',
-          ),
-        );
         identityStore.throwOnClear = true;
 
         await expectLater(
           () => lifecycle.clearIdentity(
             reason: PurgeReason.membershipRevokedConfirmed,
+            userId: 'user-4',
           ),
           throwsA(isA<StateError>()),
         );
 
-        expect(identityStore.callLog, ['read', 'clear']);
+        expect(identityStore.callLog, ['clear']);
         expect(notedIdentities, isEmpty);
         expect(eventsRecorder.purgeCalls, isEmpty);
+      },
+    );
+
+    test(
+      'when the audit recorder throws, the clear and the note already '
+      'committed are NOT undone or reported as a failure -- the method '
+      'completes without throwing',
+      () async {
+        eventsRecorder.throwOnRecord = true;
+
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.userSignOut,
+          userId: 'user-5',
+        );
+
+        expect(identityStore.callLog, ['clear']);
+        expect(notedIdentities, [null]);
       },
     );
   });
@@ -547,7 +581,6 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   LastKnownIdentity? _current;
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   final List<String> callLog = <String>[];
-  bool throwOnRead = false;
   bool throwOnClear = false;
 
   void seed(LastKnownIdentity identity) {
@@ -557,9 +590,6 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   @override
   Future<LastKnownIdentity?> read() async {
     callLog.add('read');
-    if (throwOnRead) {
-      throw StateError('simulated read failure');
-    }
     return _current;
   }
 
@@ -596,6 +626,7 @@ class _RecordedPurgeCall {
 
 class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
   final List<_RecordedPurgeCall> purgeCalls = <_RecordedPurgeCall>[];
+  bool throwOnRecord = false;
 
   @override
   Future<void> recordPurge({
@@ -604,6 +635,9 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {
+    if (throwOnRecord) {
+      throw StateError('simulated recordPurge failure');
+    }
     purgeCalls.add(
       _RecordedPurgeCall(
         target: target,

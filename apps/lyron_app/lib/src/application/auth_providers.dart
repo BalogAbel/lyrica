@@ -249,6 +249,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               // radius stays small even before Phase 4 lands.
               await lifecycle.clearIdentity(
                 reason: PurgeReason.membershipRevokedConfirmed,
+                userId: session.userId,
               );
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
@@ -361,6 +362,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             }
             await lifecycle.clearIdentity(
               reason: PurgeReason.differentUserSignIn,
+              userId: priorUserId,
             );
           } catch (error, stackTrace) {
             // A song/planning deletion failed, or identityStore.clear()

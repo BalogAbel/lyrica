@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
@@ -34,10 +35,17 @@ abstract interface class LocalDataEventsRecorder {
 /// D7: the single gate every local-data purge primitive must be reached
 /// through, requiring every call to name a real [PurgeReason].
 ///
-/// Each destructive method here performs the underlying store's deletion and
-/// then writes exactly one audit record for it. If the underlying deletion
-/// throws, the exception propagates unchanged and no audit record is
-/// written -- a failure is reported, never silently claimed as a success.
+/// Each destructive method here performs the underlying store's deletion,
+/// THEN best-effort writes one audit record for it. If the underlying
+/// deletion throws, the exception propagates unchanged and no audit record
+/// is written -- a failure is reported, never silently claimed as a success.
+/// The reverse must also hold: a deletion that already committed must never
+/// be reported as failed just because the audit write itself failed
+/// afterwards -- see [_recordBestEffort]. Callers (e.g.
+/// `wipePriorAndProceedFor` in `auth_providers.dart`) fall back to
+/// `cancelToPriorUser` on any exception from these methods, on the
+/// documented assumption that an exception means the destructive part did
+/// not commit; an audit-write failure must not violate that assumption.
 class LocalDataLifecycle {
   LocalDataLifecycle({
     required this._songCatalogStore,
@@ -58,7 +66,7 @@ class LocalDataLifecycle {
     required PurgeReason reason,
   }) async {
     await _songCatalogStore.deleteCatalogsForUser(userId: userId);
-    await _eventsRecorder.recordPurge(
+    await _recordBestEffort(
       target: PurgeTarget.songCatalog,
       reason: reason,
       userId: userId,
@@ -74,24 +82,30 @@ class LocalDataLifecycle {
       userId: userId,
       shouldContinue: shouldContinue,
     );
-    await _eventsRecorder.recordPurge(
+    await _recordBestEffort(
       target: PurgeTarget.planningData,
       reason: reason,
       userId: userId,
     );
   }
 
-  /// Reads the identity BEFORE clearing it, so the audit record can still
-  /// attribute a `userId` -- the durable row is about to be deleted so this
-  /// is the last chance to know whose identity it was.
-  Future<void> clearIdentity({required PurgeReason reason}) async {
-    final identity = await _identityStore.read();
+  /// [userId] is supplied by the caller when known, for audit attribution
+  /// only -- it does not gate whether the clear happens. Deliberately does
+  /// NOT read the identity store first to derive it: an extra read before
+  /// the clear would (a) introduce a new failure mode that could abort a
+  /// clear that previously ran unconditionally, and (b) insert an await
+  /// point between the caller's currentness guard and the actual `clear()`,
+  /// widening a race window `auth_providers.dart` explicitly guards against
+  /// (see the comment on the `isCurrent` re-check ahead of
+  /// `wipePriorAndProceedFor`'s clear). Most call sites already have the
+  /// userId in hand from their own context.
+  Future<void> clearIdentity({required PurgeReason reason, String? userId}) async {
     await _identityStore.clear();
     _noteLastKnownIdentity(null);
-    await _eventsRecorder.recordPurge(
+    await _recordBestEffort(
       target: PurgeTarget.identity,
       reason: reason,
-      userId: identity?.userId,
+      userId: userId,
     );
   }
 
@@ -99,5 +113,39 @@ class LocalDataLifecycle {
   Future<void> writeIdentity(LastKnownIdentity identity) async {
     await _identityStore.write(identity);
     _noteLastKnownIdentity(identity);
+  }
+
+  /// Writes the audit record without letting a failure here masquerade as a
+  /// failure of the deletion/clear that already committed above it. Reported
+  /// via [FlutterError.reportError] rather than rethrown, mirroring how this
+  /// codebase already treats other post-commit, non-critical failures (see
+  /// the `FlutterError.reportError` calls in `auth_providers.dart`).
+  Future<void> _recordBestEffort({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {
+    try {
+      await _eventsRecorder.recordPurge(
+        target: target,
+        reason: reason,
+        userId: userId,
+        rowsAffected: rowsAffected,
+      );
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'LocalDataLifecycle',
+          context: ErrorDescription(
+            'failed to write a local_data_events audit record for a '
+            '$target purge (reason: $reason) that already completed -- the '
+            'purge itself succeeded and is not affected',
+          ),
+        ),
+      );
+    }
   }
 }

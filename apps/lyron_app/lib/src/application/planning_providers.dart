@@ -66,6 +66,7 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     // AppAuthController._identity).
     final identityClear = _localDataLifecycle.clearIdentity(
       reason: PurgeReason.membershipRevokedConfirmed,
+      userId: userId,
     );
 
     return Future.wait([
