@@ -32,9 +32,9 @@ typedef VerifiedEmptyMembershipCleanupHandler =
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
-    required LocalDataLifecycle localDataLifecycle,
+    required this._localDataLifecycle,
     required this._invalidateLastKnownIdentityPersistence,
-  }) : _localDataLifecycle = localDataLifecycle;
+  });
 
   final LocalDataLifecycle _localDataLifecycle;
   final void Function() _invalidateLastKnownIdentityPersistence;
