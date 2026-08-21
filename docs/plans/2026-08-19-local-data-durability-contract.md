@@ -87,7 +87,7 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
 **Files:** `apps/lyron_app/lib/src/application/auth/app_auth_controller.dart`,
 `apps/lyron_app/test/application/auth/app_auth_controller_test.dart`
 
-- [ ] Write failing tests first, one per row of the D1 forbidden list that
+- [x] Write failing tests first, one per row of the D1 forbidden list that
   reaches this function:
   - `null` session from `initializing` + identity present → `sessionExpired`
   - `null` session from `sessionExpired` + identity present → stays
@@ -96,14 +96,18 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
   - `signOut()` in progress (`_isSigningOut`) → `signedOut`
   - a `null` event during `restoreSession()`'s await cannot replace the restored
     state with a more destructive one
-- [ ] Implement: remove the `_state.status == AppAuthStatus.signedIn` condition
+- [x] Implement: remove the `_state.status == AppAuthStatus.signedIn` condition
   from `_stateForSession`. New rule: `signedOut` iff `_isSigningOut` **or** no
   `LastKnownIdentity`; otherwise `sessionExpired`.
-- [ ] Constrain the `_authGeneration` guard in `restoreSession()` so a stream
-  event may not downgrade a restored `sessionExpired` to `signedOut`.
-- [ ] Existing explicit-sign-out tests must stay green **without modification**.
-  If they cannot, STOP and report.
-- [ ] `flutter test test/application/auth/` green.
+- [x] Constrain the `_authGeneration` guard in `restoreSession()` so a stream
+  event may not downgrade a restored `sessionExpired` to `signedOut`. (Verified
+  unnecessary: fixing `_stateForSession`'s predicate collapsed the race —
+  existing generation sequencing already handles ordering. No extra guard
+  added; see commit 412ec88.)
+- [x] Existing explicit-sign-out tests must stay green **without modification**.
+  If they cannot, STOP and report. (Verified byte-identical by two independent
+  reviews.)
+- [x] `flutter test test/application/auth/` green. (85/85.)
 
 ## Task 1.3 — Catalog context from local data alone (D3)
 
