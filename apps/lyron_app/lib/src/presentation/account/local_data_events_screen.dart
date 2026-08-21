@@ -30,7 +30,8 @@ class LocalDataEventsScreen extends ConsumerWidget {
                 title: Text(record.target),
                 subtitle: Text(
                   '${_formatOccurredAt(record.occurredAt)} · '
-                  '${record.reason ?? 'eviction'}',
+                  '${record.kind} · '
+                  '${record.reason ?? '—'}',
                 ),
                 trailing: Text(
                   record.rowsAffected == null
