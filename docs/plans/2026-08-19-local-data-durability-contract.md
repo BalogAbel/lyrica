@@ -65,17 +65,22 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
 **Files:** `apps/lyron_app/lib/src/application/auth/app_auth_controller.dart`,
 `apps/lyron_app/test/application/auth/app_auth_controller_test.dart`
 
-- [ ] Write failing tests first:
+- [x] Write failing tests first:
   - A `null` session event arriving **before** the identity load completes is not
     evaluated against an unknown identity: it is buffered and resolved once the
     identity is known, yielding `sessionExpired` when an identity exists.
   - With the identity loaded and present, a `null` stream event from
     `initializing` yields `sessionExpired`, not `signedOut`.
-- [ ] Implement: load `LastKnownIdentity` into an in-memory field during
+- [x] Implement: load `LastKnownIdentity` into an in-memory field during
   construction, before the `watchSession()` subscription goes live. Buffer stream
   events until that load settles.
-- [ ] Keep the store as the durable source; the in-memory copy is a read cache
-  that is updated on every write/clear through the same seam.
+- [x] Keep the store as the durable source; the in-memory copy is a read cache.
+  Live-sync on every external write/clear is deferred to Phase 2 (D7's single
+  gate) — writes today happen only outside this class
+  (`auth_providers.dart`), and centralizing them is Phase 2's job, not
+  Phase 1's. Not a gap for Phase 1's acceptance criteria: they are all
+  cold-start scenarios, where the cache is populated fresh at construction
+  from the durable store before it is ever read.
 
 ## Task 1.2 — `signedOut` requires an explicit act (D2)
 
