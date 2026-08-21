@@ -32,18 +32,24 @@ class AppAuthController extends ChangeNotifier {
 
   // Read cache populated once from the store while loading, in construction
   // order, and kept in sync afterwards by [noteLastKnownIdentity] -- the
-  // sole additional writer, called by auth_providers.dart's
-  // lastKnownIdentityPersistenceProvider alongside every one of its own
-  // identityStore.write()/clear() calls, so this cache and the durable
-  // store never diverge within a running process. Before that wiring
-  // existed, a signedIn edge could persist an identity to the durable store
-  // (via persistIdentity's asynchronous, post-signedIn resolution) that
-  // this controller never learned about; a later session-expiry stream
-  // event would then read this field, still null, and wrongly conclude
-  // there was no identity to protect -- mapping to signedOut instead of
-  // sessionExpired and bouncing an offline-authenticated user to the
-  // sign-in screen (see _stateForSession below and the regression this
-  // fixed).
+  // sole additional writer, called alongside every durable-store
+  // identityStore.write()/clear() from both of that store's owners:
+  // auth_providers.dart's persistIdentity (every signedIn/signedOut write
+  // and clear) and planning_providers.dart's
+  // VerifiedEmptyMembershipCleanupCoordinator (the verified-empty-membership
+  // clear), so this cache and the durable store never diverge within a
+  // running process. Before that wiring existed, a signedIn edge could
+  // persist an identity to the durable store (via persistIdentity's
+  // asynchronous, post-signedIn resolution) that this controller never
+  // learned about; a later session-expiry stream event would then read this
+  // field, still null, and wrongly conclude there was no identity to
+  // protect -- mapping to signedOut instead of sessionExpired and bouncing
+  // an offline-authenticated user to the sign-in screen (see _stateForSession
+  // below and the regression this fixed). The verified-empty-membership gap
+  // was the mirror image: that clear used to update only the durable store,
+  // leaving this cache holding a purged identity that a later null-session
+  // stream event would misread as "identity present, protect it," wrongly
+  // producing sessionExpired instead of signedOut.
   LastKnownIdentity? _identity;
   bool _identityLoaded = false;
   late final Future<void> _identityLoadFuture;

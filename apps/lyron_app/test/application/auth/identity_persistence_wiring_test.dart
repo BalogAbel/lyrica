@@ -256,6 +256,75 @@ void main() {
     },
   );
 
+  test(
+    'verified-empty cleanup clears the controller cache so a later null '
+    'session maps to signedOut, not sessionExpired',
+    () async {
+      // Seed the controller with a prior identity, the same way
+      // 'sessionExpired does not clear the stored identity' does, so a null
+      // session would map to sessionExpired if the cache were never
+      // updated -- isolating the coordinator's own cache write as the thing
+      // under test.
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-1'),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await planningDatabase.close();
+        await songDatabase.close();
+      });
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(authController.lastKnownIdentity, isNotNull);
+
+      await container
+          .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+          .handleVerifiedEmptyMembership(userId: 'user-1');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.clearCount, 1);
+      // The purge must be visible to the controller's cache synchronously
+      // with the durable clear, not just eventually -- see the class-level
+      // note on AppAuthController._identity.
+      expect(authController.lastKnownIdentity, isNull);
+
+      authRepository.emit(null);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(authController.state.status, AppAuthStatus.signedOut);
+    },
+  );
+
   test('sessionExpired does not clear the stored identity', () async {
     authRepository.currentSession = const AppAuthSession(
       userId: 'user-1',

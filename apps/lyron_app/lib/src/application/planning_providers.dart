@@ -37,12 +37,14 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     required this._songCatalogStore,
     required this._lastKnownIdentityStore,
     required this._invalidateLastKnownIdentityPersistence,
+    required this._noteLastKnownIdentity,
   });
 
   final PlanningLocalStore _planningLocalStore;
   final SongCatalogStore _songCatalogStore;
   final LastKnownIdentityStore _lastKnownIdentityStore;
   final void Function() _invalidateLastKnownIdentityPersistence;
+  final void Function(LastKnownIdentity?) _noteLastKnownIdentity;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -55,6 +57,11 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
 
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
     _invalidateLastKnownIdentityPersistence();
+    // Mirror the durable clear below into AppAuthController's in-memory
+    // cache synchronously, right alongside the store write it accompanies,
+    // so the cache can never be observed holding a purged identity (see the
+    // class-level note on AppAuthController._identity).
+    _noteLastKnownIdentity(null);
     final handlers = _handlers.toList(growable: false);
     final planningCleanup = handlers.isEmpty
         ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
@@ -97,6 +104,9 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
         lastKnownIdentityStore: ref.watch(lastKnownIdentityStoreProvider),
         invalidateLastKnownIdentityPersistence: () {
           ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
+        noteLastKnownIdentity: (identity) {
+          ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
         },
       );
     });
