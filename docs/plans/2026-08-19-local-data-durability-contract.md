@@ -152,14 +152,27 @@ no assertions changed. Full `test/application/` tree (369 tests) green.
 
 **Files:** `apps/lyron_app/test/integration/`
 
-- [ ] Acceptance 1: offline cold start, expired access token, valid refresh token
-  → songs visible, zero deletions.
-- [ ] Acceptance 2: offline cold start, auth stream emits `signedOut` → zero
+- [x] Acceptance 1: offline cold start, expired access token, valid refresh token
+  → songs visible, zero deletions. **Correction (commit e8636b1):** verified
+  against the pinned `gotrue`/`supabase_flutter` source that this exact
+  condition never produces a null session — `currentSession` stays non-null,
+  the app stays `signedIn`, and the pre-existing `_refreshCatalog`
+  connectivity-failure fallback (ADR-016) is what actually protects this
+  case, not Tasks 1.1-1.4's new machinery. The test is now a regression
+  guard for that pre-existing path, not evidence of new-code correctness.
+  See the added note in the spec's F1 section.
+- [x] Acceptance 2: offline cold start, auth stream emits `signedOut` → zero
   deletions, `sessionExpired`, songs visible.
-- [ ] Acceptance 3: persisted session removed while `LastKnownIdentity` survives
+- [x] Acceptance 3: persisted session removed while `LastKnownIdentity` survives
   → zero deletions, songs visible.
-- [ ] Acceptance 7: advanced-clock multi-day offline span → songs visible on
-  every cold start.
+- [x] Acceptance 7: advanced-clock multi-day offline span → songs visible on
+  every cold start. (No wall-clock check exists anywhere in the read path
+  post-D2, so proven instead via 3 full relaunch cycles against the same
+  persisted stores.)
+
+Commits 9738dd8, e8636b1. Two review rounds: first found the zero-deletions
+decorator undercounted delete-shaped methods (fixed) and questioned
+Acceptance-1's premise (led to the correction above); second round clean.
 
 ## Task 1.6 — Documentation
 
