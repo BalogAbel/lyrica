@@ -230,7 +230,7 @@ class AppAuthController extends ChangeNotifier {
       }
     }
     _authGeneration += 1;
-    _setState(_stateForSession(session, fromStream: true));
+    _setState(_stateForSession(session));
   }
 
   AppAuthState _stateForRestoredSession(AppAuthSession? session) {
@@ -251,22 +251,45 @@ class AppAuthController extends ChangeNotifier {
     );
   }
 
-  AppAuthState _stateForSession(
-    AppAuthSession? session, {
-    required bool fromStream,
-  }) {
+  // D2 (docs/specs/2026-08-19-local-data-durability-contract.md): a null
+  // session maps to signedOut only when the app itself initiated the
+  // sign-out, or when there is no LastKnownIdentity -- i.e. no user whose
+  // data could be protected. In every other case (cold start, an
+  // already-sessionExpired app, a token that merely expired) it maps to
+  // sessionExpired instead, so the app stays offline-authenticated rather
+  // than being destructively wiped.
+  //
+  // This only ever runs once _identity has settled -- _handleSessionUpdate
+  // buffers stream events until the identity load completes -- so reading
+  // the cache field directly here (not the public getter, whose null is
+  // ambiguous between "not loaded yet" and "genuinely absent") is safe.
+  AppAuthState _stateForSession(AppAuthSession? session) {
     if (session != null) {
       return AppAuthState(status: AppAuthStatus.signedIn, session: session);
     }
-    if (fromStream &&
-        !_isSigningOut &&
-        _state.status == AppAuthStatus.signedIn) {
-      return AppAuthState(
-        status: AppAuthStatus.sessionExpired,
-        lastKnownSession: _state.session,
-      );
+    if (_isSigningOut) {
+      return const AppAuthState(status: AppAuthStatus.signedOut);
     }
-    return const AppAuthState(status: AppAuthStatus.signedOut);
+    final identity = _identity;
+    if (identity == null) {
+      return const AppAuthState(status: AppAuthStatus.signedOut);
+    }
+    // Prefer the live session already on the current state (the common
+    // case: a signedIn or sessionExpired app whose token just expired
+    // again). Fall back to a session synthesized from the identity so a
+    // cold-start initializing -> sessionExpired transition still carries a
+    // lastKnownSession for the UI, mirroring _stateForRestoredSession.
+    final lastKnownSession =
+        _state.session ??
+        AppAuthSession(
+          userId: identity.userId,
+          email: identity.email,
+          linkedProviders: const [],
+        );
+    return AppAuthState(
+      status: AppAuthStatus.sessionExpired,
+      lastKnownSession: lastKnownSession,
+    );
   }
 
   void _setState(AppAuthState nextState) {

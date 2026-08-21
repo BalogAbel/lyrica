@@ -166,6 +166,21 @@ void main() {
         userId: 'user-1',
         email: 'user@example.com',
       );
+      // See the D2-rule comment in the 'sessionExpired does not clear the
+      // stored identity' test above: the controller needs its own seeded
+      // identity for the null event below to land on sessionExpired rather
+      // than signedOut.
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
       final container = ProviderContainer(
         overrides: [
           appAuthControllerProvider.overrideWith((_) => authController),
@@ -245,6 +260,23 @@ void main() {
     authRepository.currentSession = const AppAuthSession(
       userId: 'user-1',
       email: 'user@example.com',
+    );
+    // Under the D2 rule, a null session only stays offline-authenticated
+    // (sessionExpired) when AppAuthController's own identity cache has
+    // something to protect. Seed it directly (bypassing write/clearCount
+    // recording) to model an identity already persisted from a prior
+    // session, and rebuild the controller wired to this store -- the
+    // default from setUp has none wired at all.
+    identityStore.seed(
+      const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'user@example.com',
+        organizationId: 'org-1',
+      ),
+    );
+    authController = AppAuthController(
+      authRepository,
+      lastKnownIdentityStore: identityStore,
     );
     final container = ProviderContainer(
       overrides: [

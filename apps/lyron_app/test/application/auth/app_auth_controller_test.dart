@@ -18,9 +18,19 @@ class _FakeAuthRepository implements AuthRepository {
   bool deleteCalled = false;
   bool emitNullOnSignOut = false;
   Object? signOutError;
+  // When set, restoreSession() awaits this instead of returning
+  // currentSession immediately -- lets tests hold restoreSession() mid-flight
+  // to interleave it with a concurrent stream event.
+  Completer<AppAuthSession?>? restoreCompleter;
 
   @override
-  Future<AppAuthSession?> restoreSession() async => currentSession;
+  Future<AppAuthSession?> restoreSession() async {
+    final completer = restoreCompleter;
+    if (completer != null) {
+      return completer.future;
+    }
+    return currentSession;
+  }
 
   @override
   Stream<AppAuthSession?> watchSession() => _controller.stream;
@@ -128,7 +138,19 @@ void main() {
     'stream null from signedIn keeps sessionExpired with last known session',
     () async {
       final repo = _FakeAuthRepository();
-      final controller = AppAuthController(repo);
+      // A LastKnownIdentity matching the signed-in session must already be
+      // persisted for this to stay offline-authenticated under the D2 rule
+      // (a null session with no identity to protect maps to signedOut).
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u',
+          email: 'e@x',
+          organizationId: null,
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
 
       repo.currentSession = const AppAuthSession(userId: 'u', email: 'e@x');
       await controller.restoreSession();
@@ -139,6 +161,152 @@ void main() {
       expect(controller.state.status, AppAuthStatus.sessionExpired);
       expect(controller.state.lastKnownSession?.userId, 'u');
       expect(controller.state.lastKnownSession?.email, 'e@x');
+    },
+  );
+
+  test(
+    'stream null from initializing with identity present maps to '
+    'sessionExpired, not signedOut',
+    () async {
+      final repo = _FakeAuthRepository();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'e@x',
+          organizationId: null,
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+
+      // Let the identity load settle before emitting, so the event below is
+      // processed immediately rather than buffered.
+      await Future<void>.delayed(Duration.zero);
+
+      // No restoreSession() call: the app never got a signedIn status, it's
+      // still `initializing` when this null event lands.
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u1');
+      expect(controller.state.lastKnownSession?.email, 'e@x');
+    },
+  );
+
+  test(
+    'stream null while already sessionExpired with identity present stays '
+    'sessionExpired',
+    () async {
+      final repo = _FakeAuthRepository();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'e@x',
+          organizationId: null,
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+
+      // A second, independent null event while already sessionExpired must
+      // not do anything more destructive.
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u1');
+    },
+  );
+
+  test(
+    'stream null from initializing with no identity maps to signedOut -- '
+    'nothing to protect',
+    () async {
+      final repo = _FakeAuthRepository();
+      final controller = AppAuthController(repo); // no identity store wired
+      await Future<void>.delayed(Duration.zero);
+
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.status, AppAuthStatus.signedOut);
+    },
+  );
+
+  test(
+    'null session delivered synchronously during signOut() maps to '
+    'signedOut even though an identity is present to protect',
+    () async {
+      final repo = _FakeAuthRepository()..emitNullOnSignOut = true;
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'e@x',
+          organizationId: null,
+        );
+      repo.currentSession = const AppAuthSession(userId: 'u1', email: 'e@x');
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+      await controller.restoreSession();
+      expect(controller.state.status, AppAuthStatus.signedIn);
+
+      await controller.signOut();
+
+      expect(controller.state.status, AppAuthStatus.signedOut);
+    },
+  );
+
+  test(
+    'a null stream event arriving mid-restoreSession() cannot leave a more '
+    'destructive state than the one restoreSession() itself converges on',
+    () async {
+      final repo = _FakeAuthRepository();
+      final restoreCompleter = Completer<AppAuthSession?>();
+      repo.restoreCompleter = restoreCompleter;
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'e@x',
+          organizationId: null,
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+
+      // Let the identity load settle first so the stream event below is
+      // processed immediately instead of buffered.
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.lastKnownIdentity?.userId, 'u1');
+
+      final restore = controller.restoreSession();
+      // While restoreSession() is still awaiting the repository, the stream
+      // independently emits null.
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      // The stream's own computation (identity present, not signing out)
+      // must already land on sessionExpired here -- not the old, more
+      // destructive signedOut.
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+
+      restoreCompleter.complete(null);
+      await restore;
+
+      // restoreSession() finishing afterwards must not leave anything worse
+      // in place either.
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u1');
     },
   );
 
