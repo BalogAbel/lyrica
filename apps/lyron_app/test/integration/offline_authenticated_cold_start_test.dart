@@ -5,7 +5,9 @@
 // that are fundamentally about offline auth-stream edge cases:
 //
 //   1. Cold start, offline, expired access token, valid refresh token ->
-//      songs visible, zero deletions.
+//      songs visible, zero deletions. (This one turns out to be handled by
+//      pre-existing connectivity-failure/ADR-016 code, not by Tasks
+//      1.1-1.4 -- see the test's own doc comment below.)
 //   2. Cold start, offline, gotrue emits `signedOut` -> zero deletions,
 //      `sessionExpired`, songs visible.
 //   3. Persisted session removed from SharedPreferences while
@@ -26,6 +28,7 @@
 // in-memory Drift SongCatalogDatabase/DriftSongCatalogStore so the actual
 // local-read path is exercised -- only the network/auth boundary is faked.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -36,6 +39,7 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
+import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
@@ -58,31 +62,153 @@ void main() {
   suppressDriftMultipleDatabaseWarnings();
 
   test(
-    'acceptance 1: offline cold start with an expired access token but a '
-    'valid refresh token shows the cached songs with zero deletions',
+    'offline cold start with an already-expired-but-present session stays '
+    'signedIn and shows the cached catalog via the pre-existing '
+    'connectivity-failure fallback (ADR-016)',
     () async {
-      // From this app's perspective, an access token that has expired while
-      // its refresh token would normally still be valid ONLINE surfaces,
-      // OFFLINE (no network available to actually perform the refresh), as
-      // AuthRepository.restoreSession() resolving to null -- there is no
-      // session to hand back synchronously, and no network to refresh one.
-      // AuthRepository.restoreSession() is this app's one seam onto that
-      // condition.
+      // REGRESSION GUARD, not proof of Tasks 1.1-1.4's offline-authenticated
+      // machinery -- that is Acceptance 2 and Acceptance 3 below, both of
+      // which drive a genuinely null session. This test instead confirms
+      // that Task 1.2's _stateForSession change did not disturb the
+      // pre-existing signedIn + connectivity-failure fallback path this
+      // scenario actually takes.
+      //
+      // Verified against the pinned gotrue/supabase_flutter source (see
+      // docs/specs/2026-08-19-local-data-durability-contract.md, F1):
+      // SupabaseAuth.initialize() calls GoTrueClient.setInitialSession(),
+      // which installs the persisted session unconditionally -- no expiry
+      // check, no refresh attempt -- so client.auth.currentSession stays
+      // non-null even when its access token has expired and there is no
+      // network to refresh it. AuthRepository.restoreSession() (this app's
+      // one seam onto currentSession) therefore resolves to a NON-null
+      // session here, and AppAuthController converges on signedIn, never
+      // sessionExpired. The background auto-refresh tick does then fail
+      // (offline == AuthRetryableFetchException, a RETRYABLE error), but
+      // _doRefresh's catch block only clears the session for a
+      // NON-retryable failure; a retryable one just rethrows, leaving the
+      // session untouched.
+      //
+      // So this scenario never reaches sessionExpired or
+      // handleOfflineAuthenticated() at all. It is handled entirely by
+      // pre-existing code: SongCatalogController._refreshCatalog's
+      // connectivity-failure branches, which fall back to the cached
+      // organization id (SongCatalogStore.readLatestCachedOrganizationId)
+      // and surface the cached catalog with
+      // CatalogSessionStatus.unverifiableDueToConnectivity /
+      // CatalogConnectionStatus.offlineCached -- the ADR-016 cached-org
+      // fallback documented in
+      // docs/architecture/decisions/ADR-016-active-organization-resolution-semantics.md.
       final identityStore = _FakeLastKnownIdentityStore()..value = _identity;
-      final authRepository = _OfflineAuthRepository();
+      final authRepository = _OfflineAuthRepository()
+        ..restoredSession = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          linkedProviders: [],
+        );
       final authController = AppAuthController(
         authRepository,
         lastKnownIdentityStore: identityStore,
       );
 
       await authController.restoreSession();
-      expect(authController.state.status, AppAuthStatus.sessionExpired);
-      expect(authController.state.status, isNot(AppAuthStatus.signedOut));
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.status, isNot(AppAuthStatus.sessionExpired));
 
-      await _runOfflineColdStartScenario(
-        authController: authController,
-        identityStore: identityStore,
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final baseStore = DriftSongCatalogStore(songDatabase);
+      final countingStore = _DeleteCountingSongCatalogStore(baseStore);
+      addTearDown(() async {
+        await songDatabase.close();
+      });
+
+      await baseStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 8, 1, 12),
       );
+
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          songCatalogStoreProvider.overrideWithValue(countingStore),
+          // The session verifier below already resolves to
+          // unverifiableDueToConnectivity, which makes _refreshCatalog
+          // return before ever reaching the remote repository. Kept as a
+          // defense-in-depth trap, same as the shared helper's overrides.
+          supabaseSongRepositoryProvider.overrideWithValue(
+            SupabaseSongRepository.testing(
+              listSongsRows: () async => throw StateError(
+                'remote must not be called while offline',
+              ),
+              getSongRow: (id) async => throw StateError(
+                'remote must not be called while offline',
+              ),
+            ),
+          ),
+          // Simulates the org lookup failing for lack of network. Thrown as
+          // a real connectivity-failure-shaped exception (see
+          // isConnectivityFailure in connectivity_failure.dart) so
+          // SongCatalogController._refreshCatalog classifies it as a
+          // connectivity failure, not an authorization failure, and falls
+          // back to SongCatalogStore.readLatestCachedOrganizationId
+          // (ADR-016).
+          activeOrganizationReaderProvider.overrideWithValue(
+            () async => throw const SocketException('Failed host lookup'),
+          ),
+          // Simulates the session verifier being unable to reach the
+          // backend. Returned directly as the status the real
+          // catalogSessionVerifierProvider itself translates a connectivity
+          // exception into (see song_catalog_providers.dart): that provider
+          // catches SocketException/TimeoutException/AuthException
+          // internally and never lets them escape as a raw throw, and
+          // _refreshCatalog's call site has no try/catch around it to
+          // survive one -- so a fake that threw here would not match the
+          // real contract and would fail this test.
+          catalogSessionVerifierProvider.overrideWithValue(
+            () async => CatalogSessionStatus.unverifiableDueToConnectivity,
+          ),
+          appForegroundStateProvider.overrideWithValue(
+            _TestAppForegroundState(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscriptions = _keepAlive(container);
+      for (final subscription in subscriptions) {
+        addTearDown(subscription.close);
+      }
+
+      // The provider wiring already triggered refreshCatalog() once,
+      // fire-and-forget, the moment songCatalogControllerProvider was first
+      // built (handleAuthStateChanged(authController.state) for the
+      // signedIn case calls handleSessionAvailable() + refreshCatalog()).
+      // Calling it again here explicitly coalesces with that in-flight call
+      // (same session identity) and lets the test await completion
+      // deterministically instead of racing an unawaited Future.
+      await container.read(songCatalogControllerProvider).refreshCatalog();
+
+      final snapshotState = container.read(catalogSnapshotStateProvider);
+      expect(
+        snapshotState.sessionStatus,
+        CatalogSessionStatus.unverifiableDueToConnectivity,
+      );
+      expect(
+        snapshotState.connectionStatus,
+        CatalogConnectionStatus.offlineCached,
+      );
+      expect(
+        container.read(activeCatalogContextProvider),
+        const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+      final songs = await container.read(songLibraryListProvider.future);
+      expect(songs, hasLength(1));
+      expect(songs.single.title, 'Cached Song');
+
+      expect(countingStore.totalDeleteCalls, 0);
     },
   );
 
@@ -418,12 +544,16 @@ class _OfflineAuthRepository implements AuthRepository {
 
 /// Wraps a real [DriftSongCatalogStore], delegating every method, while
 /// counting calls to every delete-shaped method on the [SongCatalogStore]
-/// interface (`deleteSong`, `deleteCatalogsForUser`, `deleteCatalog`). Used
-/// to PROVE "zero deletions" via an actual call counter against the real
-/// local-read path, rather than inferring it from the songs still being
-/// readable afterwards. Mirrors the spirit of providers_test.dart's
-/// `_BlockingDeletePlanningLocalStore` (the equivalent decorator already
-/// proven correct for the planning store).
+/// interface: `deleteSong`, `deleteCatalogsForUser`, `deleteCatalog`,
+/// `clearSongMutation`, and the `created: false` branch of
+/// `resolveCancelledSongCreate` (which discards a cancellation tombstone
+/// outright -- see that method's doc comment on [SongCatalogStore] -- while
+/// the `created: true` branch only rewrites a row's status, so it is not
+/// counted). Used to PROVE "zero deletions" via an actual call counter
+/// against the real local-read path, rather than inferring it from the songs
+/// still being readable afterwards. Mirrors the spirit of
+/// providers_test.dart's `_BlockingDeletePlanningLocalStore` (the equivalent
+/// decorator already proven correct for the planning store).
 class _DeleteCountingSongCatalogStore implements SongCatalogStore {
   _DeleteCountingSongCatalogStore(this._delegate);
 
@@ -431,9 +561,15 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
   int deleteSongCalls = 0;
   int deleteCatalogsForUserCalls = 0;
   int deleteCatalogCalls = 0;
+  int clearSongMutationCalls = 0;
+  int resolveCancelledSongCreateDiscardCalls = 0;
 
   int get totalDeleteCalls =>
-      deleteSongCalls + deleteCatalogsForUserCalls + deleteCatalogCalls;
+      deleteSongCalls +
+      deleteCatalogsForUserCalls +
+      deleteCatalogCalls +
+      clearSongMutationCalls +
+      resolveCancelledSongCreateDiscardCalls;
 
   @override
   Future<void> replaceActiveSnapshot({
@@ -593,11 +729,14 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
     required String userId,
     required String organizationId,
     required String songId,
-  }) => _delegate.clearSongMutation(
-    userId: userId,
-    organizationId: organizationId,
-    songId: songId,
-  );
+  }) {
+    clearSongMutationCalls += 1;
+    return _delegate.clearSongMutation(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+    );
+  }
 
   @override
   Future<int?> markSongCreateSending({
@@ -619,13 +758,18 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
     required String songId,
     required bool created,
     int? acceptedVersion,
-  }) => _delegate.resolveCancelledSongCreate(
-    userId: userId,
-    organizationId: organizationId,
-    songId: songId,
-    created: created,
-    acceptedVersion: acceptedVersion,
-  );
+  }) {
+    if (!created) {
+      resolveCancelledSongCreateDiscardCalls += 1;
+    }
+    return _delegate.resolveCancelledSongCreate(
+      userId: userId,
+      organizationId: organizationId,
+      songId: songId,
+      created: created,
+      acceptedVersion: acceptedVersion,
+    );
+  }
 
   @override
   Future<int?> saveSongMutationStatus({

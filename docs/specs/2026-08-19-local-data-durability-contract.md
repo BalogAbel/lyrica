@@ -101,6 +101,23 @@ Net effect: a single mistimed `null` event on a cold start wipes the local
 catalog, the planning projection, and the identity record — and offline the user
 has no way to recover any of it.
 
+Verified against the pinned versions (`supabase_flutter` 2.17.2, `gotrue`
+2.27.2): an expired access token with a valid refresh token, offline, does
+**not** produce a null session. `setInitialSession` installs the persisted
+(expired) session unconditionally — `currentSession` stays non-null — and the
+background auto-refresh's offline failure is a retryable
+`AuthRetryableFetchException`, which `_doRefresh` explicitly does not treat as
+a reason to clear the session. The app therefore stays `signedIn`, and this
+specific condition is already handled by the pre-existing connectivity-failure
+fallback in `SongCatalogController._refreshCatalog` (cached organization id,
+ADR-016), not by this spec's D2/D3 changes. The field failure this spec
+addresses therefore requires the persisted session to be lost or rejected
+outright — the most likely real trigger is the non-retryable refresh-failure
+row above (rotated / already-used refresh token), because it also calls
+`_removeSession()`, and `supabase_flutter` deletes the persisted session on a
+`signedOut` event — making the broken state self-perpetuating across
+subsequent launches, which matches the reported recurrence.
+
 ### F2 — the read path is gated on a live session, not on the local database
 
 [`song_library_providers.dart:185`](../../apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart#L185)
