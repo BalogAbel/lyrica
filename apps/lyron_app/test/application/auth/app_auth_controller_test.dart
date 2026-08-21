@@ -197,6 +197,89 @@ void main() {
     expect(controller.state.status, AppAuthStatus.signedOut);
   });
 
+  test(
+    'a stream event arriving before the identity load settles is buffered '
+    'and only evaluated once the load completes -- proven by state staying '
+    'untouched beforehand and a log showing the read complete strictly '
+    'before the resulting notification',
+    () async {
+      final repo = _FakeAuthRepository();
+      final identityRead = Completer<LastKnownIdentity?>();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..readCompleter = identityRead;
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+
+      final log = <Object>[];
+      controller.addListener(() => log.add(controller.state.status));
+
+      // The stream event arrives immediately, well before the identity
+      // load resolves.
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      // Not evaluated yet: state is untouched and nothing notified.
+      expect(controller.state.status, AppAuthStatus.initializing);
+      expect(log, isEmpty);
+
+      log.add('read-completing');
+      identityRead.complete(null);
+      await Future<void>.delayed(Duration.zero);
+
+      // Only now, after the identity load settles, is the buffered event
+      // evaluated -- the log proves the read completed strictly before the
+      // resulting notification, not concurrently or before.
+      expect(log, ['read-completing', AppAuthStatus.signedOut]);
+      expect(controller.state.status, AppAuthStatus.signedOut);
+    },
+  );
+
+  test(
+    'multiple stream events arriving before the identity load settles are '
+    'replayed in arrival order once the load completes, and the loaded '
+    'identity becomes synchronously readable via lastKnownIdentity',
+    () async {
+      final repo = _FakeAuthRepository();
+      final identityRead = Completer<LastKnownIdentity?>();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..readCompleter = identityRead;
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+
+      final log = <Object>[];
+      controller.addListener(() => log.add(controller.state.status));
+
+      // Two events arrive back-to-back before the identity load resolves:
+      // a live session first, then null. Both must be buffered, not
+      // dropped, and replayed in the order they arrived -- if replayed out
+      // of order the resulting log would differ (signedOut, signedIn
+      // instead of signedIn, sessionExpired), so this also proves ordering.
+      repo.emit(const AppAuthSession(userId: 'u', email: 'e@x'));
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(log, isEmpty);
+      expect(controller.lastKnownIdentity, isNull);
+
+      const identity = LastKnownIdentity(
+        userId: 'cached',
+        email: 'cached@example.com',
+        organizationId: null,
+      );
+      identityRead.complete(identity);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(log, [AppAuthStatus.signedIn, AppAuthStatus.sessionExpired]);
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.lastKnownSession?.userId, 'u');
+      expect(controller.lastKnownIdentity, identity);
+    },
+  );
+
   test('restoreSession surfaces signedIn when a session exists', () async {
     final repo = _FakeAuthRepository();
     repo.currentSession = const AppAuthSession(userId: 'u', email: 'e@x');

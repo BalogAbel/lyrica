@@ -10,7 +10,14 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 
 class AppAuthController extends ChangeNotifier {
   AppAuthController(this._repository, {this._lastKnownIdentityStore})
-    : _state = const AppAuthState(status: AppAuthStatus.initializing);
+    : _state = const AppAuthState(status: AppAuthStatus.initializing) {
+    // Kick the identity read off before the subscription goes live, so a
+    // stream event that arrives before this settles can be buffered
+    // (see _handleSessionUpdate) instead of being evaluated against an
+    // unknown identity.
+    _identityLoadFuture = _loadIdentity();
+    _subscription = _repository.watchSession().listen(_handleSessionUpdate);
+  }
 
   final AuthRepository _repository;
   final LastKnownIdentityStore? _lastKnownIdentityStore;
@@ -23,13 +30,38 @@ class AppAuthController extends ChangeNotifier {
   AppAuthSession? _pendingReauthCancelSession;
   int? _pendingReauthCancelGeneration;
 
+  // Read cache populated once from the store while loading, in
+  // construction order. It is NOT kept live-synced with writes/clears made
+  // elsewhere (e.g. auth_providers.dart's identityStore.write()/clear()) --
+  // that cross-file wiring is deferred to Phase 2, which centralizes all
+  // writes through one gate.
+  LastKnownIdentity? _identity;
+  bool _identityLoaded = false;
+  late final Future<void> _identityLoadFuture;
+  final List<AppAuthSession?> _pendingStreamEvents = [];
+
   AppAuthState get state => _state;
 
+  /// The most recently loaded identity, readable synchronously. Null both
+  /// before the load has settled and when there genuinely is none.
+  LastKnownIdentity? get lastKnownIdentity => _identity;
+
+  Future<void> _loadIdentity() async {
+    final store = _lastKnownIdentityStore;
+    _identity = store == null ? null : await store.read();
+    _identityLoaded = true;
+    final pending = List<AppAuthSession?>.of(_pendingStreamEvents);
+    _pendingStreamEvents.clear();
+    for (final session in pending) {
+      _processSessionUpdate(session);
+    }
+  }
+
   Future<void> restoreSession() async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     final generation = _authGeneration;
     final session = await _repository.restoreSession();
-    final nextState = await _stateForRestoredSession(session);
+    await _identityLoadFuture;
+    final nextState = _stateForRestoredSession(session);
     if (generation == _authGeneration) {
       _setState(nextState);
     }
@@ -39,7 +71,6 @@ class AppAuthController extends ChangeNotifier {
     SignInMethod method, {
     required String redirectTo,
   }) async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     await _repository.signInWithOAuth(method, redirectTo: redirectTo);
   }
 
@@ -47,7 +78,6 @@ class AppAuthController extends ChangeNotifier {
     required String email,
     required String redirectTo,
   }) async {
-    _subscription ??= _repository.watchSession().listen(_handleSessionUpdate);
     await _repository.sendMagicLink(email: email, redirectTo: redirectTo);
   }
 
@@ -160,6 +190,18 @@ class AppAuthController extends ChangeNotifier {
   }
 
   void _handleSessionUpdate(AppAuthSession? session) {
+    if (!_identityLoaded) {
+      // Buffer until the identity load settles, then replay in arrival
+      // order from _loadIdentity -- see the class-level note on
+      // _identity. This is what stops a null event from being evaluated
+      // against an unknown identity during cold start.
+      _pendingStreamEvents.add(session);
+      return;
+    }
+    _processSessionUpdate(session);
+  }
+
+  void _processSessionUpdate(AppAuthSession? session) {
     final pendingCancel = _pendingReauthCancelSession;
     final pendingGeneration = _pendingReauthCancelGeneration;
     if (pendingCancel != null) {
@@ -191,15 +233,11 @@ class AppAuthController extends ChangeNotifier {
     _setState(_stateForSession(session, fromStream: true));
   }
 
-  Future<AppAuthState> _stateForRestoredSession(AppAuthSession? session) async {
+  AppAuthState _stateForRestoredSession(AppAuthSession? session) {
     if (session != null) {
       return AppAuthState(status: AppAuthStatus.signedIn, session: session);
     }
-    final identityStore = _lastKnownIdentityStore;
-    if (identityStore == null) {
-      return const AppAuthState(status: AppAuthStatus.signedOut);
-    }
-    final identity = await identityStore.read();
+    final identity = _identity;
     if (identity == null) {
       return const AppAuthState(status: AppAuthStatus.signedOut);
     }
