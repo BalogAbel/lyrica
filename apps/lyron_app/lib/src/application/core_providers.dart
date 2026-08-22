@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
@@ -99,6 +100,7 @@ final localStorageWriteRecoveryProvider = Provider<LocalStorageWriteRecovery>((
 ) {
   return LocalStorageWriteRecovery(
     evictor: ref.watch(songCatalogEvictorProvider),
+    eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
 });
 

@@ -116,6 +116,33 @@ class DriftLocalDataEventsStore
         );
   }
 
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md): records a
+  /// guarded write's failure when [LocalStorageWriteRecovery.guard] did not
+  /// recognise the exception as a concrete storage-exhaustion signal, so no
+  /// eviction ran. `target` is fixed to `'songCatalog'`: `guard()` is the
+  /// generic storage-recovery boundary shared by every guarded write
+  /// (planning and catalog alike) and has no store-specific context to
+  /// attribute the failure to at the point it calls this method -- the song
+  /// catalog is nonetheless the more useful default to surface on the
+  /// diagnostics screen, since it is the store this contract (D6) exists
+  /// for. `reason`/`rowsAffected` are always null: there is no eviction
+  /// reason and no rows were touched, unlike `recordEviction`.
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'storage-write-failure-no-eviction',
+            target: 'songCatalog',
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
   @override
   Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
     // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`

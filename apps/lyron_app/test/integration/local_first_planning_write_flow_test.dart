@@ -63,6 +63,9 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     required String userId,
     required String organizationId,
   }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 void main() {

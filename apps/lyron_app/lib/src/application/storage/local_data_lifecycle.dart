@@ -52,6 +52,15 @@ abstract interface class LocalDataEventsRecorder {
     required String userId,
     required String organizationId,
   });
+
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// that a guarded local write failed with an exception that was NOT
+  /// recognised as a concrete storage-exhaustion signal -- so, per D6's
+  /// narrowed trigger, no eviction ran at all. A distinct audit `kind` from
+  /// [recordEviction]: that method means "an eviction of N rows genuinely
+  /// happened," this one means "no eviction ran, the write simply failed."
+  /// Not a purge -- no [PurgeReason] applies here.
+  Future<void> recordStorageWriteFailure({String? userId});
 }
 
 /// D7: the single gate every local-data purge primitive must be reached

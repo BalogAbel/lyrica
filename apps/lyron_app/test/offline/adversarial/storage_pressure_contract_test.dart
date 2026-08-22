@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/planning/drift_planning_mutation_store
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
+import 'package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
@@ -186,7 +187,15 @@ void main() {
 }
 
 /// Thrown by [_InsertFailingExecutor] in place of a real quota/IO error.
-class StorageQuotaSimulatedException implements Exception {
+///
+/// Implements [LocalStorageExhaustionSignal]: this class already represents
+/// "genuine storage exhaustion" by name and by every existing test's intent
+/// (LF-T4's evict-and-retry path) here, so after [LocalStorageWriteRecovery
+/// .guard] narrowed its trigger to concrete exhaustion signals only (D6),
+/// this exception must keep opting into that treatment explicitly rather
+/// than falling through to the new "any other Exception surfaces
+/// immediately, no eviction" branch.
+class StorageQuotaSimulatedException implements LocalStorageExhaustionSignal {
   @override
   String toString() =>
       'StorageQuotaSimulatedException: simulated INSERT failure';

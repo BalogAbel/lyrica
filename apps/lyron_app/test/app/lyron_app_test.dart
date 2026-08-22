@@ -435,6 +435,9 @@ class _NoopLocalDataEventsRecorderForLifecycle
     required String userId,
     required String organizationId,
   }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {

@@ -639,4 +639,7 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
     required String userId,
     required String organizationId,
   }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }

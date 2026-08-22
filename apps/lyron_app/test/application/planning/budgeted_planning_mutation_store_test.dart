@@ -1238,6 +1238,18 @@ class _RecordingEvictor implements SongCatalogEvictor {
     calls += 1;
     return _delegate.evictDroppable();
   }
+
+  @override
+  Future<int> evictToBudget({
+    required int targetBytes,
+    required String activeUserId,
+    required String activeOrganizationId,
+  }) {
+    throw UnimplementedError(
+      'not exercised by this test -- only the emergency evictDroppable '
+      'path is under test here',
+    );
+  }
 }
 
 /// Shared mutable counter for [_ScriptedInsertExecutor] /
