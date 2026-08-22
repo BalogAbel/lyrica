@@ -91,8 +91,8 @@ class DriftLocalDataEventsStore
 
   /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): records
   /// an empty `listSongs()` response rejected against a non-empty stored
-  /// snapshot. Not a purge -- no [PurgeReason] applies, so `reason` is
-  /// always null on this kind, matching `recordEviction` above.
+  /// snapshot. Not a purge -- no [PurgeReason] applies here, unlike
+  /// `recordPurge` above.
   @override
   Future<void> recordRejectedEmptySnapshot({
     required String userId,
@@ -105,7 +105,11 @@ class DriftLocalDataEventsStore
             occurredAt: DateTime.now().toUtc(),
             kind: 'empty-snapshot-rejected',
             target: 'songCatalog',
-            reason: const Value(null),
+            // `reason` is generically "context detail for this kind", not
+            // always a PurgeReason: for this non-purge kind, repurpose it to
+            // carry organizationId so a multi-org user's audit trail can
+            // tell which org's catalog was rejected.
+            reason: Value(organizationId),
             userId: Value(userId),
             rowsAffected: const Value(null),
           ),

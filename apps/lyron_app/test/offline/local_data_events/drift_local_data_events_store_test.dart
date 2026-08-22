@@ -156,8 +156,8 @@ void main() {
 
   test(
     'recordRejectedEmptySnapshot inserts one row with kind '
-    'empty-snapshot-rejected, target songCatalog, and null reason '
-    '(D4, local-data-durability-contract)',
+    'empty-snapshot-rejected, target songCatalog, and reason carrying '
+    'the organizationId (D4, local-data-durability-contract)',
     () async {
       await store.recordRejectedEmptySnapshot(
         userId: 'u1',
@@ -170,7 +170,7 @@ void main() {
       final row = rows.single;
       expect(row.kind, 'empty-snapshot-rejected');
       expect(row.target, 'songCatalog');
-      expect(row.reason, isNull);
+      expect(row.reason, 'org-1');
       expect(row.userId, 'u1');
       expect(row.rowsAffected, isNull);
     },
