@@ -308,6 +308,77 @@ Do not read D4–D6/D8 as implemented from this ADR's existence. They are
 recorded here, ahead of their landing, so the full contract has one durable
 home; each lands with its own commits and its own review in Phases 3–4.
 
+## Phase 3 mechanism decisions
+
+The plan (`docs/plans/2026-08-19-local-data-durability-contract.md`, Phase 3)
+left three mechanisms open rather than specifying them. Two are resolved here,
+ahead of implementation; the third (LRU ordering, Task 3.4) was put to the
+product owner directly rather than decided unilaterally, because it trades a
+real write-path cost against a budget the spec itself describes as designed
+to stay unreached in practice — see the plan and this ADR's next revision for
+the answer once given.
+
+**Task 3.1 — the "one empty resolution already seen" fact is persisted on the
+snapshot row, not held in memory.** `CachedCatalogSnapshots` gains a nullable
+`pendingEmptyConfirmationAt` column (Drift schema bump, `onUpgrade` delta from
+v3, `onCreate` unaffected). `_replaceActiveSnapshot` checks it before deciding
+whether an empty `listSongs()` result is implausible:
+
+- incoming empty, stored non-empty, marker unset → reject the replacement,
+  write `local_data_events` with the implausible-empty status, and set the
+  marker on the existing row via a lightweight update (no full snapshot
+  rewrite).
+- incoming empty, stored non-empty, marker set → this is the second,
+  independent confirmation. Proceed with the normal full replace (empty
+  summaries/sources), which writes a fresh row with the marker defaulted to
+  null.
+- incoming non-empty, at any marker state → proceed with the normal full
+  replace, which likewise writes a fresh row with the marker null.
+
+An in-memory-only flag was rejected: it resets on process restart, and a
+genuinely emptied catalog reached only across cold starts (the exact usage
+pattern this whole contract is written for) could then never accumulate two
+confirmations — the rejection would repeat forever. Persisting on the
+snapshot row fixes the clearing rule for free: the row is fully rewritten by
+every accepted replace, whether that replace is the second confirmation or an
+ordinary non-empty refresh, so there is no separate code path that clears the
+marker — an unwritten field defaults to null. "Independent" falls out of the
+existing generation/staleness guards in `_refreshCatalog`: each invocation
+calls `listSongs()` at most once, so two hits against the marker are
+necessarily two separate invocations, not a retry of the same one.
+
+**Task 3.3 — blue/green is a documented invariant plus a rollback test, not
+an active-version pointer.** `_replaceActiveSnapshot` already runs its delete
+(`_deleteUserSnapshots`, narrowed to `(userId, organizationId)` by Task 3.2)
+and its inserts inside one `_database.transaction()` block. On native
+SQLite/Drift, that transaction is already atomic: a failure anywhere inside
+it rolls back the whole thing, so the previous snapshot is either fully
+present or fully replaced, never partial. Building an active-version pointer
+(write under `snapshotVersion + 1`, gate every read on a pointer, delete the
+old version only after the pointer moves) would require migrating all five
+read methods in `song_catalog_store.dart`
+(`readActiveSummaries`, `readActiveSummaryBySlug`, `readActiveSummaryById`,
+`readActiveSource`, `readLatestCachedOrganizationId`) to filter on the
+pointer instead of "current rows for this `(userId, organizationId)`" — a
+real increase in surface area and an ongoing tax on every future read-path
+change — to provide a guarantee the spec itself says is redundant on the one
+platform this phase verifies (native), and explicitly Non-Goal/best-effort on
+the one platform where it would matter (web/IndexedDB, no acceptance test).
+Paying that cost for an unverifiable benefit is not justified by the plan's
+own scope.
+
+Decision: keep the existing single-transaction shape, document why it already
+satisfies D4's atomicity requirement on native SQLite (code comment on
+`_replaceActiveSnapshot`, plus this ADR entry), and add a fault-injection test
+that interrupts the transaction between the delete and the inserts and
+asserts the previous snapshot's rows are still fully present afterwards —
+proving the rollback, not merely assuming Drift provides it. `snapshotVersion`
+stays a written-but-unfiltered column, unchanged from its current status; it
+is not repurposed into a pointer by this phase. If IndexedDB durability is
+ever taken out of Non-Goals in a future spec, the pointer becomes the right
+mechanism then — this decision is scoped to what Phase 3 actually needs to
+close F3/F5, not a permanent rejection of the pointer design.
+
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
 Both acceptance tests defend against "the catalog going empty while offline,"
