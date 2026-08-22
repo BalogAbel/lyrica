@@ -379,6 +379,27 @@ ever taken out of Non-Goals in a future spec, the pointer becomes the right
 mechanism then — this decision is scoped to what Phase 3 actually needs to
 close F3/F5, not a permanent rejection of the pointer design.
 
+**Task 3.4 — eviction ordering is a cost-free proxy, not true LRU.** There is
+no `lastReadAt` (or equivalent) column anywhere in the catalog schema today.
+Building real least-recently-read tracking means writing to the database on
+every song read — a permanent cost on the hottest path in the app — to serve
+an evictor that the 2 GB budget (D6) is deliberately sized to make
+near-dead code in practice. Put to the product owner directly (2026-08-22)
+rather than decided unilaterally, given that trade-off: **chosen — a cheap
+ordering proxy**, not real LRU and not the prior fully-arbitrary order.
+`SongCatalogEvictor.evictDroppable()` orders its deletion candidates
+non-active-`(userId, organizationId)`-first, then by oldest
+`CachedCatalogSnapshots.refreshedAt`/`snapshotVersion` within that ordering,
+stopping once the size target is met and always touching the active
+`(userId, organizationId)` last (D6's proportionality rule). This uses only
+columns that already exist and are already written on every refresh, so it
+adds no new write path and no per-read cost, while still approximating D6's
+"least-recently-read" intent — data belonging to organizations the device
+isn't currently working in, and older refreshes within an organization, are
+more likely to be genuinely cold than the active snapshot. Real LRU read
+tracking remains available as a future upgrade if the proxy is ever shown to
+evict something still in active use; nothing in this decision forecloses it.
+
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
 Both acceptance tests defend against "the catalog going empty while offline,"
