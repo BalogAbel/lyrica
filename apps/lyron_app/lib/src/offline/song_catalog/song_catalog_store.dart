@@ -428,6 +428,27 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }) async {
     _validateSnapshot(summaries: summaries, sources: sources);
 
+    // D4 (ADR-035 Task 3.3): this delete-then-insert sequence is already
+    // blue/green-equivalent on native SQLite, by construction of the
+    // enclosing `_database.transaction()` -- not as a placeholder for a
+    // future active-version pointer. Drift commits or rolls back everything
+    // inside one transaction as a single unit: if any statement below throws
+    // (including the insert batch further down), the `_deleteUserSnapshots`
+    // call that already ran is undone along with it, so the previous
+    // snapshot's rows are never visible as partially deleted and the new
+    // rows are never visible as partially inserted -- readers always see
+    // either the fully-old or the fully-new snapshot, never a mix. An
+    // active-version pointer (write under `snapshotVersion + 1`, gate every
+    // read on the pointer, delete the old version only once the pointer
+    // moves) would provide the same guarantee at the cost of migrating all
+    // five read methods in this file to filter on it, and would only be
+    // load-bearing on IndexedDB/web, which the spec's Non-Goals already
+    // treat as best-effort with no acceptance test. See ADR-035
+    // ("Task 3.3 -- blue/green is a documented invariant plus a rollback
+    // test, not an active-version pointer") for the full reasoning; this
+    // atomicity claim is verified, not merely assumed, by the fault-injection
+    // test in song_catalog_store_test.dart's "blue/green replace atomicity
+    // (D4, ADR-035 Task 3.3)" group.
     await _database.transaction(() async {
       final currentSnapshot =
           await (_database.select(_database.cachedCatalogSnapshots)..where(

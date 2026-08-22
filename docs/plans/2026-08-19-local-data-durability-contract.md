@@ -398,12 +398,25 @@ Closes F3 and F5. Theme: a write must never destroy more than it replaces.
 
 **Files:** `song_catalog_store.dart`, tests alongside
 
-- [ ] Write rows under `snapshotVersion + 1`; reads follow an active-version
-  pointer; the previous version is deleted only after the pointer moves.
-- [ ] Test: a write interrupted before the pointer moves leaves the previous
-  snapshot fully readable.
-- [ ] Note in code why this is redundant on native SQLite and load-bearing on
-  IndexedDB.
+Re-scoped by ADR-035 ("Task 3.3 — blue/green is a documented invariant plus a
+rollback test, not an active-version pointer"): an active-version pointer was
+evaluated and rejected for this phase, since `_replaceActiveSnapshot` already
+runs its delete and its inserts inside one `_database.transaction()`, which is
+already atomic on native SQLite. `snapshotVersion` stays a written-but-
+unfiltered column, unchanged; it is not repurposed into a pointer.
+
+- [x] Note in code why the existing single-transaction delete-then-insert
+  shape is already blue/green-equivalent on native SQLite, and why it is
+  redundant with (not a placeholder for) an active-version pointer, which
+  would only be load-bearing on IndexedDB/web (best-effort, no acceptance
+  test per the spec's Non-Goals). See the comment on `_replaceActiveSnapshot`
+  in `song_catalog_store.dart` and ADR-035.
+- [x] Fault-injection test: a write interrupted after the old snapshot's
+  summaries/sources/row have been deleted but before the new snapshot's
+  insert commits leaves the previous snapshot fully present and
+  byte-identical (`test/offline/song_catalog/song_catalog_store_test.dart`,
+  "DriftSongCatalogStore blue/green replace atomicity (D4, ADR-035 Task 3.3)"
+  group, reusing `test/support/insert_failing_executor.dart`).
 
 ## Task 3.4 — Eviction trigger and proportionality (D6)
 

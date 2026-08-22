@@ -2187,6 +2187,160 @@ void main() {
       },
     );
   });
+
+  group(
+    'DriftSongCatalogStore blue/green replace atomicity (D4, ADR-035 Task '
+    '3.3)',
+    () {
+      // ADR-035 Task 3.3: _replaceActiveSnapshot's delete-then-insert
+      // sequence is claimed to already be blue/green-equivalent on native
+      // SQLite because it all runs inside one `_database.transaction()`
+      // block -- this test proves that claim rather than assuming Drift
+      // provides it. Three separate connections to the SAME on-disk
+      // database file, opened and closed in sequence (mirroring "can reopen
+      // a persisted catalog from a new database instance" above): the first
+      // seeds a real, non-empty snapshot and is closed; the second wraps its
+      // executor in InsertFailingExecutor (unlimited budget -- every INSERT
+      // fails) and attempts a second, different non-empty replace, which
+      // must fail partway through its transaction, after the old
+      // summaries/sources/snapshot row have already been deleted but before
+      // any row of the new snapshot is inserted; the third is a fresh,
+      // unwrapped connection used only to read back the data, so the
+      // failing executor never gets a chance to interfere with the
+      // assertion queries.
+      test(
+        'a write that fails after the old snapshot is deleted but before '
+        'the new snapshot commits leaves the previous snapshot fully intact',
+        () async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'song-catalog-blue-green-atomicity-test',
+          );
+          addTearDown(() async {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          });
+          final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+
+          const seededSummaries = [SongSummary(id: 'song-1', title: 'Alpha')];
+          const seededSources = [
+            SongSource(id: 'song-1', source: '{title: Alpha}'),
+          ];
+          final seededRefreshedAt = DateTime.utc(2026, 3, 25, 12);
+
+          final firstDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          final firstStore = DriftSongCatalogStore(firstDatabase);
+          await firstStore.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: seededSummaries,
+            sources: seededSources,
+            refreshedAt: seededRefreshedAt,
+          );
+          // Read the seeded snapshot row back through the same connection
+          // that wrote it, rather than comparing against the literal
+          // `DateTime.utc(...)` passed in above: Drift's native codec
+          // round-trips `refreshedAt` as a local-time `DateTime` (same
+          // instant, `isUtc: false`), and Dart's `DateTime.==` treats a UTC
+          // and a local `DateTime` representing the identical instant as
+          // unequal. Comparing two DB reads to each other sidesteps that
+          // entirely and gives a true byte-identical check on every column.
+          final seededSnapshotRow =
+              await (firstDatabase.select(firstDatabase.cachedCatalogSnapshots)
+                    ..where(
+                      (table) =>
+                          table.userId.equals('user-1') &
+                          table.organizationId.equals('org-1'),
+                    ))
+                  .getSingle();
+          await firstDatabase.close();
+
+          // Deliberately no LocalStorageWriteRecovery here: this test
+          // targets the raw transaction's atomicity, not the eviction/retry
+          // behaviour already covered by the "storage recovery" group above
+          // -- a bare failing executor makes the single doomed attempt and
+          // its outcome unambiguous. With no writeRecovery, `_guarded` calls
+          // the write directly (see `_guarded` in song_catalog_store.dart),
+          // so the raw executor exception propagates as-is.
+          final secondDatabase = SongCatalogDatabase.connect(
+            InsertFailingExecutor(NativeDatabase.createInBackground(dbFile)),
+          );
+          final secondStore = DriftSongCatalogStore(secondDatabase);
+
+          await expectLater(
+            () => secondStore.replaceActiveSnapshot(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+              sources: const [
+                SongSource(id: 'song-2', source: '{title: Beta}'),
+              ],
+              refreshedAt: DateTime.utc(2026, 3, 25, 13),
+            ),
+            throwsA(isA<StorageQuotaSimulatedException>()),
+          );
+          await secondDatabase.close();
+
+          final thirdDatabase = SongCatalogDatabase.connect(
+            NativeDatabase.createInBackground(dbFile),
+          );
+          addTearDown(thirdDatabase.close);
+          final thirdStore = DriftSongCatalogStore(thirdDatabase);
+
+          expect(
+            await thirdStore.readActiveSummaries(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            seededSummaries,
+            reason:
+                'the interrupted second replace must not leave the '
+                'summaries table empty or holding the Beta content',
+          );
+          final reopenedSource = await thirdStore.readActiveSource(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          );
+          expect(reopenedSource?.id, seededSources.single.id);
+          expect(reopenedSource?.source, seededSources.single.source);
+          final failedSource = await thirdStore.readActiveSource(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-2',
+          );
+          expect(
+            failedSource,
+            isNull,
+            reason: 'the Beta source must never have become visible',
+          );
+
+          final snapshotRow =
+              await (thirdDatabase.select(
+                thirdDatabase.cachedCatalogSnapshots,
+              )..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-1'),
+              )).getSingle();
+          expect(
+            snapshotRow,
+            seededSnapshotRow,
+            reason:
+                'the failed replace must leave the snapshot row fully '
+                'byte-identical to what was seeded -- not bumped, not '
+                'partially overwritten, and with the marker untouched -- '
+                'proving the interrupted transaction rolled back rather '
+                'than partially committing',
+          );
+          expect(snapshotRow.snapshotVersion, 1);
+          expect(snapshotRow.pendingEmptyConfirmationAt, isNull);
+        },
+      );
+    },
+  );
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {
