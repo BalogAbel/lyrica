@@ -52,16 +52,18 @@ class DriftLocalDataEventsStore
     String? userId,
     int? rowsAffected,
   }) async {
-    await _database.into(_database.localDataEvents).insert(
-      LocalDataEventsCompanion.insert(
-        occurredAt: DateTime.now().toUtc(),
-        kind: 'purge',
-        target: target.name,
-        reason: Value(reason.name),
-        userId: Value(userId),
-        rowsAffected: Value(rowsAffected),
-      ),
-    );
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'purge',
+            target: target.name,
+            reason: Value(reason.name),
+            userId: Value(userId),
+            rowsAffected: Value(rowsAffected),
+          ),
+        );
   }
 
   /// Eviction events are recorded here too, under a distinct non-purge kind.
@@ -72,16 +74,18 @@ class DriftLocalDataEventsStore
     String? userId,
     int? rowsAffected,
   }) async {
-    await _database.into(_database.localDataEvents).insert(
-      LocalDataEventsCompanion.insert(
-        occurredAt: DateTime.now().toUtc(),
-        kind: 'eviction',
-        target: target,
-        reason: const Value(null),
-        userId: Value(userId),
-        rowsAffected: Value(rowsAffected),
-      ),
-    );
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'eviction',
+            target: target,
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: Value(rowsAffected),
+          ),
+        );
   }
 
   @override

@@ -18,9 +18,7 @@ class LocalDataEventsDatabase extends _$LocalDataEventsDatabase {
   }
 
   factory LocalDataEventsDatabase.inMemory() {
-    return LocalDataEventsDatabase._(
-      openInMemoryLocalDataEventsConnection(),
-    );
+    return LocalDataEventsDatabase._(openInMemoryLocalDataEventsConnection());
   }
 
   @override

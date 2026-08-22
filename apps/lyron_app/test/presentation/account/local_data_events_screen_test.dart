@@ -56,15 +56,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.text(AppStrings.localDataEventsEmptyMessage),
-      findsOneWidget,
-    );
+    expect(find.text(AppStrings.localDataEventsEmptyMessage), findsOneWidget);
   });
 
-  testWidgets('does not offer any destructive or edit action', (
-    tester,
-  ) async {
+  testWidgets('does not offer any destructive or edit action', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

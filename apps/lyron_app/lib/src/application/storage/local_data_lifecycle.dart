@@ -99,7 +99,10 @@ class LocalDataLifecycle {
   /// (see the comment on the `isCurrent` re-check ahead of
   /// `wipePriorAndProceedFor`'s clear). Most call sites already have the
   /// userId in hand from their own context.
-  Future<void> clearIdentity({required PurgeReason reason, String? userId}) async {
+  Future<void> clearIdentity({
+    required PurgeReason reason,
+    String? userId,
+  }) async {
     await _identityStore.clear();
     _noteLastKnownIdentity(null);
     await _recordBestEffort(

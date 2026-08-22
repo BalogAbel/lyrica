@@ -33,214 +33,187 @@ void main() {
   });
 
   group('purgeSongCatalog', () {
-    test('deletes for the userId then records exactly one audit event', () async {
-      await lifecycle.purgeSongCatalog(
-        userId: 'user-1',
-        reason: PurgeReason.userSignOut,
-      );
-
-      expect(songCatalogStore.deleteCalls, ['user-1']);
-      expect(eventsRecorder.purgeCalls, hasLength(1));
-      final recorded = eventsRecorder.purgeCalls.single;
-      expect(recorded.target, PurgeTarget.songCatalog);
-      expect(recorded.reason, PurgeReason.userSignOut);
-      expect(recorded.userId, 'user-1');
-      expect(recorded.rowsAffected, isNull);
-    });
-
     test(
-      'when the store throws, the exception propagates and no audit event '
-      'is recorded',
+      'deletes for the userId then records exactly one audit event',
       () async {
-        songCatalogStore.throwOnDelete = true;
-
-        await expectLater(
-          () => lifecycle.purgeSongCatalog(
-            userId: 'user-1',
-            reason: PurgeReason.accountDeleted,
-          ),
-          throwsA(isA<StateError>()),
-        );
-
-        expect(eventsRecorder.purgeCalls, isEmpty);
-      },
-    );
-
-    test(
-      'when the audit recorder throws, the deletion that already committed '
-      'is NOT reported as a failure -- the method completes without '
-      'throwing',
-      () async {
-        eventsRecorder.throwOnRecord = true;
-
         await lifecycle.purgeSongCatalog(
           userId: 'user-1',
           reason: PurgeReason.userSignOut,
         );
 
         expect(songCatalogStore.deleteCalls, ['user-1']);
+        expect(eventsRecorder.purgeCalls, hasLength(1));
+        final recorded = eventsRecorder.purgeCalls.single;
+        expect(recorded.target, PurgeTarget.songCatalog);
+        expect(recorded.reason, PurgeReason.userSignOut);
+        expect(recorded.userId, 'user-1');
+        expect(recorded.rowsAffected, isNull);
       },
     );
+
+    test('when the store throws, the exception propagates and no audit event '
+        'is recorded', () async {
+      songCatalogStore.throwOnDelete = true;
+
+      await expectLater(
+        () => lifecycle.purgeSongCatalog(
+          userId: 'user-1',
+          reason: PurgeReason.accountDeleted,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(eventsRecorder.purgeCalls, isEmpty);
+    });
+
+    test('when the audit recorder throws, the deletion that already committed '
+        'is NOT reported as a failure -- the method completes without '
+        'throwing', () async {
+      eventsRecorder.throwOnRecord = true;
+
+      await lifecycle.purgeSongCatalog(
+        userId: 'user-1',
+        reason: PurgeReason.userSignOut,
+      );
+
+      expect(songCatalogStore.deleteCalls, ['user-1']);
+    });
   });
 
   group('purgePlanningData', () {
-    test(
-      'deletes for the userId (passing shouldContinue through) then records '
-      'exactly one audit event',
-      () async {
-        bool shouldContinue() => true;
+    test('deletes for the userId (passing shouldContinue through) then records '
+        'exactly one audit event', () async {
+      bool shouldContinue() => true;
 
-        await lifecycle.purgePlanningData(
+      await lifecycle.purgePlanningData(
+        userId: 'user-2',
+        reason: PurgeReason.differentUserSignIn,
+        shouldContinue: shouldContinue,
+      );
+
+      expect(planningLocalStore.deleteCalls, hasLength(1));
+      expect(planningLocalStore.deleteCalls.single.userId, 'user-2');
+      expect(
+        planningLocalStore.deleteCalls.single.shouldContinue,
+        same(shouldContinue),
+      );
+      expect(eventsRecorder.purgeCalls, hasLength(1));
+      final recorded = eventsRecorder.purgeCalls.single;
+      expect(recorded.target, PurgeTarget.planningData);
+      expect(recorded.reason, PurgeReason.differentUserSignIn);
+      expect(recorded.userId, 'user-2');
+      expect(recorded.rowsAffected, isNull);
+    });
+
+    test('when the store throws, the exception propagates and no audit event '
+        'is recorded', () async {
+      planningLocalStore.throwOnDelete = true;
+
+      await expectLater(
+        () => lifecycle.purgePlanningData(
           userId: 'user-2',
-          reason: PurgeReason.differentUserSignIn,
-          shouldContinue: shouldContinue,
-        );
+          reason: PurgeReason.membershipRevokedConfirmed,
+        ),
+        throwsA(isA<StateError>()),
+      );
 
-        expect(planningLocalStore.deleteCalls, hasLength(1));
-        expect(planningLocalStore.deleteCalls.single.userId, 'user-2');
-        expect(
-          planningLocalStore.deleteCalls.single.shouldContinue,
-          same(shouldContinue),
-        );
-        expect(eventsRecorder.purgeCalls, hasLength(1));
-        final recorded = eventsRecorder.purgeCalls.single;
-        expect(recorded.target, PurgeTarget.planningData);
-        expect(recorded.reason, PurgeReason.differentUserSignIn);
-        expect(recorded.userId, 'user-2');
-        expect(recorded.rowsAffected, isNull);
-      },
-    );
+      expect(eventsRecorder.purgeCalls, isEmpty);
+    });
 
-    test(
-      'when the store throws, the exception propagates and no audit event '
-      'is recorded',
-      () async {
-        planningLocalStore.throwOnDelete = true;
+    test('a PlanningProjectionAbortedException from the store propagates '
+        'unchanged and uncaught', () async {
+      planningLocalStore.abortOnDelete = true;
 
-        await expectLater(
-          () => lifecycle.purgePlanningData(
-            userId: 'user-2',
-            reason: PurgeReason.membershipRevokedConfirmed,
-          ),
-          throwsA(isA<StateError>()),
-        );
-
-        expect(eventsRecorder.purgeCalls, isEmpty);
-      },
-    );
-
-    test(
-      'a PlanningProjectionAbortedException from the store propagates '
-      'unchanged and uncaught',
-      () async {
-        planningLocalStore.abortOnDelete = true;
-
-        await expectLater(
-          () => lifecycle.purgePlanningData(
-            userId: 'user-2',
-            reason: PurgeReason.userSignOut,
-          ),
-          throwsA(isA<PlanningProjectionAbortedException>()),
-        );
-
-        expect(eventsRecorder.purgeCalls, isEmpty);
-      },
-    );
-
-    test(
-      'when the audit recorder throws, the deletion that already committed '
-      'is NOT reported as a failure -- the method completes without '
-      'throwing',
-      () async {
-        eventsRecorder.throwOnRecord = true;
-
-        await lifecycle.purgePlanningData(
+      await expectLater(
+        () => lifecycle.purgePlanningData(
           userId: 'user-2',
           reason: PurgeReason.userSignOut,
-        );
+        ),
+        throwsA(isA<PlanningProjectionAbortedException>()),
+      );
 
-        expect(planningLocalStore.deleteCalls, hasLength(1));
-      },
-    );
+      expect(eventsRecorder.purgeCalls, isEmpty);
+    });
+
+    test('when the audit recorder throws, the deletion that already committed '
+        'is NOT reported as a failure -- the method completes without '
+        'throwing', () async {
+      eventsRecorder.throwOnRecord = true;
+
+      await lifecycle.purgePlanningData(
+        userId: 'user-2',
+        reason: PurgeReason.userSignOut,
+      );
+
+      expect(planningLocalStore.deleteCalls, hasLength(1));
+    });
   });
 
   group('clearIdentity', () {
-    test(
-      'clears, notes null, and records the caller-supplied userId on the '
-      'audit row -- no internal identity read',
-      () async {
-        await lifecycle.clearIdentity(
-          reason: PurgeReason.accountDeleted,
+    test('clears, notes null, and records the caller-supplied userId on the '
+        'audit row -- no internal identity read', () async {
+      await lifecycle.clearIdentity(
+        reason: PurgeReason.accountDeleted,
+        userId: 'user-3',
+      );
+
+      expect(identityStore.callLog, ['clear']);
+      expect(notedIdentities, [null]);
+      expect(eventsRecorder.purgeCalls, hasLength(1));
+      final recorded = eventsRecorder.purgeCalls.single;
+      expect(recorded.target, PurgeTarget.identity);
+      expect(recorded.reason, PurgeReason.accountDeleted);
+      expect(recorded.userId, 'user-3');
+      expect(recorded.rowsAffected, isNull);
+    });
+
+    test('when the caller has no userId to supply, records a null userId '
+        '(does not read the identity store to derive one)', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
           userId: 'user-3',
-        );
+          email: 'user3@example.com',
+          organizationId: 'org-3',
+        ),
+      );
 
-        expect(identityStore.callLog, ['clear']);
-        expect(notedIdentities, [null]);
-        expect(eventsRecorder.purgeCalls, hasLength(1));
-        final recorded = eventsRecorder.purgeCalls.single;
-        expect(recorded.target, PurgeTarget.identity);
-        expect(recorded.reason, PurgeReason.accountDeleted);
-        expect(recorded.userId, 'user-3');
-        expect(recorded.rowsAffected, isNull);
-      },
-    );
+      await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
 
-    test(
-      'when the caller has no userId to supply, records a null userId '
-      '(does not read the identity store to derive one)',
-      () async {
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-3',
-            email: 'user3@example.com',
-            organizationId: 'org-3',
-          ),
-        );
+      expect(identityStore.callLog, ['clear']);
+      expect(eventsRecorder.purgeCalls, hasLength(1));
+      expect(eventsRecorder.purgeCalls.single.userId, isNull);
+    });
 
-        await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
+    test('when clear throws, the exception propagates and neither note nor '
+        'record happen', () async {
+      identityStore.throwOnClear = true;
 
-        expect(identityStore.callLog, ['clear']);
-        expect(eventsRecorder.purgeCalls, hasLength(1));
-        expect(eventsRecorder.purgeCalls.single.userId, isNull);
-      },
-    );
+      await expectLater(
+        () => lifecycle.clearIdentity(
+          reason: PurgeReason.membershipRevokedConfirmed,
+          userId: 'user-4',
+        ),
+        throwsA(isA<StateError>()),
+      );
 
-    test(
-      'when clear throws, the exception propagates and neither note nor '
-      'record happen',
-      () async {
-        identityStore.throwOnClear = true;
+      expect(identityStore.callLog, ['clear']);
+      expect(notedIdentities, isEmpty);
+      expect(eventsRecorder.purgeCalls, isEmpty);
+    });
 
-        await expectLater(
-          () => lifecycle.clearIdentity(
-            reason: PurgeReason.membershipRevokedConfirmed,
-            userId: 'user-4',
-          ),
-          throwsA(isA<StateError>()),
-        );
+    test('when the audit recorder throws, the clear and the note already '
+        'committed are NOT undone or reported as a failure -- the method '
+        'completes without throwing', () async {
+      eventsRecorder.throwOnRecord = true;
 
-        expect(identityStore.callLog, ['clear']);
-        expect(notedIdentities, isEmpty);
-        expect(eventsRecorder.purgeCalls, isEmpty);
-      },
-    );
+      await lifecycle.clearIdentity(
+        reason: PurgeReason.userSignOut,
+        userId: 'user-5',
+      );
 
-    test(
-      'when the audit recorder throws, the clear and the note already '
-      'committed are NOT undone or reported as a failure -- the method '
-      'completes without throwing',
-      () async {
-        eventsRecorder.throwOnRecord = true;
-
-        await lifecycle.clearIdentity(
-          reason: PurgeReason.userSignOut,
-          userId: 'user-5',
-        );
-
-        expect(identityStore.callLog, ['clear']);
-        expect(notedIdentities, [null]);
-      },
-    );
+      expect(identityStore.callLog, ['clear']);
+      expect(notedIdentities, [null]);
+    });
   });
 
   group('writeIdentity', () {

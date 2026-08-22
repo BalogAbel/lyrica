@@ -43,9 +43,8 @@ class LocalDataEventsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-          child: Text(AppStrings.localDataEventsLoadErrorMessage),
-        ),
+        error: (error, stackTrace) =>
+            Center(child: Text(AppStrings.localDataEventsLoadErrorMessage)),
       ),
     );
   }
