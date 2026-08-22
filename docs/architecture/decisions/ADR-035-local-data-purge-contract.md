@@ -347,6 +347,25 @@ existing generation/staleness guards in `_refreshCatalog`: each invocation
 calls `listSongs()` at most once, so two hits against the marker are
 necessarily two separate invocations, not a retry of the same one.
 
+**Known, deliberately deferred gap: cross-process/cross-tab races on web.**
+`resolveEmptySnapshot`'s reject→accept transition has no separation stronger
+than the marker's presence. A single-controller caller is protected by the
+existing `_refreshFuture` coalescing in `song_catalog_controller.dart`, but
+nothing stops two genuinely separate processes/tabs sharing the same
+`(userId, organizationId)` IndexedDB store (e.g. two browser tabs) from
+turning one flaky empty response into an immediate wipe: tab A rejects and
+sets the marker, tab B's independent refresh arrives moments later, reads the
+marker already set, and accepts — discarding a still-good cache on what was
+really one underlying flake observed twice, not two independent server
+resolutions. This is accepted, not fixed, for the same reason the spec's
+Non-Goals already exclude web durability guarantees generally: IndexedDB and
+multi-tab web behavior are explicitly best-effort, with no acceptance test
+covering a web offline horizon. Native SQLite is not exposed to this race
+(one process per device). If web durability is ever taken out of Non-Goals,
+this is the first place that would need a real fix (e.g. a caller-supplied
+resolution token, mirroring D9's per-context serialisation approach for the
+mutation budget).
+
 **Task 3.3 — blue/green is a documented invariant plus a rollback test, not
 an active-version pointer.** `_replaceActiveSnapshot` already runs its delete
 (`_deleteUserSnapshots`, narrowed to `(userId, organizationId)` by Task 3.2)
