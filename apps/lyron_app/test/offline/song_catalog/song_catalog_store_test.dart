@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:drift/backends.dart';
 import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
@@ -1325,6 +1327,18 @@ void main() {
     // storage_pressure_contract_test.dart already uses for the (unchanged)
     // planning-mutation path, so a storage failure on the guarded database
     // never fights with eviction reads/deletes on the catalog database.
+    //
+    // The seeded droppable source deliberately belongs to a DIFFERENT
+    // (userId, organizationId) pair ('user-other'/'org-other') than the one
+    // every guarded write below targets ('user-1'/'org-1'): since ADR-028's
+    // 2026-08-22 amendment, the active (userId, organizationId) a guarded
+    // catalog write is FOR is excluded entirely from the reactive eviction
+    // that runs on its own failure, so seeding the droppable content under
+    // that same active pair would mean nothing is ever evicted here. A
+    // matching cached_catalog_snapshots row is also required for the seeded
+    // pair -- without one it is an "orphan" excluded from eviction entirely,
+    // for the unrelated reason that there is nowhere to record
+    // sourcesEvictedAt against it.
     Future<
       ({
         SongCatalogDatabase failingDatabase,
@@ -1342,11 +1356,21 @@ void main() {
       final evictionDatabase = SongCatalogDatabase.inMemory();
 
       await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-other',
+              organizationId: 'org-other',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
+      await evictionDatabase
           .into(evictionDatabase.cachedCatalogSources)
           .insert(
             CachedCatalogSourcesCompanion.insert(
-              userId: 'user-1',
-              organizationId: 'org-1',
+              userId: 'user-other',
+              organizationId: 'org-other',
               snapshotVersion: 1,
               songId: 'droppable-song',
               source: 'body ' * 200,
@@ -1588,6 +1612,227 @@ void main() {
         0,
         reason: 'a domain rejection must never trigger eviction',
       );
+    });
+
+    test('the active context is excluded from reactive eviction: when it is '
+        'the ONLY droppable content on the device, nothing is evicted, the '
+        'active pair\'s sources survive fully intact, and the write surfaces '
+        'a typed LocalStorageWriteFailure after one retry (ADR-028 2026-08-22 '
+        'amendment -- the core regression this closes)', () async {
+      final failingExecutor = InsertFailingExecutor(
+        NativeDatabase.memory(),
+        null, // no budget: every INSERT fails, so the retry fails too.
+      );
+      final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+      addTearDown(failingDatabase.close);
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(evictionDatabase.close);
+
+      // The ONLY droppable content on the device belongs to the exact
+      // (userId, organizationId) the guarded write below is for.
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'active-song',
+              source: 'body ' * 200,
+            ),
+          );
+
+      var insertAttempts = 0;
+      final countingExecutor = _CountingInsertExecutor(
+        failingExecutor,
+        onInsertAttempted: () => insertAttempts += 1,
+      );
+      final countingDatabase = SongCatalogDatabase.connect(countingExecutor);
+      addTearDown(countingDatabase.close);
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+        ),
+      );
+      final store = DriftSongCatalogStore(
+        countingDatabase,
+        writeRecovery: recovery,
+      );
+
+      await expectLater(
+        () => store.saveSongMutation(
+          const SongCatalogMutationDraft(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            source: '{title: Alpha}',
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ),
+        throwsA(
+          isA<LocalStorageWriteFailure>().having(
+            (failure) => failure.cause,
+            'cause',
+            isA<StorageQuotaSimulatedException>(),
+          ),
+        ),
+      );
+
+      // The initial attempt plus exactly one retry, per guard's
+      // documented "evict once, retry once" contract -- eviction excluded
+      // everything, so the retry fails identically to the first attempt.
+      expect(insertAttempts, 2);
+
+      // The active pair's cached source is STILL FULLY PRESENT.
+      final remainingSources = await evictionDatabase
+          .select(evictionDatabase.cachedCatalogSources)
+          .get();
+      expect(remainingSources, hasLength(1));
+      expect(remainingSources.single.songId, 'active-song');
+      expect(remainingSources.single.userId, 'user-1');
+      expect(remainingSources.single.organizationId, 'org-1');
+
+      final snapshotRow =
+          await (evictionDatabase.select(
+                evictionDatabase.cachedCatalogSnapshots,
+              )..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-1'),
+              ))
+              .getSingle();
+      expect(
+        snapshotRow.sourcesEvictedAt,
+        isNull,
+        reason: 'nothing was evicted for the active pair',
+      );
+    });
+
+    test('the active context is excluded from reactive eviction while every '
+        'OTHER (userId, organizationId) pair\'s droppable content is still '
+        'evicted in full, letting the retry succeed', () async {
+      final failingExecutor = InsertFailingExecutor(
+        NativeDatabase.memory(),
+        InsertFailureBudget(failuresRemaining: 1),
+      );
+      final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+      addTearDown(failingDatabase.close);
+      final evictionDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(evictionDatabase.close);
+
+      // The active pair's own droppable content.
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              songId: 'active-song',
+              source: 'body ' * 200,
+            ),
+          );
+      // A different, older, non-active pair's droppable content.
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-other',
+              organizationId: 'org-other',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: 'user-other',
+              organizationId: 'org-other',
+              snapshotVersion: 1,
+              songId: 'other-song',
+              source: 'body ' * 200,
+            ),
+          );
+
+      final recorder = _RecordingLocalDataEventsRecorderForEviction();
+      final recovery = LocalStorageWriteRecovery(
+        evictor: SongCatalogEvictor(
+          database: evictionDatabase,
+          accountant: CatalogStorageAccountant(evictionDatabase),
+          eventsRecorder: recorder,
+        ),
+      );
+      final store = DriftSongCatalogStore(
+        failingDatabase,
+        writeRecovery: recovery,
+      );
+
+      await store.saveSongMutation(
+        const SongCatalogMutationDraft(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          source: '{title: Alpha}',
+          syncStatus: SongSyncStatus.pendingCreate,
+        ),
+      );
+
+      // The retry succeeded this time -- the mutation landed.
+      final mutation = await store.readSongMutationBySongId(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(mutation, isNotNull);
+
+      // The non-active pair was evicted and marked.
+      final otherSources = await (evictionDatabase.select(
+        evictionDatabase.cachedCatalogSources,
+      )..where((table) => table.userId.equals('user-other'))).get();
+      expect(otherSources, isEmpty);
+      final otherSnapshot = await (evictionDatabase.select(
+        evictionDatabase.cachedCatalogSnapshots,
+      )..where((table) => table.userId.equals('user-other'))).getSingle();
+      expect(otherSnapshot.sourcesEvictedAt, isNotNull);
+
+      // The active pair's own droppable content is untouched.
+      final activeSources = await (evictionDatabase.select(
+        evictionDatabase.cachedCatalogSources,
+      )..where((table) => table.userId.equals('user-1'))).get();
+      expect(activeSources, hasLength(1));
+      final activeSnapshot = await (evictionDatabase.select(
+        evictionDatabase.cachedCatalogSnapshots,
+      )..where((table) => table.userId.equals('user-1'))).getSingle();
+      expect(activeSnapshot.sourcesEvictedAt, isNull);
+
+      await pumpEventQueue();
+      expect(recorder.evictionCalls.map((call) => call.userId), ['user-other']);
     });
   });
 
@@ -2618,6 +2863,178 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 }
 
+/// Counts every attempted `INSERT` (successful or not) while delegating to
+/// [_delegate], so the "active context excluded from reactive eviction"
+/// regression test can confirm guard's documented "evict once, retry once"
+/// contract without depending on any timing assumption.
+class _CountingInsertExecutor implements QueryExecutor {
+  _CountingInsertExecutor(this._delegate, {required this.onInsertAttempted});
+
+  final QueryExecutor _delegate;
+  final void Function() onInsertAttempted;
+
+  @override
+  SqlDialect get dialect => _delegate.dialect;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _delegate.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) => _delegate.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) {
+    onInsertAttempted();
+    return _delegate.runInsert(statement, args);
+  }
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _delegate.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _delegate.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _delegate.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _delegate.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() => _CountingInsertTransactionExecutor(
+    _delegate.beginTransaction(),
+    onInsertAttempted: onInsertAttempted,
+  );
+
+  @override
+  QueryExecutor beginExclusive() => _CountingInsertExecutor(
+    _delegate.beginExclusive(),
+    onInsertAttempted: onInsertAttempted,
+  );
+
+  @override
+  Future<void> close() => _delegate.close();
+}
+
+/// Transaction-scoped counterpart of [_CountingInsertExecutor]: Drift issues
+/// the actual `INSERT` for a `database.transaction(...)` block through a
+/// [TransactionExecutor], not the top-level [QueryExecutor], so the count
+/// must be mirrored here too (matching how [InsertFailingTransactionExecutor]
+/// mirrors [InsertFailingExecutor] for the same reason).
+class _CountingInsertTransactionExecutor implements TransactionExecutor {
+  _CountingInsertTransactionExecutor(
+    this._delegate, {
+    required this.onInsertAttempted,
+  });
+
+  final TransactionExecutor _delegate;
+  final void Function() onInsertAttempted;
+
+  @override
+  bool get supportsNestedTransactions => _delegate.supportsNestedTransactions;
+
+  @override
+  SqlDialect get dialect => _delegate.dialect;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _delegate.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) => _delegate.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) {
+    onInsertAttempted();
+    return _delegate.runInsert(statement, args);
+  }
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _delegate.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _delegate.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _delegate.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _delegate.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() => _CountingInsertTransactionExecutor(
+    _delegate.beginTransaction(),
+    onInsertAttempted: onInsertAttempted,
+  );
+
+  @override
+  QueryExecutor beginExclusive() => _CountingInsertExecutor(
+    _delegate.beginExclusive(),
+    onInsertAttempted: onInsertAttempted,
+  );
+
+  @override
+  Future<void> send() => _delegate.send();
+
+  @override
+  Future<void> rollback() => _delegate.rollback();
+
+  @override
+  Future<void> close() => _delegate.close();
+}
+
+/// Records every [recordEviction] call without touching a real database, so
+/// the "active context excluded from reactive eviction" regression test can
+/// assert exactly which pair's eviction was audited.
+class _RecordingLocalDataEventsRecorderForEviction
+    implements LocalDataEventsRecorder {
+  final List<({String target, String? userId, int? rowsAffected})>
+  evictionCalls = [];
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {
+    evictionCalls.add((
+      target: target,
+      userId: userId,
+      rowsAffected: rowsAffected,
+    ));
+  }
+
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
+}
+
 /// Records every [evictToBudget] call without touching a real database, so
 /// the proactive-eviction wiring tests can assert on exactly what
 /// [DriftSongCatalogStore] passed through.
@@ -2631,7 +3048,10 @@ class _FakeBudgetEvictor implements SongCatalogEvictor {
   calls = [];
 
   @override
-  Future<int> evictDroppable() {
+  Future<int> evictDroppable({
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) {
     throw UnimplementedError(
       'not exercised by the proactive-eviction wiring tests',
     );

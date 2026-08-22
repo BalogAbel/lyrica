@@ -190,6 +190,61 @@ void main() {
       );
     });
 
+    test(
+      'forwards protectedUserId/protectedOrganizationId through to the '
+      'evictor on an exhaustion signal (ADR-028 2026-08-22 amendment)',
+      () async {
+        final evictor = _FakeEvictor(freed: 5);
+        final recovery = LocalStorageWriteRecovery(evictor: evictor);
+        var attempts = 0;
+
+        await recovery.guard(
+          () async {
+            attempts += 1;
+            if (attempts == 1) {
+              throw SqliteException(
+                extendedResultCode: 13, // SQLITE_FULL
+                message: 'database or disk is full',
+              );
+            }
+            return 'recovered';
+          },
+          protectedUserId: 'user-active',
+          protectedOrganizationId: 'org-active',
+        );
+
+        expect(evictor.protectedContextCalls, [
+          (
+            protectedUserId: 'user-active',
+            protectedOrganizationId: 'org-active',
+          ),
+        ]);
+      },
+    );
+
+    test('omits protectedUserId/protectedOrganizationId when not supplied '
+        '(the planning-write call sites, which have no catalog context to '
+        'protect with)', () async {
+      final evictor = _FakeEvictor(freed: 5);
+      final recovery = LocalStorageWriteRecovery(evictor: evictor);
+      var attempts = 0;
+
+      await recovery.guard(() async {
+        attempts += 1;
+        if (attempts == 1) {
+          throw SqliteException(
+            extendedResultCode: 13, // SQLITE_FULL
+            message: 'database or disk is full',
+          );
+        }
+        return 'recovered';
+      });
+
+      expect(evictor.protectedContextCalls, [
+        (protectedUserId: null, protectedOrganizationId: null),
+      ]);
+    });
+
     test('a guarded write throwing SqliteException(BUSY) performs no '
         'eviction and surfaces LocalStorageWriteFailure immediately, '
         'without retrying (Acceptance 6, D6, LF-T4)', () async {
@@ -292,9 +347,19 @@ class _FakeEvictor implements SongCatalogEvictor {
   final bool throws;
   int calls = 0;
 
+  final List<({String? protectedUserId, String? protectedOrganizationId})>
+  protectedContextCalls = [];
+
   @override
-  Future<int> evictDroppable() async {
+  Future<int> evictDroppable({
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) async {
     calls += 1;
+    protectedContextCalls.add((
+      protectedUserId: protectedUserId,
+      protectedOrganizationId: protectedOrganizationId,
+    ));
     if (throws) {
       throw Exception('simulated eviction failure');
     }

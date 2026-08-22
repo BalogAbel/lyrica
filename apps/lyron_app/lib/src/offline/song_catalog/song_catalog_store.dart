@@ -413,9 +413,26 @@ class DriftSongCatalogStore implements SongCatalogStore {
   final SongCatalogEvictor? _evictor;
   final CatalogStorageAccountant? _accountant;
 
-  Future<T> _guarded<T>(Future<T> Function() write) {
+  /// [userId]/[organizationId] name the `(userId, organizationId)` context
+  /// this specific write is for. They are passed through to
+  /// [LocalStorageWriteRecovery.guard] as its protected-context parameters
+  /// (ADR-028, 2026-08-22 amendment) so that, if this write triggers a
+  /// reactive eviction, that eviction excludes THIS context entirely rather
+  /// than risking evicting the very catalog data this write is in the
+  /// middle of touching. Every catalog call site has both in direct scope.
+  Future<T> _guarded<T>(
+    Future<T> Function() write, {
+    required String userId,
+    required String organizationId,
+  }) {
     final recovery = _writeRecovery;
-    return recovery == null ? write() : recovery.guard(write);
+    return recovery == null
+        ? write()
+        : recovery.guard(
+            write,
+            protectedUserId: userId,
+            protectedOrganizationId: organizationId,
+          );
   }
 
   @override
@@ -434,6 +451,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
         sources: sources,
         refreshedAt: refreshedAt,
       ),
+      userId: userId,
+      organizationId: organizationId,
     );
     // Runs only after the write above has actually succeeded (finding 2,
     // ADR-028 Task 3.4 amendment): this proactive check's job is "keep
@@ -825,8 +844,11 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
-  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) =>
-      _guarded(() => _saveSongMutation(mutation));
+  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) => _guarded(
+    () => _saveSongMutation(mutation),
+    userId: mutation.userId,
+    organizationId: mutation.organizationId,
+  );
 
   Future<void> _saveSongMutation(SongCatalogMutationDraft mutation) async {
     final conflictingRow = await readSongMutationBySlug(
@@ -1121,6 +1143,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       source: source,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   // Guarded like the other writes above: reconciling a synced song can
@@ -1230,6 +1254,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       songId: songId,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   Future<int?> _markSongCreateSending({
@@ -1286,6 +1312,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       syncErrorContext: syncErrorContext,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   Future<int?> _saveSongMutationStatus({
@@ -1381,6 +1409,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       created: created,
       acceptedVersion: acceptedVersion,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   // The footprint callback is fired here, AFTER `await

@@ -82,37 +82,189 @@ class SongCatalogEvictor {
     }
   }
 
-  /// Returns the estimated bytes freed.
+  /// Emergency, unbounded eviction for the reactive path (D6 of
+  /// `docs/specs/2026-08-19-local-data-durability-contract.md`):
+  /// [LocalStorageWriteRecovery.guard] calls this after a guarded catalog
+  /// write actually fails with a real storage-exhaustion signal, to try to
+  /// free enough room for one retry.
   ///
-  /// `measureDroppableBytes()` and the `DELETE` below are two separate,
-  /// un-transacted statements, so a write landing between them can make the
-  /// returned figure diverge from what was actually deleted -- it is a
-  /// best-effort estimate for diagnostics only (it currently only ever ends
-  /// up inside [LocalStorageWriteFailure.toString]). This does NOT affect
-  /// correctness of the deletion itself: the `DELETE`'s own `NOT EXISTS`
-  /// re-evaluates at delete time, so protected rows (songs with a pending
-  /// mutation) are never removed regardless of what ran in between. If this
-  /// figure is ever used for something user-facing rather than diagnostics,
-  /// both statements would need to run inside one transaction first.
-  Future<int> evictDroppable() async {
+  /// **Active-context exclusion (ADR-028, 2026-08-22 amendment).** When
+  /// [protectedUserId] and [protectedOrganizationId] are BOTH supplied, that
+  /// exact `(userId, organizationId)` pair is excluded entirely from
+  /// eviction -- never evicted, not even as a last resort -- while every
+  /// OTHER candidate pair is still evicted in full. This protects the
+  /// context the failing write actually belongs to: if it were evicted too,
+  /// the retry could "succeed" only by having just destroyed the same
+  /// user's own catalog data, which is a worse outcome than a typed,
+  /// recoverable [LocalStorageWriteFailure]. When either is `null` (the
+  /// planning-write-triggered failure case, which has no catalog
+  /// `(userId, organizationId)` context to protect with), every candidate is
+  /// evicted -- unchanged from this method's behaviour before this
+  /// amendment.
+  ///
+  /// Unlike [evictToBudget], there is no `targetBytes` and no stop
+  /// condition: every non-excluded candidate is evicted, because this is the
+  /// emergency path and the caller needs as much room as it can possibly
+  /// get. Ordering among the non-excluded candidates therefore does not
+  /// change what gets evicted (there is nothing to stop early for) -- the
+  /// oldest-`refreshedAt`-first order is kept anyway, purely for consistency
+  /// and readability with [evictToBudget].
+  ///
+  /// Candidates are queried the same way [evictToBudget] queries them
+  /// (`INNER JOIN` against [CachedCatalogSnapshots], excluding songs with a
+  /// pending mutation): a pair with droppable sources but no matching
+  /// snapshot row has nowhere to record `sourcesEvictedAt` and so is never a
+  /// candidate for this method either, matching [evictToBudget]'s own
+  /// orphan-exclusion fix.
+  ///
+  /// Returns the sum of each evicted pair's pre-delete droppable-byte
+  /// estimate (the same [CatalogStorageAccountant.measureDroppableBytesFor]
+  /// figure [evictToBudget] already uses), NOT the whole-device droppable
+  /// total this method returned before this amendment -- when a context is
+  /// protected, the whole-device total would overstate what was actually
+  /// freed. As before, this is a best-effort estimate for diagnostics only
+  /// (it currently only ever ends up inside
+  /// [LocalStorageWriteFailure.toString]); each pair's own measure-then-
+  /// delete is still two separate, un-transacted statements, so a write
+  /// landing between them can make the estimate diverge from what was
+  /// actually deleted for that pair. This does NOT affect correctness of the
+  /// deletion itself: the `DELETE`'s own `NOT EXISTS` re-evaluates at delete
+  /// time, so protected rows (songs with a pending mutation) are never
+  /// removed regardless of what ran in between.
+  Future<int> evictDroppable({
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) async {
     final droppableBytes = await _accountant.measureDroppableBytes();
     if (droppableBytes == 0) {
       return 0;
     }
-    final deletedRows = await _database.customUpdate(
-      'DELETE FROM cached_catalog_sources AS s '
-      'WHERE NOT EXISTS ('
-      'SELECT 1 FROM cached_catalog_song_mutations AS m '
-      'WHERE m.user_id = s.user_id '
-      'AND m.organization_id = s.organization_id '
-      'AND m.song_id = s.song_id)',
-      updates: {_database.cachedCatalogSources},
-    );
-    if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
-      unawaited(_recordEvictionBestEffort(rowsAffected: deletedRows));
+    final candidates = await _droppableCandidatePairs()
+      ..sort((a, b) {
+        final aTime = a.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
+
+    final hasProtectedContext =
+        protectedUserId != null && protectedOrganizationId != null;
+
+    var totalFreed = 0;
+    for (final candidate in candidates) {
+      if (hasProtectedContext &&
+          candidate.userId == protectedUserId &&
+          candidate.organizationId == protectedOrganizationId) {
+        continue;
+      }
+      totalFreed += await _evictPairAndMark(
+        userId: candidate.userId,
+        organizationId: candidate.organizationId,
+      );
     }
-    return droppableBytes;
+
+    if (totalFreed > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+    return totalFreed;
+  }
+
+  /// Shared candidate query for both [evictDroppable] and [evictToBudget]:
+  /// every `(userId, organizationId)` pair with at least one droppable
+  /// source (a cached source whose song has no pending mutation) AND a
+  /// matching [CachedCatalogSnapshots] row to record `sourcesEvictedAt`
+  /// against. The `INNER JOIN` (not `LEFT JOIN`) is deliberate: a pair with
+  /// droppable sources but no matching snapshot row has nowhere to mark
+  /// `sourcesEvictedAt`, so it must never be a candidate for either eviction
+  /// path -- evicting it would silently destroy its sources without the
+  /// recoverability marker D6 requires (ADR-028 Task 3.4 amendment, finding
+  /// 3). Callers decide ordering and exclusion themselves; this only
+  /// resolves the candidate set.
+  Future<List<({String userId, String organizationId, DateTime? refreshedAt})>>
+  _droppableCandidatePairs() async {
+    final candidateRows = await _database
+        .customSelect(
+          'SELECT DISTINCT s.user_id AS user_id, '
+          's.organization_id AS organization_id, '
+          'sn.refreshed_at AS refreshed_at '
+          'FROM cached_catalog_sources AS s '
+          'INNER JOIN cached_catalog_snapshots AS sn '
+          'ON sn.user_id = s.user_id AND sn.organization_id = s.organization_id '
+          'WHERE NOT EXISTS ('
+          'SELECT 1 FROM cached_catalog_song_mutations AS m '
+          'WHERE m.user_id = s.user_id '
+          'AND m.organization_id = s.organization_id '
+          'AND m.song_id = s.song_id)',
+          readsFrom: {
+            _database.cachedCatalogSources,
+            _database.cachedCatalogSnapshots,
+            _database.cachedCatalogSongMutations,
+          },
+        )
+        .get();
+
+    return candidateRows
+        .map(
+          (row) => (
+            userId: row.read<String>('user_id'),
+            organizationId: row.read<String>('organization_id'),
+            refreshedAt: row.read<DateTime?>('refreshed_at'),
+          ),
+        )
+        .toList();
+  }
+
+  /// Shared per-pair delete-and-mark-and-audit helper for both
+  /// [evictDroppable] and [evictToBudget]: deletes every droppable source
+  /// for `(userId, organizationId)`, marks its [CachedCatalogSnapshots] row
+  /// `sourcesEvictedAt` in the SAME transaction (so a crash mid-pair cannot
+  /// delete sources without recording the marker, or vice versa), and
+  /// dispatches a best-effort D7 audit record. Returns the pair's pre-delete
+  /// droppable-byte estimate, or 0 without touching the database at all when
+  /// the pair has nothing droppable (fully protected by a pending mutation).
+  Future<int> _evictPairAndMark({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final pairBytes = await _accountant.measureDroppableBytesFor(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (pairBytes == 0) {
+      return 0;
+    }
+    var pairDeletedRows = 0;
+    await _database.transaction(() async {
+      pairDeletedRows = await _database.customUpdate(
+        'DELETE FROM cached_catalog_sources AS s '
+        'WHERE s.user_id = ? AND s.organization_id = ? '
+        'AND NOT EXISTS ('
+        'SELECT 1 FROM cached_catalog_song_mutations AS m '
+        'WHERE m.user_id = s.user_id '
+        'AND m.organization_id = s.organization_id '
+        'AND m.song_id = s.song_id)',
+        variables: [Variable(userId), Variable(organizationId)],
+        updates: {_database.cachedCatalogSources},
+      );
+      await (_database.update(_database.cachedCatalogSnapshots)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .write(
+            CachedCatalogSnapshotsCompanion(
+              sourcesEvictedAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+    });
+    if (pairDeletedRows > 0) {
+      unawaited(
+        _recordEvictionBestEffort(
+          userId: userId,
+          rowsAffected: pairDeletedRows,
+        ),
+      );
+    }
+    return pairBytes;
   }
 
   /// Proactive, ordered eviction for D6's measured-footprint trigger. Unlike
@@ -144,111 +296,32 @@ class SongCatalogEvictor {
     required String activeUserId,
     required String activeOrganizationId,
   }) async {
-    final candidateRows = await _database
-        .customSelect(
-          'SELECT DISTINCT s.user_id AS user_id, '
-          's.organization_id AS organization_id, '
-          'sn.refreshed_at AS refreshed_at '
-          'FROM cached_catalog_sources AS s '
-          // INNER JOIN, not LEFT: a pair with droppable sources but no
-          // matching cached_catalog_snapshots row (finding 3, ADR-028 Task
-          // 3.4 amendment) has nowhere to record sourcesEvictedAt, so it
-          // must never be a candidate at all -- evicting it would silently
-          // destroy its sources without the recoverability marker D6
-          // requires. A LEFT JOIN previously admitted it with
-          // refreshed_at == null, which sorts before every real timestamp
-          // below and evicted it FIRST.
-          'INNER JOIN cached_catalog_snapshots AS sn '
-          'ON sn.user_id = s.user_id AND sn.organization_id = s.organization_id '
-          'WHERE NOT EXISTS ('
-          'SELECT 1 FROM cached_catalog_song_mutations AS m '
-          'WHERE m.user_id = s.user_id '
-          'AND m.organization_id = s.organization_id '
-          'AND m.song_id = s.song_id)',
-          readsFrom: {
-            _database.cachedCatalogSources,
-            _database.cachedCatalogSnapshots,
-            _database.cachedCatalogSongMutations,
-          },
-        )
-        .get();
-
-    final candidates =
-        candidateRows
-            .map(
-              (row) => (
-                userId: row.read<String>('user_id'),
-                organizationId: row.read<String>('organization_id'),
-                refreshedAt: row.read<DateTime?>('refreshed_at'),
-              ),
-            )
-            .toList()
-          ..sort((a, b) {
-            final aIsActive =
-                a.userId == activeUserId &&
-                a.organizationId == activeOrganizationId;
-            final bIsActive =
-                b.userId == activeUserId &&
-                b.organizationId == activeOrganizationId;
-            if (aIsActive != bIsActive) {
-              // The active pair always sorts last, regardless of recency.
-              return aIsActive ? 1 : -1;
-            }
-            final aTime =
-                a.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            final bTime =
-                b.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-            return aTime.compareTo(bTime);
-          });
+    final candidates = await _droppableCandidatePairs()
+      ..sort((a, b) {
+        final aIsActive =
+            a.userId == activeUserId &&
+            a.organizationId == activeOrganizationId;
+        final bIsActive =
+            b.userId == activeUserId &&
+            b.organizationId == activeOrganizationId;
+        if (aIsActive != bIsActive) {
+          // The active pair always sorts last, regardless of recency.
+          return aIsActive ? 1 : -1;
+        }
+        final aTime = a.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.refreshedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return aTime.compareTo(bTime);
+      });
 
     var totalFreed = 0;
     for (final candidate in candidates) {
       if (totalFreed >= targetBytes) {
         break;
       }
-      final pairBytes = await _accountant.measureDroppableBytesFor(
+      totalFreed += await _evictPairAndMark(
         userId: candidate.userId,
         organizationId: candidate.organizationId,
       );
-      if (pairBytes == 0) {
-        continue;
-      }
-      var pairDeletedRows = 0;
-      await _database.transaction(() async {
-        pairDeletedRows = await _database.customUpdate(
-          'DELETE FROM cached_catalog_sources AS s '
-          'WHERE s.user_id = ? AND s.organization_id = ? '
-          'AND NOT EXISTS ('
-          'SELECT 1 FROM cached_catalog_song_mutations AS m '
-          'WHERE m.user_id = s.user_id '
-          'AND m.organization_id = s.organization_id '
-          'AND m.song_id = s.song_id)',
-          variables: [
-            Variable(candidate.userId),
-            Variable(candidate.organizationId),
-          ],
-          updates: {_database.cachedCatalogSources},
-        );
-        await (_database.update(_database.cachedCatalogSnapshots)..where(
-              (table) =>
-                  table.userId.equals(candidate.userId) &
-                  table.organizationId.equals(candidate.organizationId),
-            ))
-            .write(
-              CachedCatalogSnapshotsCompanion(
-                sourcesEvictedAt: Value(DateTime.now().toUtc()),
-              ),
-            );
-      });
-      totalFreed += pairBytes;
-      if (pairDeletedRows > 0) {
-        unawaited(
-          _recordEvictionBestEffort(
-            userId: candidate.userId,
-            rowsAffected: pairDeletedRows,
-          ),
-        );
-      }
     }
 
     if (totalFreed > 0) {

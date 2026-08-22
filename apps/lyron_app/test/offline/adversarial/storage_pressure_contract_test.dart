@@ -40,6 +40,20 @@ void main() {
       addTearDown(database.close);
       addTearDown(catalogDatabase.close);
 
+      // A matching cached_catalog_snapshots row is required: evictDroppable()
+      // now marks sourcesEvictedAt per pair the same way evictToBudget does
+      // (ADR-028, 2026-08-22 amendment), so a pair with no snapshot row is
+      // an "orphan" excluded from the candidate set entirely.
+      await catalogDatabase
+          .into(catalogDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
       await catalogDatabase
           .into(catalogDatabase.cachedCatalogSources)
           .insert(
@@ -125,6 +139,16 @@ void main() {
       addTearDown(database.close);
       addTearDown(catalogDatabase.close);
 
+      await catalogDatabase
+          .into(catalogDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
       await catalogDatabase
           .into(catalogDatabase.cachedCatalogSources)
           .insert(

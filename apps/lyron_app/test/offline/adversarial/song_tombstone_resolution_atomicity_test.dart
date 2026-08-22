@@ -60,12 +60,30 @@ void main() {
       final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
       final evictionDatabase = SongCatalogDatabase.inMemory();
 
+      // Seeded under a DIFFERENT (userId, organizationId) than the guarded
+      // write below ('user-1'/'org-1'): since ADR-028's 2026-08-22
+      // amendment, the active context a guarded catalog write is FOR is
+      // excluded entirely from reactive eviction, so seeding under that
+      // same active pair would mean nothing is ever evicted here. A
+      // matching cached_catalog_snapshots row is also required -- without
+      // one it is an "orphan" excluded from eviction for the unrelated
+      // reason that there is nowhere to record sourcesEvictedAt.
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-other',
+              organizationId: 'org-other',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
       await evictionDatabase
           .into(evictionDatabase.cachedCatalogSources)
           .insert(
             CachedCatalogSourcesCompanion.insert(
-              userId: 'user-1',
-              organizationId: 'org-1',
+              userId: 'user-other',
+              organizationId: 'org-other',
               snapshotVersion: 1,
               songId: 'droppable-song',
               source: 'body ' * 200,

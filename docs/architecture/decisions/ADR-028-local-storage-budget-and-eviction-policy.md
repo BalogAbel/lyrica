@@ -24,6 +24,16 @@
   write" claim, which was concretely false for the planning mutation path
   until this commit, not merely narrower than stated the way the earlier
   P1a amendment above was.
+- Amended: 2026-08-22 — external review of the already-merged 2026-08-22
+  whole-branch review round found that fix 2 below (the `evictToBudget`
+  active-context ordering) only ever addressed the PROACTIVE eviction path;
+  the REACTIVE path (`SongCatalogEvictor.evictDroppable`, the one that
+  actually fires on real storage exhaustion) stayed completely unscoped,
+  wiping every user's/organization's droppable sources on the device with
+  no protection for the caller's own active context. Closes that gap by
+  EXCLUDING the active context from reactive eviction rather than
+  "touching it last" (see the new "2026-08-22, second amendment" entry
+  under D6/D8 below for the full reasoning).
 
 ## Context
 
@@ -741,6 +751,102 @@ refresh always performs.
    `local_data_lifecycle_gate_test.dart`'s existing scan style in the same
    directory) so a regression breaks a fast unit test rather than only
    being caught by a full web build.
+
+**Second amendment, 2026-08-22 (external review of the round above): the
+active context was still unprotected on the REACTIVE path.** Fix 2 above,
+and the "touch the active pair last" ordering described earlier in this
+section, only ever applied to `evictToBudget` — the proactive,
+measured-footprint trigger. `SongCatalogEvictor.evictDroppable()`, the
+REACTIVE path `LocalStorageWriteRecovery.guard` calls after a guarded
+catalog write actually throws a real `SqliteException`
+(`SQLITE_FULL`/`SQLITE_IOERR`), stayed exactly as it was before Task 3.4:
+`DELETE FROM cached_catalog_sources` with no `(userId, organizationId)`
+filter at all, no ordering, and no protection for the context the failing
+write itself belongs to. This matters more than the proactive path ever
+did: `evictToBudget`'s 2 GB ceiling is "designed to stay unreached in
+practice" (D6 above), but `evictDroppable` is the path that fires on REAL
+storage exhaustion — the one eviction trigger this codebase actually
+depends on in production. Unscoped, it could evict the very catalog data
+the failing write was in the middle of refreshing, for the same
+`(userId, organizationId)` context, as a side effect of trying to make
+room for that write's own retry.
+
+**Chosen: exclude the active context entirely, rather than "touch it
+last."** A literal reading of D6's "touch the active context last" text
+would mean giving `guard`'s retry cardinality a second tier — evict once,
+retry, and if that still isn't enough, evict the active context too and
+retry again — mirroring `evictToBudget`'s ordering exactly. That was
+rejected: `guard<T>` is a fully generic boundary shared by every growing
+local write in the app, including planning-mutation writes, which have no
+catalog `(userId, organizationId)` concept at all. Changing its retry
+cardinality from "evict once, retry once" to "evict once, retry, evict
+again, retry again" for every guarded write in the app — most of which
+have nothing to do with the catalog — is a disproportionate blast radius
+for closing one path's gap.
+
+Instead, `guard<T>` gained two new optional named parameters,
+`protectedUserId`/`protectedOrganizationId`. When both are supplied, the
+`(userId, organizationId)` pair they name is passed through to
+`evictDroppable`, which now excludes that exact pair from its candidate
+set entirely — never evicted, not even as a last resort — while evicting
+every OTHER candidate pair in full (same oldest-`refreshedAt`-first order
+as `evictToBudget`, for consistency, though ordering does not change what
+gets evicted here since there is no target/stop condition to order
+against, only which pair is excluded). `evictDroppable`'s candidates are
+now resolved the same way `evictToBudget`'s are — the same `INNER JOIN`
+against `cached_catalog_snapshots` with the same orphan-exclusion from fix
+2 above, reused via a new private `_droppableCandidatePairs` helper, and a
+new private `_evictPairAndMark` helper now performs the shared
+delete-in-a-transaction-then-mark-`sourcesEvictedAt`-then-audit sequence
+for both methods, rather than `evictDroppable` duplicating a second copy of
+that block. `evictDroppable`'s return value changed as a consequence: it
+now sums each evicted pair's pre-delete droppable-byte estimate (the same
+`measureDroppableBytesFor` figure `evictToBudget` already used) rather than
+`measureDroppableBytes()`'s whole-device total — the whole-device figure
+would overstate what was actually freed whenever a context is excluded.
+
+Only catalog call sites supply the two new parameters: `guard`'s own
+generic signature makes them optional so every other caller compiles and
+behaves completely unchanged (they simply stay `null`). Threading
+happened at `DriftSongCatalogStore._guarded`, which already has
+`userId`/`organizationId` in scope at all 6 of its call sites
+(`replaceActiveSnapshot`, `saveSongMutation`, `reconcileSyncedSong`,
+`markSongCreateSending`, `saveSongMutationStatus`,
+`resolveCancelledSongCreate`) and now forwards them as the protected
+context on every one. `BudgetedPlanningMutationStore` and
+`DriftPlanningLocalStore`'s own `guard` call sites are unchanged — this is
+an intentional, honest scope limit, not an oversight: a planning write has
+no catalog `(userId, organizationId)` context to protect with, so a
+planning-write-triggered storage failure still evicts every droppable
+source on the device with no protection, exactly as it did before this
+amendment.
+
+**Accepted trade-off.** If excluding the active context leaves nothing
+else droppable to free — the active context's own droppable content is
+the only droppable content on the whole device — the retry after eviction
+fails identically to the first attempt, and the write surfaces a typed
+`LocalStorageWriteFailure` rather than succeeding. This is judged strictly
+better than the alternative: silently destroying the active context's own
+just-synced catalog to force the write to succeed would violate this
+phase's guiding principle that no local write failure may remove or hide
+the catalog. A typed, recoverable failure — the user can retry once
+connectivity or storage pressure improves, or a future refresh
+repopulates what a genuinely different eviction removed — is the honest
+outcome; silent data loss to paper over a write failure is not.
+
+Pinned by two new tests in `song_catalog_evictor_test.dart` (a
+`SongCatalogEvictor.evictDroppable protected context` group: the active
+pair as the sole droppable content is left completely untouched and
+nothing is freed; every OTHER pair is still evicted in full while the
+active pair stays untouched; and calling with no protected context evicts
+everything exactly as before) and two new end-to-end tests in
+`song_catalog_store_test.dart`'s `DriftSongCatalogStore storage recovery
+(D1)` group, driven through a real `saveSongMutation` call against a real
+failing executor: one seeding only the active pair's droppable content
+(confirms it survives fully intact and the write fails after exactly one
+retry), and one seeding the active pair plus an older non-active pair
+(confirms the non-active pair is evicted, marked, and audited while the
+active pair is untouched, and the retry succeeds).
 
 ### D7 — Committed-storage revision seam
 

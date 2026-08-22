@@ -857,6 +857,22 @@ void main() {
       final failingDatabase = PlanningLocalDatabase.connect(failingExecutor);
       final evictionDatabase = SongCatalogDatabase.inMemory();
 
+      // A matching cached_catalog_snapshots row is required: evictDroppable()
+      // now marks sourcesEvictedAt per pair the same way evictToBudget does
+      // (ADR-028, 2026-08-22 amendment), so a pair with no snapshot row is
+      // an "orphan" excluded from the candidate set entirely. This is a
+      // planning write path, so it never supplies a protected context --
+      // eviction here is otherwise unaffected by that amendment.
+      await evictionDatabase
+          .into(evictionDatabase.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              snapshotVersion: 1,
+              refreshedAt: DateTime.utc(2026, 7, 30),
+            ),
+          );
       await evictionDatabase
           .into(evictionDatabase.cachedCatalogSources)
           .insert(

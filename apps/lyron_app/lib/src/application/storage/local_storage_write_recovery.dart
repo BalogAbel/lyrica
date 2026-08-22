@@ -32,7 +32,10 @@ import 'package:sqlite3/common.dart' show SqliteException;
 ///    the ORIGINAL write error is surfaced as the failure's cause (with
 ///    `bytesFreedByEviction: 0`) -- that is what the caller actually needs
 ///    to see, since the eviction failure is a secondary symptom, plausibly
-///    of the same underlying condition (disk full, quota).
+///    of the same underlying condition (disk full, quota). See [guard]'s own
+///    `protectedUserId`/`protectedOrganizationId` parameters (ADR-028,
+///    2026-08-22 amendment) for how a catalog call site's active context is
+///    excluded from this eviction.
 ///
 /// [SongCatalogEvictor.evictDroppable] deletes only cached song sources via a
 /// raw SQL statement against [SongCatalogDatabase] -- it never goes through
@@ -54,7 +57,32 @@ class LocalStorageWriteRecovery {
   /// this method surfaces -- see [_recordNoEvictionFailure].
   final LocalDataEventsRecorder? _eventsRecorder;
 
-  Future<T> guard<T>(Future<T> Function() write) async {
+  /// [protectedUserId]/[protectedOrganizationId] (D6 of
+  /// `docs/specs/2026-08-19-local-data-durability-contract.md`, ADR-028's
+  /// 2026-08-22 amendment closing the reactive-path gap): when both are
+  /// supplied, they name the `(userId, organizationId)` context the caller
+  /// is actively writing to. On exhaustion, that exact context is EXCLUDED
+  /// entirely from the eviction [_evictor] performs -- not merely touched
+  /// last -- so the retry below can never succeed by having silently
+  /// destroyed the very catalog data the caller is in the middle of
+  /// refreshing. Only catalog call sites (`song_catalog_store.dart`) supply
+  /// these; planning call sites omit them (`null`), because a generic
+  /// planning write has no catalog `(userId, organizationId)` context to
+  /// protect with -- for those, eviction remains exactly as unscoped as it
+  /// was before this amendment.
+  ///
+  /// If excluding the active context leaves nothing else droppable to free
+  /// (e.g. it is the only droppable content on the whole device), the retry
+  /// below fails identically to the first attempt and this method surfaces
+  /// a typed [LocalStorageWriteFailure] -- the correct, honest outcome:
+  /// silently destroying the active context's own just-synced catalog to
+  /// force the write to succeed would violate this phase's guiding
+  /// principle that no local write failure may remove or hide the catalog.
+  Future<T> guard<T>(
+    Future<T> Function() write, {
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) async {
     try {
       return await write();
     } on LocalStorageDomainRejection {
@@ -68,7 +96,10 @@ class LocalStorageWriteRecovery {
       }
       final int freed;
       try {
-        freed = await _evictor.evictDroppable();
+        freed = await _evictor.evictDroppable(
+          protectedUserId: protectedUserId,
+          protectedOrganizationId: protectedOrganizationId,
+        );
       } on Exception {
         throw LocalStorageWriteFailure(cause: error, bytesFreedByEviction: 0);
       }

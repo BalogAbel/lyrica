@@ -136,6 +136,20 @@ void main() {
           NativeDatabase.createInBackground(dbFile),
         );
         addTearDown(trackedDatabase.close);
+        // A matching snapshot row is required: evictDroppable() now marks
+        // sourcesEvictedAt per pair the same way evictToBudget does, which
+        // means a pair with no snapshot row is an "orphan" excluded from
+        // the candidate set entirely (ADR-028 2026-08-22 amendment).
+        await trackedDatabase
+            .into(trackedDatabase.cachedCatalogSnapshots)
+            .insert(
+              CachedCatalogSnapshotsCompanion.insert(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                snapshotVersion: 1,
+                refreshedAt: DateTime.utc(2026, 7, 30),
+              ),
+            );
         await trackedDatabase
             .into(trackedDatabase.cachedCatalogSources)
             .insert(
@@ -243,6 +257,209 @@ void main() {
       // user-2/org-2's song-dirty source is evicted (no pending mutation
       // for that owner, even though the same song id has one elsewhere).
       expect(owners, isNot(contains(('user-2', 'org-2', 'song-dirty'))));
+    });
+  });
+
+  group('SongCatalogEvictor.evictDroppable protected context '
+      '(ADR-028 2026-08-22 amendment, reactive-path exclusion)', () {
+    late SongCatalogDatabase database;
+    late CatalogStorageAccountant accountant;
+    late SongCatalogEvictor evictor;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      accountant = CatalogStorageAccountant(database);
+      evictor = SongCatalogEvictor(database: database, accountant: accountant);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<void> seedPair({
+      required String userId,
+      required String organizationId,
+      required DateTime refreshedAt,
+      required String songId,
+    }) async {
+      await database
+          .into(database.cachedCatalogSnapshots)
+          .insert(
+            CachedCatalogSnapshotsCompanion.insert(
+              userId: userId,
+              organizationId: organizationId,
+              snapshotVersion: 1,
+              refreshedAt: refreshedAt,
+            ),
+          );
+      await database
+          .into(database.cachedCatalogSources)
+          .insert(
+            CachedCatalogSourcesCompanion.insert(
+              userId: userId,
+              organizationId: organizationId,
+              snapshotVersion: 1,
+              songId: songId,
+              source: 'body ' * 200,
+            ),
+          );
+    }
+
+    Future<bool> hasSourceRow({
+      required String userId,
+      required String organizationId,
+      required String songId,
+    }) async {
+      final row =
+          await (database.select(database.cachedCatalogSources)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.songId.equals(songId),
+              ))
+              .getSingleOrNull();
+      return row != null;
+    }
+
+    Future<DateTime?> sourcesEvictedAtFor({
+      required String userId,
+      required String organizationId,
+    }) async {
+      final row =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .getSingle();
+      return row.sourcesEvictedAt;
+    }
+
+    test('excludes the active pair entirely when it is the ONLY droppable '
+        'content on the device: nothing is evicted and the active pair\'s '
+        'sources survive fully intact', () async {
+      await seedPair(
+        userId: 'user-active',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 1, 1),
+        songId: 'song-active',
+      );
+
+      final freed = await evictor.evictDroppable(
+        protectedUserId: 'user-active',
+        protectedOrganizationId: 'org-1',
+      );
+
+      expect(freed, 0);
+      expect(
+        await hasSourceRow(
+          userId: 'user-active',
+          organizationId: 'org-1',
+          songId: 'song-active',
+        ),
+        isTrue,
+        reason:
+            'the active context must never be evicted, even when it is '
+            'the only droppable content available',
+      );
+      expect(
+        await sourcesEvictedAtFor(
+          userId: 'user-active',
+          organizationId: 'org-1',
+        ),
+        isNull,
+      );
+    });
+
+    test('evicts every OTHER pair while leaving the active pair completely '
+        'untouched', () async {
+      await seedPair(
+        userId: 'user-other',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 1, 1),
+        songId: 'song-other',
+      );
+      await seedPair(
+        userId: 'user-active',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2020, 1, 1), // oldest of all, to prove
+        // exclusion (not mere ordering) is what protects it.
+        songId: 'song-active',
+      );
+
+      final freed = await evictor.evictDroppable(
+        protectedUserId: 'user-active',
+        protectedOrganizationId: 'org-1',
+      );
+
+      expect(freed, greaterThan(0));
+      expect(
+        await hasSourceRow(
+          userId: 'user-other',
+          organizationId: 'org-1',
+          songId: 'song-other',
+        ),
+        isFalse,
+      );
+      expect(
+        await sourcesEvictedAtFor(
+          userId: 'user-other',
+          organizationId: 'org-1',
+        ),
+        isNotNull,
+      );
+      expect(
+        await hasSourceRow(
+          userId: 'user-active',
+          organizationId: 'org-1',
+          songId: 'song-active',
+        ),
+        isTrue,
+      );
+      expect(
+        await sourcesEvictedAtFor(
+          userId: 'user-active',
+          organizationId: 'org-1',
+        ),
+        isNull,
+      );
+    });
+
+    test('with no protected context supplied (both null), evicts every '
+        'candidate exactly as evictDroppable() always has -- unaffected by '
+        'this amendment (the planning-write-triggered failure case)', () async {
+      await seedPair(
+        userId: 'user-a',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 1, 1),
+        songId: 'song-a',
+      );
+      await seedPair(
+        userId: 'user-b',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 2, 1),
+        songId: 'song-b',
+      );
+
+      final freed = await evictor.evictDroppable();
+
+      expect(freed, greaterThan(0));
+      expect(
+        await hasSourceRow(
+          userId: 'user-a',
+          organizationId: 'org-1',
+          songId: 'song-a',
+        ),
+        isFalse,
+      );
+      expect(
+        await hasSourceRow(
+          userId: 'user-b',
+          organizationId: 'org-1',
+          songId: 'song-b',
+        ),
+        isFalse,
+      );
     });
   });
 
