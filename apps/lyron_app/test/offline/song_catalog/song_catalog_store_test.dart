@@ -255,38 +255,142 @@ void main() {
       },
     );
 
-    test('keeps only the current cached snapshot for one user', () async {
-      await store.replaceActiveSnapshot(
-        userId: 'user-1',
-        organizationId: 'org-1',
-        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-        refreshedAt: DateTime.utc(2026, 3, 25, 12),
-      );
-
-      await store.replaceActiveSnapshot(
-        userId: 'user-1',
-        organizationId: 'org-2',
-        summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
-        sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
-        refreshedAt: DateTime.utc(2026, 3, 25, 13),
-      );
-
-      expect(
-        await store.readActiveSummaries(
+    test(
+      'keeps each organization cached snapshot independent for one user',
+      () async {
+        await store.replaceActiveSnapshot(
           userId: 'user-1',
           organizationId: 'org-1',
-        ),
-        isEmpty,
-      );
-      expect(
-        await store.readActiveSummaries(
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+
+        await store.replaceActiveSnapshot(
           userId: 'user-1',
           organizationId: 'org-2',
-        ),
-        const [SongSummary(id: 'song-2', title: 'Beta')],
-      );
-    });
+          summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+          sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 13),
+        );
+
+        // F3 (docs/specs/2026-08-19-local-data-durability-contract.md):
+        // caching a second organization for the same user must not evict the
+        // first organization's own snapshot -- each (userId, organizationId)
+        // pair is independently cached.
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [SongSummary(id: 'song-1', title: 'Alpha')],
+        );
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-2',
+          ),
+          const [SongSummary(id: 'song-2', title: 'Beta')],
+        );
+      },
+    );
+
+    test(
+      'refreshing organization A leaves organization B cached snapshot rows '
+      'byte-identical (F3, local-data-durability-contract)',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-a',
+          summaries: const [SongSummary(id: 'song-a1', title: 'Org A One')],
+          sources: const [
+            SongSource(id: 'song-a1', source: '{title: Org A One}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-b',
+          summaries: const [SongSummary(id: 'song-b1', title: 'Org B One')],
+          sources: const [
+            SongSource(id: 'song-b1', source: '{title: Org B One}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 13),
+        );
+
+        final orgBSummariesBefore =
+            await (database.select(database.cachedCatalogSummaries)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .get();
+        final orgBSourcesBefore =
+            await (database.select(database.cachedCatalogSources)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .get();
+        final orgBSnapshotBefore =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .getSingle();
+
+        // A third replace, refreshing organization A only -- this is the
+        // write that used to wipe organization B's entire cached snapshot
+        // as a side effect, because the old deletion only filtered by
+        // userId.
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-a',
+          summaries: const [SongSummary(id: 'song-a2', title: 'Org A Two')],
+          sources: const [
+            SongSource(id: 'song-a2', source: '{title: Org A Two}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 14),
+        );
+
+        final orgBSummariesAfter =
+            await (database.select(database.cachedCatalogSummaries)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .get();
+        final orgBSourcesAfter =
+            await (database.select(database.cachedCatalogSources)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .get();
+        final orgBSnapshotAfter =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-b'),
+                ))
+                .getSingle();
+
+        expect(orgBSummariesAfter, orgBSummariesBefore);
+        expect(orgBSourcesAfter, orgBSourcesBefore);
+        expect(orgBSnapshotAfter, orgBSnapshotBefore);
+
+        // And organization A itself did get refreshed, so this was a real
+        // replace, not a no-op.
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-a',
+          ),
+          const [SongSummary(id: 'song-a2', title: 'Org A Two')],
+        );
+      },
+    );
 
     test('deletes the cached snapshot for one user and organization', () async {
       await store.replaceActiveSnapshot(

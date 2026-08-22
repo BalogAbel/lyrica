@@ -439,7 +439,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
 
       final nextSnapshotVersion = (currentSnapshot?.snapshotVersion ?? 0) + 1;
 
-      await _deleteUserSnapshots(userId: userId);
+      await _deleteUserSnapshots(
+        userId: userId,
+        organizationId: organizationId,
+      );
 
       await _database
           .into(_database.cachedCatalogSnapshots)
@@ -1810,16 +1813,34 @@ class DriftSongCatalogStore implements SongCatalogStore {
     return deletedRows;
   }
 
-  Future<void> _deleteUserSnapshots({required String userId}) async {
-    await (_database.delete(
-      _database.cachedCatalogSummaries,
-    )..where((table) => table.userId.equals(userId))).go();
-    await (_database.delete(
-      _database.cachedCatalogSources,
-    )..where((table) => table.userId.equals(userId))).go();
-    await (_database.delete(
-      _database.cachedCatalogSnapshots,
-    )..where((table) => table.userId.equals(userId))).go();
+  // F3 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.2): scoped to (userId, organizationId), not just userId -- a
+  // refresh for one organization must never delete another organization's
+  // cached snapshot for the same user. Before this fix, the userId-only
+  // filter meant replaceActiveSnapshot for organization A silently wiped
+  // organization B's summaries/sources/snapshot row as a side effect.
+  Future<void> _deleteUserSnapshots({
+    required String userId,
+    required String organizationId,
+  }) async {
+    await (_database.delete(_database.cachedCatalogSummaries)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedCatalogSources)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedCatalogSnapshots)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
   }
 
   void _validateSnapshot({

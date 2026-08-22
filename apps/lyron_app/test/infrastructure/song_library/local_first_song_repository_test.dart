@@ -76,7 +76,9 @@ void main() {
     });
 
     test(
-      'drops the previous organization snapshot when a new one becomes current',
+      'keeps the previous organization snapshot readable when a new '
+      'organization becomes current (F3, '
+      'local-data-durability-contract)',
       () async {
         await store.replaceActiveSnapshot(
           userId: 'user-1',
@@ -95,7 +97,7 @@ void main() {
 
         expect(
           await repository.listSongs(userId: 'user-1', organizationId: 'org-1'),
-          isEmpty,
+          const [SongSummary(id: 'song-1', title: 'Alpha')],
         );
         expect(
           await repository.listSongs(userId: 'user-1', organizationId: 'org-2'),

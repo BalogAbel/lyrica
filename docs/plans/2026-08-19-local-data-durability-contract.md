@@ -390,9 +390,9 @@ Closes F3 and F5. Theme: a write must never destroy more than it replaces.
 **Files:** `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart`,
 `test/offline/song_catalog/`
 
-- [ ] Write a failing test: refreshing organization A leaves organization B's
+- [x] Write a failing test: refreshing organization A leaves organization B's
   cached snapshot intact for the same user.
-- [ ] Narrow `_deleteUserSnapshots` from `(userId)` to `(userId, organizationId)`.
+- [x] Narrow `_deleteUserSnapshots` from `(userId)` to `(userId, organizationId)`.
 
 ## Task 3.3 — Explicit blue/green swap (D4)
 
