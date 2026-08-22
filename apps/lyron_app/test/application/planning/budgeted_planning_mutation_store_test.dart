@@ -1234,9 +1234,27 @@ class _RecordingEvictor implements SongCatalogEvictor {
   int calls = 0;
 
   @override
-  Future<int> evictDroppable() {
+  Future<int> evictDroppable({
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) {
     calls += 1;
-    return _delegate.evictDroppable();
+    return _delegate.evictDroppable(
+      protectedUserId: protectedUserId,
+      protectedOrganizationId: protectedOrganizationId,
+    );
+  }
+
+  @override
+  Future<int> evictToBudget({
+    required int targetBytes,
+    required String activeUserId,
+    required String activeOrganizationId,
+  }) {
+    throw UnimplementedError(
+      'not exercised by this test -- only the emergency evictDroppable '
+      'path is under test here',
+    );
   }
 }
 

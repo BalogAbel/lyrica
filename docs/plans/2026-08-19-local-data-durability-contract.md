@@ -379,47 +379,60 @@ Closes F3 and F5. Theme: a write must never destroy more than it replaces.
 **Files:** `song_catalog_controller.dart`,
 `test/application/song_library/song_catalog_controller_test.dart`
 
-- [ ] Write a failing test: `listSongs()` returning `[]` with a non-empty stored
+- [x] Write a failing test: `listSongs()` returning `[]` with a non-empty stored
   snapshot leaves the cache untouched and reports the implausible-empty status.
-- [ ] Write a failing test: two consecutive independent empty resolutions do
+- [x] Write a failing test: two consecutive independent empty resolutions do
   replace the snapshot.
-- [ ] Implement, with an audit record on rejection. Acceptance 4.
+- [x] Implement, with an audit record on rejection. Acceptance 4.
 
 ## Task 3.2 — Organization-scoped snapshot deletion (D4)
 
 **Files:** `apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart`,
 `test/offline/song_catalog/`
 
-- [ ] Write a failing test: refreshing organization A leaves organization B's
+- [x] Write a failing test: refreshing organization A leaves organization B's
   cached snapshot intact for the same user.
-- [ ] Narrow `_deleteUserSnapshots` from `(userId)` to `(userId, organizationId)`.
+- [x] Narrow `_deleteUserSnapshots` from `(userId)` to `(userId, organizationId)`.
 
 ## Task 3.3 — Explicit blue/green swap (D4)
 
 **Files:** `song_catalog_store.dart`, tests alongside
 
-- [ ] Write rows under `snapshotVersion + 1`; reads follow an active-version
-  pointer; the previous version is deleted only after the pointer moves.
-- [ ] Test: a write interrupted before the pointer moves leaves the previous
-  snapshot fully readable.
-- [ ] Note in code why this is redundant on native SQLite and load-bearing on
-  IndexedDB.
+Re-scoped by ADR-035 ("Task 3.3 — blue/green is a documented invariant plus a
+rollback test, not an active-version pointer"): an active-version pointer was
+evaluated and rejected for this phase, since `_replaceActiveSnapshot` already
+runs its delete and its inserts inside one `_database.transaction()`, which is
+already atomic on native SQLite. `snapshotVersion` stays a written-but-
+unfiltered column, unchanged; it is not repurposed into a pointer.
+
+- [x] Note in code why the existing single-transaction delete-then-insert
+  shape is already blue/green-equivalent on native SQLite, and why it is
+  redundant with (not a placeholder for) an active-version pointer, which
+  would only be load-bearing on IndexedDB/web (best-effort, no acceptance
+  test per the spec's Non-Goals). See the comment on `_replaceActiveSnapshot`
+  in `song_catalog_store.dart` and ADR-035.
+- [x] Fault-injection test: a write interrupted after the old snapshot's
+  summaries/sources/row have been deleted but before the new snapshot's
+  insert commits leaves the previous snapshot fully present and
+  byte-identical (`test/offline/song_catalog/song_catalog_store_test.dart`,
+  "DriftSongCatalogStore blue/green replace atomicity (D4, ADR-035 Task 3.3)"
+  group, reusing `test/support/insert_failing_executor.dart`).
 
 ## Task 3.4 — Eviction trigger and proportionality (D6)
 
 **Files:** `local_storage_write_recovery.dart`, `song_catalog_evictor.dart`,
 `test/application/storage/`
 
-- [ ] Write a failing test: a guarded write throwing `SqliteException(BUSY)`
+- [x] Write a failing test: a guarded write throwing `SqliteException(BUSY)`
   performs no eviction and surfaces `LocalStorageWriteFailure`. Acceptance 6.
-- [ ] Write a failing test: eviction under a real pressure signal stops once the
+- [x] Write a failing test: eviction under a real pressure signal stops once the
   size target is met and leaves the active `(userId, organizationId)` intact.
-- [ ] Implement: trigger on `SQLITE_FULL` / `disk I/O error` /
+- [x] Implement: trigger on `SQLITE_FULL` / `disk I/O error` /
   `QuotaExceededError`, or a measured footprint above the 2 GB budget. Evict in
   least-recently-read order to the target only.
-- [ ] Mark affected snapshots `sourcesEvicted` so the next successful refresh
+- [x] Mark affected snapshots `sourcesEvicted` so the next successful refresh
   restores them.
-- [ ] Update ADR-028 with the amended trigger and proportionality rules.
+- [x] Update ADR-028 with the amended trigger and proportionality rules.
 
 ---
 

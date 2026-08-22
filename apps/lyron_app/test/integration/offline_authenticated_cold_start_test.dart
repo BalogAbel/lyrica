@@ -86,6 +86,22 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 const _identity = LastKnownIdentity(
@@ -439,6 +455,8 @@ void main() {
         },
       );
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: gatedStore,
         localDataLifecycle: _lifecycleFor(gatedStore),
         remoteRepository: remoteRepository,
@@ -710,6 +728,15 @@ class _DeleteCountingSongCatalogStore implements SongCatalogStore {
     summaries: summaries,
     sources: sources,
     refreshedAt: refreshedAt,
+  );
+
+  @override
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) => _delegate.resolveEmptySnapshot(
+    userId: userId,
+    organizationId: organizationId,
   );
 
   @override

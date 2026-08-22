@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
@@ -88,6 +89,10 @@ final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
     database: ref.watch(songCatalogDatabaseProvider),
     accountant: ref.watch(catalogStorageAccountantProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+    // D7 (ADR-028 Task 3.4 amendment): the same audit recorder every other
+    // local-data event (purges, storage-write failures) already writes
+    // through -- see auth_providers.dart's localDataEventsRecorderProvider.
+    eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
 });
 
@@ -99,6 +104,7 @@ final localStorageWriteRecoveryProvider = Provider<LocalStorageWriteRecovery>((
 ) {
   return LocalStorageWriteRecovery(
     evictor: ref.watch(songCatalogEvictorProvider),
+    eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
 });
 

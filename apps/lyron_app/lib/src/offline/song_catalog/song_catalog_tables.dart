@@ -6,6 +6,30 @@ class CachedCatalogSnapshots extends Table {
   IntColumn get snapshotVersion => integer()();
   DateTimeColumn get refreshedAt => dateTime()();
 
+  // D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.1): set the first time an incoming empty `listSongs()` response
+  // is rejected against this (non-empty) stored snapshot -- the persisted
+  // "one empty resolution already seen" fact `SongCatalogStore
+  // .resolveEmptySnapshot` checks before deciding whether a second,
+  // independent empty response may finally replace the snapshot. Persisted
+  // on the row (not held in memory) so the confirmation can span cold
+  // starts. Cleared back to null by every accepted `replaceActiveSnapshot`
+  // call -- see that method's companion for why this must be written
+  // explicitly rather than left to `insertOnConflictUpdate`'s column-omission
+  // behavior.
+  DateTimeColumn get pendingEmptyConfirmationAt => dateTime().nullable()();
+
+  // D6 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.4): set when SongCatalogEvictor.evictToBudget evicts this pair's
+  // droppable cached sources under the 2 GB proactive budget trigger --
+  // recoverability marker so a diagnostics view can show which snapshots
+  // are missing sources pending a real refresh. Cleared back to null by
+  // every accepted `replaceActiveSnapshot` call, the same way
+  // pendingEmptyConfirmationAt is -- see that method's companion for why
+  // this must be written explicitly rather than left to
+  // insertOnConflictUpdate's column-omission behavior.
+  DateTimeColumn get sourcesEvictedAt => dateTime().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {userId, organizationId};
 }

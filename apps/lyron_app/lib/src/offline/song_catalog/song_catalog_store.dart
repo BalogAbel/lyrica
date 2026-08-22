@@ -1,10 +1,27 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
+
+/// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): the outcome
+/// of [SongCatalogStore.resolveEmptySnapshot] deciding whether an incoming
+/// empty `listSongs()` response may replace a stored, non-empty snapshot.
+enum EmptySnapshotResolution {
+  /// Either there was nothing non-empty stored to protect, or this is the
+  /// second, independent empty resolution -- the caller should proceed with
+  /// the normal `replaceActiveSnapshot` call.
+  accept,
+
+  /// The stored snapshot is non-empty and this is the first empty response
+  /// seen against it -- the caller must NOT replace the snapshot. The
+  /// pending-confirmation marker has already been set on the stored row.
+  reject,
+}
 
 enum SongSyncStatus {
   pendingCreate,
@@ -130,6 +147,26 @@ abstract interface class SongCatalogStore {
     required List<SongSummary> summaries,
     required List<SongSource> sources,
     required DateTime refreshedAt,
+  });
+
+  /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Task 3.1): decides whether an incoming EMPTY `listSongs()` response may
+  /// replace the stored snapshot for `(userId, organizationId)`. Must be
+  /// called (and its result obeyed) BEFORE calling [replaceActiveSnapshot]
+  /// with empty `summaries`/`sources` -- this method never itself writes the
+  /// snapshot/summaries/sources rows, it only reads the current state and,
+  /// on a rejection, marks the stored snapshot row as having seen one empty
+  /// resolution.
+  ///
+  /// Returns [EmptySnapshotResolution.accept] when there is no stored
+  /// snapshot row, the stored snapshot is already empty, or the stored
+  /// snapshot's `pendingEmptyConfirmationAt` marker is already set (this is
+  /// the second, independent confirmation). Returns
+  /// [EmptySnapshotResolution.reject] -- and sets the marker -- when the
+  /// stored snapshot is non-empty and the marker was not yet set.
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
   });
 
   Future<List<SongSummary>> readActiveSummaries({
@@ -349,6 +386,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
     this._database, {
     this._onStorageFootprintChanged,
     this._writeRecovery,
+    this._evictor,
+    this._accountant,
   });
 
   final SongCatalogDatabase _database;
@@ -362,9 +401,38 @@ class DriftSongCatalogStore implements SongCatalogStore {
   /// how [_onStorageFootprintChanged] is injected.
   final LocalStorageWriteRecovery? _writeRecovery;
 
-  Future<T> _guarded<T>(Future<T> Function() write) {
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Task 3.4): the proactive-budget eviction pair used by
+  /// [replaceActiveSnapshot]'s best-effort pre-write check. Distinct from
+  /// [_writeRecovery]/[SongCatalogEvictor.evictDroppable], which handle the
+  /// reactive "a write just failed" emergency path -- this pair instead
+  /// measures the footprint BEFORE the write and evicts ahead of time when
+  /// it is already over [kCatalogStorageBudgetBytes]. Both `null` in tests
+  /// that construct this store directly; production wiring always supplies
+  /// both, mirroring every other optional dependency on this class.
+  final SongCatalogEvictor? _evictor;
+  final CatalogStorageAccountant? _accountant;
+
+  /// [userId]/[organizationId] name the `(userId, organizationId)` context
+  /// this specific write is for. They are passed through to
+  /// [LocalStorageWriteRecovery.guard] as its protected-context parameters
+  /// (ADR-028, 2026-08-22 amendment) so that, if this write triggers a
+  /// reactive eviction, that eviction excludes THIS context entirely rather
+  /// than risking evicting the very catalog data this write is in the
+  /// middle of touching. Every catalog call site has both in direct scope.
+  Future<T> _guarded<T>(
+    Future<T> Function() write, {
+    required String userId,
+    required String organizationId,
+  }) {
     final recovery = _writeRecovery;
-    return recovery == null ? write() : recovery.guard(write);
+    return recovery == null
+        ? write()
+        : recovery.guard(
+            write,
+            protectedUserId: userId,
+            protectedOrganizationId: organizationId,
+          );
   }
 
   @override
@@ -374,15 +442,62 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required List<SongSummary> summaries,
     required List<SongSource> sources,
     required DateTime refreshedAt,
-  }) => _guarded(
-    () => _replaceActiveSnapshot(
+  }) async {
+    await _guarded(
+      () => _replaceActiveSnapshot(
+        userId: userId,
+        organizationId: organizationId,
+        summaries: summaries,
+        sources: sources,
+        refreshedAt: refreshedAt,
+      ),
       userId: userId,
       organizationId: organizationId,
-      summaries: summaries,
-      sources: sources,
-      refreshedAt: refreshedAt,
-    ),
-  );
+    );
+    // Runs only after the write above has actually succeeded (finding 2,
+    // ADR-028 Task 3.4 amendment): this proactive check's job is "keep
+    // storage bounded going forward," not "clear room for this specific
+    // write" -- that is what the emergency evict-and-retry path inside
+    // [_guarded] already does on an actual failure. Running it before the
+    // write risked evicting another (userId, organizationId) pair's
+    // droppable data for zero benefit whenever the write it was supposedly
+    // making room for failed anyway (a second SQLITE_FULL, a validation
+    // rejection, ...).
+    await _evictIfOverBudgetBestEffort(
+      activeUserId: userId,
+      activeOrganizationId: organizationId,
+    );
+  }
+
+  /// D6: proactive counterpart to the reactive [_guarded]/[_writeRecovery]
+  /// emergency path above. Best-effort -- a failure here (measuring or
+  /// evicting) must never propagate to the caller of [replaceActiveSnapshot],
+  /// which has already succeeded by the time this runs: this check exists
+  /// only to keep ordinary growth from ever reaching that emergency path in
+  /// the first place.
+  Future<void> _evictIfOverBudgetBestEffort({
+    required String activeUserId,
+    required String activeOrganizationId,
+  }) async {
+    final evictor = _evictor;
+    final accountant = _accountant;
+    if (evictor == null || accountant == null) {
+      return;
+    }
+    try {
+      final totalBytes = await accountant.measureCatalogBytes();
+      if (totalBytes > kCatalogStorageBudgetBytes) {
+        await evictor.evictToBudget(
+          targetBytes: totalBytes - kCatalogStorageBudgetBytes,
+          activeUserId: activeUserId,
+          activeOrganizationId: activeOrganizationId,
+        );
+      }
+    } catch (_) {
+      // Best-effort only: the write below still runs regardless, and its
+      // own guard() handles a real storage failure if one occurs.
+    }
+  }
 
   Future<void> _replaceActiveSnapshot({
     required String userId,
@@ -393,6 +508,27 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }) async {
     _validateSnapshot(summaries: summaries, sources: sources);
 
+    // D4 (ADR-035 Task 3.3): this delete-then-insert sequence is already
+    // blue/green-equivalent on native SQLite, by construction of the
+    // enclosing `_database.transaction()` -- not as a placeholder for a
+    // future active-version pointer. Drift commits or rolls back everything
+    // inside one transaction as a single unit: if any statement below throws
+    // (including the insert batch further down), the `_deleteUserSnapshots`
+    // call that already ran is undone along with it, so the previous
+    // snapshot's rows are never visible as partially deleted and the new
+    // rows are never visible as partially inserted -- readers always see
+    // either the fully-old or the fully-new snapshot, never a mix. An
+    // active-version pointer (write under `snapshotVersion + 1`, gate every
+    // read on the pointer, delete the old version only once the pointer
+    // moves) would provide the same guarantee at the cost of migrating all
+    // five read methods in this file to filter on it, and would only be
+    // load-bearing on IndexedDB/web, which the spec's Non-Goals already
+    // treat as best-effort with no acceptance test. See ADR-035
+    // ("Task 3.3 -- blue/green is a documented invariant plus a rollback
+    // test, not an active-version pointer") for the full reasoning; this
+    // atomicity claim is verified, not merely assumed, by the fault-injection
+    // test in song_catalog_store_test.dart's "blue/green replace atomicity
+    // (D4, ADR-035 Task 3.3)" group.
     await _database.transaction(() async {
       final currentSnapshot =
           await (_database.select(_database.cachedCatalogSnapshots)..where(
@@ -404,7 +540,10 @@ class DriftSongCatalogStore implements SongCatalogStore {
 
       final nextSnapshotVersion = (currentSnapshot?.snapshotVersion ?? 0) + 1;
 
-      await _deleteUserSnapshots(userId: userId);
+      await _deleteUserSnapshots(
+        userId: userId,
+        organizationId: organizationId,
+      );
 
       await _database
           .into(_database.cachedCatalogSnapshots)
@@ -414,6 +553,24 @@ class DriftSongCatalogStore implements SongCatalogStore {
               organizationId: organizationId,
               snapshotVersion: nextSnapshotVersion,
               refreshedAt: refreshedAt,
+              // D4 (ADR-035 Task 3.1): insertOnConflictUpdate only updates
+              // the columns present in this companion -- it does NOT reset
+              // omitted columns to null/default on conflict. Every accepted
+              // replace (an ordinary non-empty refresh, or the second
+              // independent empty confirmation) must clear a
+              // pendingEmptyConfirmationAt marker a prior rejection may have
+              // set, or that marker sticks forever and every later single
+              // empty response gets wrongly auto-accepted as "the second
+              // confirmation" -- exactly the bug this column exists to
+              // prevent. See resolveEmptySnapshot below.
+              pendingEmptyConfirmationAt: const Value(null),
+              // D6 (ADR-035 Task 3.4): same reasoning, for the sourcesEvicted
+              // marker -- a successful refresh restores whatever a prior
+              // proactive-budget eviction dropped, so this accepted replace
+              // must clear the marker explicitly or it would stick forever
+              // even after sources are back (SongCatalogEvictor.evictToBudget
+              // sets it).
+              sourcesEvictedAt: const Value(null),
             ),
           );
 
@@ -451,6 +608,74 @@ class DriftSongCatalogStore implements SongCatalogStore {
       });
     });
     _onStorageFootprintChanged?.call();
+  }
+
+  // D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.1): not routed through _guarded/_writeRecovery -- this is not a
+  // growing write. It either performs a pure read (accept, no stored
+  // snapshot or already-empty stored snapshot; or accept, marker already
+  // set) or sets a metadata flag on an existing row (reject), never inserts
+  // new summary/source rows the storage-recovery boundary exists to protect.
+  @override
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {
+    return _database.transaction(() async {
+      final snapshotRow =
+          await (_database.select(_database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .getSingleOrNull();
+      if (snapshotRow == null) {
+        // Nothing non-empty stored to protect -- D4 only guards replacing a
+        // non-empty stored snapshot.
+        return EmptySnapshotResolution.accept;
+      }
+
+      final storedCountExpression = _database.cachedCatalogSummaries.songId
+          .count();
+      final storedCountQuery =
+          _database.selectOnly(_database.cachedCatalogSummaries)
+            ..addColumns([storedCountExpression])
+            ..where(
+              _database.cachedCatalogSummaries.userId.equals(userId) &
+                  _database.cachedCatalogSummaries.organizationId.equals(
+                    organizationId,
+                  ),
+            );
+      final storedCountRow = await storedCountQuery.getSingle();
+      final storedCount = storedCountRow.read(storedCountExpression) ?? 0;
+      if (storedCount == 0) {
+        return EmptySnapshotResolution.accept;
+      }
+
+      if (snapshotRow.pendingEmptyConfirmationAt != null) {
+        // The second, independent confirmation -- the caller proceeds with
+        // the normal replace, which clears the marker (see
+        // _replaceActiveSnapshot's companion above).
+        return EmptySnapshotResolution.accept;
+      }
+
+      // First empty response against a non-empty stored snapshot: reject,
+      // and mark the row so a later, genuinely independent empty response
+      // can be recognised as the second confirmation. A lightweight update,
+      // not a full snapshot rewrite -- summaries/sources/mutations are
+      // untouched.
+      await (_database.update(_database.cachedCatalogSnapshots)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .write(
+            CachedCatalogSnapshotsCompanion(
+              pendingEmptyConfirmationAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+      return EmptySnapshotResolution.reject;
+    });
   }
 
   @override
@@ -619,8 +844,11 @@ class DriftSongCatalogStore implements SongCatalogStore {
   }
 
   @override
-  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) =>
-      _guarded(() => _saveSongMutation(mutation));
+  Future<void> saveSongMutation(SongCatalogMutationDraft mutation) => _guarded(
+    () => _saveSongMutation(mutation),
+    userId: mutation.userId,
+    organizationId: mutation.organizationId,
+  );
 
   Future<void> _saveSongMutation(SongCatalogMutationDraft mutation) async {
     final conflictingRow = await readSongMutationBySlug(
@@ -915,6 +1143,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       source: source,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   // Guarded like the other writes above: reconciling a synced song can
@@ -1024,6 +1254,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       songId: songId,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   Future<int?> _markSongCreateSending({
@@ -1080,6 +1312,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       syncErrorContext: syncErrorContext,
       expectedRevision: expectedRevision,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   Future<int?> _saveSongMutationStatus({
@@ -1175,6 +1409,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
       created: created,
       acceptedVersion: acceptedVersion,
     ),
+    userId: userId,
+    organizationId: organizationId,
   );
 
   // The footprint callback is fired here, AFTER `await
@@ -1696,16 +1932,34 @@ class DriftSongCatalogStore implements SongCatalogStore {
     return deletedRows;
   }
 
-  Future<void> _deleteUserSnapshots({required String userId}) async {
-    await (_database.delete(
-      _database.cachedCatalogSummaries,
-    )..where((table) => table.userId.equals(userId))).go();
-    await (_database.delete(
-      _database.cachedCatalogSources,
-    )..where((table) => table.userId.equals(userId))).go();
-    await (_database.delete(
-      _database.cachedCatalogSnapshots,
-    )..where((table) => table.userId.equals(userId))).go();
+  // F3 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.2): scoped to (userId, organizationId), not just userId -- a
+  // refresh for one organization must never delete another organization's
+  // cached snapshot for the same user. Before this fix, the userId-only
+  // filter meant replaceActiveSnapshot for organization A silently wiped
+  // organization B's summaries/sources/snapshot row as a side effect.
+  Future<void> _deleteUserSnapshots({
+    required String userId,
+    required String organizationId,
+  }) async {
+    await (_database.delete(_database.cachedCatalogSummaries)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedCatalogSources)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
+    await (_database.delete(_database.cachedCatalogSnapshots)..where(
+          (table) =>
+              table.userId.equals(userId) &
+              table.organizationId.equals(organizationId),
+        ))
+        .go();
   }
 
   void _validateSnapshot({

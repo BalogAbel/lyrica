@@ -32,6 +32,35 @@ abstract interface class LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   });
+
+  /// Eviction events, recorded under a distinct non-purge `kind`. Promoted
+  /// onto this interface with Phase 3 (docs/specs/2026-08-19-local-data
+  /// -durability-contract.md); no call site exists yet -- schema/store
+  /// readiness only, per ADR-035's Phase 2 notes.
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  });
+
+  /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// that an incoming empty `listSongs()` response was rejected against a
+  /// non-empty stored snapshot -- a distinct audit `kind`, not a
+  /// [PurgeReason] and not routed through [LocalDataLifecycle]'s purge
+  /// primitives (this is not a purge; the cache is left untouched).
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  });
+
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// that a guarded local write failed with an exception that was NOT
+  /// recognised as a concrete storage-exhaustion signal -- so, per D6's
+  /// narrowed trigger, no eviction ran at all. A distinct audit `kind` from
+  /// [recordEviction]: that method means "an eviction of N rows genuinely
+  /// happened," this one means "no eviction ran, the write simply failed."
+  /// Not a purge -- no [PurgeReason] applies here.
+  Future<void> recordStorageWriteFailure({String? userId});
 }
 
 /// D7: the single gate every local-data purge primitive must be reached

@@ -7,9 +7,18 @@
 // touched by this widening.
 
 import 'package:drift/backends.dart';
+import 'package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart';
 
 /// Thrown by [InsertFailingExecutor] in place of a real quota/IO error.
-class StorageQuotaSimulatedException implements Exception {
+///
+/// Implements [LocalStorageExhaustionSignal]: this class already represents
+/// "genuine storage exhaustion" by name and by every existing test's intent
+/// (LF-T4's evict-and-retry path), so after [LocalStorageWriteRecovery.guard]
+/// narrowed its trigger to concrete exhaustion signals only (D6), this
+/// exception must keep opting into that treatment explicitly rather than
+/// falling through to the new "any other Exception surfaces immediately, no
+/// eviction" branch.
+class StorageQuotaSimulatedException implements LocalStorageExhaustionSignal {
   @override
   String toString() =>
       'StorageQuotaSimulatedException: simulated INSERT failure';

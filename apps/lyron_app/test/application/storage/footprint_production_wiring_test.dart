@@ -366,9 +366,17 @@ class _CountingLocalStorageWriteRecovery extends LocalStorageWriteRecovery {
   final void Function() _onGuard;
 
   @override
-  Future<T> guard<T>(Future<T> Function() write) {
+  Future<T> guard<T>(
+    Future<T> Function() write, {
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) {
     _onGuard();
-    return super.guard(write);
+    return super.guard(
+      write,
+      protectedUserId: protectedUserId,
+      protectedOrganizationId: protectedOrganizationId,
+    );
   }
 }
 

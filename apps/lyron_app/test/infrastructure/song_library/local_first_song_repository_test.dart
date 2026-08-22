@@ -75,33 +75,32 @@ void main() {
       );
     });
 
-    test(
-      'drops the previous organization snapshot when a new one becomes current',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-2',
-          summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
-          sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 13),
-        );
+    test('keeps the previous organization snapshot readable when a new '
+        'organization becomes current (F3, '
+        'local-data-durability-contract)', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-2',
+        summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+        sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 13),
+      );
 
-        expect(
-          await repository.listSongs(userId: 'user-1', organizationId: 'org-1'),
-          isEmpty,
-        );
-        expect(
-          await repository.listSongs(userId: 'user-1', organizationId: 'org-2'),
-          const [SongSummary(id: 'song-2', title: 'Beta')],
-        );
-      },
-    );
+      expect(
+        await repository.listSongs(userId: 'user-1', organizationId: 'org-1'),
+        const [SongSummary(id: 'song-1', title: 'Alpha')],
+      );
+      expect(
+        await repository.listSongs(userId: 'user-1', organizationId: 'org-2'),
+        const [SongSummary(id: 'song-2', title: 'Beta')],
+      );
+    });
   });
 }

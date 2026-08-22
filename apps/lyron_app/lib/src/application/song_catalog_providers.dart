@@ -23,6 +23,10 @@ final songCatalogStoreProvider = Provider<SongCatalogStore>((ref) {
     ref.watch(songCatalogDatabaseProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
     writeRecovery: ref.watch(localStorageWriteRecoveryProvider),
+    // D6 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+    // Task 3.4): the proactive 2 GB budget check, live in production.
+    evictor: ref.watch(songCatalogEvictorProvider),
+    accountant: ref.watch(catalogStorageAccountantProvider),
   );
 });
 
@@ -78,6 +82,13 @@ final songCatalogControllerProvider =
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) => ref
+                .read(localDataEventsRecorderProvider)
+                .recordRejectedEmptySnapshot(
+                  userId: userId,
+                  organizationId: organizationId,
+                ),
         onVerifiedEmptyMembership: ({required userId}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
             .handleVerifiedEmptyMembership(userId: userId),

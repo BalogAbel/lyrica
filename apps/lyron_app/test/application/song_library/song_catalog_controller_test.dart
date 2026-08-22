@@ -51,6 +51,8 @@ void main() {
       'first successful refresh creates an active cached snapshot',
       () async {
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -88,6 +90,8 @@ void main() {
 
     test('keeps the previous active snapshot when refresh fails', () async {
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -124,6 +128,8 @@ void main() {
       'treats a backend unavailable refresh failure as offline while keeping the cached catalog readable',
       () async {
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -169,6 +175,8 @@ void main() {
         );
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -215,6 +223,8 @@ void main() {
         );
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -268,6 +278,8 @@ void main() {
         organizationReader = () async => null;
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -328,6 +340,8 @@ void main() {
         );
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -361,6 +375,8 @@ void main() {
       () async {
         final organizationReaderState = _MutableOrganizationReader('org-1');
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -415,6 +431,8 @@ void main() {
         var sessionVerifierCalls = 0;
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -452,6 +470,8 @@ void main() {
         final foregroundState = _TestAppForegroundState();
         var organizationCalls = 0;
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -493,6 +513,8 @@ void main() {
         AppAuthSession? session;
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
@@ -536,6 +558,8 @@ void main() {
 
     test('explicit sign-out deletes the cached catalog', () async {
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -573,6 +597,8 @@ void main() {
         );
 
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -605,6 +631,8 @@ void main() {
         final delayedRepository = _DelayedSongRepository();
         final foregroundState = _TestAppForegroundState();
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
@@ -644,6 +672,8 @@ void main() {
           final delayedRepository = _DelayedSongRepository();
           final foregroundState = _TestAppForegroundState();
           final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
             store: store,
             localDataLifecycle: lifecycle,
             remoteRepository: delayedRepository,
@@ -685,6 +715,8 @@ void main() {
       fakeAsync((async) {
         final foregroundState = _TestAppForegroundState();
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -727,6 +759,8 @@ void main() {
 
       fakeAsync((async) {
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -752,6 +786,8 @@ void main() {
         fakeAsync((async) {
           final foregroundState = _TestAppForegroundState(isForeground: false);
           final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
             store: store,
             localDataLifecycle: lifecycle,
             remoteRepository: remoteRepository,
@@ -793,6 +829,8 @@ void main() {
           email: 'demo@lyron.local',
         );
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: remoteRepository,
@@ -829,6 +867,8 @@ void main() {
             email: 'demo@lyron.local',
           );
           final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
             store: store,
             localDataLifecycle: lifecycle,
             remoteRepository: delayedRepository,
@@ -874,6 +914,8 @@ void main() {
         'dispatched under a real session before the first settles', () async {
       AppAuthSession? session;
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -904,6 +946,8 @@ void main() {
         'flight still coalesce into a single remote call', () async {
       final delayedRepository = _DelayedSongRepository();
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: delayedRepository,
@@ -939,6 +983,8 @@ void main() {
           email: 'demo@lyron.local',
         );
         final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: lifecycle,
           remoteRepository: delayedRepository,
@@ -993,6 +1039,8 @@ void main() {
       remoteRepository.listSongsError = StateError('network unreachable');
 
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -1031,6 +1079,8 @@ void main() {
     test('handleOfflineAuthenticated is a no-op when no local snapshot exists '
         'for the last known identity', () async {
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -1052,6 +1102,8 @@ void main() {
     test('handleOfflineAuthenticated never clobbers an already-established '
         'context', () async {
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: lifecycle,
         remoteRepository: remoteRepository,
@@ -1075,6 +1127,217 @@ void main() {
       );
     });
   });
+
+  group('SongCatalogController implausible-empty snapshot handling (D4, '
+      'local-data-durability-contract)', () {
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+    late _ConfigurableSongRepository remoteRepository;
+    late LocalDataLifecycle lifecycle;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+      remoteRepository = _ConfigurableSongRepository();
+      lifecycle = LocalDataLifecycle(
+        songCatalogStore: store,
+        planningLocalStore: _NoopPlanningLocalStore(),
+        identityStore: _NoopLastKnownIdentityStore(),
+        noteLastKnownIdentity: (_) {},
+        eventsRecorder: _NoopLocalDataEventsRecorder(),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('an empty listSongs response against a non-empty cached snapshot is '
+        'rejected as implausible and leaves the cache untouched', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+      );
+
+      await controller.refreshCatalog();
+
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+      expect(controller.state.hasCachedCatalog, isTrue);
+      expect(controller.state.connectionStatus, CatalogConnectionStatus.online);
+      expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        const [SongSummary(id: 'song-1', title: 'Alpha')],
+      );
+    });
+
+    test('invokes the implausible-empty callback with the refreshed identity '
+        'on rejection', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+      final calls = <({String userId, String organizationId})>[];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              calls.add((userId: userId, organizationId: organizationId));
+            },
+      );
+
+      await controller.refreshCatalog();
+
+      expect(calls, [(userId: 'user-1', organizationId: 'org-1')]);
+    });
+
+    test('a throwing implausible-empty callback does not prevent the refresh '
+        'from completing', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              throw StateError('boom');
+            },
+      );
+
+      await controller.refreshCatalog();
+
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+    });
+
+    test('two consecutive independent empty resolutions replace the cached '
+        'snapshot with the empty result', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+      );
+
+      await controller.refreshCatalog();
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+
+      await controller.refreshCatalog();
+
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    });
+
+    test('a genuinely empty catalog (never cached non-empty) refreshes '
+        'normally on the very first response', () async {
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              fail('must not be called when nothing non-empty is cached');
+            },
+      );
+
+      await controller.refreshCatalog();
+
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+    });
+  });
+}
+
+class _ConfigurableSongRepository implements SongRepository {
+  List<SongSummary> songs = const [SongSummary(id: 'song-1', title: 'Alpha')];
+  Map<String, SongSource> sources = const {
+    'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
+  };
+  int listSongsCalls = 0;
+
+  @override
+  Future<List<SongSummary>> listSongs() async {
+    listSongsCalls += 1;
+    return songs;
+  }
+
+  @override
+  Future<SongSource> getSongSource(String id) async => sources[id]!;
 }
 
 class _FakeSongRepository implements SongRepository {
@@ -1233,6 +1496,22 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 class _TestAppForegroundState implements AppForegroundState {

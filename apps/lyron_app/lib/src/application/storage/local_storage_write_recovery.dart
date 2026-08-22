@@ -1,6 +1,11 @@
+import 'dart:async';
+
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
+import 'package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
+import 'package:sqlite3/common.dart' show SqliteException;
 
 /// The single storage-recovery boundary shared by every local write that can
 /// grow stored bytes (ADR-028; decision D1 of
@@ -27,7 +32,10 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 ///    the ORIGINAL write error is surfaced as the failure's cause (with
 ///    `bytesFreedByEviction: 0`) -- that is what the caller actually needs
 ///    to see, since the eviction failure is a secondary symptom, plausibly
-///    of the same underlying condition (disk full, quota).
+///    of the same underlying condition (disk full, quota). See [guard]'s own
+///    `protectedUserId`/`protectedOrganizationId` parameters (ADR-028,
+///    2026-08-22 amendment) for how a catalog call site's active context is
+///    excluded from this eviction.
 ///
 /// [SongCatalogEvictor.evictDroppable] deletes only cached song sources via a
 /// raw SQL statement against [SongCatalogDatabase] -- it never goes through
@@ -36,19 +44,62 @@ import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 /// write this boundary protects, and shrinking writes (deletes) are never
 /// guarded in the first place (see the call sites for why).
 class LocalStorageWriteRecovery {
-  const LocalStorageWriteRecovery({required this._evictor});
+  const LocalStorageWriteRecovery({
+    required this._evictor,
+    this._eventsRecorder,
+  });
 
   final SongCatalogEvictor _evictor;
 
-  Future<T> guard<T>(Future<T> Function() write) async {
+  /// Best-effort audit dependency (ADR-035): `null` in tests that construct
+  /// this class directly, always supplied in production wiring. A failure
+  /// writing the audit record must never change the shape of the failure
+  /// this method surfaces -- see [_recordNoEvictionFailure].
+  final LocalDataEventsRecorder? _eventsRecorder;
+
+  /// [protectedUserId]/[protectedOrganizationId] (D6 of
+  /// `docs/specs/2026-08-19-local-data-durability-contract.md`, ADR-028's
+  /// 2026-08-22 amendment closing the reactive-path gap): when both are
+  /// supplied, they name the `(userId, organizationId)` context the caller
+  /// is actively writing to. On exhaustion, that exact context is EXCLUDED
+  /// entirely from the eviction [_evictor] performs -- not merely touched
+  /// last -- so the retry below can never succeed by having silently
+  /// destroyed the very catalog data the caller is in the middle of
+  /// refreshing. Only catalog call sites (`song_catalog_store.dart`) supply
+  /// these; planning call sites omit them (`null`), because a generic
+  /// planning write has no catalog `(userId, organizationId)` context to
+  /// protect with -- for those, eviction remains exactly as unscoped as it
+  /// was before this amendment.
+  ///
+  /// If excluding the active context leaves nothing else droppable to free
+  /// (e.g. it is the only droppable content on the whole device), the retry
+  /// below fails identically to the first attempt and this method surfaces
+  /// a typed [LocalStorageWriteFailure] -- the correct, honest outcome:
+  /// silently destroying the active context's own just-synced catalog to
+  /// force the write to succeed would violate this phase's guiding
+  /// principle that no local write failure may remove or hide the catalog.
+  Future<T> guard<T>(
+    Future<T> Function() write, {
+    String? protectedUserId,
+    String? protectedOrganizationId,
+  }) async {
     try {
       return await write();
     } on LocalStorageDomainRejection {
       rethrow;
+    } on Error {
+      rethrow;
     } on Exception catch (error) {
+      if (!_isExhaustionSignal(error)) {
+        unawaited(_recordNoEvictionFailure(error));
+        throw LocalStorageWriteFailure(cause: error, bytesFreedByEviction: 0);
+      }
       final int freed;
       try {
-        freed = await _evictor.evictDroppable();
+        freed = await _evictor.evictDroppable(
+          protectedUserId: protectedUserId,
+          protectedOrganizationId: protectedOrganizationId,
+        );
       } on Exception {
         throw LocalStorageWriteFailure(cause: error, bytesFreedByEviction: 0);
       }
@@ -60,6 +111,44 @@ class LocalStorageWriteRecovery {
           bytesFreedByEviction: freed,
         );
       }
+    }
+  }
+
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md): only a
+  /// concrete exhaustion signal earns the evict-and-retry treatment. A real
+  /// [SqliteException] is recognised structurally by result code --
+  /// `SQLITE_FULL` (13) or `SQLITE_IOERR`'s primary code (10, which also
+  /// covers every extended `IOERR_*` code via [SqliteException.resultCode]'s
+  /// masking) -- rather than by a marker interface, since this codebase
+  /// cannot retrofit an interface onto a third-party type.
+  /// `SQLITE_BUSY` (primary code 5) deliberately does NOT match: it means a
+  /// transient lock contention that would fail identically on immediate
+  /// retry, not that storage is actually exhausted (Acceptance 6).
+  bool _isExhaustionSignal(Exception error) {
+    if (error is LocalStorageExhaustionSignal) {
+      return true;
+    }
+    if (error is SqliteException) {
+      return error.resultCode == 13 || error.resultCode == 10;
+    }
+    return false;
+  }
+
+  /// Best-effort: writes the "no eviction ran" audit record without letting
+  /// a failure here change the shape of the [LocalStorageWriteFailure]
+  /// already being thrown by the caller -- mirroring [LocalDataLifecycle]'s
+  /// own "an audit-write failure must never masquerade as the real failure
+  /// changing shape" policy (ADR-035).
+  Future<void> _recordNoEvictionFailure(Exception error) async {
+    final recorder = _eventsRecorder;
+    if (recorder == null) {
+      return;
+    }
+    try {
+      await recorder.recordStorageWriteFailure();
+    } catch (_) {
+      // Best-effort only: the write's own failure (surfaced by guard's
+      // caller) is what matters, not whether this audit record landed.
     }
   }
 }

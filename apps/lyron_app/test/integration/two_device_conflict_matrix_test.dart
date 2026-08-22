@@ -57,6 +57,22 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');

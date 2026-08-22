@@ -1118,6 +1118,8 @@ class _RecordingPlanningSyncController extends PlanningSyncController {
 class _NoopSongCatalogController extends SongCatalogController {
   _NoopSongCatalogController(SongCatalogDatabase database)
     : super(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: DriftSongCatalogStore(database),
         localDataLifecycle: LocalDataLifecycle(
           songCatalogStore: DriftSongCatalogStore(database),
@@ -1161,6 +1163,22 @@ class _NoopLocalDataEventsRecorderForLifecycle
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {

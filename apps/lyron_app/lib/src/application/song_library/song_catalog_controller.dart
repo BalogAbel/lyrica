@@ -36,6 +36,7 @@ class SongCatalogController extends ChangeNotifier {
     required this._authSessionReader,
     required this._organizationReader,
     required this._sessionVerifier,
+    required this._onImplausibleEmptySnapshot,
     this._onVerifiedEmptyMembership,
     this._lastKnownIdentityReader,
     AppForegroundState? foregroundState,
@@ -54,6 +55,17 @@ class SongCatalogController extends ChangeNotifier {
   final AppAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;
   final CatalogSessionVerifier _sessionVerifier;
+  // D4 (docs/specs/2026-08-19-local-data-durability-contract.md): best-effort
+  // audit hook invoked when an incoming empty listSongs() response is
+  // rejected against a non-empty cached snapshot (SongCatalogStore
+  // .resolveEmptySnapshot returned reject). A failure here must never break
+  // the refresh -- see the try/catch around its call site in
+  // _refreshCatalog.
+  final Future<void> Function({
+    required String userId,
+    required String organizationId,
+  })
+  _onImplausibleEmptySnapshot;
   final Future<void> Function({required String userId})?
   _onVerifiedEmptyMembership;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
@@ -300,6 +312,51 @@ class SongCatalogController extends ChangeNotifier {
 
     try {
       final summaries = await _remoteRepository.listSongs();
+      if (summaries.isEmpty) {
+        final resolution = await _store.resolveEmptySnapshot(
+          userId: context.userId,
+          organizationId: context.organizationId,
+        );
+        if (_isStale(generation)) {
+          return;
+        }
+        if (resolution == EmptySnapshotResolution.reject) {
+          try {
+            await _onImplausibleEmptySnapshot(
+              userId: context.userId,
+              organizationId: context.organizationId,
+            );
+          } catch (error, stackTrace) {
+            FlutterError.reportError(
+              FlutterErrorDetails(
+                exception: error,
+                stack: stackTrace,
+                library: 'SongCatalogController',
+                context: ErrorDescription(
+                  'failed to record an implausible-empty snapshot rejection '
+                  '-- the rejection itself already applied and is not '
+                  'affected',
+                ),
+              ),
+            );
+          }
+          if (_isStale(generation)) {
+            return;
+          }
+          _setStateIfCurrent(
+            generation,
+            _state.copyWith(
+              context: context,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.implausibleEmpty,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: hasCachedCatalog,
+            ),
+          );
+          return;
+        }
+      }
+
       final sources = await Future.wait(
         summaries.map((summary) => _remoteRepository.getSongSource(summary.id)),
       );
