@@ -221,14 +221,62 @@ implementation of the policy this section describes:
    narrowing: an `Error` subclass (`ArgumentError`, `StateError`,
    `TypeError`, ...) signals a programming defect, never storage pressure,
    and must never be misreported as such;
-4. on any other `Exception`, evict droppable catalog sources once via the
-   injected `SongCatalogEvictor`, retry `write` once, and wrap a second
-   failure as `LocalStorageWriteFailure`. If eviction itself throws, the
-   write is never retried and the **original** write error is surfaced as
-   the failure's cause with `bytesFreedByEviction: 0` — unchanged from the
-   original narrowing: the caller needs to act on the write failure, and
-   the eviction failure is a secondary symptom, plausibly of the same
-   underlying condition.
+4. on any other `Exception` that is a recognised storage-exhaustion signal
+   (see the 2026-08-22 amendment below), evict droppable catalog sources
+   once via the injected `SongCatalogEvictor`, retry `write` once, and wrap
+   a second failure as `LocalStorageWriteFailure`. If eviction itself
+   throws, the write is never retried and the **original** write error is
+   surfaced as the failure's cause with `bytesFreedByEviction: 0` —
+   unchanged from the original narrowing: the caller needs to act on the
+   write failure, and the eviction failure is a secondary symptom, plausibly
+   of the same underlying condition;
+5. on any other `Exception` that is NOT a recognised exhaustion signal
+   (2026-08-22 amendment), evict nothing and surface `LocalStorageWriteFailure`
+   immediately, with a best-effort `local_data_events` audit record.
+
+**Amendment, 2026-08-22 (D6 of
+`docs/specs/2026-08-19-local-data-durability-contract.md`, ADR-035 Task
+3.4).** Step 4 above originally read "on any other `Exception`" with no
+further qualification — every non-`Error`, non-domain-rejection exception,
+including a transient `SqliteException(SQLITE_BUSY)` that would fail
+identically on immediate retry, was treated as storage pressure and evicted
+droppable catalog sources for no benefit (spec F5). `guard` now narrows step
+4 to a concrete exhaustion signal, recognised one of two ways:
+
+- a real `SqliteException` (`package:sqlite3`) whose `resultCode` (the
+  primary result code, i.e. `extendedResultCode & 0xFF`) is `13`
+  (`SQLITE_FULL`) or `10` (`SQLITE_IOERR`, which also covers every extended
+  `IOERR_*` code via that same masking) — recognised structurally, not via a
+  marker interface, since `SqliteException` is a third-party type this
+  codebase cannot retrofit an interface onto;
+- any exception implementing the new
+  `LocalStorageExhaustionSignal` marker interface
+  (`application/storage/local_storage_exhaustion_signal.dart`), mirroring
+  `LocalStorageDomainRejection`'s existing pattern — for a synthetic or
+  web-side exception (e.g. a simulated `QuotaExceededError`) that has no
+  SQLite result code to inspect.
+
+`SqliteException(SQLITE_BUSY)` (primary result code `5`) deliberately does
+NOT match either path (Acceptance 6): it signals transient lock contention,
+not exhaustion, and retrying immediately without eviction is the correct
+recovery — evicting for it would destroy cached data for nothing and still
+not address the actual contention. Every exception this codebase already
+relied on evicting for genuinely represents exhaustion by construction
+(`StorageQuotaSimulatedException`, used throughout the adversarial fault-
+injection tests, now explicitly implements the new marker), so this
+amendment closes a real gap without narrowing any existing, intentional
+eviction path.
+
+A non-exhaustion exception now also writes a best-effort
+`local_data_events` audit record (`kind:
+'storage-write-failure-no-eviction'`) via a new, optional
+`LocalDataEventsRecorder` dependency on `LocalStorageWriteRecovery` — distinct
+from `recordEviction`, which means an eviction of N rows genuinely happened;
+this new kind means no eviction ran at all. The audit write follows the same
+"never let the audit path change the shape of the real failure" policy
+`LocalDataLifecycle` already established: wrapped in its own try/catch,
+never rethrown, and dispatched via `unawaited` rather than blocking the
+throw.
 
 It is injected into the Drift stores the same way `onStorageFootprintChanged`
 already is (D7): an optional, nullable constructor parameter, always
@@ -528,23 +576,85 @@ purpose is to make growth **bounded and observable**, and to give a signal
 before the storage substrate fails, not to ration everyday work. The total
 thresholds are heuristics on native and explicitly unverified on web (D5).
 
-**Rejected: proactive threshold eviction.** An earlier draft of this policy
-also had `LocalStorageMonitor` trigger `SongCatalogEvictor.evictDroppable()`
-whenever a measurement crossed `totalCriticalBytes`, on the theory that
-eviction should run before a write ever has the chance to fail. No production
-path implements that second trigger, and this ADR now describes the policy
-that actually ships: `LocalStorageMonitor.measure()` is read-only and never
-calls the evictor. `LocalStorageBudget.classify()` only classifies a
-footprint into `ok` / `warning` / `critical` for the sync overview to
-display; classification has no side effect. Eviction happens exactly once,
-from inside `BudgetedPlanningMutationStore._guardedWrite`'s failure branch,
-regardless of what the last measured pressure was. A store that is measured
-critical but whose writes keep succeeding is never evicted; a store that is
-measured `ok` but whose write throws (a real disk/quota failure can occur
-before the measured total looks large, since accounting is a proxy, not the
-platform's own quota signal) is evicted immediately. Proactive eviction
-remains a real option for a future slice, but adding it now would be a new
-behavior change, not a documentation correction.
+**Rejected: proactive threshold eviction — superseded 2026-08-22.** An
+earlier draft of this policy also had `LocalStorageMonitor` trigger
+`SongCatalogEvictor.evictDroppable()` whenever a measurement crossed
+`totalCriticalBytes`, on the theory that eviction should run before a write
+ever has the chance to fail. At the time this section was written, no
+production path implemented that second trigger: `LocalStorageMonitor
+.measure()` was read-only, `LocalStorageBudget.classify()` had no side
+effect, and eviction happened exactly once, from inside the shared
+`LocalStorageWriteRecovery.guard` failure branch, regardless of what the
+last measured pressure was.
+
+**This is now out of date.** `docs/specs/2026-08-19-local-data-durability
+-contract.md` D6 explicitly requires a second, measurement-triggered path:
+"a concrete storage-exhaustion signal ... **or** a measured footprint above
+the budget." `DriftSongCatalogStore.replaceActiveSnapshot` now performs a
+best-effort pre-write check (`_evictIfOverBudgetBestEffort`): it measures
+the total catalog footprint via `CatalogStorageAccountant.measureCatalogBytes`
+and, if it exceeds a new, catalog-specific hard-eviction ceiling —
+`kCatalogStorageBudgetBytes`, 2 GB (`song_catalog_evictor.dart`) — calls
+`SongCatalogEvictor.evictToBudget` (below) to proactively free the
+overage before the write is attempted.
+
+This new 2 GB threshold is deliberately **separate** from `totalWarnBytes`
+(128 MiB) / `totalCriticalBytes` (192 MiB) above, which remain exactly what
+this section originally described: display-only inputs to
+`LocalStorageBudget.classify()` for the sync overview's pressure badge,
+carrying no side effect and never triggering eviction on their own.
+Conflating the two would mean either raising the tiny warn/critical
+thresholds until they stop serving their display purpose, or silently
+making the display thresholds start evicting data — neither is what this
+new threshold is for. The reactive `LocalStorageWriteRecovery.guard` path
+described in D8 is unchanged and remains the *only* other eviction trigger
+in the app; this proactive check is deliberately a separate mechanism (see
+`DriftSongCatalogStore._evictIfOverBudgetBestEffort`), not a widening of
+`guard`'s own trigger, since `guard` is a generic boundary shared with
+planning writes that has no catalog-specific `(userId, organizationId)`
+context to reason about.
+
+The proactive check is best-effort by design: if measuring or evicting
+throws, the failure is swallowed and the write proceeds regardless —
+`guard`'s own reactive recovery still applies if the write itself then
+fails at the storage layer. This mirrors "a store that is measured critical
+but whose writes keep succeeding is never (reactively) evicted" from the
+original text: the addition is a second, independent trigger, not a
+replacement for the first.
+
+**`SongCatalogEvictor.evictToBudget` — proportionality is a cheap ordering
+proxy, not true LRU.** Unlike `evictDroppable` (unchanged: evicts every
+droppable source immediately, for the reactive "a write just failed and
+must succeed on retry" path), `evictToBudget` evicts only until its
+`targetBytes` argument's worth of droppable content has been freed, walking
+candidate `(userId, organizationId)` pairs in a specific order: every
+pair other than the caller's active one is considered first, ordered by
+oldest `CachedCatalogSnapshots.refreshedAt` first, and the active pair is
+touched last — only if freeing every other pair's droppable content still
+is not enough. There is no `lastReadAt` (or equivalent) column anywhere in
+the catalog schema; building real least-recently-*read* tracking would mean
+a database write on every song read, a permanent cost on the app's hottest
+path, to serve a budget D6 sizes specifically to stay unreached in normal
+use. This tradeoff was put to the product owner directly rather than
+decided unilaterally — see ADR-035's "Task 3.4 — eviction ordering is a
+cost-free proxy, not true LRU" section for the full reasoning; the
+conclusion, **chosen: a cheap ordering proxy**, reuses only columns that
+already exist and are already written on every refresh, so it adds no new
+write path and no per-read cost while still approximating D6's
+"least-recently-read" intent.
+
+**Recoverability: `sourcesEvictedAt`.** Each `(userId, organizationId)` pair
+`evictToBudget` actually evicts from has its `CachedCatalogSnapshots` row
+marked with a new nullable `sourcesEvictedAt` timestamp (schema v4 → v5),
+inside the same transaction as the source deletion so a crash between the
+two is not possible. This is D6's Recoverability rule made concrete: a
+future diagnostics view can show which snapshots are missing sources
+pending a real refresh. The marker is cleared back to `null` by
+`_replaceActiveSnapshot`'s companion on every accepted replace, the exact
+same way the existing `pendingEmptyConfirmationAt` marker (ADR-035 Task 3.1)
+already is — a successful online refresh is what "restores what was
+dropped" (D6) in practice, and an accepted replace is what a successful
+refresh always performs.
 
 ### D7 — Committed-storage revision seam
 
@@ -770,6 +880,47 @@ a focused emission test — is guarded separately by
   invoke it. This test fails against the pre-fix code, which built its own
   `LocalStorageWriteRecovery` internally and never called the provider's
   instance at all — the guard count stays 0.
+- `test/application/storage/local_storage_write_recovery_test.dart`
+  (2026-08-22, D6/ADR-035 Task 3.4) — the narrowed trigger: a real
+  `SqliteException(SQLITE_FULL)` still evicts and retries exactly as a plain
+  `Exception` used to; a `SqliteException(SQLITE_BUSY)` (Acceptance 6)
+  performs no eviction, no retry, and surfaces `LocalStorageWriteFailure`
+  immediately (asserted via a counting fake evictor, not just "the write
+  wasn't retried"); a plain `Exception` that is not a recognised exhaustion
+  signal behaves the same way; and a best-effort
+  `LocalDataEventsRecorder.recordStorageWriteFailure` call happens for a
+  non-exhaustion failure, with a throwing recorder confirmed not to change
+  the surfaced failure's shape.
+- `test/application/storage/song_catalog_evictor_test.dart`
+  (2026-08-22, `evictToBudget` group) — seeding three non-active
+  `(userId, organizationId)` pairs plus the active pair, a target sized to
+  require exactly two of the three non-active pairs: the two oldest
+  (by `refreshedAt`) are evicted and marked `sourcesEvictedAt`, the third
+  (not needed to reach the target) is left completely untouched, and the
+  active pair — deliberately seeded with the OLDEST `refreshedAt` of all —
+  is untouched too, proving active-last overrides recency. A second test
+  confirms the active pair IS evicted once every other pair's droppable
+  content together still is not enough (D6's "touch last, not never"). A
+  third confirms a pair with zero droppable bytes (fully protected by a
+  pending mutation) is skipped without marking `sourcesEvictedAt`. The same
+  file's `CatalogStorageAccountant.measureDroppableBytesFor` group confirms
+  the scoped measurement excludes both protected sources and other pairs'
+  sources.
+- `test/offline/song_catalog/song_catalog_store_test.dart`
+  (2026-08-22, `DriftSongCatalogStore proactive budget eviction` group) —
+  a fake accountant/evictor pair confirm `replaceActiveSnapshot` calls
+  `evictToBudget` with `targetBytes: totalBytes - kCatalogStorageBudgetBytes`
+  and the call's own `(userId, organizationId)` before the guarded write
+  proceeds when the measured footprint exceeds the budget; confirm it is
+  never called when the footprint is at or under budget; confirm the
+  existing no-evictor/no-accountant fixtures keep compiling and behaving
+  unchanged; and confirm a measurement or eviction failure is swallowed —
+  the write still proceeds either way.
+- `test/offline/adversarial/song_catalog_migration_test.dart`
+  (2026-08-22, schema v4 → v5) — a hand-built pre-migration v4 database
+  gains `sourcesEvictedAt` on upgrade, keeps its populated summary/source/
+  mutation rows intact, and the migrated column is confirmed usable (not
+  just present) by a subsequent write.
 
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
@@ -822,3 +973,26 @@ adversarial suite.
   evictor, so D8's "one shared boundary" claim is now actually true for the
   planning mutation path — before this commit it was concretely false for
   that path, not merely narrower than stated (M1).
+- (2026-08-22 amendment, D6/ADR-035 Task 3.4) `LocalStorageWriteRecovery
+  .guard`'s reactive trigger is narrowed from "any Exception" to a concrete
+  storage-exhaustion signal (a real `SqliteException` with `SQLITE_FULL`/
+  `SQLITE_IOERR`, or a caller-declared `LocalStorageExhaustionSignal`). A
+  transient `SqliteException(SQLITE_BUSY)` no longer triggers eviction — it
+  surfaces `LocalStorageWriteFailure` immediately, since retrying without
+  eviction would have succeeded or failed identically regardless (spec F5,
+  Acceptance 6). A non-exhaustion failure now also writes a best-effort
+  `local_data_events` audit record under a new
+  `storage-write-failure-no-eviction` kind.
+- (2026-08-22 amendment, D6/ADR-035 Task 3.4) The "Rejected: proactive
+  threshold eviction" text above is superseded: `DriftSongCatalogStore
+  .replaceActiveSnapshot` now performs a best-effort proactive check against
+  a new, catalog-specific 2 GB hard-eviction ceiling
+  (`kCatalogStorageBudgetBytes`), separate from and never conflated with the
+  existing display-only `totalWarnBytes`/`totalCriticalBytes`. Over budget,
+  it calls the new `SongCatalogEvictor.evictToBudget`, which evicts in a
+  cheap non-active-first, oldest-`refreshedAt`-first order, stopping once
+  its target is met and touching the active `(userId, organizationId)` last.
+  Each evicted pair's snapshot row is marked with a new `sourcesEvictedAt`
+  timestamp (schema v4 → v5), cleared on the next accepted
+  `replaceActiveSnapshot` the same way `pendingEmptyConfirmationAt` already
+  is.

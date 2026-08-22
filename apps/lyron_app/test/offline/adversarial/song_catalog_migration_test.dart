@@ -356,4 +356,171 @@ void main() {
       openDb = null;
     },
   );
+
+  test(
+    'an existing pre-migration (v4) catalog database gains sourcesEvictedAt '
+    'on upgrade and keeps its populated rows intact (D6, '
+    'local-data-durability-contract Task 3.4)',
+    () async {
+      final file = await createRelaunchDbFile('catalog-migration-v4-v5');
+      SongCatalogDatabase? openDb;
+      addTearDown(() async {
+        await openDb?.close();
+        if (await file.parent.exists()) {
+          await file.parent.delete(recursive: true);
+        }
+      });
+
+      // Build a genuine pre-migration v4 database by hand, via raw sqlite3
+      // (not through SongCatalogDatabase, which would create the CURRENT --
+      // post-migration -- schema directly via onCreate and never touch
+      // onUpgrade at all). This is the v4 shape: same as v3 plus
+      // cached_catalog_snapshots.pending_empty_confirmation_at, before it
+      // gained sources_evicted_at.
+      final rawDb = sqlite3.sqlite3.open(file.path);
+      rawDb.execute('''
+        CREATE TABLE "cached_catalog_snapshots" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "refreshed_at" INTEGER NOT NULL,
+          "pending_empty_confirmation_at" INTEGER NULL,
+          PRIMARY KEY ("user_id", "organization_id")
+        );
+        CREATE TABLE "cached_catalog_summaries" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "song_id" TEXT NOT NULL,
+          "slug" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "version" INTEGER NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id", "song_id")
+        );
+        CREATE TABLE "cached_catalog_sources" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "song_id" TEXT NOT NULL,
+          "source" TEXT NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id", "song_id")
+        );
+        CREATE TABLE "cached_catalog_song_mutations" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "song_id" TEXT NOT NULL,
+          "slug" TEXT NOT NULL,
+          "title" TEXT NOT NULL,
+          "source" TEXT NOT NULL,
+          "version" INTEGER NOT NULL,
+          "sync_status" TEXT NOT NULL,
+          "base_version" INTEGER NULL,
+          "sync_error_context" TEXT NULL,
+          "local_revision" INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY ("user_id", "organization_id", "song_id"),
+          UNIQUE ("user_id", "organization_id", "slug")
+        );
+      ''');
+      rawDb.execute('''
+        INSERT INTO cached_catalog_snapshots (
+          user_id, organization_id, snapshot_version, refreshed_at
+        ) VALUES (
+          'user-1', 'org-1', 4, 1774000000000
+        );
+      ''');
+      rawDb.execute('''
+        INSERT INTO cached_catalog_summaries (
+          user_id, organization_id, snapshot_version, song_id, slug, title,
+          version
+        ) VALUES (
+          'user-1', 'org-1', 4, 'song-pre-v5', 'pre-v5-song',
+          'Pre-v5 Song', 1
+        );
+      ''');
+      rawDb.execute('''
+        INSERT INTO cached_catalog_sources (
+          user_id, organization_id, snapshot_version, song_id, source
+        ) VALUES (
+          'user-1', 'org-1', 4, 'song-pre-v5', '{title: Pre-v5 Song}'
+        );
+      ''');
+      rawDb.execute('''
+        INSERT INTO cached_catalog_song_mutations (
+          user_id, organization_id, song_id, slug, title, source,
+          version, sync_status, local_revision
+        ) VALUES (
+          'user-1', 'org-1', 'song-pending-v5', 'pending-v5-song',
+          'Pending v5 Song', '{title: Pending v5 Song}', 1,
+          'pending_create', 1
+        );
+      ''');
+      // Drift tracks the schema version via PRAGMA user_version -- this is
+      // what makes onUpgrade(m, from: 4, to: 5) fire below, instead of
+      // onCreate (which would build the CURRENT schema directly and never
+      // touch the migration code at all).
+      rawDb.execute('PRAGMA user_version = 4;');
+      rawDb.close();
+
+      final db = SongCatalogDatabase.connect(openRelaunchExecutor(file));
+      openDb = db;
+
+      final snapshotRows = await db.select(db.cachedCatalogSnapshots).get();
+      expect(snapshotRows, hasLength(1));
+      final snapshotRow = snapshotRows.single;
+      expect(snapshotRow.userId, 'user-1');
+      expect(snapshotRow.organizationId, 'org-1');
+      expect(snapshotRow.snapshotVersion, 4);
+      expect(
+        snapshotRow.sourcesEvictedAt,
+        isNull,
+        reason:
+            'a pre-migration row predates the concept of source eviction, '
+            'so the new column must read back null rather than throw or '
+            'default to a sentinel value',
+      );
+
+      final summaryRows = await db.select(db.cachedCatalogSummaries).get();
+      expect(summaryRows, hasLength(1));
+      expect(summaryRows.single.songId, 'song-pre-v5');
+      expect(summaryRows.single.title, 'Pre-v5 Song');
+
+      final sourceRows = await db.select(db.cachedCatalogSources).get();
+      expect(sourceRows, hasLength(1));
+      expect(sourceRows.single.source, '{title: Pre-v5 Song}');
+
+      final mutationRows = await db
+          .select(db.cachedCatalogSongMutations)
+          .get();
+      expect(mutationRows, hasLength(1));
+      expect(mutationRows.single.songId, 'song-pending-v5');
+      expect(mutationRows.single.localRevision, 1);
+
+      // The migrated column is real and usable, not just present: a
+      // subsequent write must be able to set it, exactly as it would for a
+      // row that was always on the current schema.
+      await (db.update(db.cachedCatalogSnapshots)..where(
+            (table) =>
+                table.userId.equals('user-1') &
+                table.organizationId.equals('org-1'),
+          ))
+          .write(
+            CachedCatalogSnapshotsCompanion(
+              sourcesEvictedAt: Value(DateTime.utc(2026, 8, 22)),
+            ),
+          );
+      final afterUpdate =
+          await (db.select(db.cachedCatalogSnapshots)
+                ..where((table) => table.userId.equals('user-1')))
+              .getSingle();
+      expect(
+        afterUpdate.sourcesEvictedAt!.isAtSameMomentAs(
+          DateTime.utc(2026, 8, 22),
+        ),
+        isTrue,
+      );
+
+      await db.close();
+      openDb = null;
+    },
+  );
 }

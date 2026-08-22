@@ -423,16 +423,16 @@ unfiltered column, unchanged; it is not repurposed into a pointer.
 **Files:** `local_storage_write_recovery.dart`, `song_catalog_evictor.dart`,
 `test/application/storage/`
 
-- [ ] Write a failing test: a guarded write throwing `SqliteException(BUSY)`
+- [x] Write a failing test: a guarded write throwing `SqliteException(BUSY)`
   performs no eviction and surfaces `LocalStorageWriteFailure`. Acceptance 6.
-- [ ] Write a failing test: eviction under a real pressure signal stops once the
+- [x] Write a failing test: eviction under a real pressure signal stops once the
   size target is met and leaves the active `(userId, organizationId)` intact.
-- [ ] Implement: trigger on `SQLITE_FULL` / `disk I/O error` /
+- [x] Implement: trigger on `SQLITE_FULL` / `disk I/O error` /
   `QuotaExceededError`, or a measured footprint above the 2 GB budget. Evict in
   least-recently-read order to the target only.
-- [ ] Mark affected snapshots `sourcesEvicted` so the next successful refresh
+- [x] Mark affected snapshots `sourcesEvicted` so the next successful refresh
   restores them.
-- [ ] Update ADR-028 with the amended trigger and proportionality rules.
+- [x] Update ADR-028 with the amended trigger and proportionality rules.
 
 ---
 

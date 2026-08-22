@@ -57,9 +57,21 @@ class SongCatalogDatabase extends _$SongCatalogDatabase {
           cachedCatalogSnapshots.pendingEmptyConfirmationAt,
         );
       }
+      if (from < 5) {
+        // D6 (docs/specs/2026-08-19-local-data-durability-contract.md,
+        // ADR-035 Task 3.4): every pre-migration snapshot row predates the
+        // concept of proactive-budget source eviction, so it has no
+        // eviction in flight to distinguish from -- nullable, defaulting to
+        // null on upgrade, is the correct starting state (the same as a
+        // freshly inserted row).
+        await m.addColumn(
+          cachedCatalogSnapshots,
+          cachedCatalogSnapshots.sourcesEvictedAt,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 }

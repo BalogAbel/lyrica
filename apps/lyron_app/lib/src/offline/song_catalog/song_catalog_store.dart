@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
+import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -384,6 +386,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
     this._database, {
     this._onStorageFootprintChanged,
     this._writeRecovery,
+    this._evictor,
+    this._accountant,
   });
 
   final SongCatalogDatabase _database;
@@ -397,6 +401,18 @@ class DriftSongCatalogStore implements SongCatalogStore {
   /// how [_onStorageFootprintChanged] is injected.
   final LocalStorageWriteRecovery? _writeRecovery;
 
+  /// D6 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Task 3.4): the proactive-budget eviction pair used by
+  /// [replaceActiveSnapshot]'s best-effort pre-write check. Distinct from
+  /// [_writeRecovery]/[SongCatalogEvictor.evictDroppable], which handle the
+  /// reactive "a write just failed" emergency path -- this pair instead
+  /// measures the footprint BEFORE the write and evicts ahead of time when
+  /// it is already over [kCatalogStorageBudgetBytes]. Both `null` in tests
+  /// that construct this store directly; production wiring always supplies
+  /// both, mirroring every other optional dependency on this class.
+  final SongCatalogEvictor? _evictor;
+  final CatalogStorageAccountant? _accountant;
+
   Future<T> _guarded<T>(Future<T> Function() write) {
     final recovery = _writeRecovery;
     return recovery == null ? write() : recovery.guard(write);
@@ -409,15 +425,51 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required List<SongSummary> summaries,
     required List<SongSource> sources,
     required DateTime refreshedAt,
-  }) => _guarded(
-    () => _replaceActiveSnapshot(
-      userId: userId,
-      organizationId: organizationId,
-      summaries: summaries,
-      sources: sources,
-      refreshedAt: refreshedAt,
-    ),
-  );
+  }) async {
+    await _evictIfOverBudgetBestEffort(
+      activeUserId: userId,
+      activeOrganizationId: organizationId,
+    );
+    return _guarded(
+      () => _replaceActiveSnapshot(
+        userId: userId,
+        organizationId: organizationId,
+        summaries: summaries,
+        sources: sources,
+        refreshedAt: refreshedAt,
+      ),
+    );
+  }
+
+  /// D6: proactive counterpart to the reactive [_guarded]/[_writeRecovery]
+  /// emergency path above. Best-effort -- a failure here (measuring or
+  /// evicting) must never block the actual write attempt that follows: that
+  /// write has its own [_guarded] recovery for a genuine storage-layer
+  /// failure, so this check exists only to keep ordinary growth from ever
+  /// reaching that emergency path in the first place.
+  Future<void> _evictIfOverBudgetBestEffort({
+    required String activeUserId,
+    required String activeOrganizationId,
+  }) async {
+    final evictor = _evictor;
+    final accountant = _accountant;
+    if (evictor == null || accountant == null) {
+      return;
+    }
+    try {
+      final totalBytes = await accountant.measureCatalogBytes();
+      if (totalBytes > kCatalogStorageBudgetBytes) {
+        await evictor.evictToBudget(
+          targetBytes: totalBytes - kCatalogStorageBudgetBytes,
+          activeUserId: activeUserId,
+          activeOrganizationId: activeOrganizationId,
+        );
+      }
+    } catch (_) {
+      // Best-effort only: the write below still runs regardless, and its
+      // own guard() handles a real storage failure if one occurs.
+    }
+  }
 
   Future<void> _replaceActiveSnapshot({
     required String userId,
@@ -484,6 +536,13 @@ class DriftSongCatalogStore implements SongCatalogStore {
               // confirmation" -- exactly the bug this column exists to
               // prevent. See resolveEmptySnapshot below.
               pendingEmptyConfirmationAt: const Value(null),
+              // D6 (ADR-035 Task 3.4): same reasoning, for the sourcesEvicted
+              // marker -- a successful refresh restores whatever a prior
+              // proactive-budget eviction dropped, so this accepted replace
+              // must clear the marker explicitly or it would stick forever
+              // even after sources are back (SongCatalogEvictor.evictToBudget
+              // sets it).
+              sourcesEvictedAt: const Value(null),
             ),
           );
 

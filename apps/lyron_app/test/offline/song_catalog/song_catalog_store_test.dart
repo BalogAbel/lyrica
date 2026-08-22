@@ -1594,6 +1594,131 @@ void main() {
     });
   });
 
+  group(
+    'DriftSongCatalogStore proactive budget eviction (D6, ADR-035 Task 3.4)',
+    () {
+      late SongCatalogDatabase database;
+
+      setUp(() {
+        database = SongCatalogDatabase.inMemory();
+      });
+
+      tearDown(() async {
+        await database.close();
+      });
+
+      Future<void> replaceEmptySnapshot(
+        DriftSongCatalogStore store, {
+        String userId = 'user-1',
+        String organizationId = 'org-1',
+      }) {
+        return store.replaceActiveSnapshot(
+          userId: userId,
+          organizationId: organizationId,
+          summaries: const [],
+          sources: const [],
+          refreshedAt: DateTime.utc(2026, 8, 22),
+        );
+      }
+
+      test(
+        'calls evictToBudget with (totalBytes - budget) and the active '
+        '(userId, organizationId) when the measured footprint exceeds the '
+        'budget, before the write proceeds',
+        () async {
+          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+          final evictor = _FakeBudgetEvictor();
+          final store = DriftSongCatalogStore(
+            database,
+            evictor: evictor,
+            accountant: accountant,
+          );
+
+          await replaceEmptySnapshot(store);
+
+          expect(evictor.calls, hasLength(1));
+          final call = evictor.calls.single;
+          expect(call.activeUserId, 'user-1');
+          expect(call.activeOrganizationId, 'org-1');
+          expect(call.targetBytes, 3000000000 - kCatalogStorageBudgetBytes);
+        },
+      );
+
+      test(
+        'never calls evictToBudget when the measured footprint is at or '
+        'under the budget',
+        () async {
+          final accountant = _FakeBudgetAccountant(
+            totalBytes: kCatalogStorageBudgetBytes,
+          );
+          final evictor = _FakeBudgetEvictor();
+          final store = DriftSongCatalogStore(
+            database,
+            evictor: evictor,
+            accountant: accountant,
+          );
+
+          await replaceEmptySnapshot(store);
+
+          expect(evictor.calls, isEmpty);
+        },
+      );
+
+      test(
+        'never calls the evictor when no evictor/accountant is supplied '
+        '(existing test fixtures keep compiling and behaving unchanged)',
+        () async {
+          final store = DriftSongCatalogStore(database);
+
+          await replaceEmptySnapshot(store);
+          // No assertion beyond "did not throw" -- proves the optional
+          // fields default to inert when absent.
+        },
+      );
+
+      test(
+        'a measurement failure is best-effort: the write still proceeds '
+        'and the failure never surfaces',
+        () async {
+          final accountant = _FakeBudgetAccountant(throwsOnMeasure: true);
+          final evictor = _FakeBudgetEvictor();
+          final store = DriftSongCatalogStore(
+            database,
+            evictor: evictor,
+            accountant: accountant,
+          );
+
+          await replaceEmptySnapshot(store);
+
+          expect(evictor.calls, isEmpty);
+        },
+      );
+
+      test(
+        'an evictToBudget failure is best-effort: the write still proceeds '
+        'and the failure never surfaces',
+        () async {
+          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+          final evictor = _FakeBudgetEvictor(throwsOnEvict: true);
+          final store = DriftSongCatalogStore(
+            database,
+            evictor: evictor,
+            accountant: accountant,
+          );
+
+          // Must not throw despite the evictor blowing up.
+          await replaceEmptySnapshot(store);
+
+          final summaries = await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          );
+          expect(summaries, isEmpty);
+        },
+      );
+    },
+  );
+
   group('SongCatalogStore.localRevision (D1, sync-snapshot-identity)', () {
     // docs/specs/2026-08-05-sync-snapshot-identity.md D1: localRevision is
     // local bookkeeping incremented by the store on every local write to a
@@ -2479,4 +2604,76 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
     required int sessionVersion,
     required DateTime refreshedAt,
   }) async {}
+}
+
+/// Records every [evictToBudget] call without touching a real database, so
+/// the proactive-eviction wiring tests can assert on exactly what
+/// [DriftSongCatalogStore] passed through.
+class _FakeBudgetEvictor implements SongCatalogEvictor {
+  _FakeBudgetEvictor({this.throwsOnEvict = false});
+
+  final bool throwsOnEvict;
+  final List<
+    ({int targetBytes, String activeUserId, String activeOrganizationId})
+  >
+  calls = [];
+
+  @override
+  Future<int> evictDroppable() {
+    throw UnimplementedError(
+      'not exercised by the proactive-eviction wiring tests',
+    );
+  }
+
+  @override
+  Future<int> evictToBudget({
+    required int targetBytes,
+    required String activeUserId,
+    required String activeOrganizationId,
+  }) async {
+    calls.add((
+      targetBytes: targetBytes,
+      activeUserId: activeUserId,
+      activeOrganizationId: activeOrganizationId,
+    ));
+    if (throwsOnEvict) {
+      throw Exception('simulated evictToBudget failure');
+    }
+    return 0;
+  }
+}
+
+/// Reports a fixed (or throwing) total catalog footprint without touching a
+/// real database, so the proactive-eviction wiring tests can control
+/// whether the budget is exceeded.
+class _FakeBudgetAccountant implements CatalogStorageAccountant {
+  _FakeBudgetAccountant({this.totalBytes = 0, this.throwsOnMeasure = false});
+
+  final int totalBytes;
+  final bool throwsOnMeasure;
+
+  @override
+  Future<int> measureCatalogBytes() async {
+    if (throwsOnMeasure) {
+      throw Exception('simulated measurement failure');
+    }
+    return totalBytes;
+  }
+
+  @override
+  Future<int> measureDroppableBytes() {
+    throw UnimplementedError(
+      'not exercised by the proactive-eviction wiring tests',
+    );
+  }
+
+  @override
+  Future<int> measureDroppableBytesFor({
+    required String userId,
+    required String organizationId,
+  }) {
+    throw UnimplementedError(
+      'not exercised by the proactive-eviction wiring tests',
+    );
+  }
 }
