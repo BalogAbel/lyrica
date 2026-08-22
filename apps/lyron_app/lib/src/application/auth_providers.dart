@@ -109,6 +109,28 @@ final localDataEventsRecordsProvider =
       return ref.watch(localDataEventsReaderProvider).readRecent(limit: 200);
     }, retry: noAutomaticProviderRetry);
 
+/// D5/Phase 4 (docs/specs/2026-08-19-local-data-durability-contract.md,
+/// ADR-035): bumped alongside every [LocalDataLifecycle] identity write/
+/// clear (see [localDataLifecycleProvider]'s `noteLastKnownIdentity`
+/// closure below), purely to give [membershipRevokedAtProvider] a reason
+/// to re-read the identity store. Deliberately separate from
+/// [AppAuthController]'s own `ChangeNotifier` -- see the class-level note
+/// on `noteLastKnownIdentity` there for why driving the quarantine banner
+/// through that notifier instead produced a real feedback loop.
+final membershipQuarantineRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// The current user's `membershipRevokedAt` marker (D5), re-read from
+/// [LastKnownIdentityStore] whenever [membershipQuarantineRevisionProvider]
+/// bumps. Backs `MembershipQuarantineBanner`
+/// (`presentation/auth/membership_quarantine_banner.dart`).
+final membershipRevokedAtProvider = FutureProvider.autoDispose<DateTime?>((
+  ref,
+) async {
+  ref.watch(membershipQuarantineRevisionProvider);
+  final identity = await ref.watch(lastKnownIdentityStoreProvider).read();
+  return identity?.membershipRevokedAt;
+}, retry: noAutomaticProviderRetry);
+
 final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
   return LocalDataLifecycle(
     songCatalogStore: ref.watch(songCatalogStoreProvider),
@@ -116,6 +138,7 @@ final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
     identityStore: ref.watch(lastKnownIdentityStoreProvider),
     noteLastKnownIdentity: (identity) {
       ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
+      ref.read(membershipQuarantineRevisionProvider.notifier).state++;
     },
     eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
@@ -234,21 +257,34 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 userId: session.userId,
                 email: session.email,
                 organizationId: organizationId,
+                // D5/Phase 4: this write must not silently clear an
+                // existing quarantine marker as a side effect of an
+                // unrelated resolution for the SAME user -- Task 4.3, not
+                // this branch, owns deliberately clearing it (with its own
+                // audit record) on a genuine non-empty resolution. Carrying
+                // it forward here is a no-op once Task 4.3 lands its own
+                // explicit clear.
+                membershipRevokedAt: priorIdentity?.userId == session.userId
+                    ? priorIdentity?.membershipRevokedAt
+                    : null,
               );
               await lifecycle.writeIdentity(identity);
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              // This is a single fresh verifiedEmpty membership resolution
-              // at sign-in time -- the closest of the 4 documented
-              // PurgeReasons, though D5's "two consecutive confirmations
-              // before purge" quarantine gate is not yet built (that's
-              // Phase 4) -- this call only ever clears the identity row,
-              // never the song catalog or planning data, so its blast
-              // radius stays small even before Phase 4 lands.
-              await lifecycle.clearIdentity(
-                reason: PurgeReason.membershipRevokedConfirmed,
+              // D5/Phase 4 (ADR-035): a single fresh verifiedEmpty
+              // membership resolution at sign-in time now quarantines
+              // rather than purging -- resolveVerifiedEmptyMembership is
+              // the one gate both this call site and
+              // planning_providers.dart's VerifiedEmptyMembershipCleanup
+              // Coordinator go through, so "two consecutive confirmations"
+              // is one definition regardless of which call site observes
+              // either resolution. Task 4.2 completes the confirmed-purge
+              // half of this gate; today this call only ever quarantines
+              // (or is a documented no-op if already quarantined) and
+              // deletes nothing.
+              await lifecycle.resolveVerifiedEmptyMembership(
                 userId: session.userId,
               );
             case ActiveOrganizationUnknownConnectivityFailure():
@@ -261,6 +297,12 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 userId: session.userId,
                 email: session.email,
                 organizationId: null,
+                // See the matching comment on the ActiveOrganizationSelected
+                // branch above: preserve an existing quarantine marker for
+                // the same user rather than silently clearing it here.
+                membershipRevokedAt: priorIdentity?.userId == session.userId
+                    ? priorIdentity?.membershipRevokedAt
+                    : null,
               );
               await lifecycle.writeIdentity(identity);
           }

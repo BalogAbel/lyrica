@@ -68,6 +68,13 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {}
 }
 
 void main() {

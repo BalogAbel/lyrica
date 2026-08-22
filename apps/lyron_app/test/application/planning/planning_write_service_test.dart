@@ -1,9 +1,11 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
@@ -469,5 +471,258 @@ void main() {
         expect(pending, isEmpty);
       },
     );
+
+    group('membership quarantine write guard (D5/Phase 4, ADR-035)', () {
+      PlanningWriteService serviceWithIdentity(LastKnownIdentity? identity) {
+        return PlanningWriteService(
+          repository,
+          mutationStore: mutationStore,
+          listVisibleSongs: ({required userId, required organizationId}) async {
+            return visibleSongs;
+          },
+          activeContextReader: () async => activeContext,
+          syncScheduler: (_) async {
+            syncCalls += 1;
+          },
+          idGenerator: () => 'generated-id-1',
+          identityStore: _FakeLastKnownIdentityStore(identity),
+        );
+      }
+
+      final quarantined = LastKnownIdentity(
+        userId: 'user-1',
+        email: 'user1@example.com',
+        organizationId: 'org-1',
+        membershipRevokedAt: DateTime.utc(2026, 8, 22),
+      );
+
+      test('createPlan throws MembershipQuarantinedException and records '
+          'no mutation when the acting user is quarantined', () async {
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.createPlan(
+            context: context,
+            draft: const PlanCreateDraft(name: 'Weekend Service'),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        expect(await repository.listPlans(), isEmpty);
+      });
+
+      test('editPlan throws MembershipQuarantinedException when the acting '
+          'user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.editPlan(
+            context: context,
+            draft: const PlanEditDraft(planId: 'plan-1', name: 'Renamed'),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        final detail = await repository.getPlanDetail('plan-1');
+        expect(detail.plan.name, 'Sunday AM');
+      });
+
+      test('createSession throws MembershipQuarantinedException when the '
+          'acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.createSession(
+            context: context,
+            draft: const SessionCreateDraft(
+              planId: 'plan-1',
+              name: 'New Session',
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        final detail = await repository.getPlanDetail('plan-1');
+        expect(detail.sessions, hasLength(2));
+      });
+
+      test('renameSession throws MembershipQuarantinedException when the '
+          'acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.renameSession(
+            context: context,
+            draft: const SessionRenameDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              name: 'Renamed',
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+      });
+
+      test('deleteSession throws MembershipQuarantinedException when the '
+          'acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.deleteSession(
+            context: context,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-2',
+              planId: 'plan-1',
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        final detail = await repository.getPlanDetail('plan-1');
+        expect(detail.sessions, hasLength(2));
+      });
+
+      test('reorderSessions throws MembershipQuarantinedException when the '
+          'acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.reorderSessions(
+            context: context,
+            draft: const SessionReorderDraft(
+              planId: 'plan-1',
+              orderedSessionIds: ['session-2', 'session-1'],
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+      });
+
+      test('addSongSessionItem throws MembershipQuarantinedException when '
+          'the acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.addSongSessionItem(
+            context: context,
+            draft: const SessionItemCreateSongDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              songId: 'song-2',
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+      });
+
+      test('deleteSessionItem throws MembershipQuarantinedException when '
+          'the acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.deleteSessionItem(
+            context: context,
+            draft: const SessionItemDeleteDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-1',
+              planId: 'plan-1',
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+      });
+
+      test('reorderSessionItems throws MembershipQuarantinedException when '
+          'the acting user is quarantined', () async {
+        await seedProjection();
+        final quarantinedService = serviceWithIdentity(quarantined);
+
+        await expectLater(
+          () => quarantinedService.reorderSessionItems(
+            context: context,
+            draft: const SessionItemReorderDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              orderedSessionItemIds: ['item-1'],
+            ),
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+      });
+
+      test(
+        'createPlan proceeds normally when the identity store has no '
+        'marker for the acting user',
+        () async {
+          final unquarantinedService = serviceWithIdentity(
+            const LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+            ),
+          );
+
+          await unquarantinedService.createPlan(
+            context: context,
+            draft: const PlanCreateDraft(name: 'Weekend Service'),
+          );
+
+          expect(await repository.listPlans(), hasLength(1));
+        },
+      );
+
+      test(
+        'createPlan proceeds normally when no identity store is wired '
+        '(default constructor arity, matching the shared setUp service)',
+        () async {
+          await service.createPlan(
+            context: context,
+            draft: const PlanCreateDraft(name: 'Weekend Service'),
+          );
+
+          expect(await repository.listPlans(), hasLength(1));
+        },
+      );
+
+      test(
+        "a quarantine marker for a DIFFERENT user does not block this user's "
+        'write',
+        () async {
+          final differentUserQuarantined = serviceWithIdentity(
+            LastKnownIdentity(
+              userId: 'someone-else',
+              email: 'someone-else@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 22),
+            ),
+          );
+
+          await differentUserQuarantined.createPlan(
+            context: context,
+            draft: const PlanCreateDraft(name: 'Weekend Service'),
+          );
+
+          expect(await repository.listPlans(), hasLength(1));
+        },
+      );
+    });
   });
+}
+
+class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
+  _FakeLastKnownIdentityStore(this._identity);
+
+  final LastKnownIdentity? _identity;
+
+  @override
+  Future<LastKnownIdentity?> read() async => _identity;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) => throw UnimplementedError();
+
+  @override
+  Future<void> clear() => throw UnimplementedError();
 }

@@ -51,53 +51,24 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   Future<void> handleVerifiedEmptyMembership({required String userId}) {
     _invalidateLastKnownIdentityPersistence();
     final handlers = _handlers.toList(growable: false);
-    final planningCleanup = handlers.isEmpty
-        ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
-        : _runRegisteredPlanningCleanupHandlers(
-            userId: userId,
-            handlers: handlers,
-          );
-
-    // This is the real membershipRevokedConfirmed handler: the gate mirrors
-    // the durable clear into AppAuthController's in-memory cache only after
-    // the clear itself has actually succeeded, not before it -- updating the
-    // cache first would let it observe a purge that never durably committed
-    // if the store write then failed (see the class-level note on
-    // AppAuthController._identity).
-    final identityClear = _localDataLifecycle.clearIdentity(
-      reason: PurgeReason.membershipRevokedConfirmed,
-      userId: userId,
-    );
-
-    return Future.wait([
-      planningCleanup,
-      _localDataLifecycle.purgeSongCatalog(
-        userId: userId,
-        reason: PurgeReason.membershipRevokedConfirmed,
-      ),
-      identityClear,
-    ]);
-  }
-
-  Future<void> _runRegisteredPlanningCleanupHandlers({
-    required String userId,
-    required List<VerifiedEmptyMembershipCleanupHandler> handlers,
-  }) {
-    return Future.wait([
+    // D5/Phase 4 (ADR-035): registered handlers (PlanningSyncController's
+    // own handleVerifiedEmptyMembership) still run so the planning UI state
+    // resets for this event, but they no longer purge anything themselves
+    // -- the destructive/quarantine decision is now made exactly once, by
+    // the shared gate below, so "two consecutive confirmations" is one
+    // definition regardless of which of the two verified-empty call sites
+    // (this one, or auth_providers.dart's persistNewIdentity) observes
+    // either resolution. Calling both a handler-side purge AND the gate
+    // here would double-count a single resolution once Task 4.2 adds the
+    // confirmed-purge counting.
+    final handlerNotifications = Future.wait([
       for (final handler in handlers) handler(userId: userId),
     ]);
-  }
-
-  Future<void> _deletePlanningDataWithoutRegisteredHandler({
-    required String userId,
-  }) {
-    // Production wiring registers PlanningSyncController so it owns planning
-    // cleanup and state reset. This direct store delete is only the fallback
-    // for verified-empty calls that happen before that handler is active.
-    return _localDataLifecycle.purgePlanningData(
+    final resolution = _localDataLifecycle.resolveVerifiedEmptyMembership(
       userId: userId,
-      reason: PurgeReason.membershipRevokedConfirmed,
     );
+
+    return Future.wait([handlerNotifications, resolution]);
   }
 }
 
@@ -163,6 +134,7 @@ final planningWriteServiceProvider = Provider<PlanningWriteService>((ref) {
   return PlanningWriteService(
     ref.watch(planningRepositoryProvider),
     mutationStore: ref.watch(planningMutationStoreProvider),
+    identityStore: ref.watch(lastKnownIdentityStoreProvider),
     listVisibleSongs: ({required userId, required organizationId}) {
       return LocalFirstSongRepository(
         ref.read(songCatalogStoreProvider),

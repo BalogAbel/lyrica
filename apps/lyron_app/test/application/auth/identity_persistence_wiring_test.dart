@@ -118,6 +118,114 @@ void main() {
       expect(identityStore.writes, hasLength(1));
       expect(identityStore.writes.single.organizationId, 'org-cached');
       expect(identityStore.clearCount, 0);
+      // D5/Phase 4 guardrail: an unverified resolution (connectivity
+      // failure) must never set the quarantine marker -- only a genuine
+      // ActiveOrganizationVerifiedEmpty resolution reaches
+      // resolveVerifiedEmptyMembership.
+      expect(identityStore.writes.single.membershipRevokedAt, isNull);
+    },
+  );
+
+  test(
+    'a verifiedEmpty resolution at sign-in quarantines: it deletes nothing '
+    'and records the quarantine marker on the identity row (D5, Task 4.1)',
+    () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final planningDatabase = PlanningLocalDatabase.inMemory();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      final songStore = DriftSongCatalogStore(songDatabase);
+      await songStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Kept Song')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Kept Song}')],
+        refreshedAt: DateTime.utc(2026, 8, 1),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.verifiedEmpty(),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await planningDatabase.close();
+        await songDatabase.close();
+      });
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // Nothing was deleted: no clear, and the previously cached song is
+      // still present.
+      expect(identityStore.clearCount, 0);
+      expect(
+        await songStore.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        hasLength(1),
+      );
+
+      // The marker was set on the identity row.
+      expect(identityStore.writes, hasLength(1));
+      final written = identityStore.writes.single;
+      expect(written.userId, 'user-1');
+      expect(written.membershipRevokedAt, isNotNull);
+    },
+  );
+
+  test(
+    'a NonConnectivityFailure resolution never reaches '
+    'resolveVerifiedEmptyMembership and never sets the quarantine marker '
+    '(D5/Phase 4 guardrail)',
+    () async {
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async =>
+                const ActiveOrganizationResolution.unknownNonConnectivityFailure(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.organizationId, isNull);
+      expect(identityStore.writes.single.membershipRevokedAt, isNull);
+      expect(identityStore.clearCount, 0);
     },
   );
 
@@ -250,19 +358,24 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
-      expect(identityStore.writes, isEmpty);
-      expect(identityStore.clearCount, 1);
+      // D5/Phase 4 (ADR-035): a verified-empty resolution now quarantines
+      // (one identity write carrying the marker) rather than purging --
+      // nothing is cleared.
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.membershipRevokedAt, isNotNull);
+      expect(identityStore.clearCount, 0);
       expect(authController.state.status, AppAuthStatus.signedIn);
     },
   );
 
-  test('verified-empty cleanup clears the controller cache so a later null '
-      'session maps to signedOut, not sessionExpired', () async {
+  test('verified-empty cleanup updates the controller cache with the '
+      'quarantine marker, so a later null session still maps to '
+      'sessionExpired, not signedOut', () async {
     // Seed the controller with a prior identity, the same way
     // 'sessionExpired does not clear the stored identity' does, so a null
-    // session would map to sessionExpired if the cache were never
-    // updated -- isolating the coordinator's own cache write as the thing
-    // under test.
+    // session maps to sessionExpired only while the cache still has
+    // something to protect -- isolating the coordinator's own cache write
+    // as the thing under test.
     identityStore.seed(
       const LastKnownIdentity(
         userId: 'user-1',
@@ -309,23 +422,28 @@ void main() {
         .handleVerifiedEmptyMembership(userId: 'user-1');
     await Future<void>.delayed(Duration.zero);
 
-    expect(identityStore.clearCount, 1);
-    // The purge must be visible to the controller's cache synchronously
-    // with the durable clear, not just eventually -- see the class-level
+    // Nothing was cleared: the quarantine marker was set on the same row.
+    expect(identityStore.clearCount, 0);
+    // The marker must be visible to the controller's cache synchronously
+    // with the durable write, not just eventually -- see the class-level
     // note on AppAuthController._identity.
-    expect(authController.lastKnownIdentity, isNull);
+    expect(authController.lastKnownIdentity, isNotNull);
+    expect(authController.lastKnownIdentity?.membershipRevokedAt, isNotNull);
 
     authRepository.emit(null);
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    expect(authController.state.status, AppAuthStatus.signedOut);
+    // The identity is quarantined, not gone -- there is still something to
+    // protect, so a null session stays offline-authenticated rather than
+    // being treated as an explicit sign-out.
+    expect(authController.state.status, AppAuthStatus.sessionExpired);
   });
 
-  test("verified-empty cleanup's durable-clear failure leaves the "
-      'controller cache untouched -- PR #73 review finding 2: the cache '
-      'must not be nulled before the durable clear it mirrors has actually '
-      'succeeded', () async {
+  test("verified-empty cleanup's marker-write failure leaves the "
+      'controller cache untouched -- mirrors PR #73 review finding 2 for '
+      'the quarantine write: the cache must not be updated before the '
+      'durable write it mirrors has actually succeeded', () async {
     identityStore.seed(
       const LastKnownIdentity(
         userId: 'user-1',
@@ -367,7 +485,7 @@ void main() {
 
     expect(authController.lastKnownIdentity, isNotNull);
 
-    identityStore.throwOnClear = true;
+    identityStore.throwOnWrite = true;
     await expectLater(
       container
           .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
@@ -375,12 +493,16 @@ void main() {
       throwsStateError,
     );
 
-    // The durable clear never actually committed -- the cache must not
-    // have been nulled either, or it would diverge from a store that
-    // still (as far as this failure proves) holds the old identity.
-    expect(identityStore.clearCount, 0);
+    // The durable write never actually committed -- the cache must not
+    // have been updated either, or it would diverge from a store that
+    // still (as far as this failure proves) holds the old, unquarantined
+    // identity. `writes` still has exactly the one entry from the initial
+    // restoreSession resolution above; the failed quarantine attempt added
+    // no second entry.
+    expect(identityStore.writes, hasLength(1));
     expect(authController.lastKnownIdentity, isNotNull);
     expect(authController.lastKnownIdentity?.userId, 'user-1');
+    expect(authController.lastKnownIdentity?.membershipRevokedAt, isNull);
   });
 
   test('sessionExpired does not clear the stored identity', () async {

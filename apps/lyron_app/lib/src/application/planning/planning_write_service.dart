@@ -1,5 +1,7 @@
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -157,6 +159,7 @@ class PlanningWriteService {
     required this._activeContextReader,
     this._syncScheduler,
     PlanningIdGenerator? idGenerator,
+    this._identityStore,
   }) : _listVisibleSongs = listVisibleSongs ?? _defaultVisibleSongs,
        _idGenerator = idGenerator ?? generatePlanningUuidV4;
 
@@ -166,16 +169,38 @@ class PlanningWriteService {
   final PlanningWriteActiveContextReader _activeContextReader;
   final PlanningWriteSyncScheduler? _syncScheduler;
   final PlanningIdGenerator _idGenerator;
+  // D5/Phase 4 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035): nullable so every existing caller/test that does not wire an
+  // identity store keeps working unchanged -- null means "no quarantine
+  // guard," matching this class's existing optional-dependency convention.
+  final LastKnownIdentityStore? _identityStore;
 
   static Future<List<SongSummary>> _defaultVisibleSongs({
     required String userId,
     required String organizationId,
   }) async => const [];
 
+  /// Throws [MembershipQuarantinedException] instead of letting a caller
+  /// enqueue a new local write for [userId] while that user's local data is
+  /// in read-only quarantine (D5). Reads are unaffected -- this guard only
+  /// runs at the point of a NEW write, never as a sweep over already-queued
+  /// pending mutations.
+  Future<void> _guardNotQuarantined(String userId) async {
+    final identityStore = _identityStore;
+    if (identityStore == null) return;
+    final identity = await identityStore.read();
+    if (identity != null &&
+        identity.userId == userId &&
+        identity.membershipRevokedAt != null) {
+      throw MembershipQuarantinedException(userId);
+    }
+  }
+
   Future<PlanningMutationRecord> createPlan({
     required PlanningWriteContext context,
     required PlanCreateDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final planId = _idGenerator();
     final slug = await _mutationStore.allocatePlanSlug(
@@ -217,6 +242,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionCreateDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final nextPosition = detail.sessions.isEmpty
@@ -256,6 +282,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionDeleteDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final session = detail.sessions.firstWhere(
@@ -284,6 +311,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionReorderDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     await _mutationStore.recordSessionReorder(
@@ -305,6 +333,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemCreateSongDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final session = detail.sessions.firstWhere(
@@ -351,6 +380,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemDeleteDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final session = detail.sessions.firstWhere(
@@ -380,6 +410,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionItemReorderDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final session = detail.sessions.firstWhere(
@@ -405,6 +436,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required PlanEditDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     await _mutationStore.recordPlanEdit(
@@ -428,6 +460,7 @@ class PlanningWriteService {
     required PlanningWriteContext context,
     required SessionRenameDraft draft,
   }) async {
+    await _guardNotQuarantined(context.userId);
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
     final session = detail.sessions.firstWhere(

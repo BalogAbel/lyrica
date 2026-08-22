@@ -419,6 +419,203 @@ more likely to be genuinely cold than the active snapshot. Real LRU read
 tracking remains available as a future upgrade if the proxy is ever shown to
 evict something still in active use; nothing in this decision forecloses it.
 
+## Phase 4 mechanism decisions
+
+Three design gaps and two inherited items were resolved before Task 4.1 began.
+All five are one connected decision, not five independent ones: the plan's
+warning that "two divergent definitions of 'fresh, online, independent
+confirmation' is the failure mode to avoid" applies across all of them.
+
+### Inherited item 1 / Gap 1 — one shared gate, marker on the identity row
+
+Phase 3 built `resolveEmptySnapshot` (`song_catalog_store.dart:620-679`): a
+nullable `pendingEmptyConfirmationAt` `DateTimeColumn` on
+`CachedCatalogSnapshots` (`song_catalog_tables.dart:20`), set on the first
+rejected empty result and cleared on the second, independent one, with
+independence guaranteed by `_refreshCatalog`'s generation guard
+(`_isStale`, `song_catalog_controller.dart:545-546`) — each confirmation is
+necessarily a separate `listSongs()` invocation, never a retry of the same
+one.
+
+D5 governs a different-shaped signal: `current_organization_ids()` answers
+"does this user have any organization membership at all" — user-wide, not
+per-`(userId, organizationId)` like the catalog snapshot. Applying Phase 3's
+column literally (per-snapshot) would be the wrong shape for a per-user
+question. **Decision: generalize the pattern, don't copy the column.** A new
+nullable `membershipRevokedAt` `DateTimeColumn` is added to
+`LastKnownIdentityRows` (`last_known_identity_tables.dart`) — the one
+per-device identity row, matching the signal's actual scope — schema bump
+v1→v2 with an explicit `onUpgrade` `addColumn` delta (this database's first
+migration ever; it has been `onCreate`-only since Phase 2). A populated-v1
+migration test follows the same shape as
+`test/offline/adversarial/song_catalog_migration_test.dart`.
+
+The two existing purge call sites — `auth_providers.dart:239`
+(`persistNewIdentity`'s `ActiveOrganizationVerifiedEmpty` branch, which Phase
+2 left labelled `membershipRevokedConfirmed` ahead of this gate existing —
+see the inherited-item-2 note below) and `planning_providers.dart:51`
+(`handleVerifiedEmptyMembership`, invoked via
+`VerifiedEmptyMembershipCleanupCoordinator`) — today each purge immediately
+and independently on a single resolution. **Both now call one new gate**
+(`LocalDataLifecycle.resolveVerifiedEmptyMembership({required userId})`,
+alongside the existing four gated methods) instead of purging directly. The
+gate is the sole place that reads, sets, and clears `membershipRevokedAt`,
+and the sole place that decides quarantine-vs-purge. This is what makes
+"two consecutive confirmations" one definition regardless of which call site
+observed either resolution — a first empty resolution from the sign-in path
+and a second from the live-session path (or vice versa) correctly compose
+into a confirmed purge, because both write through the same marker.
+
+Gate logic:
+1. Read the identity row. If its `userId` does not match the caller's
+   `userId` (a different user signed in between resolutions — already
+   impossible in practice, since `differentUserSignIn` fully clears the row
+   via `clearIdentity` before a new one is written, but checked defensively
+   rather than assumed), treat as no prior marker.
+2. `membershipRevokedAt == null` → first resolution. Write
+   `membershipRevokedAt = now` via `writeIdentity` (non-destructive per D7).
+   Record a `local_data_events` row, `kind: 'quarantine'`,
+   `reason: 'membershipRevokedFirstResolution'`. Return "quarantined, no
+   purge."
+3. `membershipRevokedAt != null` → second, independent resolution (it is
+   independent by construction: it can only be observed by a fresh call to
+   one of the two call sites above, each of which only runs on a genuine new
+   RPC round trip — see Gap-adjacent note on freshness below). Check
+   `PendingLocalWorkCounter.count(userId)`:
+   - zero → proceed: `purgeSongCatalog` + `purgePlanningData` +
+     `clearIdentity`, all `PurgeReason.membershipRevokedConfirmed` (this is
+     the same triple every existing call site already runs; only the
+     decision of *whether* to run it moves behind the gate).
+   - nonzero or unreadable (same "unknown counts as needing to ask" rule as
+     ADR-029 D5, not as "safe to skip") → do not purge yet. Surface a
+     confirmation request (see Gap 3) carrying the count; on confirm, run the
+     same triple; on cancel/dismiss, stay quarantined (no state change).
+4. Any resolution where the RPC call is *not* verified-empty (a
+   `ConnectivityFailure` or `NonConnectivityFailure` from
+   `resolveActiveOrganizationResolution`, `active_organization_resolution.dart:60-84`)
+   never reaches this gate at all — both call sites already only invoke their
+   branch on the `ActiveOrganizationVerifiedEmpty` sealed case, so an offline,
+   erroring, or expired-session resolution cannot advance or fabricate either
+   confirmation. This is what satisfies "quarantine must never be entered
+   from an unverified resolution" structurally rather than by a new check:
+   the sealed type already made that distinction before Phase 4 existed.
+5. A non-empty resolution — a genuine subsequent membership check that comes
+   back non-empty — is not routed through this gate at all (there is nothing
+   to confirm); it goes through the ordinary `writeIdentity` path and clears
+   `membershipRevokedAt` to `null` as an explicit part of that write (Task
+   4.3), the same "an accepted write clears the marker for free" shape Phase
+   3 used for `pendingEmptyConfirmationAt`.
+
+**Freshness.** Both call sites invoke `current_organization_ids()` on a real,
+uncached round trip each time they run (sign-in resolution, and the live
+periodic/edge-triggered planning coordinator respectively) — neither polls a
+memoized result. "Independent" therefore falls out of the existing call
+structure the same way it did in Phase 3, without a new generation counter:
+two hits against the gate are, by construction, two separate RPC calls.
+
+**Inherited item 2 resolved as a consequence, not a separate change.** Once
+`auth_providers.dart:239` calls the gate instead of `clearIdentity` directly,
+its use of `PurgeReason.membershipRevokedConfirmed` becomes true rather than
+"closest fit ahead of the gate existing" (Phase 2's own words, ADR-035 above)
+— it now only fires when the gate itself decided a confirmed purge is
+warranted, under the same two-confirmation rule as every other path into
+that reason.
+
+### Gap 2 — what "writes blocked" means
+
+Quarantine withdraws edit access only for the specific `userId` whose
+membership resolved empty; it does not touch ADR-020's offline-authenticated
+read/edit grant for any other cause of `sessionExpired`. Concretely: a guard
+is added at the six mutation-service entry points —
+`SongLibraryService.createSong/updateSong/deleteSong`
+(`song_library_service.dart:63,102,136`) and
+`PlanningWriteService.createPlan/editPlan/createSession/renameSession/
+deleteSession/reorderSession(Item)`
+(`planning_write_service.dart:175` onward) — that reads
+`LastKnownIdentityStore.read().membershipRevokedAt` before any
+`mutationStore` call. If non-null for the acting user, the service throws a
+new `MembershipQuarantinedException` instead of enqueueing anything; the
+presentation layer catches it and shows a message distinct from any existing
+error path ("This organization's access was revoked; editing is disabled
+until this is resolved").
+
+Already-queued pending mutations (rows already in `SongMutationStore`/
+`PlanningMutationStore` before quarantine began) are **not** touched by this
+guard — the guard only runs at the point of a *new* write attempt, never as
+a sweep over existing rows, so nothing already queued is discarded. If the
+device is later online while still quarantined, background sync attempts on
+those rows still run and still fail authorization at the backend (RLS,
+unchanged, AGENTS.md rule 5) exactly as any other revoked-membership case
+already does today — quarantine does not add or remove backend-side
+handling, only the local decision of whether to accept more local writes.
+Reads are unaffected: `SongCatalogController`/`PlanningSyncController`'s
+existing offline-authenticated read paths (D3) do not consult
+`membershipRevokedAt` at all, so cached songs and plans stay fully visible
+throughout quarantine, matching D5's "read-only quarantine, not read-blocked
+quarantine."
+
+### Gap 3 — banner and dialog coexistence with ADR-029
+
+Two distinct UI concerns, two different answers:
+
+**The persistent banner.** `ReauthBanner`
+(`presentation/auth/reauth_banner.dart:40-46`) is a plain declarative widget
+watching `appAuthControllerProvider`'s status for `sessionExpired` — it is
+not "a host" in ADR-029's sense (no imperative show/dismiss, no
+must-survive-navigation requirement; it just renders or doesn't based on
+current state). A new `MembershipQuarantineBanner` follows the identical
+shape, watching a provider over `LastKnownIdentityStore.read().
+membershipRevokedAt`. Both are mounted in the same slot in the widget tree
+as siblings, stacked vertically, quarantine banner first: the two conditions
+are orthogonal (quarantine requires the RPC to have succeeded online at
+least once and can persist into a later offline session, so both can be
+true at once) and neither suppresses the other. Quarantine is placed above
+re-auth because it is the more consequential condition — it is the one
+withholding edit access, where re-auth is only withholding sync.
+
+**The confirmation dialog** (second confirmation, pending work present) is a
+genuine ADR-029-shaped problem: it must survive whatever screen is on top
+when the gate's second confirmation arrives, exactly the requirement D2 of
+ADR-029 built `ReauthPromptController`/`ReauthPromptHost` for. Per the
+instruction to reuse rather than introduce a second banner owner: `ReauthPrompt`
+becomes a sealed type with two variants —
+`ReauthDifferentUserPrompt` (existing) and
+`MembershipQuarantinePurgePrompt { userId, pendingCount }` (new) — and
+`ReauthPromptHost` (`presentation/auth/reauth_prompt_host.dart`,
+mounted `lyron_app.dart:42`) switches on the variant to show the right
+dialog. The "at most one prompt pending" and supersession machinery (ADR-029
+D2/D3) is reused unchanged — a genuinely correct behaviour here too, since a
+quarantine-purge prompt and a different-user-reauth prompt are mutually
+exclusive by construction (the former requires the *same* user's membership
+resolving empty twice; the latter requires a *different* user signing in,
+which itself runs `differentUserSignIn`'s wipe-or-confirm path first and
+would clear any pending quarantine marker as part of `clearIdentity`).
+
+### D8 — Android backup: `allowBackup="false"` chosen over data-extraction rules
+
+`AndroidManifest.xml`'s `<application>` tag sets neither attribute today (no
+`res/xml/` data-extraction-rules file exists either). Between D8's two
+options, **`android:allowBackup="false"`** is chosen over authoring
+data-extraction rules: the rules approach would need to keep the Supabase
+session (SharedPreferences), the song-catalog, planning, last-known-identity,
+and local-data-events SQLite files all in the same backup set to avoid a
+half-restored device — five independent files that would all need updating
+in lockstep on every future schema change, a maintenance tax with no
+corresponding benefit, since this app has no product requirement for
+cross-device backup/restore of local data (the server is the durable store
+once synced; local data existing only to survive offline is the entire
+premise of this contract). Setting `allowBackup="false"` makes "a
+half-restored device" unrepresentable by construction instead of by rule
+maintenance.
+
+**Consequence:** a user who backs up their Android device (cloud backup,
+device-to-device transfer) will not have their local song/plan cache or
+session restored on a new device — they will see a normal signed-out state
+and need to sign in and re-sync, exactly as a first install would look. This
+is a deliberate, user-visible trade-off in exchange for making the
+inconsistent-partial-restore failure mode (the actual F6 defect) structurally
+impossible rather than merely unlikely.
+
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
 Both acceptance tests defend against "the catalog going empty while offline,"

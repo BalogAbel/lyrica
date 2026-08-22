@@ -143,6 +143,29 @@ class DriftLocalDataEventsStore
         );
   }
 
+  /// D5 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// a verified-empty-membership quarantine -- a distinct `kind` from
+  /// `recordPurge`, since nothing is deleted when this is written.
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'quarantine',
+            target: target.name,
+            reason: Value(reason),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
   @override
   Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
     // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`

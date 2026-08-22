@@ -21,6 +21,38 @@ enum PurgeReason {
 /// targets, for the audit trail [LocalDataEventsRecorder] writes.
 enum PurgeTarget { songCatalog, planningData, identity }
 
+/// D5 (docs/specs/2026-08-19-local-data-durability-contract.md): the result
+/// of [LocalDataLifecycle.resolveVerifiedEmptyMembership]. Deliberately
+/// minimal -- Task 4.2 adds the variants for a confirmed purge and for a
+/// purge pending user confirmation; this phase only ever quarantines.
+enum MembershipRevocationResolution {
+  /// This call recorded the first verified-empty-membership resolution for
+  /// this user: the identity row's `membershipRevokedAt` marker was just
+  /// set, and nothing was deleted.
+  quarantined,
+
+  /// A marker was already present for this user before this call; this
+  /// call made no further changes. (Task 4.2 will replace this branch with
+  /// the confirmed-purge decision -- see the `TODO` on
+  /// [LocalDataLifecycle.resolveVerifiedEmptyMembership].)
+  alreadyQuarantined,
+}
+
+/// Thrown by a mutation-service write guard when the acting user's local
+/// data is in quarantine (D5, non-null `membershipRevokedAt`): reads stay
+/// available, but no new local write is accepted until the quarantine is
+/// resolved (Task 4.2/4.3).
+class MembershipQuarantinedException implements Exception {
+  const MembershipQuarantinedException(this.userId);
+
+  final String userId;
+
+  @override
+  String toString() =>
+      'MembershipQuarantinedException: local writes are blocked for '
+      '$userId while its membership revocation is in quarantine';
+}
+
 /// The durable audit trail for [LocalDataLifecycle]'s purges.
 ///
 /// The real Drift-backed implementation is a later task; this interface
@@ -61,6 +93,18 @@ abstract interface class LocalDataEventsRecorder {
   /// happened," this one means "no eviction ran, the write simply failed."
   /// Not a purge -- no [PurgeReason] applies here.
   Future<void> recordStorageWriteFailure({String? userId});
+
+  /// D5 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// the first verified-empty-membership resolution for a user -- a
+  /// distinct audit `kind` ('quarantine'), not a purge: nothing is deleted
+  /// when this is written. [reason] is a short machine-readable string
+  /// (e.g. `'membershipRevokedFirstResolution'`), not a [PurgeReason] --
+  /// none of the four purge reasons describe "nothing was deleted."
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  });
 }
 
 /// D7: the single gate every local-data purge primitive must be reached
@@ -164,6 +208,73 @@ class LocalDataLifecycle {
     _noteLastKnownIdentity(identity);
   }
 
+  /// D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Phase 4 mechanism decisions, "Gap 1"): the single gate both
+  /// verified-empty-membership call sites (`auth_providers.dart`'s
+  /// `persistNewIdentity`, `planning_providers.dart`'s
+  /// `VerifiedEmptyMembershipCleanupCoordinator`) must call instead of
+  /// purging directly. Reachable only from their `ActiveOrganizationVerifiedEmpty`
+  /// branches -- an unverified resolution (connectivity failure, unknown
+  /// failure, or any other outcome) never reaches this method, which is
+  /// what keeps quarantine from ever being entered on anything less than a
+  /// real verified-empty resolution.
+  ///
+  /// Task 4.1 implements only the first-resolution half: a null
+  /// `membershipRevokedAt` on the caller's identity row is set to now, via
+  /// the same non-destructive [writeIdentity] path every other identity
+  /// write already uses -- nothing is purged. A non-null marker already
+  /// present is a documented no-op for now; Task 4.2 replaces that branch
+  /// with the confirmed-purge decision (pending-work check, then the same
+  /// purgeSongCatalog/purgePlanningData/clearIdentity triple every other
+  /// `membershipRevokedConfirmed` call site already uses).
+  Future<MembershipRevocationResolution> resolveVerifiedEmptyMembership({
+    required String userId,
+  }) async {
+    final existing = await _identityStore.read();
+    // Defensive only (ADR-035): a different user's identity row reaching
+    // here is already impossible in practice -- differentUserSignIn fully
+    // clears the row via clearIdentity before a new one is written. Treated
+    // as "no prior marker" rather than asserted against.
+    final matchesCaller = existing != null && existing.userId == userId;
+
+    if (matchesCaller && existing.membershipRevokedAt != null) {
+      // TODO(Task 4.2): this is the second, independent verified-empty
+      // resolution. Check PendingLocalWorkCounter.count(userId): zero ->
+      // purgeSongCatalog + purgePlanningData + clearIdentity, all
+      // PurgeReason.membershipRevokedConfirmed; nonzero or unreadable ->
+      // surface a confirmation request instead of purging (ADR-035 Phase 4,
+      // Gap 1 step 3 / Gap 3).
+      return MembershipRevocationResolution.alreadyQuarantined;
+    }
+
+    final revokedAt = DateTime.now().toUtc();
+    final quarantined = matchesCaller
+        ? LastKnownIdentity(
+            userId: existing.userId,
+            email: existing.email,
+            organizationId: existing.organizationId,
+            updatedAt: existing.updatedAt,
+            membershipRevokedAt: revokedAt,
+          )
+        : LastKnownIdentity(
+            userId: userId,
+            email: existing?.email ?? '',
+            organizationId: null,
+            membershipRevokedAt: revokedAt,
+          );
+
+    await writeIdentity(quarantined);
+    unawaited(
+      _recordQuarantineBestEffort(
+        target: PurgeTarget.identity,
+        reason: 'membershipRevokedFirstResolution',
+        userId: userId,
+      ),
+    );
+
+    return MembershipRevocationResolution.quarantined;
+  }
+
   /// Writes the audit record without letting a failure here masquerade as a
   /// failure of the deletion/clear that already committed above it. Reported
   /// via [FlutterError.reportError] rather than rethrown, mirroring how this
@@ -192,6 +303,38 @@ class LocalDataLifecycle {
             'failed to write a local_data_events audit record for a '
             '$target purge (reason: $reason) that already completed -- the '
             'purge itself succeeded and is not affected',
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Same best-effort shape as [_recordBestEffort], for the quarantine
+  /// audit `kind`: the marker write it describes already committed by the
+  /// time this runs, so a failure here must never be reported as though
+  /// the quarantine itself failed to take effect.
+  Future<void> _recordQuarantineBestEffort({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {
+    try {
+      await _eventsRecorder.recordQuarantine(
+        target: target,
+        reason: reason,
+        userId: userId,
+      );
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'LocalDataLifecycle',
+          context: ErrorDescription(
+            'failed to write a local_data_events audit record for a '
+            '$target quarantine (reason: $reason) that already completed '
+            '-- the quarantine marker itself was already set and is not '
+            'affected',
           ),
         ),
       );

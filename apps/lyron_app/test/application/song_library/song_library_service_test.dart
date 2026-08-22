@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 
@@ -332,6 +334,202 @@ void main() {
       '{title: Test}\n{start_of_chorus}\n[A]Hello\n{end_of_chorus}\n',
     );
   });
+
+  group('membership quarantine write guard (D5/Phase 4, ADR-035)', () {
+    const context = ActiveCatalogContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    test(
+      'createSong throws MembershipQuarantinedException and enqueues '
+      'nothing when the acting user is quarantined',
+      () async {
+        final repository = _FakeSongRepository();
+        final identityStore = _FakeLastKnownIdentityStore(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: DateTime.utc(2026, 8, 22),
+          ),
+        );
+        final service = SongLibraryService(
+          repository,
+          repository,
+          null,
+          identityStore,
+        );
+
+        await expectLater(
+          () => service.createSong(
+            context: context,
+            title: 'Amazing Grace',
+            chordproSource: '{title: Amazing Grace}',
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        expect(repository.lastUpsertedRecord, isNull);
+      },
+    );
+
+    test(
+      'updateSong throws MembershipQuarantinedException and enqueues '
+      'nothing when the acting user is quarantined',
+      () async {
+        final repository = _FakeSongRepository();
+        repository.songById = const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'amazing-grace',
+          title: 'Amazing Grace',
+          chordproSource: '{title: Amazing Grace}',
+          version: 7,
+          baseVersion: 7,
+          syncStatus: SongSyncStatus.synced,
+        );
+        final identityStore = _FakeLastKnownIdentityStore(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: DateTime.utc(2026, 8, 22),
+          ),
+        );
+        final service = SongLibraryService(
+          repository,
+          repository,
+          null,
+          identityStore,
+        );
+
+        await expectLater(
+          () => service.updateSong(
+            context: context,
+            songId: 'song-1',
+            title: 'Amazing Grace (Alt)',
+            chordproSource: '{title: Amazing Grace (Alt)}',
+          ),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        expect(repository.lastUpsertedRecord, isNull);
+      },
+    );
+
+    test(
+      'deleteSong throws MembershipQuarantinedException and enqueues '
+      'nothing when the acting user is quarantined',
+      () async {
+        final repository = _FakeSongRepository();
+        repository.songById = const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'amazing-grace',
+          title: 'Amazing Grace',
+          chordproSource: '{title: Amazing Grace}',
+          version: 7,
+          baseVersion: 7,
+          syncStatus: SongSyncStatus.synced,
+        );
+        final identityStore = _FakeLastKnownIdentityStore(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: DateTime.utc(2026, 8, 22),
+          ),
+        );
+        final service = SongLibraryService(
+          repository,
+          repository,
+          null,
+          identityStore,
+        );
+
+        await expectLater(
+          () => service.deleteSong(context: context, songId: 'song-1'),
+          throwsA(isA<MembershipQuarantinedException>()),
+        );
+        expect(repository.deletedSongId, isNull);
+      },
+    );
+
+    test(
+      'createSong proceeds normally when the identity store has no marker '
+      'for the acting user',
+      () async {
+        final repository = _FakeSongRepository();
+        final identityStore = _FakeLastKnownIdentityStore(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        final service = SongLibraryService(
+          repository,
+          repository,
+          null,
+          identityStore,
+        );
+
+        final created = await service.createSong(
+          context: context,
+          title: 'Amazing Grace',
+          chordproSource: '{title: Amazing Grace}',
+        );
+
+        expect(created.syncStatus, SongSyncStatus.pendingCreate);
+      },
+    );
+
+    test(
+      'createSong proceeds normally when no identity store is wired '
+      '(default constructor arity, matching every other test above)',
+      () async {
+        final repository = _FakeSongRepository();
+        final service = SongLibraryService(repository, repository);
+
+        final created = await service.createSong(
+          context: context,
+          title: 'Amazing Grace',
+          chordproSource: '{title: Amazing Grace}',
+        );
+
+        expect(created.syncStatus, SongSyncStatus.pendingCreate);
+      },
+    );
+
+    test(
+      'a quarantine marker for a DIFFERENT user does not block this user\'s '
+      'write',
+      () async {
+        final repository = _FakeSongRepository();
+        final identityStore = _FakeLastKnownIdentityStore(
+          LastKnownIdentity(
+            userId: 'someone-else',
+            email: 'someone-else@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: DateTime.utc(2026, 8, 22),
+          ),
+        );
+        final service = SongLibraryService(
+          repository,
+          repository,
+          null,
+          identityStore,
+        );
+
+        final created = await service.createSong(
+          context: context,
+          title: 'Amazing Grace',
+          chordproSource: '{title: Amazing Grace}',
+        );
+
+        expect(created.syncStatus, SongSyncStatus.pendingCreate);
+      },
+    );
+  });
 }
 
 class _FakeSongRepository
@@ -502,4 +700,19 @@ class _FakeSongRepository
     }
     songById = record;
   }
+}
+
+class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
+  _FakeLastKnownIdentityStore(this._identity);
+
+  final LastKnownIdentity? _identity;
+
+  @override
+  Future<LastKnownIdentity?> read() async => _identity;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) => throw UnimplementedError();
+
+  @override
+  Future<void> clear() => throw UnimplementedError();
 }

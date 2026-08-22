@@ -240,6 +240,119 @@ void main() {
       expect(eventsRecorder.purgeCalls.single.reason, reason);
     }
   });
+
+  group('resolveVerifiedEmptyMembership (D5, Task 4.1)', () {
+    test(
+      'first resolution quarantines: sets membershipRevokedAt, records a '
+      'quarantine event, and deletes nothing',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        expect(identityStore.writes, hasLength(1));
+        final written = identityStore.writes.single;
+        expect(written.userId, 'user-1');
+        expect(written.email, 'user1@example.com');
+        expect(written.organizationId, 'org-1');
+        expect(written.membershipRevokedAt, isNotNull);
+        expect(notedIdentities, [written]);
+
+        expect(eventsRecorder.quarantineCalls, hasLength(1));
+        final recorded = eventsRecorder.quarantineCalls.single;
+        expect(recorded.target, PurgeTarget.identity);
+        expect(recorded.reason, 'membershipRevokedFirstResolution');
+        expect(recorded.userId, 'user-1');
+
+        // Deletes nothing (D5's core guarantee).
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      'a second call while already quarantined is a documented no-op: '
+      'returns alreadyQuarantined, writes nothing further, deletes nothing',
+      () async {
+        final revokedAt = DateTime.utc(2026, 8, 20);
+        identityStore.seed(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: revokedAt,
+          ),
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+        );
+
+        expect(result, MembershipRevocationResolution.alreadyQuarantined);
+        expect(identityStore.writes, isEmpty);
+        expect(notedIdentities, isEmpty);
+        expect(eventsRecorder.quarantineCalls, isEmpty);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      'a mismatched stored identity (different userId) is treated as no '
+      'prior marker -- defensive branch',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'someone-else',
+            email: 'someone-else@example.com',
+            organizationId: 'org-9',
+            membershipRevokedAt: null,
+          ),
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      'when the audit recorder throws, the marker write already committed '
+      'is NOT reported as a failure -- the method completes and still '
+      'returns quarantined',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        eventsRecorder.throwOnQuarantineRecord = true;
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        expect(identityStore.writes, hasLength(1));
+      },
+    );
+  });
 }
 
 class _RecordingSongCatalogStore implements SongCatalogStore {
@@ -603,9 +716,24 @@ class _RecordedPurgeCall {
   final int? rowsAffected;
 }
 
+class _RecordedQuarantineCall {
+  const _RecordedQuarantineCall({
+    required this.target,
+    required this.reason,
+    this.userId,
+  });
+
+  final PurgeTarget target;
+  final String reason;
+  final String? userId;
+}
+
 class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
   final List<_RecordedPurgeCall> purgeCalls = <_RecordedPurgeCall>[];
+  final List<_RecordedQuarantineCall> quarantineCalls =
+      <_RecordedQuarantineCall>[];
   bool throwOnRecord = false;
+  bool throwOnQuarantineRecord = false;
 
   @override
   Future<void> recordPurge({
@@ -642,4 +770,18 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {
+    if (throwOnQuarantineRecord) {
+      throw StateError('simulated recordQuarantine failure');
+    }
+    quarantineCalls.add(
+      _RecordedQuarantineCall(target: target, reason: reason, userId: userId),
+    );
+  }
 }

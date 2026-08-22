@@ -404,6 +404,15 @@ class _FakeEventsRecorder implements LocalDataEventsRecorder {
   }
 
   @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {
+    throw UnimplementedError('not exercised by these tests');
+  }
+
+  @override
   Future<void> recordPurge({
     required PurgeTarget target,
     required PurgeReason reason,

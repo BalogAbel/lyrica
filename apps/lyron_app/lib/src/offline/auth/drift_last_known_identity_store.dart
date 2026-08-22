@@ -28,6 +28,7 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
       email: row.email,
       organizationId: row.organizationId,
       updatedAt: row.updatedAt,
+      membershipRevokedAt: row.membershipRevokedAt,
     );
   }
 
@@ -42,6 +43,9 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
             email: identity.email,
             organizationId: Value(identity.organizationId),
             updatedAt: Value(identity.updatedAt?.toUtc()),
+            membershipRevokedAt: Value(
+              identity.membershipRevokedAt?.toUtc(),
+            ),
           ),
         );
   }

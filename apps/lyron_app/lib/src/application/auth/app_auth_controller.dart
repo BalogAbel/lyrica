@@ -74,6 +74,28 @@ class AppAuthController extends ChangeNotifier {
   /// buffering and [restoreSession]'s explicit await. So by the time this
   /// is called, the one-time load has always already completed and this
   /// update is a pure, race-free overwrite of the cache.
+  ///
+  /// Deliberately does NOT call [notifyListeners]: this controller's
+  /// ChangeNotifier listeners include `lastKnownIdentityPersistenceProvider`'s
+  /// own `authListener` (auth_providers.dart), which reschedules a full
+  /// identity resolution -- including another call to this exact method --
+  /// on every notification. An earlier revision (D5/Phase 4, ADR-035) made
+  /// this method notify, intending to drive the new quarantine banner
+  /// reactively; it instead produced a real feedback loop: notify ->
+  /// authListener fires -> a new resolution runs -> it writes an
+  /// equivalent identity -> notify again. Even gating the notify on "did
+  /// the identity actually change" only bounded the loop to one extra,
+  /// redundant resolution (and, in production, one extra real
+  /// membership-RPC round trip) rather than eliminating it, because
+  /// [_identity] legitimately starts `null` here whenever this controller
+  /// is constructed without its own [_lastKnownIdentityStore] reference
+  /// wired (every production and test build IS wired, but the mismatch is
+  /// exactly what the first quarantine-triggering write exposed). The
+  /// quarantine banner's reactivity is therefore driven by a separate,
+  /// dedicated revision counter (`membershipQuarantineRevisionProvider`,
+  /// auth_providers.dart) that this class's callers bump alongside their
+  /// existing call to this method, not by this ChangeNotifier's own
+  /// listeners.
   void noteLastKnownIdentity(LastKnownIdentity? identity) {
     _identity = identity;
   }

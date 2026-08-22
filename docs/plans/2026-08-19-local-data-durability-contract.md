@@ -447,10 +447,36 @@ Closes F4 and F6. The only phase that adds a genuinely destructive path.
 **Files:** `planning_providers.dart`, `song_catalog_controller.dart`, store
 migration for `membershipRevokedAt`, tests
 
-- [ ] Write a failing test: one `verifiedEmpty` resolution deletes nothing and
+- [x] Write a failing test: one `verifiedEmpty` resolution deletes nothing and
   records the quarantine marker.
-- [ ] Implement read-only quarantine: data remains readable, writes are blocked,
+- [x] Implement read-only quarantine: data remains readable, writes are blocked,
   a banner explains why.
+
+`membershipRevokedAt` (nullable `DateTimeColumn`) added to
+`LastKnownIdentityRows` (v1→v2, this database's first `onUpgrade` delta).
+`LocalDataLifecycle.resolveVerifiedEmptyMembership({required userId})` is the
+one shared gate both `auth_providers.dart`'s `persistNewIdentity` and
+`planning_providers.dart`'s `VerifiedEmptyMembershipCleanupCoordinator` now
+call instead of purging directly; both keep working as before for every
+resolution that is not `ActiveOrganizationVerifiedEmpty`. First resolution
+sets the marker (via the existing non-destructive `writeIdentity` path) and
+records a `local_data_events` row (`kind: 'quarantine'`); a second call while
+already quarantined is a documented no-op (`// TODO(Task 4.2)`). Six
+mutation-entry-point guards added (`SongLibraryService.createSong/
+updateSong/deleteSong`, `PlanningWriteService`'s nine write methods), each
+throwing `MembershipQuarantinedException` before enqueueing anything when the
+acting user's identity row carries a marker; already-queued pending mutations
+are untouched. `MembershipQuarantineBanner`
+(`presentation/auth/membership_quarantine_banner.dart`) mounted above
+`ReauthBanner` in `song_list_screen.dart`, backed by a dedicated
+`membershipRevokedAtProvider`/`membershipQuarantineRevisionProvider` pair
+(auth_providers.dart) rather than `AppAuthController`'s own `ChangeNotifier`
+-- an earlier revision drove it through that notifier directly and produced a
+real feedback loop with `lastKnownIdentityPersistenceProvider`'s own
+`authListener`; see the class-level note on
+`AppAuthController.noteLastKnownIdentity` for the full account. Reads
+untouched: `SongCatalogController`/`PlanningSyncController`'s
+offline-authenticated read paths do not consult the marker.
 
 ## Task 4.2 — Confirmed purge
 

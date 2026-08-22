@@ -310,4 +310,7 @@ class AppStrings {
       'No local data activity recorded yet.';
   static const localDataEventsLoadErrorMessage =
       'Could not load local data activity.';
+  static const membershipQuarantineMessage =
+      "This organization's access was revoked. Editing is disabled until "
+      'this is resolved.';
 }

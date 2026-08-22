@@ -58,6 +58,17 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _membershipRevokedAtMeta =
+      const VerificationMeta('membershipRevokedAt');
+  @override
+  late final GeneratedColumn<DateTime> membershipRevokedAt =
+      GeneratedColumn<DateTime>(
+        'membership_revoked_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     rowId,
@@ -65,6 +76,7 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
     email,
     organizationId,
     updatedAt,
+    membershipRevokedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -115,6 +127,15 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
+    if (data.containsKey('membership_revoked_at')) {
+      context.handle(
+        _membershipRevokedAtMeta,
+        membershipRevokedAt.isAcceptableOrUnknown(
+          data['membership_revoked_at']!,
+          _membershipRevokedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -144,6 +165,10 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       ),
+      membershipRevokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}membership_revoked_at'],
+      ),
     );
   }
 
@@ -160,12 +185,14 @@ class LastKnownIdentityRow extends DataClass
   final String email;
   final String? organizationId;
   final DateTime? updatedAt;
+  final DateTime? membershipRevokedAt;
   const LastKnownIdentityRow({
     required this.rowId,
     required this.userId,
     required this.email,
     this.organizationId,
     this.updatedAt,
+    this.membershipRevokedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -178,6 +205,9 @@ class LastKnownIdentityRow extends DataClass
     }
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    if (!nullToAbsent || membershipRevokedAt != null) {
+      map['membership_revoked_at'] = Variable<DateTime>(membershipRevokedAt);
     }
     return map;
   }
@@ -193,6 +223,9 @@ class LastKnownIdentityRow extends DataClass
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(updatedAt),
+      membershipRevokedAt: membershipRevokedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(membershipRevokedAt),
     );
   }
 
@@ -207,6 +240,9 @@ class LastKnownIdentityRow extends DataClass
       email: serializer.fromJson<String>(json['email']),
       organizationId: serializer.fromJson<String?>(json['organizationId']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+      membershipRevokedAt: serializer.fromJson<DateTime?>(
+        json['membershipRevokedAt'],
+      ),
     );
   }
   @override
@@ -218,6 +254,7 @@ class LastKnownIdentityRow extends DataClass
       'email': serializer.toJson<String>(email),
       'organizationId': serializer.toJson<String?>(organizationId),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+      'membershipRevokedAt': serializer.toJson<DateTime?>(membershipRevokedAt),
     };
   }
 
@@ -227,6 +264,7 @@ class LastKnownIdentityRow extends DataClass
     String? email,
     Value<String?> organizationId = const Value.absent(),
     Value<DateTime?> updatedAt = const Value.absent(),
+    Value<DateTime?> membershipRevokedAt = const Value.absent(),
   }) => LastKnownIdentityRow(
     rowId: rowId ?? this.rowId,
     userId: userId ?? this.userId,
@@ -235,6 +273,9 @@ class LastKnownIdentityRow extends DataClass
         ? organizationId.value
         : this.organizationId,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    membershipRevokedAt: membershipRevokedAt.present
+        ? membershipRevokedAt.value
+        : this.membershipRevokedAt,
   );
   LastKnownIdentityRow copyWithCompanion(LastKnownIdentityRowsCompanion data) {
     return LastKnownIdentityRow(
@@ -245,6 +286,9 @@ class LastKnownIdentityRow extends DataClass
           ? data.organizationId.value
           : this.organizationId,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      membershipRevokedAt: data.membershipRevokedAt.present
+          ? data.membershipRevokedAt.value
+          : this.membershipRevokedAt,
     );
   }
 
@@ -255,14 +299,21 @@ class LastKnownIdentityRow extends DataClass
           ..write('userId: $userId, ')
           ..write('email: $email, ')
           ..write('organizationId: $organizationId, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('membershipRevokedAt: $membershipRevokedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(rowId, userId, email, organizationId, updatedAt);
+  int get hashCode => Object.hash(
+    rowId,
+    userId,
+    email,
+    organizationId,
+    updatedAt,
+    membershipRevokedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -271,7 +322,8 @@ class LastKnownIdentityRow extends DataClass
           other.userId == this.userId &&
           other.email == this.email &&
           other.organizationId == this.organizationId &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.membershipRevokedAt == this.membershipRevokedAt);
 }
 
 class LastKnownIdentityRowsCompanion
@@ -281,12 +333,14 @@ class LastKnownIdentityRowsCompanion
   final Value<String> email;
   final Value<String?> organizationId;
   final Value<DateTime?> updatedAt;
+  final Value<DateTime?> membershipRevokedAt;
   const LastKnownIdentityRowsCompanion({
     this.rowId = const Value.absent(),
     this.userId = const Value.absent(),
     this.email = const Value.absent(),
     this.organizationId = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.membershipRevokedAt = const Value.absent(),
   });
   LastKnownIdentityRowsCompanion.insert({
     this.rowId = const Value.absent(),
@@ -294,6 +348,7 @@ class LastKnownIdentityRowsCompanion
     required String email,
     this.organizationId = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.membershipRevokedAt = const Value.absent(),
   }) : userId = Value(userId),
        email = Value(email);
   static Insertable<LastKnownIdentityRow> custom({
@@ -302,6 +357,7 @@ class LastKnownIdentityRowsCompanion
     Expression<String>? email,
     Expression<String>? organizationId,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? membershipRevokedAt,
   }) {
     return RawValuesInsertable({
       if (rowId != null) 'row_id': rowId,
@@ -309,6 +365,8 @@ class LastKnownIdentityRowsCompanion
       if (email != null) 'email': email,
       if (organizationId != null) 'organization_id': organizationId,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (membershipRevokedAt != null)
+        'membership_revoked_at': membershipRevokedAt,
     });
   }
 
@@ -318,6 +376,7 @@ class LastKnownIdentityRowsCompanion
     Value<String>? email,
     Value<String?>? organizationId,
     Value<DateTime?>? updatedAt,
+    Value<DateTime?>? membershipRevokedAt,
   }) {
     return LastKnownIdentityRowsCompanion(
       rowId: rowId ?? this.rowId,
@@ -325,6 +384,7 @@ class LastKnownIdentityRowsCompanion
       email: email ?? this.email,
       organizationId: organizationId ?? this.organizationId,
       updatedAt: updatedAt ?? this.updatedAt,
+      membershipRevokedAt: membershipRevokedAt ?? this.membershipRevokedAt,
     );
   }
 
@@ -346,6 +406,11 @@ class LastKnownIdentityRowsCompanion
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (membershipRevokedAt.present) {
+      map['membership_revoked_at'] = Variable<DateTime>(
+        membershipRevokedAt.value,
+      );
+    }
     return map;
   }
 
@@ -356,7 +421,8 @@ class LastKnownIdentityRowsCompanion
           ..write('userId: $userId, ')
           ..write('email: $email, ')
           ..write('organizationId: $organizationId, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('membershipRevokedAt: $membershipRevokedAt')
           ..write(')'))
         .toString();
   }
@@ -382,6 +448,7 @@ typedef $$LastKnownIdentityRowsTableCreateCompanionBuilder =
       required String email,
       Value<String?> organizationId,
       Value<DateTime?> updatedAt,
+      Value<DateTime?> membershipRevokedAt,
     });
 typedef $$LastKnownIdentityRowsTableUpdateCompanionBuilder =
     LastKnownIdentityRowsCompanion Function({
@@ -390,6 +457,7 @@ typedef $$LastKnownIdentityRowsTableUpdateCompanionBuilder =
       Value<String> email,
       Value<String?> organizationId,
       Value<DateTime?> updatedAt,
+      Value<DateTime?> membershipRevokedAt,
     });
 
 class $$LastKnownIdentityRowsTableFilterComposer
@@ -423,6 +491,11 @@ class $$LastKnownIdentityRowsTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get membershipRevokedAt => $composableBuilder(
+    column: $table.membershipRevokedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -460,6 +533,11 @@ class $$LastKnownIdentityRowsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get membershipRevokedAt => $composableBuilder(
+    column: $table.membershipRevokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LastKnownIdentityRowsTableAnnotationComposer
@@ -487,6 +565,11 @@ class $$LastKnownIdentityRowsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get membershipRevokedAt => $composableBuilder(
+    column: $table.membershipRevokedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$LastKnownIdentityRowsTableTableManager
@@ -540,12 +623,14 @@ class $$LastKnownIdentityRowsTableTableManager
                 Value<String> email = const Value.absent(),
                 Value<String?> organizationId = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime?> membershipRevokedAt = const Value.absent(),
               }) => LastKnownIdentityRowsCompanion(
                 rowId: rowId,
                 userId: userId,
                 email: email,
                 organizationId: organizationId,
                 updatedAt: updatedAt,
+                membershipRevokedAt: membershipRevokedAt,
               ),
           createCompanionCallback:
               ({
@@ -554,12 +639,14 @@ class $$LastKnownIdentityRowsTableTableManager
                 required String email,
                 Value<String?> organizationId = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
+                Value<DateTime?> membershipRevokedAt = const Value.absent(),
               }) => LastKnownIdentityRowsCompanion.insert(
                 rowId: rowId,
                 userId: userId,
                 email: email,
                 organizationId: organizationId,
                 updatedAt: updatedAt,
+                membershipRevokedAt: membershipRevokedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

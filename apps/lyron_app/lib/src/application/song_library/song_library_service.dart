@@ -1,6 +1,8 @@
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
@@ -12,13 +14,36 @@ class SongLibraryService {
     this._repository, [
     SongMutationStore? mutationStore,
     SongIdGenerator? idGenerator,
+    LastKnownIdentityStore? identityStore,
   ]) : _mutationStore = mutationStore,
-       _idGenerator = idGenerator ?? generateUuidV4;
+       _idGenerator = idGenerator ?? generateUuidV4,
+       _identityStore = identityStore;
 
   final SongCatalogReadRepository _repository;
   final SongMutationStore? _mutationStore;
   final SongIdGenerator _idGenerator;
+  // D5/Phase 4 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035): nullable so every existing caller/test that does not wire an
+  // identity store keeps working unchanged -- null means "no quarantine
+  // guard," matching this class's existing optional-dependency convention.
+  final LastKnownIdentityStore? _identityStore;
   final _normalizer = ChordproNormalizer();
+
+  /// Throws [MembershipQuarantinedException] instead of letting a caller
+  /// enqueue a new local write for [userId] while that user's local data is
+  /// in read-only quarantine (D5). Reads are unaffected -- this guard only
+  /// runs at the point of a NEW write, never as a sweep over already-queued
+  /// pending mutations.
+  Future<void> _guardNotQuarantined(String userId) async {
+    final identityStore = _identityStore;
+    if (identityStore == null) return;
+    final identity = await identityStore.read();
+    if (identity != null &&
+        identity.userId == userId &&
+        identity.membershipRevokedAt != null) {
+      throw MembershipQuarantinedException(userId);
+    }
+  }
 
   Future<List<SongSummary>> listSongs({required ActiveCatalogContext context}) {
     return _repository.listSongs(
@@ -65,6 +90,7 @@ class SongLibraryService {
     required String title,
     required String chordproSource,
   }) async {
+    await _guardNotQuarantined(context.userId);
     final mutationStore = _requireMutationStore();
     final normalizedSource = _normalizer.normalize(chordproSource);
     final songId = _idGenerator();
@@ -105,6 +131,7 @@ class SongLibraryService {
     required String title,
     required String chordproSource,
   }) async {
+    await _guardNotQuarantined(context.userId);
     final mutationStore = _requireMutationStore();
     final normalizedSource = _normalizer.normalize(chordproSource);
     final existing = await mutationStore.readById(
@@ -137,6 +164,7 @@ class SongLibraryService {
     required ActiveCatalogContext context,
     required String songId,
   }) async {
+    await _guardNotQuarantined(context.userId);
     final mutationStore = _requireMutationStore();
     final references = await mutationStore.countReferencingSessionItems(
       userId: context.userId,

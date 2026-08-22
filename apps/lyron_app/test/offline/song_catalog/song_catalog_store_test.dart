@@ -3033,6 +3033,13 @@ class _RecordingLocalDataEventsRecorderForEviction
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {}
 }
 
 /// Records every [evictToBudget] call without touching a real database, so

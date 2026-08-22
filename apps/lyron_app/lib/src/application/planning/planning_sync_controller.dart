@@ -264,10 +264,13 @@ class PlanningSyncController extends ChangeNotifier {
         accessStatus: PlanningAccessStatus.signedIn,
       ),
     );
-    await _localDataLifecycle.purgePlanningData(
-      userId: userId,
-      reason: PurgeReason.membershipRevokedConfirmed,
-    );
+    // D5/Phase 4 (ADR-035): planning data is no longer purged here. The
+    // destructive/quarantine decision for a verified-empty-membership
+    // resolution now happens exactly once, in
+    // LocalDataLifecycle.resolveVerifiedEmptyMembership, called directly by
+    // VerifiedEmptyMembershipCleanupCoordinator -- this method (invoked as
+    // one of the coordinator's registered handlers) only resets this
+    // controller's own active-context state.
   }
 
   Future<void> handleSessionExpired() async {

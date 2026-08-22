@@ -1179,6 +1179,13 @@ class _NoopLocalDataEventsRecorderForLifecycle
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {}
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {

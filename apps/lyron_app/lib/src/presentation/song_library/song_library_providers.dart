@@ -66,6 +66,8 @@ final songLibraryServiceProvider = Provider<SongLibraryService>((ref) {
   return SongLibraryService(
     ref.watch(songLibraryRepositoryProvider),
     ref.watch(songMutationStoreProvider),
+    null,
+    ref.watch(lastKnownIdentityStoreProvider),
   );
 });
 

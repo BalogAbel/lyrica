@@ -289,7 +289,11 @@ void main() {
     );
 
     test(
-      'verified empty membership clears the planning boundary and deletes authenticated planning data for the user',
+      'verified empty membership clears the planning boundary but -- D5/'
+      'Phase 4, ADR-035 -- no longer purges planning data itself: that '
+      'destructive decision now lives solely behind '
+      'LocalDataLifecycle.resolveVerifiedEmptyMembership, called once by '
+      'VerifiedEmptyMembershipCleanupCoordinator',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -319,12 +323,14 @@ void main() {
         expect(controller.state.userId, isNull);
         expect(controller.state.organizationId, isNull);
         expect(controller.state.hasLocalPlanningData, isFalse);
+        // Deletes nothing (D5): the planning data survives, untouched by
+        // this method -- only the in-memory active-context state resets.
         expect(
           await store.readPlanSummaries(
             userId: 'user-1',
             organizationId: 'org-1',
           ),
-          isEmpty,
+          hasLength(1),
         );
       },
     );
@@ -817,6 +823,13 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {}
 }
 
 class _BlockingPlanningLocalStore implements PlanningLocalStore {
