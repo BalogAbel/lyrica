@@ -51,12 +51,24 @@ class $CachedCatalogSnapshotsTable extends CachedCatalogSnapshots
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _pendingEmptyConfirmationAtMeta =
+      const VerificationMeta('pendingEmptyConfirmationAt');
+  @override
+  late final GeneratedColumn<DateTime> pendingEmptyConfirmationAt =
+      GeneratedColumn<DateTime>(
+        'pending_empty_confirmation_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
     organizationId,
     snapshotVersion,
     refreshedAt,
+    pendingEmptyConfirmationAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -111,6 +123,15 @@ class $CachedCatalogSnapshotsTable extends CachedCatalogSnapshots
     } else if (isInserting) {
       context.missing(_refreshedAtMeta);
     }
+    if (data.containsKey('pending_empty_confirmation_at')) {
+      context.handle(
+        _pendingEmptyConfirmationAtMeta,
+        pendingEmptyConfirmationAt.isAcceptableOrUnknown(
+          data['pending_empty_confirmation_at']!,
+          _pendingEmptyConfirmationAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -136,6 +157,10 @@ class $CachedCatalogSnapshotsTable extends CachedCatalogSnapshots
         DriftSqlType.dateTime,
         data['${effectivePrefix}refreshed_at'],
       )!,
+      pendingEmptyConfirmationAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}pending_empty_confirmation_at'],
+      ),
     );
   }
 
@@ -151,11 +176,13 @@ class CachedCatalogSnapshot extends DataClass
   final String organizationId;
   final int snapshotVersion;
   final DateTime refreshedAt;
+  final DateTime? pendingEmptyConfirmationAt;
   const CachedCatalogSnapshot({
     required this.userId,
     required this.organizationId,
     required this.snapshotVersion,
     required this.refreshedAt,
+    this.pendingEmptyConfirmationAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -164,6 +191,11 @@ class CachedCatalogSnapshot extends DataClass
     map['organization_id'] = Variable<String>(organizationId);
     map['snapshot_version'] = Variable<int>(snapshotVersion);
     map['refreshed_at'] = Variable<DateTime>(refreshedAt);
+    if (!nullToAbsent || pendingEmptyConfirmationAt != null) {
+      map['pending_empty_confirmation_at'] = Variable<DateTime>(
+        pendingEmptyConfirmationAt,
+      );
+    }
     return map;
   }
 
@@ -173,6 +205,10 @@ class CachedCatalogSnapshot extends DataClass
       organizationId: Value(organizationId),
       snapshotVersion: Value(snapshotVersion),
       refreshedAt: Value(refreshedAt),
+      pendingEmptyConfirmationAt:
+          pendingEmptyConfirmationAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pendingEmptyConfirmationAt),
     );
   }
 
@@ -186,6 +222,9 @@ class CachedCatalogSnapshot extends DataClass
       organizationId: serializer.fromJson<String>(json['organizationId']),
       snapshotVersion: serializer.fromJson<int>(json['snapshotVersion']),
       refreshedAt: serializer.fromJson<DateTime>(json['refreshedAt']),
+      pendingEmptyConfirmationAt: serializer.fromJson<DateTime?>(
+        json['pendingEmptyConfirmationAt'],
+      ),
     );
   }
   @override
@@ -196,6 +235,9 @@ class CachedCatalogSnapshot extends DataClass
       'organizationId': serializer.toJson<String>(organizationId),
       'snapshotVersion': serializer.toJson<int>(snapshotVersion),
       'refreshedAt': serializer.toJson<DateTime>(refreshedAt),
+      'pendingEmptyConfirmationAt': serializer.toJson<DateTime?>(
+        pendingEmptyConfirmationAt,
+      ),
     };
   }
 
@@ -204,11 +246,15 @@ class CachedCatalogSnapshot extends DataClass
     String? organizationId,
     int? snapshotVersion,
     DateTime? refreshedAt,
+    Value<DateTime?> pendingEmptyConfirmationAt = const Value.absent(),
   }) => CachedCatalogSnapshot(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
     snapshotVersion: snapshotVersion ?? this.snapshotVersion,
     refreshedAt: refreshedAt ?? this.refreshedAt,
+    pendingEmptyConfirmationAt: pendingEmptyConfirmationAt.present
+        ? pendingEmptyConfirmationAt.value
+        : this.pendingEmptyConfirmationAt,
   );
   CachedCatalogSnapshot copyWithCompanion(
     CachedCatalogSnapshotsCompanion data,
@@ -224,6 +270,9 @@ class CachedCatalogSnapshot extends DataClass
       refreshedAt: data.refreshedAt.present
           ? data.refreshedAt.value
           : this.refreshedAt,
+      pendingEmptyConfirmationAt: data.pendingEmptyConfirmationAt.present
+          ? data.pendingEmptyConfirmationAt.value
+          : this.pendingEmptyConfirmationAt,
     );
   }
 
@@ -233,14 +282,20 @@ class CachedCatalogSnapshot extends DataClass
           ..write('userId: $userId, ')
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
-          ..write('refreshedAt: $refreshedAt')
+          ..write('refreshedAt: $refreshedAt, ')
+          ..write('pendingEmptyConfirmationAt: $pendingEmptyConfirmationAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(userId, organizationId, snapshotVersion, refreshedAt);
+  int get hashCode => Object.hash(
+    userId,
+    organizationId,
+    snapshotVersion,
+    refreshedAt,
+    pendingEmptyConfirmationAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -248,7 +303,8 @@ class CachedCatalogSnapshot extends DataClass
           other.userId == this.userId &&
           other.organizationId == this.organizationId &&
           other.snapshotVersion == this.snapshotVersion &&
-          other.refreshedAt == this.refreshedAt);
+          other.refreshedAt == this.refreshedAt &&
+          other.pendingEmptyConfirmationAt == this.pendingEmptyConfirmationAt);
 }
 
 class CachedCatalogSnapshotsCompanion
@@ -257,12 +313,14 @@ class CachedCatalogSnapshotsCompanion
   final Value<String> organizationId;
   final Value<int> snapshotVersion;
   final Value<DateTime> refreshedAt;
+  final Value<DateTime?> pendingEmptyConfirmationAt;
   final Value<int> rowid;
   const CachedCatalogSnapshotsCompanion({
     this.userId = const Value.absent(),
     this.organizationId = const Value.absent(),
     this.snapshotVersion = const Value.absent(),
     this.refreshedAt = const Value.absent(),
+    this.pendingEmptyConfirmationAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedCatalogSnapshotsCompanion.insert({
@@ -270,6 +328,7 @@ class CachedCatalogSnapshotsCompanion
     required String organizationId,
     required int snapshotVersion,
     required DateTime refreshedAt,
+    this.pendingEmptyConfirmationAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -280,6 +339,7 @@ class CachedCatalogSnapshotsCompanion
     Expression<String>? organizationId,
     Expression<int>? snapshotVersion,
     Expression<DateTime>? refreshedAt,
+    Expression<DateTime>? pendingEmptyConfirmationAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -287,6 +347,8 @@ class CachedCatalogSnapshotsCompanion
       if (organizationId != null) 'organization_id': organizationId,
       if (snapshotVersion != null) 'snapshot_version': snapshotVersion,
       if (refreshedAt != null) 'refreshed_at': refreshedAt,
+      if (pendingEmptyConfirmationAt != null)
+        'pending_empty_confirmation_at': pendingEmptyConfirmationAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -296,6 +358,7 @@ class CachedCatalogSnapshotsCompanion
     Value<String>? organizationId,
     Value<int>? snapshotVersion,
     Value<DateTime>? refreshedAt,
+    Value<DateTime?>? pendingEmptyConfirmationAt,
     Value<int>? rowid,
   }) {
     return CachedCatalogSnapshotsCompanion(
@@ -303,6 +366,8 @@ class CachedCatalogSnapshotsCompanion
       organizationId: organizationId ?? this.organizationId,
       snapshotVersion: snapshotVersion ?? this.snapshotVersion,
       refreshedAt: refreshedAt ?? this.refreshedAt,
+      pendingEmptyConfirmationAt:
+          pendingEmptyConfirmationAt ?? this.pendingEmptyConfirmationAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -322,6 +387,11 @@ class CachedCatalogSnapshotsCompanion
     if (refreshedAt.present) {
       map['refreshed_at'] = Variable<DateTime>(refreshedAt.value);
     }
+    if (pendingEmptyConfirmationAt.present) {
+      map['pending_empty_confirmation_at'] = Variable<DateTime>(
+        pendingEmptyConfirmationAt.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -335,6 +405,7 @@ class CachedCatalogSnapshotsCompanion
           ..write('organizationId: $organizationId, ')
           ..write('snapshotVersion: $snapshotVersion, ')
           ..write('refreshedAt: $refreshedAt, ')
+          ..write('pendingEmptyConfirmationAt: $pendingEmptyConfirmationAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1904,6 +1975,7 @@ typedef $$CachedCatalogSnapshotsTableCreateCompanionBuilder =
       required String organizationId,
       required int snapshotVersion,
       required DateTime refreshedAt,
+      Value<DateTime?> pendingEmptyConfirmationAt,
       Value<int> rowid,
     });
 typedef $$CachedCatalogSnapshotsTableUpdateCompanionBuilder =
@@ -1912,6 +1984,7 @@ typedef $$CachedCatalogSnapshotsTableUpdateCompanionBuilder =
       Value<String> organizationId,
       Value<int> snapshotVersion,
       Value<DateTime> refreshedAt,
+      Value<DateTime?> pendingEmptyConfirmationAt,
       Value<int> rowid,
     });
 
@@ -1941,6 +2014,11 @@ class $$CachedCatalogSnapshotsTableFilterComposer
 
   ColumnFilters<DateTime> get refreshedAt => $composableBuilder(
     column: $table.refreshedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get pendingEmptyConfirmationAt => $composableBuilder(
+    column: $table.pendingEmptyConfirmationAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1973,6 +2051,12 @@ class $$CachedCatalogSnapshotsTableOrderingComposer
     column: $table.refreshedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get pendingEmptyConfirmationAt =>
+      $composableBuilder(
+        column: $table.pendingEmptyConfirmationAt,
+        builder: (column) => ColumnOrderings(column),
+      );
 }
 
 class $$CachedCatalogSnapshotsTableAnnotationComposer
@@ -2001,6 +2085,12 @@ class $$CachedCatalogSnapshotsTableAnnotationComposer
     column: $table.refreshedAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<DateTime> get pendingEmptyConfirmationAt =>
+      $composableBuilder(
+        column: $table.pendingEmptyConfirmationAt,
+        builder: (column) => column,
+      );
 }
 
 class $$CachedCatalogSnapshotsTableTableManager
@@ -2053,12 +2143,15 @@ class $$CachedCatalogSnapshotsTableTableManager
                 Value<String> organizationId = const Value.absent(),
                 Value<int> snapshotVersion = const Value.absent(),
                 Value<DateTime> refreshedAt = const Value.absent(),
+                Value<DateTime?> pendingEmptyConfirmationAt =
+                    const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSnapshotsCompanion(
                 userId: userId,
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 refreshedAt: refreshedAt,
+                pendingEmptyConfirmationAt: pendingEmptyConfirmationAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2067,12 +2160,15 @@ class $$CachedCatalogSnapshotsTableTableManager
                 required String organizationId,
                 required int snapshotVersion,
                 required DateTime refreshedAt,
+                Value<DateTime?> pendingEmptyConfirmationAt =
+                    const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedCatalogSnapshotsCompanion.insert(
                 userId: userId,
                 organizationId: organizationId,
                 snapshotVersion: snapshotVersion,
                 refreshedAt: refreshedAt,
+                pendingEmptyConfirmationAt: pendingEmptyConfirmationAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

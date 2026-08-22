@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
@@ -1865,6 +1865,223 @@ void main() {
       );
       expect(record!.syncErrorContext, contains('dependencyBlocked'));
     });
+  });
+
+  group('SongCatalogStore.resolveEmptySnapshot (D4, '
+      'local-data-durability-contract)', () {
+    late SongCatalogDatabase database;
+    late DriftSongCatalogStore store;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = DriftSongCatalogStore(database);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('accepts when there is no stored snapshot row at all', () async {
+      final resolution = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      expect(resolution, EmptySnapshotResolution.accept);
+    });
+
+    test('accepts when the stored snapshot exists but is already empty', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [],
+        sources: const [],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+
+      final resolution = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      expect(resolution, EmptySnapshotResolution.accept);
+    });
+
+    test(
+      'rejects the first empty resolution against a non-empty stored '
+      'snapshot and sets the pending-confirmation marker',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+
+        final resolution = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        expect(resolution, EmptySnapshotResolution.reject);
+
+        final snapshotRow =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-1'),
+                ))
+                .getSingle();
+        expect(snapshotRow.pendingEmptyConfirmationAt, isNotNull);
+      },
+    );
+
+    test(
+      'a rejection leaves the cached summaries, sources, and snapshot '
+      'version/refreshedAt fully unchanged',
+      () async {
+        final refreshedAt = DateTime.utc(2026, 3, 25, 12);
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: refreshedAt,
+        );
+
+        final summariesBefore = await database
+            .select(database.cachedCatalogSummaries)
+            .get();
+        final sourcesBefore = await database
+            .select(database.cachedCatalogSources)
+            .get();
+        final snapshotBefore =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-1'),
+                ))
+                .getSingle();
+
+        final resolution = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(resolution, EmptySnapshotResolution.reject);
+
+        final summariesAfter = await database
+            .select(database.cachedCatalogSummaries)
+            .get();
+        final sourcesAfter = await database
+            .select(database.cachedCatalogSources)
+            .get();
+        final snapshotAfter =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-1'),
+                ))
+                .getSingle();
+
+        expect(summariesAfter, summariesBefore);
+        expect(sourcesAfter, sourcesBefore);
+        expect(snapshotAfter.snapshotVersion, snapshotBefore.snapshotVersion);
+        expect(snapshotAfter.refreshedAt, snapshotBefore.refreshedAt);
+        expect(
+          snapshotBefore.pendingEmptyConfirmationAt,
+          isNull,
+          reason: 'sanity: the marker must not already be set before this',
+        );
+        expect(snapshotAfter.pendingEmptyConfirmationAt, isNotNull);
+      },
+    );
+
+    test(
+      'accepts the second, independent empty resolution once the marker is '
+      'set',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+
+        final first = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(first, EmptySnapshotResolution.reject);
+
+        final second = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(second, EmptySnapshotResolution.accept);
+      },
+    );
+
+    test(
+      'an intervening normal non-empty replace clears the pending-empty '
+      'marker, so a later single empty response is rejected again rather '
+      'than wrongly treated as the second confirmation',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+
+        final firstResolution = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(firstResolution, EmptySnapshotResolution.reject);
+
+        // A normal, real, non-empty refresh lands in between -- this must
+        // clear the marker the rejection above set.
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+          sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 13),
+        );
+
+        final snapshotRow =
+            await (database.select(database.cachedCatalogSnapshots)..where(
+                  (table) =>
+                      table.userId.equals('user-1') &
+                      table.organizationId.equals('org-1'),
+                ))
+                .getSingle();
+        expect(
+          snapshotRow.pendingEmptyConfirmationAt,
+          isNull,
+          reason:
+              'insertOnConflictUpdate only updates columns present in the '
+              'companion -- omitting pendingEmptyConfirmationAt here would '
+              'silently leave the earlier marker in place forever',
+        );
+
+        final thirdResolution = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(
+          thirdResolution,
+          EmptySnapshotResolution.reject,
+          reason:
+              'this is a fresh, independent single empty response against '
+              'the Beta snapshot -- the earlier rejection must not leak '
+              'across the intervening real refresh',
+        );
+      },
+    );
   });
 }
 

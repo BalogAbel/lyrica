@@ -1587,6 +1587,15 @@ class _FailingDeleteSongCatalogStore implements SongCatalogStore {
   );
 
   @override
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) => _inner.resolveEmptySnapshot(
+    userId: userId,
+    organizationId: organizationId,
+  );
+
+  @override
   Future<List<SongSummary>> readActiveSummaries({
     required String userId,
     required String organizationId,

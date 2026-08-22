@@ -261,6 +261,12 @@ class _RecordingSongCatalogStore implements SongCatalogStore {
   }) => throw UnimplementedError();
 
   @override
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) => throw UnimplementedError();
+
+  @override
   Future<void> replaceActiveSnapshot({
     required String userId,
     required String organizationId,
@@ -620,4 +626,17 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
       ),
     );
   }
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
 }

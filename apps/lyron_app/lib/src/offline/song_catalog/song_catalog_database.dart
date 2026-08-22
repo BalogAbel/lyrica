@@ -45,9 +45,21 @@ class SongCatalogDatabase extends _$SongCatalogDatabase {
           cachedCatalogSongMutations.localRevision,
         );
       }
+      if (from < 4) {
+        // D4 (docs/specs/2026-08-19-local-data-durability-contract.md,
+        // ADR-035 Task 3.1): every pre-migration snapshot row predates the
+        // pending-empty-confirmation marker, so it has no empty resolution
+        // in flight to distinguish from -- nullable, defaulting to null on
+        // upgrade, is the correct starting state (the same as a freshly
+        // inserted row).
+        await m.addColumn(
+          cachedCatalogSnapshots,
+          cachedCatalogSnapshots.pendingEmptyConfirmationAt,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 }

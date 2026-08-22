@@ -154,6 +154,48 @@ void main() {
     expect(records, hasLength(2));
   });
 
+  test(
+    'recordRejectedEmptySnapshot inserts one row with kind '
+    'empty-snapshot-rejected, target songCatalog, and null reason '
+    '(D4, local-data-durability-contract)',
+    () async {
+      await store.recordRejectedEmptySnapshot(
+        userId: 'u1',
+        organizationId: 'org-1',
+      );
+
+      final rows = await database.select(database.localDataEvents).get();
+
+      expect(rows, hasLength(1));
+      final row = rows.single;
+      expect(row.kind, 'empty-snapshot-rejected');
+      expect(row.target, 'songCatalog');
+      expect(row.reason, isNull);
+      expect(row.userId, 'u1');
+      expect(row.rowsAffected, isNull);
+    },
+  );
+
+  test(
+    'recordEviction and recordRejectedEmptySnapshot are reachable through '
+    'the LocalDataEventsRecorder interface, not just the concrete class',
+    () async {
+      final LocalDataEventsRecorder recorder = store;
+
+      await recorder.recordEviction(target: 'cachedCatalogSources');
+      await recorder.recordRejectedEmptySnapshot(
+        userId: 'u1',
+        organizationId: 'org-1',
+      );
+
+      final rows = await database.select(database.localDataEvents).get();
+      expect(rows.map((r) => r.kind).toSet(), {
+        'eviction',
+        'empty-snapshot-rejected',
+      });
+    },
+  );
+
   test('readRecent round-trips all fields correctly including nulls', () async {
     await store.recordPurge(
       target: PurgeTarget.identity,

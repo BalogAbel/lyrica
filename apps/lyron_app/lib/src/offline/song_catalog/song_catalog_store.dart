@@ -6,6 +6,21 @@ import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
+/// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): the outcome
+/// of [SongCatalogStore.resolveEmptySnapshot] deciding whether an incoming
+/// empty `listSongs()` response may replace a stored, non-empty snapshot.
+enum EmptySnapshotResolution {
+  /// Either there was nothing non-empty stored to protect, or this is the
+  /// second, independent empty resolution -- the caller should proceed with
+  /// the normal `replaceActiveSnapshot` call.
+  accept,
+
+  /// The stored snapshot is non-empty and this is the first empty response
+  /// seen against it -- the caller must NOT replace the snapshot. The
+  /// pending-confirmation marker has already been set on the stored row.
+  reject,
+}
+
 enum SongSyncStatus {
   pendingCreate,
   pendingUpdate,
@@ -130,6 +145,26 @@ abstract interface class SongCatalogStore {
     required List<SongSummary> summaries,
     required List<SongSource> sources,
     required DateTime refreshedAt,
+  });
+
+  /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Task 3.1): decides whether an incoming EMPTY `listSongs()` response may
+  /// replace the stored snapshot for `(userId, organizationId)`. Must be
+  /// called (and its result obeyed) BEFORE calling [replaceActiveSnapshot]
+  /// with empty `summaries`/`sources` -- this method never itself writes the
+  /// snapshot/summaries/sources rows, it only reads the current state and,
+  /// on a rejection, marks the stored snapshot row as having seen one empty
+  /// resolution.
+  ///
+  /// Returns [EmptySnapshotResolution.accept] when there is no stored
+  /// snapshot row, the stored snapshot is already empty, or the stored
+  /// snapshot's `pendingEmptyConfirmationAt` marker is already set (this is
+  /// the second, independent confirmation). Returns
+  /// [EmptySnapshotResolution.reject] -- and sets the marker -- when the
+  /// stored snapshot is non-empty and the marker was not yet set.
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
   });
 
   Future<List<SongSummary>> readActiveSummaries({
@@ -414,6 +449,17 @@ class DriftSongCatalogStore implements SongCatalogStore {
               organizationId: organizationId,
               snapshotVersion: nextSnapshotVersion,
               refreshedAt: refreshedAt,
+              // D4 (ADR-035 Task 3.1): insertOnConflictUpdate only updates
+              // the columns present in this companion -- it does NOT reset
+              // omitted columns to null/default on conflict. Every accepted
+              // replace (an ordinary non-empty refresh, or the second
+              // independent empty confirmation) must clear a
+              // pendingEmptyConfirmationAt marker a prior rejection may have
+              // set, or that marker sticks forever and every later single
+              // empty response gets wrongly auto-accepted as "the second
+              // confirmation" -- exactly the bug this column exists to
+              // prevent. See resolveEmptySnapshot below.
+              pendingEmptyConfirmationAt: const Value(null),
             ),
           );
 
@@ -451,6 +497,74 @@ class DriftSongCatalogStore implements SongCatalogStore {
       });
     });
     _onStorageFootprintChanged?.call();
+  }
+
+  // D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Task 3.1): not routed through _guarded/_writeRecovery -- this is not a
+  // growing write. It either performs a pure read (accept, no stored
+  // snapshot or already-empty stored snapshot; or accept, marker already
+  // set) or sets a metadata flag on an existing row (reject), never inserts
+  // new summary/source rows the storage-recovery boundary exists to protect.
+  @override
+  Future<EmptySnapshotResolution> resolveEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {
+    return _database.transaction(() async {
+      final snapshotRow =
+          await (_database.select(_database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId),
+              ))
+              .getSingleOrNull();
+      if (snapshotRow == null) {
+        // Nothing non-empty stored to protect -- D4 only guards replacing a
+        // non-empty stored snapshot.
+        return EmptySnapshotResolution.accept;
+      }
+
+      final storedCountExpression =
+          _database.cachedCatalogSummaries.songId.count();
+      final storedCountQuery =
+          _database.selectOnly(_database.cachedCatalogSummaries)
+            ..addColumns([storedCountExpression])
+            ..where(
+              _database.cachedCatalogSummaries.userId.equals(userId) &
+                  _database.cachedCatalogSummaries.organizationId.equals(
+                    organizationId,
+                  ),
+            );
+      final storedCountRow = await storedCountQuery.getSingle();
+      final storedCount = storedCountRow.read(storedCountExpression) ?? 0;
+      if (storedCount == 0) {
+        return EmptySnapshotResolution.accept;
+      }
+
+      if (snapshotRow.pendingEmptyConfirmationAt != null) {
+        // The second, independent confirmation -- the caller proceeds with
+        // the normal replace, which clears the marker (see
+        // _replaceActiveSnapshot's companion above).
+        return EmptySnapshotResolution.accept;
+      }
+
+      // First empty response against a non-empty stored snapshot: reject,
+      // and mark the row so a later, genuinely independent empty response
+      // can be recognised as the second confirmation. A lightweight update,
+      // not a full snapshot rewrite -- summaries/sources/mutations are
+      // untouched.
+      await (_database.update(_database.cachedCatalogSnapshots)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId),
+          ))
+          .write(
+            CachedCatalogSnapshotsCompanion(
+              pendingEmptyConfirmationAt: Value(DateTime.now().toUtc()),
+            ),
+          );
+      return EmptySnapshotResolution.reject;
+    });
   }
 
   @override

@@ -56,6 +56,19 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
 }
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -105,6 +118,8 @@ void main() {
         );
         final userId = client.auth.currentSession!.user.id;
         final onlineController = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: _lifecycleFor(store),
           remoteRepository: SupabaseSongRepository(client),
@@ -136,6 +151,8 @@ void main() {
         );
 
         final offlineController = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
           store: store,
           localDataLifecycle: _lifecycleFor(store),
           remoteRepository: _ThrowingSongRepository(
@@ -193,6 +210,8 @@ void main() {
       final userId = client.auth.currentSession!.user.id;
 
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: SupabaseSongRepository(client),
@@ -226,6 +245,8 @@ void main() {
       addTearDown(database.close);
 
       final initialController = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: _StaticSongRepository(
@@ -246,6 +267,8 @@ void main() {
       await initialController.refreshCatalog();
 
       final replacementController = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: _StaticSongRepository(
@@ -305,6 +328,8 @@ void main() {
         SupabaseSongRepository(client),
       );
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: remoteRepository,

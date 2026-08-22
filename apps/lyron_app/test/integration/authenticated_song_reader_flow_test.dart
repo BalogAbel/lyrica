@@ -48,6 +48,19 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
     String? userId,
     int? rowsAffected,
   }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
 }
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
@@ -135,6 +148,8 @@ void main() {
 
       await _signInDemoUser(client);
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: SupabaseSongRepository(client),
@@ -197,6 +212,8 @@ void main() {
 
       await _signInDemoUser(client);
       final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
         store: store,
         localDataLifecycle: _lifecycleFor(store),
         remoteRepository: SupabaseSongRepository(client),

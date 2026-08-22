@@ -69,6 +69,7 @@ class DriftLocalDataEventsStore
   /// Eviction events are recorded here too, under a distinct non-purge kind.
   /// Schema/store readiness only -- no eviction call site exists yet; a
   /// later phase wires a caller.
+  @override
   Future<void> recordEviction({
     required String target,
     String? userId,
@@ -84,6 +85,29 @@ class DriftLocalDataEventsStore
             reason: const Value(null),
             userId: Value(userId),
             rowsAffected: Value(rowsAffected),
+          ),
+        );
+  }
+
+  /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): records
+  /// an empty `listSongs()` response rejected against a non-empty stored
+  /// snapshot. Not a purge -- no [PurgeReason] applies, so `reason` is
+  /// always null on this kind, matching `recordEviction` above.
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'empty-snapshot-rejected',
+            target: 'songCatalog',
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
           ),
         );
   }

@@ -379,11 +379,11 @@ Closes F3 and F5. Theme: a write must never destroy more than it replaces.
 **Files:** `song_catalog_controller.dart`,
 `test/application/song_library/song_catalog_controller_test.dart`
 
-- [ ] Write a failing test: `listSongs()` returning `[]` with a non-empty stored
+- [x] Write a failing test: `listSongs()` returning `[]` with a non-empty stored
   snapshot leaves the cache untouched and reports the implausible-empty status.
-- [ ] Write a failing test: two consecutive independent empty resolutions do
+- [x] Write a failing test: two consecutive independent empty resolutions do
   replace the snapshot.
-- [ ] Implement, with an audit record on rejection. Acceptance 4.
+- [x] Implement, with an audit record on rejection. Acceptance 4.
 
 ## Task 3.2 — Organization-scoped snapshot deletion (D4)
 

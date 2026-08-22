@@ -78,6 +78,13 @@ final songCatalogControllerProvider =
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),
         sessionVerifier: ref.watch(catalogSessionVerifierProvider),
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) => ref
+                .read(localDataEventsRecorderProvider)
+                .recordRejectedEmptySnapshot(
+                  userId: userId,
+                  organizationId: organizationId,
+                ),
         onVerifiedEmptyMembership: ({required userId}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
             .handleVerifiedEmptyMembership(userId: userId),
