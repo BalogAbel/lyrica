@@ -1,0 +1,116 @@
+import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
+
+import 'local_data_events_database.dart';
+
+/// A single row of the [LocalDataEvents] audit trail, read back for display
+/// (e.g. the diagnostics screen) rather than for further mutation.
+class LocalDataEventRecord {
+  const LocalDataEventRecord({
+    required this.id,
+    required this.occurredAt,
+    required this.kind,
+    required this.target,
+    required this.reason,
+    required this.userId,
+    required this.rowsAffected,
+  });
+
+  final int id;
+  final DateTime occurredAt;
+  final String kind;
+  final String target;
+  final String? reason;
+  final String? userId;
+  final int? rowsAffected;
+}
+
+/// Read-only access to the [LocalDataEvents] audit trail, separate from
+/// [LocalDataEventsRecorder]'s write-only contract.
+abstract interface class LocalDataEventsReader {
+  Future<List<LocalDataEventRecord>> readRecent({int limit});
+}
+
+class DriftLocalDataEventsStore
+    implements LocalDataEventsRecorder, LocalDataEventsReader {
+  const DriftLocalDataEventsStore(this._database);
+
+  final LocalDataEventsDatabase _database;
+
+  factory DriftLocalDataEventsStore.local() {
+    return DriftLocalDataEventsStore(LocalDataEventsDatabase.local());
+  }
+
+  factory DriftLocalDataEventsStore.inMemory() {
+    return DriftLocalDataEventsStore(LocalDataEventsDatabase.inMemory());
+  }
+
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'purge',
+            target: target.name,
+            reason: Value(reason.name),
+            userId: Value(userId),
+            rowsAffected: Value(rowsAffected),
+          ),
+        );
+  }
+
+  /// Eviction events are recorded here too, under a distinct non-purge kind.
+  /// Schema/store readiness only -- no eviction call site exists yet; a
+  /// later phase wires a caller.
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'eviction',
+            target: target,
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: Value(rowsAffected),
+          ),
+        );
+  }
+
+  @override
+  Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
+    // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`
+    // is strictly monotonic with insertion order (no second-level precision
+    // loss, no tiebreak needed) and, being the primary key, this lets SQLite
+    // satisfy the query from the primary-key index instead of a full-table
+    // scan + sort on an unbounded, never-trimmed table.
+    final query = _database.select(_database.localDataEvents)
+      ..orderBy([(t) => OrderingTerm.desc(t.id)])
+      ..limit(limit);
+    final rows = await query.get();
+    return rows
+        .map(
+          (row) => LocalDataEventRecord(
+            id: row.id,
+            occurredAt: row.occurredAt,
+            kind: row.kind,
+            target: row.target,
+            reason: row.reason,
+            userId: row.userId,
+            rowsAffected: row.rowsAffected,
+          ),
+        )
+        .toList();
+  }
+}

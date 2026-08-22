@@ -73,6 +73,7 @@ final songCatalogControllerProvider =
       final authController = ref.read(appAuthControllerProvider);
       final controller = SongCatalogController(
         store: ref.watch(songCatalogStoreProvider),
+        localDataLifecycle: ref.watch(localDataLifecycleProvider),
         remoteRepository: ref.watch(supabaseSongRepositoryProvider),
         authSessionReader: () => authController.state.session,
         organizationReader: ref.watch(activeOrganizationReaderProvider),

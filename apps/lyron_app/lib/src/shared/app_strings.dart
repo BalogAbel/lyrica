@@ -304,4 +304,10 @@ class AppStrings {
       'Could not verify access. Check your network.';
   static const membershipNonConnectivityFailureMessage =
       'Could not verify access. Please sign out and sign in again.';
+  static const localDataEventsAction = 'Local data activity';
+  static const localDataEventsTitle = 'Local data activity';
+  static const localDataEventsEmptyMessage =
+      'No local data activity recorded yet.';
+  static const localDataEventsLoadErrorMessage =
+      'Could not load local data activity.';
 }

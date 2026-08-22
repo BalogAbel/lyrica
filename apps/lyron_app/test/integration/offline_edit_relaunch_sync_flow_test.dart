@@ -2,22 +2,58 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_reconciler.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../support/drift_relaunch.dart';
 import '../support/drift_test_setup.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real planning store, for a
+// test that only exercises planning sync -- song catalog/identity/events
+// deps are never invoked by this flow.
+LocalDataLifecycle _lifecycleFor(PlanningLocalStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: _NoopSongCatalogStore(),
+    planningLocalStore: store,
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopSongCatalogStore implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -172,6 +208,7 @@ void main() {
         final remoteRefreshRepository = SupabasePlanningRepository(client);
         final syncController = PlanningSyncController(
           localStore: () => localStore,
+          localDataLifecycle: _lifecycleFor(localStore),
           remoteRepository: () => remoteRefreshRepository,
           authSessionReader: () =>
               AppAuthSession(userId: context.userId, email: 'demo@lyron.local'),

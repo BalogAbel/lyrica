@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -8,13 +9,28 @@ import 'package:lyron_app/src/application/planning/planning_remote_refresh_repos
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../../support/drift_test_setup.dart';
+
+// Builds a LocalDataLifecycle wrapping the given planning store, with a
+// trivial (never-invoked-by-PlanningSyncController) song catalog store and
+// identity store, for tests that only exercise the planning purge path.
+LocalDataLifecycle _lifecycleFor(PlanningLocalStore planningLocalStore) {
+  return LocalDataLifecycle(
+    songCatalogStore: _NoopSongCatalogStore(),
+    planningLocalStore: planningLocalStore,
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -25,6 +41,7 @@ void main() {
     late DriftPlanningMutationStore mutationStore;
     late _FakePlanningRemoteRefreshRepository remoteRepository;
     late AppAuthSession? session;
+    late LocalDataLifecycle lifecycle;
 
     setUp(() {
       database = PlanningLocalDatabase.inMemory();
@@ -38,6 +55,7 @@ void main() {
         userId: 'user-1',
         email: 'demo@lyron.local',
       );
+      lifecycle = _lifecycleFor(store);
     });
 
     tearDown(() async {
@@ -49,6 +67,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -80,6 +99,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -111,6 +131,7 @@ void main() {
       remoteRepository.nextPayload = firstRefresh.future;
       final controller = PlanningSyncController(
         localStore: () => store,
+        localDataLifecycle: lifecycle,
         remoteRepository: () => remoteRepository,
         authSessionReader: () => session,
       );
@@ -143,6 +164,7 @@ void main() {
         remoteRepository.nextPayload = inFlightRefresh.future;
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -185,8 +207,10 @@ void main() {
           replaceStarted: replaceStarted,
           commitGate: commitGate,
         );
+        final blockingLifecycle = _lifecycleFor(localStore);
         final controller = PlanningSyncController(
           localStore: () => localStore,
+          localDataLifecycle: blockingLifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -223,6 +247,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -268,6 +293,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -308,6 +334,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -355,6 +382,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -405,6 +433,7 @@ void main() {
 
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -455,8 +484,10 @@ void main() {
       'stale previous-boundary delete is aborted when ownership returns to that organization',
       () async {
         final localStore = _BlockingBoundaryDeletePlanningLocalStore(store);
+        final boundaryLifecycle = _lifecycleFor(localStore);
         final controller = PlanningSyncController(
           localStore: () => localStore,
+          localDataLifecycle: boundaryLifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -508,6 +539,7 @@ void main() {
 
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -574,6 +606,7 @@ void main() {
 
       final controller = PlanningSyncController(
         localStore: () => store,
+        localDataLifecycle: lifecycle,
         remoteRepository: () => remoteRepository,
         authSessionReader: () => null,
         lastKnownIdentityReader: () =>
@@ -595,6 +628,7 @@ void main() {
         'for the last known identity', () async {
       final controller = PlanningSyncController(
         localStore: () => store,
+        localDataLifecycle: lifecycle,
         remoteRepository: () => remoteRepository,
         authSessionReader: () => null,
         lastKnownIdentityReader: () =>
@@ -614,6 +648,7 @@ void main() {
         'read context', () async {
       final controller = PlanningSyncController(
         localStore: () => store,
+        localDataLifecycle: lifecycle,
         remoteRepository: () => remoteRepository,
         authSessionReader: () => session,
         lastKnownIdentityReader: () =>
@@ -641,6 +676,7 @@ void main() {
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
+          localDataLifecycle: lifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -745,6 +781,26 @@ class _FakePlanningRemoteRefreshRepository
 
     return _payloadFor(organizationId);
   }
+}
+
+class _NoopSongCatalogStore implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
 }
 
 class _BlockingPlanningLocalStore implements PlanningLocalStore {

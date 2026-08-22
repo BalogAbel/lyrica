@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -24,6 +25,7 @@ import 'package:lyron_app/src/application/song_library/song_catalog_controller.d
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
@@ -1093,6 +1095,13 @@ class _RecordingPlanningSyncController extends PlanningSyncController {
   _RecordingPlanningSyncController(this.events)
     : super(
         localStore: () => _NoopPlanningLocalStore(),
+        localDataLifecycle: LocalDataLifecycle(
+          songCatalogStore: _NoopSongCatalogStoreForLifecycle(),
+          planningLocalStore: _NoopPlanningLocalStore(),
+          identityStore: _NoopLastKnownIdentityStoreForLifecycle(),
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorderForLifecycle(),
+        ),
         remoteRepository: () => const _NoopPlanningRemoteRepository(),
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -1110,6 +1119,13 @@ class _NoopSongCatalogController extends SongCatalogController {
   _NoopSongCatalogController(SongCatalogDatabase database)
     : super(
         store: DriftSongCatalogStore(database),
+        localDataLifecycle: LocalDataLifecycle(
+          songCatalogStore: DriftSongCatalogStore(database),
+          planningLocalStore: _NoopPlanningLocalStore(),
+          identityStore: _NoopLastKnownIdentityStoreForLifecycle(),
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorderForLifecycle(),
+        ),
         remoteRepository: _CountingSongRepository(),
         authSessionReader: () =>
             const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
@@ -1120,6 +1136,31 @@ class _NoopSongCatalogController extends SongCatalogController {
 
   @override
   Future<void> handleExplicitSignOut() async {}
+}
+
+// Trivial LocalDataLifecycle deps for the two Noop/Recording controllers
+// above, both of which override handleExplicitSignOut -- never actually
+// invoked.
+class _NoopSongCatalogStoreForLifecycle implements SongCatalogStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStoreForLifecycle
+    implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorderForLifecycle
+    implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {

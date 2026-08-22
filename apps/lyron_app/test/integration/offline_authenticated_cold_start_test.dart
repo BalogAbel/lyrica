@@ -42,16 +42,51 @@ import 'package:lyron_app/src/application/song_library/app_foreground_state.dart
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../support/drift_test_setup.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real song catalog store, for
+// tests that only exercise catalog refresh/offline-authenticated paths --
+// planning/identity/events deps are never invoked by these flows.
+LocalDataLifecycle _lifecycleFor(SongCatalogStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: store,
+    planningLocalStore: _NoopPlanningLocalStore(),
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 const _identity = LastKnownIdentity(
   userId: 'user-1',
@@ -405,6 +440,7 @@ void main() {
       );
       final controller = SongCatalogController(
         store: gatedStore,
+        localDataLifecycle: _lifecycleFor(gatedStore),
         remoteRepository: remoteRepository,
         authSessionReader: () => currentSession,
         organizationReader: () async => 'org-1',

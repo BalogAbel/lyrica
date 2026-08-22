@@ -75,12 +75,19 @@ Closes F1 and F2. On its own this phase resolves the reported symptom.
   construction, before the `watchSession()` subscription goes live. Buffer stream
   events until that load settles.
 - [x] Keep the store as the durable source; the in-memory copy is a read cache.
-  Live-sync on every external write/clear is deferred to Phase 2 (D7's single
-  gate) — writes today happen only outside this class
-  (`auth_providers.dart`), and centralizing them is Phase 2's job, not
-  Phase 1's. Not a gap for Phase 1's acceptance criteria: they are all
-  cold-start scenarios, where the cache is populated fresh at construction
-  from the durable store before it is ever read.
+  **Correction (Phase 2 closeout):** the "live-sync deferred to Phase 2"
+  framing below was wrong — it was not deferrable. Post-Task-1.6 verification
+  (commit 3231139) found an in-session token-expiry regression caused by
+  exactly this gap: `LastKnownIdentity` is loaded once at construction but
+  external writers (`auth_providers.dart`, `planning_providers.dart`) mutate
+  the durable store later in the same process without updating the in-memory
+  cache. Phase 1 closed it with `AppAuthController.noteLastKnownIdentity(...)`,
+  called from every identity-store write/clear site (six call sites: five in
+  `auth_providers.dart`, one in `planning_providers.dart`). Phase 2 (Task 2.3)
+  absorbs those six call sites behind the `LocalDataLifecycle` gate as part of
+  routing every purge primitive through one seam — the gate now owns "mutate
+  the durable identity" and "sync the in-memory cache" as one indivisible
+  operation instead of two call sites that can drift apart.
 
 ## Task 1.2 — `signedOut` requires an explicit act (D2)
 
@@ -239,46 +246,125 @@ accident later.
 **Files:** new `apps/lyron_app/lib/src/application/storage/local_data_lifecycle.dart`,
 new test alongside
 
-- [ ] Write failing tests first: each `PurgeReason` performs its documented set of
+- [x] Write failing tests first: each `PurgeReason` performs its documented set of
   deletions and writes exactly one audit record; a failure in one store's
   deletion is reported and does not silently claim success.
-- [ ] Implement `PurgeReason { userSignOut, accountDeleted, differentUserSignIn,
+- [x] Implement `PurgeReason { userSignOut, accountDeleted, differentUserSignIn,
   membershipRevokedConfirmed }` and a `LocalDataLifecycle` that owns every purge.
+
+Commit 8a1f5ed. Reviewed clean. `LocalDataLifecycle` depends on an abstract
+`LocalDataEventsRecorder` (real Drift implementation is Task 2.2) via
+constructor injection, so its own tests use a fake recorder. Also defines
+`PurgeTarget` (which store an event targets) and a fourth, non-gated method
+`writeIdentity` (writing a new identity is not destructive, so D7's
+name-a-reason rule does not apply to it).
 
 ## Task 2.2 — Audit store
 
 **Files:** `apps/lyron_app/lib/src/offline/` (new `local_data_events` table +
 migration), tests under `apps/lyron_app/test/offline/`
 
-- [ ] Table: timestamp, reason, `userId`, affected row counts per store.
-- [ ] Drift schema bump with an explicit `onUpgrade` delta, matching the existing
-  migration contract.
-- [ ] Eviction events are recorded here too, under a distinct non-purge kind.
+- [x] Table: timestamp, reason, `userId`, affected row counts per store.
+- [x] Drift schema bump with an explicit `onUpgrade` delta, matching the existing
+  migration contract. **Note:** this is a brand-new database at schema
+  version 1 with no prior version to upgrade from, so it follows
+  `LastKnownIdentityDatabase`'s own v1 template (`onCreate` only) rather than
+  literally including an `onUpgrade` delta — there is nothing yet for one to
+  do. The migration *contract* (explicit `MigrationStrategy`, documented
+  schema version) is matched; an actual delta lands whenever this schema
+  first changes.
+- [x] Eviction events are recorded here too, under a distinct non-purge kind.
+  `DriftLocalDataEventsStore.recordEviction(...)` exists and is tested, but
+  nothing calls it yet — no eviction call site exists until Phase 3.
+
+Commit 4d20e4c. Reviewed clean. Lives in its own dedicated Drift database
+(`lyron_local_data_events.sqlite`), not a table added to an existing one —
+see ADR-035 for why. `rowsAffected` is written as `null` on every Phase 2
+row; see ADR-035 for why (the three purge primitives don't expose counts,
+and changing their return type would force edits to test doubles that
+implement `SongCatalogStore`/`PlanningLocalStore` directly, which the
+phase's no-behaviour-change guardrail forbids).
 
 ## Task 2.3 — Route every call site through the gate
 
 **Files:** `song_catalog_controller.dart`, `planning_sync_controller.dart`,
 `auth_providers.dart`, `planning_providers.dart`
 
-- [ ] Move all `deleteCatalogsForUser`, `deletePlanningDataForUser` and
+- [x] Move all `deleteCatalogsForUser`, `deletePlanningDataForUser` and
   `LastKnownIdentityStore.clear()` calls behind `LocalDataLifecycle`.
-- [ ] Preserve the existing `differentUserSignIn` semantics exactly, including
+  `LastKnownIdentityStore.write()` moved too (paired 1:1 with the in-memory
+  cache sync `noteLastKnownIdentity` — see the corrected Task 1.1 bullet
+  above).
+- [x] Preserve the existing `differentUserSignIn` semantics exactly, including
   the ordering and failure handling documented in `auth_providers.dart` — that
   code encodes prior review findings and must not be simplified here.
+  Verified line-by-line by two independent review passes (a per-task review
+  and, at the end of this phase, a dedicated whole-branch behaviour-diff
+  review) that `wipePriorAndProceedFor` changed only its three primitive
+  calls to gate calls — same `try`/`catch` boundary, same `Future.wait`
+  concurrency, same `isCurrent` re-checks, same comments, byte-identical
+  otherwise.
+
+Commit de725f3. `flutter test`: 1406 passed / 18 skipped before and after
+(identical count — only additive test setup, no assertion changed). Two
+gaps surfaced (not fixed, out of this task's scope; recorded in ADR-035):
+`accountDeleted` and `userSignOut` are indistinguishable anywhere in
+`AppAuthState` today, so both currently use `PurgeReason.userSignOut`; and
+the `ActiveOrganizationVerifiedEmpty` identity-clear in
+`auth_providers.dart`'s sign-in resolution is labelled
+`membershipRevokedConfirmed` as the closest fit, ahead of D5's
+two-confirmation quarantine gate (Phase 4).
 
 ## Task 2.4 — Architecture test
 
 **Files:** `apps/lyron_app/test/architecture/`
 
-- [ ] Assert `LocalDataLifecycle` is the sole caller of every purge primitive
+- [x] Assert `LocalDataLifecycle` is the sole caller of every purge primitive
   (source scan). The test must fail if a new direct call appears.
-- [ ] Acceptance 8.
+- [x] Acceptance 8.
+
+Commit bae31af. Reviewed clean (one accepted minor risk noted, see
+ADR-035: the plain-text scan's `.clear()`/`.write()` patterns are scoped by
+same-line receiver-name matching, so a call split across a renamed local
+variable on a separate line would not be caught — the two delete-primitive
+patterns don't share this weakness). Proven to actually fail: a temporary
+violating call outside the allow-list was introduced, observed red with the
+correct file/line/pattern in the failure message, then fully reverted;
+confirmed green again on the clean tree.
 
 ## Task 2.5 — Diagnostics screen
 
 **Files:** `apps/lyron_app/lib/src/presentation/account/`
 
-- [ ] Render the `local_data_events` log: when, why, how much. Read-only.
+- [x] Render the `local_data_events` log: when, why, how much. Read-only.
+
+Commits ccd44ea, 51c4955. Reviewed; 3 minor nits found and the two
+substantive ones (kind was only implied via reason-nullness, not shown
+explicitly) fixed directly post-review. `flutter test`: 1407 → 1414 passed
+(7 new tests), 18 skipped throughout.
+
+**Phase 2 complete: Tasks 2.1-2.5 all done, reviewed, committed.**
+`flutter analyze` clean, full `flutter test` green at 1414 passed / 18
+skipped (commit d156c5a, after clearing one incidental `flutter analyze`
+info-level lint unrelated to any task's own scope).
+
+**Final whole-branch review (opus, the phase's single opus-tier call) found
+one real regression, fixed before merge.** Scrutinizing `main..HEAD` against
+the sole question "does this diff change observable behaviour anywhere?" —
+with line-by-line focus on `wipePriorAndProceedFor` — it found that
+`wipePriorAndProceedFor` itself was a verbatim substitution (confirmed
+clean), but `LocalDataLifecycle`'s own methods introduced a real behaviour
+change: an audit-write failure, occurring AFTER a purge/clear had already
+committed, made the whole gate method throw as if the purge had failed. Fixed
+in commit 5ba06be (best-effort audit write; `clearIdentity` takes an optional
+caller-supplied `userId` instead of reading the identity store internally).
+Re-verified: `flutter analyze` clean, `flutter test` green at 1416 passed /
+18 skipped, and a follow-up sonnet-tier review of the fix commit itself
+approved with zero findings. See ADR-035 for full detail, including three
+lower-severity residual risks the same review surfaced and this phase
+deliberately defers (audit DB lazy-open inside the destructive path, no
+retention policy on `local_data_events`, and a sharper repro for the
+architecture test's already-documented `.clear()`/`.write()` scan gap).
 
 ---
 

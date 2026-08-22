@@ -8,9 +8,12 @@
   state), ADR-008 (local-first), ADR-016 (active-organization-resolution
   semantics), ADR-028 (local storage budget and eviction policy)
 - Scope: `AppAuthController` (`_stateForSession`), `SongCatalogController`,
-  `PlanningSyncController`, and — for the decisions this ADR records but Phase
-  1 has not yet built — the future `LocalDataLifecycle` gate, snapshot-write
-  path, and membership-revocation quarantine.
+  `PlanningSyncController`, `LocalDataLifecycle`
+  (`apps/lyron_app/lib/src/application/storage/local_data_lifecycle.dart`),
+  the `local_data_events` audit store
+  (`apps/lyron_app/lib/src/offline/local_data_events/`), and — for the
+  decisions this ADR records but Phases 3–4 have not yet built — the
+  snapshot-write path and membership-revocation quarantine.
 
 ## Context
 
@@ -63,8 +66,10 @@ is which.
 
 **D1 — the four-purge-reason enumeration above, as a stated contract.**
 Nothing in Phase 1 changes the code paths that already respect it (explicit
-sign-out, account deletion, different-user sign-in, verified-empty
-membership); Phase 1 closes the paths that were violating it by accident.
+sign-out, different-user sign-in, verified-empty membership); Phase 1 closes
+the paths that were violating it by accident. (Account deletion is listed in
+D1 as its own reason, but Phase 2 found it is not yet its own *code path* —
+see the Phase 2 section below.)
 
 **D2 — `signedOut` requires an explicit act; everything else is
 `sessionExpired`.** `AppAuthController._stateForSession`
@@ -95,9 +100,187 @@ D2: even if a purge path were ever reintroduced, or a device reaches a state
 this spec did not anticipate, the read path itself no longer depends on
 anything that can expire.
 
-### Decided, not yet implemented (Phases 2–4)
+### Implemented in Phase 2 (this slice)
 
-The remaining five decisions are settled — confirmed with the product owner
+**D7 — one gate, one audit trail.** `LocalDataLifecycle`
+(`apps/lyron_app/lib/src/application/storage/local_data_lifecycle.dart`) is
+now the sole caller of the three purge primitives
+(`SongCatalogStore.deleteCatalogsForUser`,
+`PlanningLocalStore.deletePlanningDataForUser`,
+`LastKnownIdentityStore.clear()`), plus `LastKnownIdentityStore.write()` (not
+itself destructive, but paired with the same in-memory-cache-sync obligation
+— see below). It exposes four methods: `purgeSongCatalog`, `purgePlanningData`,
+and `clearIdentity` each require a `PurgeReason`; `writeIdentity` does not
+(writing a new identity is not destructive, so D7's "no purge without naming
+a reason" rule does not apply to it). Every one of the six call sites
+identified during Phase 1 closeout (five in `auth_providers.dart`, one in
+`planning_providers.dart` — see the corrected Task 1.1 bullet in the plan)
+now goes through one of these four methods; the durable identity mutation and
+the in-memory `AppAuthController` cache sync (`noteLastKnownIdentity`) are a
+single indivisible operation inside the gate instead of two call sites that
+proved, in Phase 1, they can drift apart.
+
+`apps/lyron_app/test/architecture/local_data_lifecycle_gate_test.dart`
+enforces sole-caller-ship by source-scanning `lib/` for the four call
+patterns, allow-listing only the gate itself and each primitive's own
+definition site. It was verified to actually fail (a temporary violating call
+outside the allow-list was introduced, observed red, then reverted) — this is
+Acceptance 8. The scan is plain-text/regex, not AST-based: `.clear()`/`.write()`
+are common method names on unrelated types, so those two patterns are scoped
+to lines whose receiver expression textually contains "identityStore". This
+has a known, accepted gap — a future call site that assigns the identity
+store to a differently-named local variable on one line and calls
+`.clear()`/`.write()` on a later line would not be caught (the two
+delete-primitive patterns don't share this weakness; their method names are
+globally unique in this codebase). Tightening this to a real AST check is a
+reasonable follow-up if a violation ever needs the scan strengthened, not a
+blocker for this phase.
+
+**Audit store: a dedicated database, not a table in an existing one.** The
+`local_data_events` table (`apps/lyron_app/lib/src/offline/local_data_events/`)
+lives in its own Drift database (`lyron_local_data_events.sqlite`),
+structurally separate from the song-catalog, planning, and
+last-known-identity databases. The constraint driving this: a purge audit
+record must outlive the data it describes, so it cannot live anywhere a
+purge reason deletes from. A dedicated database makes this true by
+construction — no purge primitive's delete statement can reach a table in a
+different database file, today or after any future change to those
+primitives — rather than true only because nothing currently happens to
+delete from that table. Every purge and (once Phase 3 wires a caller)
+eviction writes one row: timestamp, `kind` ('purge'/'eviction'), `target`,
+`reason` (nullable — always populated for a purge, always null for an
+eviction, since no `PurgeReason` applies to eviction), `userId` (nullable),
+`rowsAffected` (nullable).
+
+`rowsAffected` is nullable and is `null` on every row Phase 2 writes. The
+three purge primitives (`deleteCatalogsForUser`, `deletePlanningDataForUser`)
+return `Future<void>`, not a row count, even though their Drift
+implementations compute one internally for the storage-footprint callback.
+Changing that return type to surface the count would touch
+`SongCatalogStore`/`PlanningLocalStore`'s public interface, which test
+doubles in this codebase implement directly
+(`_FailingDeleteSongCatalogStore`, `_BlockingPlanningLocalStore`, and
+others) — a signature change would force edits to those test files just to
+keep them compiling, which this phase's own guardrail treats as a behaviour
+change ("every existing test must pass without modification"). The schema
+carries the column so a later phase can populate it without a migration;
+Phase 2 accepts "unknown" over touching primitive signatures for an
+audit-only improvement.
+
+**A known gap surfaced, not fixed, by this phase: `accountDeleted` and
+`userSignOut` are indistinguishable in code today.**
+`AppAuthController.deleteAccount()` sets the same `_isSigningOut` flag and
+converges to the identical `AppAuthState(status: signedOut)` as
+`signOut()` — nothing downstream of `AppAuthState` (including every call
+site this phase moved behind the gate) can tell them apart. Every call site
+that could plausibly be either reason currently passes
+`PurgeReason.userSignOut`. `PurgeReason.accountDeleted` is fully defined per
+D1 and ready to receive real call sites the moment `AppAuthState` grows a
+discriminator; adding that discriminator is out of this phase's scope (it
+touches auth-state shape, not purge routing) and is left for whichever future
+work next touches `deleteAccount()`. This conflation now persists into every
+`local_data_events` row written for either trigger, unversioned — PR #74's
+review flagged that once the discriminator lands, historical rows will not
+be retroactively distinguishable. That is the correct, honest state for
+this phase to leave the audit trail in: it should record what the code
+actually knew at the time, not a reason it could not tell.
+
+**One reason-mapping judgment call:** the `ActiveOrganizationVerifiedEmpty`
+branch inside `auth_providers.dart`'s sign-in resolution (`persistNewIdentity`)
+clears the identity on a single fresh empty-membership resolution — the same
+`current_organization_ids()` signal D5/Phase 4's "two consecutive
+confirmations, then quarantine" design governs, reached here by a second,
+independent code path the spec's F4 section did not name. This phase does not
+change when that clear fires (no behaviour change); it labels it
+`PurgeReason.membershipRevokedConfirmed` as the closest fit of the four
+documented reasons, while it stays true that D5's confirmation requirement is
+not yet enforced on this path — Phase 4 is expected to reconcile this branch
+with the coordinator-based `VerifiedEmptyMembershipCleanupCoordinator` path
+(`planning_providers.dart`), which is the certain, unambiguous
+`membershipRevokedConfirmed` handler.
+
+**A real regression the gate introduced, found and fixed before merge.** A
+whole-branch review found that `purgeSongCatalog`/`purgePlanningData`/
+`clearIdentity` awaited the audit-record write with no try/catch AFTER the
+destructive part had already committed: an audit-write failure made the
+whole method throw even though the deletion/clear genuinely succeeded. For
+`clearIdentity` specifically, this could invert
+`wipePriorAndProceedFor`'s documented failure-handling invariant — its catch
+block assumes an exception means the clear did not land, and falls back to
+treating the device as still signed in as the prior user; an audit-write
+failure could trigger that fallback after the clear had already happened,
+asserting an offline-authenticated identity for a user whose local trace was
+already gone. Fixed (`5ba06be`) with a shared best-effort helper: the audit
+write is still attempted, but a failure in it is reported
+(`FlutterError.reportError`) and never rethrown, so a purge/clear that
+committed can never be misreported as failed by the logging that describes
+it afterwards. The same review found `clearIdentity`'s original design (an
+internal identity-store `read()` before the `clear()`, added solely to
+attribute a `userId` on the audit row) introduced its own new failure mode
+and widened a race window; fixed by taking an optional `userId` parameter
+from the caller instead, populated at the three call sites that have one in
+scope.
+
+**A second review (PR #74) found the audit write still lengthened the
+critical path, even after it was made best-effort.** `_recordBestEffort` was
+still `await`ed before `purgeSongCatalog`/`purgePlanningData`/`clearIdentity`
+returned, so `wipePriorAndProceedFor`'s `Future.wait([songDeletion,
+planningDeletion])` resolved only once both deletions AND both (already
+non-throwing) audit writes had completed — measurably later than the
+pre-gate code, which returned as soon as the two raw store deletes finished.
+Fixed by dispatching the audit write with `unawaited` instead: the
+destructive method's own `Future` now resolves exactly when the
+deletion/clear does, matching the pre-gate timing, and the audit write
+proceeds in the background on its own already-non-throwing path. (Technical
+note for the record: even before this fix, the widened window did not
+change any *outcome* — `wipePriorAndProceedFor`'s own comments already
+document the exact scenario a wider window makes marginally more likely
+[a superseded resolution after the deletions but before the identity clear]
+as intentionally safe and self-healing. The `unawaited` fix was made anyway
+because it fully closes the gap at negligible cost, rather than resting the
+"no behaviour change" claim on that argument.)
+
+The same review found the `readRecent` query sorting on `occurredAt` (not
+indexed, and `local_data_events` is deliberately unbounded) forced a
+full-table scan and sort on every diagnostics-screen open. Fixed by sorting
+on the autoincrement primary key alone (`id DESC`) — strictly monotonic with
+insertion order, no precision loss, and satisfiable from the primary-key
+index. And the diagnostics screen's error state now reuses the existing
+`RetryableErrorState` widget (`presentation/planning/widgets/`) instead of a
+bare, unactionable `Text`, matching `plan_list_screen.dart`/
+`plan_detail_screen.dart`'s convention.
+
+**Two suggestions from the same review were evaluated and declined:**
+merging `purgeSongCatalog`/`purgePlanningData` behind a shared higher-order
+helper (the two methods' bodies are nearly identical, but their arities
+differ — `shouldContinue` is planning-only — and two short, explicit methods
+read more clearly than a parameterized-delete abstraction built for exactly
+two callers); and dropping the `local_data_events.kind` column in favour of
+inferring purge-vs-eviction from `reason`-nullness at read time (this is the
+inverse of a fix already made earlier in this same PR, commit `51c4955`,
+after an *earlier* review flagged that exact inference as coincidental
+rather than structural — reversing it now would reintroduce the same
+fragility one layer down, in the schema instead of the UI).
+
+**Residual, deliberately-deferred hardening**, not required for this phase's
+no-behaviour-change bar but worth tracking for whenever the audit trail's
+own robustness next gets attention:
+
+- The audit database currently opens lazily on the first purge, inside the
+  destructive path. Opening it eagerly at app startup would mean a purge is
+  never the first thing to hit a cold-open failure on that file.
+- `local_data_events` has no retention or trim policy — it is unbounded
+  append-only growth. Not a durability risk (that is the point of the
+  table), but a storage-footprint one over a long device lifetime.
+- The architecture test's `.clear()`/`.write()` patterns (see above) are
+  scoped to same-line receiver-name matching and would not catch a call
+  split across a `dart format`-introduced line break on a differently-named
+  local variable. Still an accepted gap, now with a concrete repro shape on
+  record.
+
+### Decided, not yet implemented (Phases 3–4)
+
+The remaining four decisions are settled — confirmed with the product owner
 where noted in the spec — and scheduled in
 `docs/plans/2026-08-19-local-data-durability-contract.md`. None of them are
 built as of this ADR:
@@ -116,22 +299,14 @@ built as of this ADR:
   storage-exhaustion signal or a measured footprint over budget, evicts
   least-recently-read first, and marks the affected snapshot recoverable on
   the next online refresh.
-- **D7 — one gate, one audit trail** (Phase 2). Every purge primitive
-  (`deleteCatalogsForUser`, `deletePlanningDataForUser`,
-  `LastKnownIdentityStore.clear()`) becomes reachable only through a single
-  `LocalDataLifecycle` seam that requires a `PurgeReason`, enforced by an
-  architecture test, with every purge and eviction writing a
-  `local_data_events` audit record. This is the decision that makes the
-  contract durable rather than merely correct today — the compiler and one
-  test, not reviewer memory, keep a future feature from opening a fifth path.
 - **D8 — Android backup is deterministic** (Phase 4). Set
   `android:allowBackup="false"`, or supply data-extraction rules that keep the
   session store and the SQLite databases in the same backup set, so a
   half-restored device cannot be representable.
 
-Do not read D4–D8 as implemented from this ADR's existence. They are recorded
-here, ahead of their landing, so the full contract has one durable home; each
-lands with its own commits and its own review in Phases 2–4.
+Do not read D4–D6/D8 as implemented from this ADR's existence. They are
+recorded here, ahead of their landing, so the full contract has one durable
+home; each lands with its own commits and its own review in Phases 3–4.
 
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
@@ -170,13 +345,14 @@ automatically once they re-authenticate through the re-auth banner. This is
 the user-visible behaviour ADR-020 already committed to; Phase 1 is what
 makes it actually reachable rather than aspirational.
 
-Until Phase 2 lands D7, the four purge reasons in D1 remain a *stated*
-contract, not a *structurally enforced* one: the call sites that respect it
-today do so because Phase 1's fixes close the paths that were violating it,
-not because a gate forbids a new violation from being added. A reviewer
-reading this ADR should treat D1 as binding policy and D7 as the outstanding
-work that makes violating it a compile-time or test-time failure instead of a
-review miss.
+As of Phase 2, the four purge reasons in D1 are a *structurally enforced*
+contract, not merely a stated one: `LocalDataLifecycle` is the only path to
+any purge primitive, and the architecture test fails the build if a new
+direct call appears. Before Phase 2, the call sites that respected D1 did so
+because Phase 1's fixes closed the paths that were violating it, not because
+a gate forbade a new violation from being added — a reviewer reading an
+earlier revision of this ADR would have seen that distinction; it no longer
+applies.
 
 ## Non-Goals
 

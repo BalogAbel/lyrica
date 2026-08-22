@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
-import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
@@ -20,31 +19,25 @@ import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
-import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 typedef VerifiedEmptyMembershipCleanupHandler =
     Future<void> Function({required String userId});
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
-    required this._planningLocalStore,
-    required this._songCatalogStore,
-    required this._lastKnownIdentityStore,
+    required this._localDataLifecycle,
     required this._invalidateLastKnownIdentityPersistence,
-    required this._noteLastKnownIdentity,
   });
 
-  final PlanningLocalStore _planningLocalStore;
-  final SongCatalogStore _songCatalogStore;
-  final LastKnownIdentityStore _lastKnownIdentityStore;
+  final LocalDataLifecycle _localDataLifecycle;
   final void Function() _invalidateLastKnownIdentityPersistence;
-  final void Function(LastKnownIdentity?) _noteLastKnownIdentity;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -65,18 +58,23 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
             handlers: handlers,
           );
 
-    // Mirror the durable clear into AppAuthController's in-memory cache
-    // only after the clear itself has actually succeeded, not before it --
-    // updating the cache first would let it observe a purge that never
-    // durably committed if the store write then failed (see the
-    // class-level note on AppAuthController._identity).
-    final identityClear = _lastKnownIdentityStore.clear().then((_) {
-      _noteLastKnownIdentity(null);
-    });
+    // This is the real membershipRevokedConfirmed handler: the gate mirrors
+    // the durable clear into AppAuthController's in-memory cache only after
+    // the clear itself has actually succeeded, not before it -- updating the
+    // cache first would let it observe a purge that never durably committed
+    // if the store write then failed (see the class-level note on
+    // AppAuthController._identity).
+    final identityClear = _localDataLifecycle.clearIdentity(
+      reason: PurgeReason.membershipRevokedConfirmed,
+      userId: userId,
+    );
 
     return Future.wait([
       planningCleanup,
-      _songCatalogStore.deleteCatalogsForUser(userId: userId),
+      _localDataLifecycle.purgeSongCatalog(
+        userId: userId,
+        reason: PurgeReason.membershipRevokedConfirmed,
+      ),
       identityClear,
     ]);
   }
@@ -96,21 +94,19 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     // Production wiring registers PlanningSyncController so it owns planning
     // cleanup and state reset. This direct store delete is only the fallback
     // for verified-empty calls that happen before that handler is active.
-    return _planningLocalStore.deletePlanningDataForUser(userId: userId);
+    return _localDataLifecycle.purgePlanningData(
+      userId: userId,
+      reason: PurgeReason.membershipRevokedConfirmed,
+    );
   }
 }
 
 final verifiedEmptyMembershipCleanupCoordinatorProvider =
     Provider<VerifiedEmptyMembershipCleanupCoordinator>((ref) {
       return VerifiedEmptyMembershipCleanupCoordinator(
-        planningLocalStore: ref.watch(planningLocalStoreProvider),
-        songCatalogStore: ref.watch(songCatalogStoreProvider),
-        lastKnownIdentityStore: ref.watch(lastKnownIdentityStoreProvider),
+        localDataLifecycle: ref.watch(localDataLifecycleProvider),
         invalidateLastKnownIdentityPersistence: () {
           ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
-        },
-        noteLastKnownIdentity: (identity) {
-          ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
         },
       );
     });
@@ -291,6 +287,7 @@ final planningSyncControllerProvider =
       );
       final controller = PlanningSyncController(
         localStore: () => ref.read(planningLocalStoreProvider),
+        localDataLifecycle: ref.watch(localDataLifecycleProvider),
         remoteRepository: () =>
             ref.read(planningRemoteRefreshRepositoryProvider),
         authSessionReader: () => authController.state.session,

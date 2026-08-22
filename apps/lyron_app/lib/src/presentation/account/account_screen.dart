@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class AccountScreen extends ConsumerStatefulWidget {
@@ -24,6 +26,10 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
           ListTile(
             title: const Text(AppStrings.signOutAction),
             onTap: () => controller.signOut(),
+          ),
+          ListTile(
+            title: const Text(AppStrings.localDataEventsAction),
+            onTap: () => context.push(AppRoutes.localDataEvents.path),
           ),
           ListTile(
             title: const Text(AppStrings.deleteAccountAction),

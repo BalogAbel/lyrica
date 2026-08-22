@@ -22,8 +22,10 @@ import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
+import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/infrastructure/auth/supabase_auth_repository.dart';
@@ -31,6 +33,8 @@ import 'package:lyron_app/src/infrastructure/auth/supabase_invitation_repository
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/drift_pending_local_work_reader.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
+import 'package:lyron_app/src/offline/local_data_events/drift_local_data_events_store.dart';
+import 'package:lyron_app/src/offline/local_data_events/local_data_events_database.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return SupabaseAuthRepository(ref.read(supabaseClientProvider));
@@ -76,11 +80,53 @@ final lastKnownIdentityStoreProvider = Provider<LastKnownIdentityStore>((ref) {
   );
 });
 
+final localDataEventsDatabaseProvider = Provider<LocalDataEventsDatabase>((
+  ref,
+) {
+  final database = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')
+      ? LocalDataEventsDatabase.inMemory()
+      : LocalDataEventsDatabase.local();
+  ref.onDispose(database.close);
+  return database;
+});
+
+final localDataEventsRecorderProvider = Provider<LocalDataEventsRecorder>((
+  ref,
+) {
+  return DriftLocalDataEventsStore(ref.watch(localDataEventsDatabaseProvider));
+});
+
+final localDataEventsReaderProvider = Provider<LocalDataEventsReader>((ref) {
+  return DriftLocalDataEventsStore(ref.watch(localDataEventsDatabaseProvider));
+});
+
+/// autoDispose: this backs a diagnostics-only screen, so the query result
+/// need not be kept alive once nothing is watching it (matches
+/// songCatalogControllerProvider's autoDispose convention for one-off screen
+/// data elsewhere in this file's neighborhood).
+final localDataEventsRecordsProvider =
+    FutureProvider.autoDispose<List<LocalDataEventRecord>>((ref) {
+      return ref.watch(localDataEventsReaderProvider).readRecent(limit: 200);
+    }, retry: noAutomaticProviderRetry);
+
+final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
+  return LocalDataLifecycle(
+    songCatalogStore: ref.watch(songCatalogStoreProvider),
+    planningLocalStore: ref.watch(planningLocalStoreProvider),
+    identityStore: ref.watch(lastKnownIdentityStoreProvider),
+    noteLastKnownIdentity: (identity) {
+      ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
+    },
+    eventsRecorder: ref.watch(localDataEventsRecorderProvider),
+  );
+});
+
 final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   final authController = ref.read(appAuthControllerProvider);
   final identityStore = ref.watch(lastKnownIdentityStoreProvider);
   final epoch = ref.watch(lastKnownIdentityPersistenceEpochProvider);
   final promptController = ref.read(reauthPromptControllerProvider);
+  final lifecycle = ref.read(localDataLifecycleProvider);
 
   // Serializes signedIn-edge resolutions: only one persistIdentity call is
   // ever in flight at a time (see scheduleIdentityResolution below). Two
@@ -120,8 +166,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         return;
       case AppAuthStatus.signedOut:
         if (!isCurrent(generation, AppAuthStatus.signedOut, null)) return;
-        await identityStore.clear();
-        authController.noteLastKnownIdentity(null);
+        // AppAuthStatus.signedOut is only reachable via an explicit sign-out
+        // act or "no identity to protect" (D2) -- this code cannot currently
+        // distinguish an explicit sign-out from account deletion
+        // (AppAuthController.deleteAccount() sets the identical
+        // _isSigningOut flag and converges to the identical signedOut status
+        // as signOut() -- there is no discriminator anywhere in
+        // AppAuthState). PurgeReason.userSignOut is used for both today;
+        // distinguishing them would require adding a discriminator to
+        // AppAuthState, out of this task's scope.
+        await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
         return;
       case AppAuthStatus.sessionExpired:
         return;
@@ -181,14 +235,22 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 email: session.email,
                 organizationId: organizationId,
               );
-              await identityStore.write(identity);
-              authController.noteLastKnownIdentity(identity);
+              await lifecycle.writeIdentity(identity);
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              await identityStore.clear();
-              authController.noteLastKnownIdentity(null);
+              // This is a single fresh verifiedEmpty membership resolution
+              // at sign-in time -- the closest of the 4 documented
+              // PurgeReasons, though D5's "two consecutive confirmations
+              // before purge" quarantine gate is not yet built (that's
+              // Phase 4) -- this call only ever clears the identity row,
+              // never the song catalog or planning data, so its blast
+              // radius stays small even before Phase 4 lands.
+              await lifecycle.clearIdentity(
+                reason: PurgeReason.membershipRevokedConfirmed,
+                userId: session.userId,
+              );
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
             case null:
@@ -200,8 +262,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 email: session.email,
                 organizationId: null,
               );
-              await identityStore.write(identity);
-              authController.noteLastKnownIdentity(identity);
+              await lifecycle.writeIdentity(identity);
           }
           return true;
         }
@@ -276,12 +337,14 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           // the prior user" takes that path. persistNewIdentity() runs
           // after the try and is handled on its own terms below.
           try {
-            final songDeletion = ref
-                .read(songCatalogStoreProvider)
-                .deleteCatalogsForUser(userId: priorUserId);
-            final planningDeletion = ref
-                .read(planningLocalStoreProvider)
-                .deletePlanningDataForUser(userId: priorUserId);
+            final songDeletion = lifecycle.purgeSongCatalog(
+              userId: priorUserId,
+              reason: PurgeReason.differentUserSignIn,
+            );
+            final planningDeletion = lifecycle.purgePlanningData(
+              userId: priorUserId,
+              reason: PurgeReason.differentUserSignIn,
+            );
             await Future.wait([songDeletion, planningDeletion]);
             // Being superseded from here on returns false even though the
             // deletion above already happened, so the reported outcome
@@ -297,8 +360,10 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               // verified-empty cleanup for the same store -- see Finding 3.
               return false;
             }
-            await identityStore.clear();
-            authController.noteLastKnownIdentity(null);
+            await lifecycle.clearIdentity(
+              reason: PurgeReason.differentUserSignIn,
+              userId: priorUserId,
+            );
           } catch (error, stackTrace) {
             // A song/planning deletion failed, or identityStore.clear()
             // itself failed. Either way the destructive part did not fully

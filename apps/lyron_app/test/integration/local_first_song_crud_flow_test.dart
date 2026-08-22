@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
@@ -7,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/song_catalog_controller.d
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
@@ -18,6 +20,39 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../support/drift_test_setup.dart';
+
+// Trivial LocalDataLifecycle wrapping the test's real song catalog store, for
+// tests that only exercise the sign-out purge path -- planning/identity/
+// events deps are never invoked by this flow.
+LocalDataLifecycle _lifecycleFor(SongCatalogStore store) {
+  return LocalDataLifecycle(
+    songCatalogStore: store,
+    planningLocalStore: _NoopPlanningLocalStore(),
+    identityStore: _NoopLastKnownIdentityStore(),
+    noteLastKnownIdentity: (_) {},
+    eventsRecorder: _NoopLocalDataEventsRecorder(),
+  );
+}
+
+class _NoopPlanningLocalStore implements PlanningLocalStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+}
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -305,6 +340,7 @@ void main() {
 
         final controller = SongCatalogController(
           store: songStore,
+          localDataLifecycle: _lifecycleFor(songStore),
           remoteRepository: _NoopSongRepository(),
           authSessionReader: () =>
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),

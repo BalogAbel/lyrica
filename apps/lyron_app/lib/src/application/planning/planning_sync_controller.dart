@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/planning/planning_local_read_repositor
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -24,6 +25,7 @@ typedef LastKnownIdentityReader =
 class PlanningSyncController extends ChangeNotifier {
   PlanningSyncController({
     required this._localStore,
+    required this._localDataLifecycle,
     required this._remoteRepository,
     required this._authSessionReader,
     this._lastKnownIdentityReader,
@@ -32,6 +34,7 @@ class PlanningSyncController extends ChangeNotifier {
        _state = const PlanningSyncState.initial();
 
   final PlanningLocalStoreReader _localStore;
+  final LocalDataLifecycle _localDataLifecycle;
   final PlanningRemoteRefreshRepositoryReader _remoteRepository;
   final PlanningAuthSessionReader _authSessionReader;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
@@ -232,8 +235,13 @@ class PlanningSyncController extends ChangeNotifier {
 
     if (userId != null) {
       try {
-        await _localStore().deletePlanningDataForUser(
+        // Same accountDeleted-vs-userSignOut caveat as
+        // lastKnownIdentityPersistenceProvider's signedOut case: this code
+        // cannot currently distinguish an explicit sign-out from account
+        // deletion, so userSignOut is used for both today.
+        await _localDataLifecycle.purgePlanningData(
           userId: userId,
+          reason: PurgeReason.userSignOut,
           shouldContinue: () =>
               !_disposed &&
               generation == _authGeneration &&
@@ -256,7 +264,10 @@ class PlanningSyncController extends ChangeNotifier {
         accessStatus: PlanningAccessStatus.signedIn,
       ),
     );
-    await _localStore().deletePlanningDataForUser(userId: userId);
+    await _localDataLifecycle.purgePlanningData(
+      userId: userId,
+      reason: PurgeReason.membershipRevokedConfirmed,
+    );
   }
 
   Future<void> handleSessionExpired() async {
