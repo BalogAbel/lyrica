@@ -90,11 +90,13 @@ class DriftLocalDataEventsStore
 
   @override
   Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
+    // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`
+    // is strictly monotonic with insertion order (no second-level precision
+    // loss, no tiebreak needed) and, being the primary key, this lets SQLite
+    // satisfy the query from the primary-key index instead of a full-table
+    // scan + sort on an unbounded, never-trimmed table.
     final query = _database.select(_database.localDataEvents)
-      ..orderBy([
-        (t) => OrderingTerm.desc(t.occurredAt),
-        (t) => OrderingTerm.desc(t.id),
-      ])
+      ..orderBy([(t) => OrderingTerm.desc(t.id)])
       ..limit(limit);
     final rows = await query.get();
     return rows

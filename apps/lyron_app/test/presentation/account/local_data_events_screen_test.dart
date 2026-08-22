@@ -59,6 +59,26 @@ void main() {
     expect(find.text(AppStrings.localDataEventsEmptyMessage), findsOneWidget);
   });
 
+  testWidgets('shows a retryable error state on load failure', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          localDataEventsRecordsProvider.overrideWith(
+            (ref) async => throw StateError('simulated read failure'),
+          ),
+        ],
+        child: const MaterialApp(home: LocalDataEventsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.localDataEventsLoadErrorMessage),
+      findsOneWidget,
+    );
+    expect(find.text(AppStrings.retryAction), findsOneWidget);
+  });
+
   testWidgets('does not offer any destructive or edit action', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

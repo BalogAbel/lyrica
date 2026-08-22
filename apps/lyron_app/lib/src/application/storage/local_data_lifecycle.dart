@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
@@ -46,6 +48,15 @@ abstract interface class LocalDataEventsRecorder {
 /// `cancelToPriorUser` on any exception from these methods, on the
 /// documented assumption that an exception means the destructive part did
 /// not commit; an audit-write failure must not violate that assumption.
+///
+/// The audit write is also dispatched with [unawaited], not awaited before
+/// the destructive method's own `Future` resolves: the deletion/clear is
+/// what these methods promise to complete, and callers that race a
+/// currentness check against a `Future.wait` of several of these calls (see
+/// `wipePriorAndProceedFor`) must see that resolve as soon as the data
+/// itself is gone, not stalled behind a same-database-but-different-file
+/// logging write that is already best-effort and cannot affect the outcome
+/// either way.
 class LocalDataLifecycle {
   LocalDataLifecycle({
     required this._songCatalogStore,
@@ -66,10 +77,12 @@ class LocalDataLifecycle {
     required PurgeReason reason,
   }) async {
     await _songCatalogStore.deleteCatalogsForUser(userId: userId);
-    await _recordBestEffort(
-      target: PurgeTarget.songCatalog,
-      reason: reason,
-      userId: userId,
+    unawaited(
+      _recordBestEffort(
+        target: PurgeTarget.songCatalog,
+        reason: reason,
+        userId: userId,
+      ),
     );
   }
 
@@ -82,10 +95,12 @@ class LocalDataLifecycle {
       userId: userId,
       shouldContinue: shouldContinue,
     );
-    await _recordBestEffort(
-      target: PurgeTarget.planningData,
-      reason: reason,
-      userId: userId,
+    unawaited(
+      _recordBestEffort(
+        target: PurgeTarget.planningData,
+        reason: reason,
+        userId: userId,
+      ),
     );
   }
 
@@ -105,10 +120,12 @@ class LocalDataLifecycle {
   }) async {
     await _identityStore.clear();
     _noteLastKnownIdentity(null);
-    await _recordBestEffort(
-      target: PurgeTarget.identity,
-      reason: reason,
-      userId: userId,
+    unawaited(
+      _recordBestEffort(
+        target: PurgeTarget.identity,
+        reason: reason,
+        userId: userId,
+      ),
     );
   }
 

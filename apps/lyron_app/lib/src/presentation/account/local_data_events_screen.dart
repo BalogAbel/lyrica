@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
+import 'package:lyron_app/src/presentation/planning/widgets/retryable_error_state.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// Read-only diagnostics screen rendering the `local_data_events` audit log:
@@ -43,8 +44,10 @@ class LocalDataEventsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) =>
-            Center(child: Text(AppStrings.localDataEventsLoadErrorMessage)),
+        error: (error, stackTrace) => RetryableErrorState(
+          message: AppStrings.localDataEventsLoadErrorMessage,
+          onRetry: () => ref.invalidate(localDataEventsRecordsProvider),
+        ),
       ),
     );
   }

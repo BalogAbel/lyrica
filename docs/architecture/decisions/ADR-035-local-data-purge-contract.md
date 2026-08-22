@@ -178,7 +178,12 @@ that could plausibly be either reason currently passes
 D1 and ready to receive real call sites the moment `AppAuthState` grows a
 discriminator; adding that discriminator is out of this phase's scope (it
 touches auth-state shape, not purge routing) and is left for whichever future
-work next touches `deleteAccount()`.
+work next touches `deleteAccount()`. This conflation now persists into every
+`local_data_events` row written for either trigger, unversioned — PR #74's
+review flagged that once the discriminator lands, historical rows will not
+be retroactively distinguishable. That is the correct, honest state for
+this phase to leave the audit trail in: it should record what the code
+actually knew at the time, not a reason it could not tell.
 
 **One reason-mapping judgment call:** the `ActiveOrganizationVerifiedEmpty`
 branch inside `auth_providers.dart`'s sign-in resolution (`persistNewIdentity`)
@@ -215,6 +220,47 @@ attribute a `userId` on the audit row) introduced its own new failure mode
 and widened a race window; fixed by taking an optional `userId` parameter
 from the caller instead, populated at the three call sites that have one in
 scope.
+
+**A second review (PR #74) found the audit write still lengthened the
+critical path, even after it was made best-effort.** `_recordBestEffort` was
+still `await`ed before `purgeSongCatalog`/`purgePlanningData`/`clearIdentity`
+returned, so `wipePriorAndProceedFor`'s `Future.wait([songDeletion,
+planningDeletion])` resolved only once both deletions AND both (already
+non-throwing) audit writes had completed — measurably later than the
+pre-gate code, which returned as soon as the two raw store deletes finished.
+Fixed by dispatching the audit write with `unawaited` instead: the
+destructive method's own `Future` now resolves exactly when the
+deletion/clear does, matching the pre-gate timing, and the audit write
+proceeds in the background on its own already-non-throwing path. (Technical
+note for the record: even before this fix, the widened window did not
+change any *outcome* — `wipePriorAndProceedFor`'s own comments already
+document the exact scenario a wider window makes marginally more likely
+[a superseded resolution after the deletions but before the identity clear]
+as intentionally safe and self-healing. The `unawaited` fix was made anyway
+because it fully closes the gap at negligible cost, rather than resting the
+"no behaviour change" claim on that argument.)
+
+The same review found the `readRecent` query sorting on `occurredAt` (not
+indexed, and `local_data_events` is deliberately unbounded) forced a
+full-table scan and sort on every diagnostics-screen open. Fixed by sorting
+on the autoincrement primary key alone (`id DESC`) — strictly monotonic with
+insertion order, no precision loss, and satisfiable from the primary-key
+index. And the diagnostics screen's error state now reuses the existing
+`RetryableErrorState` widget (`presentation/planning/widgets/`) instead of a
+bare, unactionable `Text`, matching `plan_list_screen.dart`/
+`plan_detail_screen.dart`'s convention.
+
+**Two suggestions from the same review were evaluated and declined:**
+merging `purgeSongCatalog`/`purgePlanningData` behind a shared higher-order
+helper (the two methods' bodies are nearly identical, but their arities
+differ — `shouldContinue` is planning-only — and two short, explicit methods
+read more clearly than a parameterized-delete abstraction built for exactly
+two callers); and dropping the `local_data_events.kind` column in favour of
+inferring purge-vs-eviction from `reason`-nullness at read time (this is the
+inverse of a fix already made earlier in this same PR, commit `51c4955`,
+after an *earlier* review flagged that exact inference as coincidental
+rather than structural — reversing it now would reintroduce the same
+fragility one layer down, in the schema instead of the UI).
 
 **Residual, deliberately-deferred hardening**, not required for this phase's
 no-behaviour-change bar but worth tracking for whenever the audit trail's
