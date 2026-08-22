@@ -142,7 +142,9 @@ void main() {
   });
 
   test(
-    'verified empty membership on the planning boundary clears song caches too',
+    'verified empty membership on the planning boundary quarantines '
+    'rather than clearing song caches -- D5/Phase 4, ADR-035: a single '
+    'resolution deletes nothing',
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
@@ -212,32 +214,37 @@ void main() {
       await controller.refresh();
 
       expect(controller.state, isNull);
+      // D5 (docs/specs/2026-08-19-local-data-durability-contract.md): a
+      // single verified-empty resolution quarantines, it does not purge --
+      // the planning projection and the song catalog (summaries and the
+      // pending mutation alike) all survive untouched.
       expect(
         await planningStore.hasProjection(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         await songStore.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        hasLength(2),
       );
       expect(
         await songStore.readSongMutations(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        hasLength(1),
       );
     },
   );
 
   test(
-    'verified empty membership on the song catalog path invalidates planning sync before clearing song caches',
+    'verified empty membership on the song catalog path quarantines '
+    'rather than clearing song caches -- D5/Phase 4, ADR-035',
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
@@ -310,26 +317,30 @@ void main() {
         container.read(planningSyncStateProvider).accessStatus,
         PlanningAccessStatus.signedIn,
       );
+      // D5 (docs/specs/2026-08-19-local-data-durability-contract.md): a
+      // single verified-empty resolution quarantines, it does not purge --
+      // the planning projection and the song catalog (summaries and the
+      // pending mutation alike) all survive untouched.
       expect(
         await planningStore.hasProjection(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         await songStore.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        hasLength(2),
       );
       expect(
         await songStore.readSongMutations(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        hasLength(1),
       );
     },
   );
