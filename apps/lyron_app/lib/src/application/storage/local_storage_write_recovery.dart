@@ -5,7 +5,7 @@ import 'package:lyron_app/src/application/storage/local_storage_domain_rejection
 import 'package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart' show SqliteException;
 
 /// The single storage-recovery boundary shared by every local write that can
 /// grow stored bytes (ADR-028; decision D1 of

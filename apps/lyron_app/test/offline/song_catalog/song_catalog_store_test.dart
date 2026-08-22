@@ -1624,7 +1624,7 @@ void main() {
       test(
         'calls evictToBudget with (totalBytes - budget) and the active '
         '(userId, organizationId) when the measured footprint exceeds the '
-        'budget, before the write proceeds',
+        'budget, after the write has succeeded',
         () async {
           final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
           final evictor = _FakeBudgetEvictor();
@@ -1714,6 +1714,54 @@ void main() {
             organizationId: 'org-1',
           );
           expect(summaries, isEmpty);
+        },
+      );
+
+      test(
+        'a replaceActiveSnapshot write that ultimately fails never runs the '
+        'proactive budget eviction, even when over budget (finding 2: '
+        "don't evict another organization's data for a write that was "
+        'going to fail regardless)',
+        () async {
+          final failingExecutor = InsertFailingExecutor(
+            NativeDatabase.memory(),
+            null, // no budget: every INSERT fails, unconditionally.
+          );
+          final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+          addTearDown(failingDatabase.close);
+
+          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+          final evictor = _FakeBudgetEvictor();
+          final store = DriftSongCatalogStore(
+            failingDatabase,
+            evictor: evictor,
+            accountant: accountant,
+          );
+
+          await expectLater(
+            () => store.replaceActiveSnapshot(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              summaries: const [
+                SongSummary(id: 'song-1', title: 'Song One'),
+              ],
+              sources: const [
+                SongSource(id: 'song-1', source: 'chordpro body'),
+              ],
+              refreshedAt: DateTime.utc(2026, 8, 22),
+            ),
+            throwsA(anything),
+          );
+
+          expect(
+            evictor.calls,
+            isEmpty,
+            reason:
+                'the write failed, so the proactive eviction must never '
+                'have run -- it would have destroyed another '
+                "organization's droppable sources for zero benefit, since "
+                'the write it was supposedly making room for never landed',
+          );
         },
       );
     },

@@ -426,11 +426,7 @@ class DriftSongCatalogStore implements SongCatalogStore {
     required List<SongSource> sources,
     required DateTime refreshedAt,
   }) async {
-    await _evictIfOverBudgetBestEffort(
-      activeUserId: userId,
-      activeOrganizationId: organizationId,
-    );
-    return _guarded(
+    await _guarded(
       () => _replaceActiveSnapshot(
         userId: userId,
         organizationId: organizationId,
@@ -439,14 +435,27 @@ class DriftSongCatalogStore implements SongCatalogStore {
         refreshedAt: refreshedAt,
       ),
     );
+    // Runs only after the write above has actually succeeded (finding 2,
+    // ADR-028 Task 3.4 amendment): this proactive check's job is "keep
+    // storage bounded going forward," not "clear room for this specific
+    // write" -- that is what the emergency evict-and-retry path inside
+    // [_guarded] already does on an actual failure. Running it before the
+    // write risked evicting another (userId, organizationId) pair's
+    // droppable data for zero benefit whenever the write it was supposedly
+    // making room for failed anyway (a second SQLITE_FULL, a validation
+    // rejection, ...).
+    await _evictIfOverBudgetBestEffort(
+      activeUserId: userId,
+      activeOrganizationId: organizationId,
+    );
   }
 
   /// D6: proactive counterpart to the reactive [_guarded]/[_writeRecovery]
   /// emergency path above. Best-effort -- a failure here (measuring or
-  /// evicting) must never block the actual write attempt that follows: that
-  /// write has its own [_guarded] recovery for a genuine storage-layer
-  /// failure, so this check exists only to keep ordinary growth from ever
-  /// reaching that emergency path in the first place.
+  /// evicting) must never propagate to the caller of [replaceActiveSnapshot],
+  /// which has already succeeded by the time this runs: this check exists
+  /// only to keep ordinary growth from ever reaching that emergency path in
+  /// the first place.
   Future<void> _evictIfOverBudgetBestEffort({
     required String activeUserId,
     required String activeOrganizationId,

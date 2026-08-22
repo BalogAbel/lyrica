@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
@@ -36,11 +39,48 @@ class SongCatalogEvictor {
     required this._database,
     required this._accountant,
     this._onStorageFootprintChanged,
+    this._eventsRecorder,
   });
 
   final SongCatalogDatabase _database;
   final CatalogStorageAccountant _accountant;
   final LocalStorageFootprintChanged? _onStorageFootprintChanged;
+
+  /// D7 (docs/specs/2026-08-19-local-data-durability-contract.md): "every
+  /// purge and every eviction writes a `local_data_events` record." Wired
+  /// here rather than in each caller (`LocalStorageWriteRecovery`'s
+  /// reactive path and `DriftSongCatalogStore`'s proactive one) so every
+  /// eviction this app performs, from either trigger, is audited exactly
+  /// once through the one class that actually deletes the rows.
+  /// Best-effort -- a failure writing the audit record must never affect
+  /// the eviction that already committed, mirroring
+  /// [_onStorageFootprintChanged]. `null` in tests that construct this
+  /// class directly; production wiring always supplies it.
+  final LocalDataEventsRecorder? _eventsRecorder;
+
+  /// Best-effort: writes the D7 eviction audit record without letting a
+  /// failure here affect the eviction that already committed above it (it
+  /// runs via [unawaited] from every call site, so this method's own
+  /// `Future` is never even awaited by its caller).
+  Future<void> _recordEvictionBestEffort({
+    String? userId,
+    required int rowsAffected,
+  }) async {
+    final recorder = _eventsRecorder;
+    if (recorder == null) {
+      return;
+    }
+    try {
+      await recorder.recordEviction(
+        target: 'songCatalog',
+        userId: userId,
+        rowsAffected: rowsAffected,
+      );
+    } catch (_) {
+      // Best-effort only: the eviction itself already committed and must
+      // not be affected by an audit-write failure.
+    }
+  }
 
   /// Returns the estimated bytes freed.
   ///
@@ -70,6 +110,7 @@ class SongCatalogEvictor {
     );
     if (deletedRows > 0) {
       _onStorageFootprintChanged?.call();
+      unawaited(_recordEvictionBestEffort(rowsAffected: deletedRows));
     }
     return droppableBytes;
   }
@@ -109,7 +150,15 @@ class SongCatalogEvictor {
           's.organization_id AS organization_id, '
           'sn.refreshed_at AS refreshed_at '
           'FROM cached_catalog_sources AS s '
-          'LEFT JOIN cached_catalog_snapshots AS sn '
+          // INNER JOIN, not LEFT: a pair with droppable sources but no
+          // matching cached_catalog_snapshots row (finding 3, ADR-028 Task
+          // 3.4 amendment) has nowhere to record sourcesEvictedAt, so it
+          // must never be a candidate at all -- evicting it would silently
+          // destroy its sources without the recoverability marker D6
+          // requires. A LEFT JOIN previously admitted it with
+          // refreshed_at == null, which sorts before every real timestamp
+          // below and evicted it FIRST.
+          'INNER JOIN cached_catalog_snapshots AS sn '
           'ON sn.user_id = s.user_id AND sn.organization_id = s.organization_id '
           'WHERE NOT EXISTS ('
           'SELECT 1 FROM cached_catalog_song_mutations AS m '
@@ -164,8 +213,9 @@ class SongCatalogEvictor {
       if (pairBytes == 0) {
         continue;
       }
+      var pairDeletedRows = 0;
       await _database.transaction(() async {
-        await _database.customUpdate(
+        pairDeletedRows = await _database.customUpdate(
           'DELETE FROM cached_catalog_sources AS s '
           'WHERE s.user_id = ? AND s.organization_id = ? '
           'AND NOT EXISTS ('
@@ -191,6 +241,14 @@ class SongCatalogEvictor {
             );
       });
       totalFreed += pairBytes;
+      if (pairDeletedRows > 0) {
+        unawaited(
+          _recordEvictionBestEffort(
+            userId: candidate.userId,
+            rowsAffected: pairDeletedRows,
+          ),
+        );
+      }
     }
 
     if (totalFreed > 0) {

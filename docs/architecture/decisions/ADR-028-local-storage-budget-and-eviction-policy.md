@@ -656,6 +656,92 @@ already is — a successful online refresh is what "restores what was
 dropped" (D6) in practice, and an accepted replace is what a successful
 refresh always performs.
 
+**2026-08-22 whole-branch review, four fixes to the paragraphs above:**
+
+1. **Proactive eviction now runs after the write, not before.**
+   `DriftSongCatalogStore.replaceActiveSnapshot` used to call
+   `_evictIfOverBudgetBestEffort` *before* the guarded write. If the device
+   was over budget and the write then failed anyway (a second
+   `SQLITE_FULL`, a validation rejection, ...), some other
+   `(userId, organizationId)` pair's droppable sources had already been
+   permanently evicted for zero benefit — nothing was gained, since the
+   write the eviction was supposedly making room for never landed. The
+   proactive check now runs only after the guarded write has actually
+   succeeded, still wrapped so its own failure can never propagate to a
+   caller that has, by that point, already gotten its successful result.
+   Its job is "keep storage bounded going forward," not "clear room for
+   this specific write" — that is what the emergency evict-and-retry path
+   inside `LocalStorageWriteRecovery.guard` (D8) already does on an actual
+   failure.
+2. **`evictToBudget`'s candidate query no longer admits orphan pairs.**
+   The candidate query joined `cached_catalog_sources` to
+   `cached_catalog_snapshots` with a `LEFT JOIN`, so a `(userId,
+   organizationId)` pair with droppable sources but no matching snapshot
+   row was still treated as a valid candidate, with `refreshedAt` read as
+   `null` — which sorts *before* every real timestamp in the oldest-first
+   ordering, so such a pair was evicted first. Its sources were deleted for
+   real, but the `sourcesEvictedAt` `UPDATE` against
+   `cached_catalog_snapshots` matched zero rows (no such row exists), so
+   the recoverability marker silently never got set for exactly this case
+   — defeating the mechanism's purpose (a future diagnostics/refresh flow
+   has no record the eviction happened). The join is now an `INNER JOIN`:
+   a pair with no snapshot row is excluded from `evictToBudget` entirely
+   rather than evicted un-markably. No live write path in this codebase
+   was found that can actually produce such an orphan pair today — every
+   place that writes `cached_catalog_sources`
+   (`_replaceActiveSnapshot`/blue-green replace, `_reconcileSyncedSong`,
+   `deleteCatalogsForUser`) creates or already requires the matching
+   snapshot row inside the same Drift transaction, and neither
+   `evictDroppable` nor `evictToBudget` itself ever deletes a snapshot row
+   while leaving sources behind. This exclusion is therefore a defensive
+   correctness fix for a theoretical shape, not a currently-reachable gap;
+   nothing was added to ADR-035's accepted-gap register.
+3. **Every eviction now writes a `local_data_events` audit record (D7,
+   `docs/specs/2026-08-19-local-data-durability-contract.md`).**
+   `LocalDataEventsRecorder.recordEviction` was promoted onto the
+   interface in Task 3.1 with a working `DriftLocalDataEventsStore`
+   implementation, but had zero call sites: neither `evictDroppable` nor
+   the new `evictToBudget` ever called it, so an eviction that destroyed
+   cached data left no trace in the audit trail beyond the
+   `sourcesEvictedAt` per-row marker (itself sometimes entirely absent per
+   fix 2, and in every case silently cleared by the next successful
+   refresh with no permanent record it ever happened). `SongCatalogEvictor`
+   now takes an optional `LocalDataEventsRecorder? eventsRecorder`
+   constructor field (`null` in tests that construct it directly,
+   mirroring `_onStorageFootprintChanged`'s existing injection idiom) and
+   calls `recordEviction(target: 'songCatalog', userId: ..., rowsAffected:
+   ...)` best-effort (`unawaited`, internally try/caught) whenever it
+   actually deletes rows: once per `evictDroppable()` call (skipped if
+   `deletedRows == 0`, matching this file's existing "nothing happened"
+   convention), and once **per evicted pair** inside `evictToBudget()`
+   (chosen over one summary row for the whole call, since each pair has
+   its own clear `userId` attribution and the marker mechanism it
+   accompanies is already tracked per pair, not per call).
+   `rowsAffected` carries the real deleted-row count from the `DELETE`
+   statement, not an estimated byte figure. Wiring lives inside
+   `SongCatalogEvictor` itself rather than in each of its two callers
+   (`LocalStorageWriteRecovery`'s reactive path and
+   `DriftSongCatalogStore`'s proactive one), so every eviction this app
+   performs is audited exactly once regardless of which trigger caused it.
+   `core_providers.dart`'s `songCatalogEvictorProvider` now wires in the
+   same `localDataEventsRecorderProvider` instance every other local-data
+   audit write already shares (`auth_providers.dart`); no new provider was
+   added.
+4. **`local_storage_write_recovery.dart` no longer imports
+   `package:sqlite3/sqlite3.dart`.** That native-only binding transitively
+   imports `dart:ffi`, and this file is reached unconditionally from
+   `song_catalog_store.dart` → providers → `main.dart` — so `flutter build
+   web --release` failed outright ("Dart library 'dart:ffi' is not
+   available on this platform") on top of this task's other three changes.
+   The import is now `package:sqlite3/common.dart show SqliteException`,
+   the shared ffi+wasm-safe surface exposing the identical
+   `SqliteException` type and `resultCode`/`extendedResultCode` API with no
+   other code change. `test/architecture/web_safe_imports_test.dart` now
+   source-scans `lib/` for this import (mirroring
+   `local_data_lifecycle_gate_test.dart`'s existing scan style in the same
+   directory) so a regression breaks a fast unit test rather than only
+   being caught by a full web build.
+
 ### D7 — Committed-storage revision seam
 
 `localStorageFootprintProvider` used to measure once per provider mount and
@@ -910,17 +996,45 @@ a focused emission test — is guarded separately by
   (2026-08-22, `DriftSongCatalogStore proactive budget eviction` group) —
   a fake accountant/evictor pair confirm `replaceActiveSnapshot` calls
   `evictToBudget` with `targetBytes: totalBytes - kCatalogStorageBudgetBytes`
-  and the call's own `(userId, organizationId)` before the guarded write
-  proceeds when the measured footprint exceeds the budget; confirm it is
+  and the call's own `(userId, organizationId)` after the guarded write has
+  succeeded when the measured footprint exceeds the budget; confirm it is
   never called when the footprint is at or under budget; confirm the
   existing no-evictor/no-accountant fixtures keep compiling and behaving
-  unchanged; and confirm a measurement or eviction failure is swallowed —
-  the write still proceeds either way.
+  unchanged; confirm a measurement or eviction failure is swallowed — the
+  write still proceeds either way; and (2026-08-22 whole-branch review,
+  finding 2) confirm a `replaceActiveSnapshot` write that ultimately fails
+  against a real failing executor never calls `evictToBudget` at all, even
+  with a fake accountant reporting the device over budget — proving the
+  reorder actually took effect, not just that eviction is possible after a
+  success.
 - `test/offline/adversarial/song_catalog_migration_test.dart`
   (2026-08-22, schema v4 → v5) — a hand-built pre-migration v4 database
   gains `sourcesEvictedAt` on upgrade, keeps its populated summary/source/
   mutation rows intact, and the migrated column is confirmed usable (not
   just present) by a subsequent write.
+- `test/application/storage/song_catalog_evictor_test.dart`
+  (2026-08-22 whole-branch review, finding 3) — a `(userId,
+  organizationId)` pair with a droppable source but no `cached_catalog_
+  snapshots` row is seeded alongside two normal pairs; `evictToBudget`
+  leaves the orphan pair's source completely untouched while still
+  evicting the normal pair to reach the target, proving the `INNER JOIN`
+  excludes it rather than evicting it first (as the old `LEFT JOIN` did via
+  its `null`-sorts-first `refreshedAt`).
+- `test/application/storage/song_catalog_evictor_test.dart`
+  (2026-08-22 whole-branch review, finding 4, `SongCatalogEvictor audit
+  trail (D7)` group) — a recording fake `LocalDataEventsRecorder` confirms
+  `evictDroppable()` writes exactly one `recordEviction` row (target
+  `songCatalog`, `rowsAffected` equal to the real deleted-row count) when
+  it actually deletes rows, and zero when it deletes nothing;
+  `evictToBudget()` writes one row per evicted pair, each attributed to
+  that pair's own `userId`, and zero when nothing is evicted; and a
+  throwing recorder is confirmed not to prevent the eviction itself from
+  completing.
+- `test/architecture/web_safe_imports_test.dart` (2026-08-22 whole-branch
+  review, finding 1) — source-scans every file under `lib/` for a direct
+  `package:sqlite3/sqlite3.dart` import (the native-only binding that pulls
+  in `dart:ffi` and broke `flutter build web --release`), matching
+  `local_data_lifecycle_gate_test.dart`'s existing scan style.
 
 See `docs/testing/testing-strategy.md` for how these fit into the broader
 adversarial suite.
@@ -996,3 +1110,16 @@ adversarial suite.
   timestamp (schema v4 → v5), cleared on the next accepted
   `replaceActiveSnapshot` the same way `pendingEmptyConfirmationAt` already
   is.
+- (2026-08-22 whole-branch review, four further fixes to the above; see the
+  "2026-08-22 whole-branch review" subsection under D6 for full detail)
+  the proactive check now runs strictly after the guarded write succeeds,
+  never before, so a write that fails anyway can no longer waste an
+  eviction of another organization's data (finding 2); `evictToBudget`'s
+  candidate query now excludes any pair with no matching snapshot row
+  instead of evicting it un-markably first (finding 3); `SongCatalogEvictor`
+  now writes a best-effort `local_data_events` audit record (D7) for every
+  eviction it actually performs, from either the reactive or the proactive
+  trigger (finding 4); and `local_storage_write_recovery.dart` now imports
+  `package:sqlite3/common.dart` instead of the native-only
+  `package:sqlite3/sqlite3.dart`, fixing a broken `flutter build web`
+  introduced earlier in this same task (finding 1).

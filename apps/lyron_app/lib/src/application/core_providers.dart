@@ -89,6 +89,10 @@ final songCatalogEvictorProvider = Provider<SongCatalogEvictor>((ref) {
     database: ref.watch(songCatalogDatabaseProvider),
     accountant: ref.watch(catalogStorageAccountantProvider),
     onStorageFootprintChanged: ref.watch(localStorageFootprintChangedProvider),
+    // D7 (ADR-028 Task 3.4 amendment): the same audit recorder every other
+    // local-data event (purges, storage-write failures) already writes
+    // through -- see auth_providers.dart's localDataEventsRecorderProvider.
+    eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
 });
 
