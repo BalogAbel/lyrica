@@ -616,8 +616,8 @@ class DriftSongCatalogStore implements SongCatalogStore {
         return EmptySnapshotResolution.accept;
       }
 
-      final storedCountExpression =
-          _database.cachedCatalogSummaries.songId.count();
+      final storedCountExpression = _database.cachedCatalogSummaries.songId
+          .count();
       final storedCountQuery =
           _database.selectOnly(_database.cachedCatalogSummaries)
             ..addColumns([storedCountExpression])

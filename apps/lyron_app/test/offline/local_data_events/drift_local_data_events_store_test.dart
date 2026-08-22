@@ -154,27 +154,24 @@ void main() {
     expect(records, hasLength(2));
   });
 
-  test(
-    'recordRejectedEmptySnapshot inserts one row with kind '
-    'empty-snapshot-rejected, target songCatalog, and reason carrying '
-    'the organizationId (D4, local-data-durability-contract)',
-    () async {
-      await store.recordRejectedEmptySnapshot(
-        userId: 'u1',
-        organizationId: 'org-1',
-      );
+  test('recordRejectedEmptySnapshot inserts one row with kind '
+      'empty-snapshot-rejected, target songCatalog, and reason carrying '
+      'the organizationId (D4, local-data-durability-contract)', () async {
+    await store.recordRejectedEmptySnapshot(
+      userId: 'u1',
+      organizationId: 'org-1',
+    );
 
-      final rows = await database.select(database.localDataEvents).get();
+    final rows = await database.select(database.localDataEvents).get();
 
-      expect(rows, hasLength(1));
-      final row = rows.single;
-      expect(row.kind, 'empty-snapshot-rejected');
-      expect(row.target, 'songCatalog');
-      expect(row.reason, 'org-1');
-      expect(row.userId, 'u1');
-      expect(row.rowsAffected, isNull);
-    },
-  );
+    expect(rows, hasLength(1));
+    final row = rows.single;
+    expect(row.kind, 'empty-snapshot-rejected');
+    expect(row.target, 'songCatalog');
+    expect(row.reason, 'org-1');
+    expect(row.userId, 'u1');
+    expect(row.rowsAffected, isNull);
+  });
 
   test(
     'recordEviction and recordRejectedEmptySnapshot are reachable through '

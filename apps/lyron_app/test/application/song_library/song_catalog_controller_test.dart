@@ -1152,199 +1152,179 @@ void main() {
       await database.close();
     });
 
-    test(
-      'an empty listSongs response against a non-empty cached snapshot is '
-      'rejected as implausible and leaves the cache untouched',
-      () async {
-        await store.replaceActiveSnapshot(
+    test('an empty listSongs response against a non-empty cached snapshot is '
+        'rejected as implausible and leaves the cache untouched', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+      );
+
+      await controller.refreshCatalog();
+
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+      expect(controller.state.hasCachedCatalog, isTrue);
+      expect(controller.state.connectionStatus, CatalogConnectionStatus.online);
+      expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+      expect(
+        await store.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        remoteRepository.songs = const [];
+        ),
+        const [SongSummary(id: 'song-1', title: 'Alpha')],
+      );
+    });
 
-        final controller = SongCatalogController(
-          store: store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: remoteRepository,
-          authSessionReader: () =>
-              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.verified,
-          onImplausibleEmptySnapshot:
-              ({required userId, required organizationId}) async {},
-        );
+    test('invokes the implausible-empty callback with the refreshed identity '
+        'on rejection', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+      final calls = <({String userId, String organizationId})>[];
 
-        await controller.refreshCatalog();
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              calls.add((userId: userId, organizationId: organizationId));
+            },
+      );
 
-        expect(
-          controller.state.refreshStatus,
-          CatalogRefreshStatus.implausibleEmpty,
-        );
-        expect(controller.state.hasCachedCatalog, isTrue);
-        expect(
-          controller.state.connectionStatus,
-          CatalogConnectionStatus.online,
-        );
-        expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
-        expect(
-          await store.readActiveSummaries(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          const [SongSummary(id: 'song-1', title: 'Alpha')],
-        );
-      },
-    );
+      await controller.refreshCatalog();
 
-    test(
-      'invokes the implausible-empty callback with the refreshed identity '
-      'on rejection',
-      () async {
-        await store.replaceActiveSnapshot(
+      expect(calls, [(userId: 'user-1', organizationId: 'org-1')]);
+    });
+
+    test('a throwing implausible-empty callback does not prevent the refresh '
+        'from completing', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              throw StateError('boom');
+            },
+      );
+
+      await controller.refreshCatalog();
+
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+    });
+
+    test('two consecutive independent empty resolutions replace the cached '
+        'snapshot with the empty result', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+      );
+
+      await controller.refreshCatalog();
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+
+      await controller.refreshCatalog();
+
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+      expect(
+        await store.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        remoteRepository.songs = const [];
-        final calls = <({String userId, String organizationId})>[];
+        ),
+        isEmpty,
+      );
+    });
 
-        final controller = SongCatalogController(
-          store: store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: remoteRepository,
-          authSessionReader: () =>
-              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.verified,
-          onImplausibleEmptySnapshot:
-              ({required userId, required organizationId}) async {
-                calls.add((userId: userId, organizationId: organizationId));
-              },
-        );
+    test('a genuinely empty catalog (never cached non-empty) refreshes '
+        'normally on the very first response', () async {
+      remoteRepository.songs = const [];
 
-        await controller.refreshCatalog();
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {
+              fail('must not be called when nothing non-empty is cached');
+            },
+      );
 
-        expect(calls, [(userId: 'user-1', organizationId: 'org-1')]);
-      },
-    );
+      await controller.refreshCatalog();
 
-    test(
-      'a throwing implausible-empty callback does not prevent the refresh '
-      'from completing',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        remoteRepository.songs = const [];
-
-        final controller = SongCatalogController(
-          store: store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: remoteRepository,
-          authSessionReader: () =>
-              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.verified,
-          onImplausibleEmptySnapshot:
-              ({required userId, required organizationId}) async {
-                throw StateError('boom');
-              },
-        );
-
-        await controller.refreshCatalog();
-
-        expect(
-          controller.state.refreshStatus,
-          CatalogRefreshStatus.implausibleEmpty,
-        );
-      },
-    );
-
-    test(
-      'two consecutive independent empty resolutions replace the cached '
-      'snapshot with the empty result',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        remoteRepository.songs = const [];
-
-        final controller = SongCatalogController(
-          store: store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: remoteRepository,
-          authSessionReader: () =>
-              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.verified,
-          onImplausibleEmptySnapshot:
-              ({required userId, required organizationId}) async {},
-        );
-
-        await controller.refreshCatalog();
-        expect(
-          controller.state.refreshStatus,
-          CatalogRefreshStatus.implausibleEmpty,
-        );
-
-        await controller.refreshCatalog();
-
-        expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
-        expect(
-          await store.readActiveSummaries(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          isEmpty,
-        );
-      },
-    );
-
-    test(
-      'a genuinely empty catalog (never cached non-empty) refreshes '
-      'normally on the very first response',
-      () async {
-        remoteRepository.songs = const [];
-
-        final controller = SongCatalogController(
-          store: store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: remoteRepository,
-          authSessionReader: () =>
-              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-          organizationReader: () async => 'org-1',
-          sessionVerifier: () async => CatalogSessionStatus.verified,
-          onImplausibleEmptySnapshot:
-              ({required userId, required organizationId}) async {
-                fail('must not be called when nothing non-empty is cached');
-              },
-        );
-
-        await controller.refreshCatalog();
-
-        expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
-      },
-    );
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+    });
   });
 }
 
 class _ConfigurableSongRepository implements SongRepository {
-  List<SongSummary> songs = const [
-    SongSummary(id: 'song-1', title: 'Alpha'),
-  ];
+  List<SongSummary> songs = const [SongSummary(id: 'song-1', title: 'Alpha')];
   Map<String, SongSource> sources = const {
     'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
   };

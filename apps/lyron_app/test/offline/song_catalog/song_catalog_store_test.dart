@@ -295,102 +295,99 @@ void main() {
       },
     );
 
-    test(
-      'refreshing organization A leaves organization B cached snapshot rows '
-      'byte-identical (F3, local-data-durability-contract)',
-      () async {
-        await store.replaceActiveSnapshot(
+    test('refreshing organization A leaves organization B cached snapshot rows '
+        'byte-identical (F3, local-data-durability-contract)', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-a',
+        summaries: const [SongSummary(id: 'song-a1', title: 'Org A One')],
+        sources: const [
+          SongSource(id: 'song-a1', source: '{title: Org A One}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-b',
+        summaries: const [SongSummary(id: 'song-b1', title: 'Org B One')],
+        sources: const [
+          SongSource(id: 'song-b1', source: '{title: Org B One}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 3, 25, 13),
+      );
+
+      final orgBSummariesBefore =
+          await (database.select(database.cachedCatalogSummaries)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .get();
+      final orgBSourcesBefore =
+          await (database.select(database.cachedCatalogSources)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .get();
+      final orgBSnapshotBefore =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .getSingle();
+
+      // A third replace, refreshing organization A only -- this is the
+      // write that used to wipe organization B's entire cached snapshot
+      // as a side effect, because the old deletion only filtered by
+      // userId.
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-a',
+        summaries: const [SongSummary(id: 'song-a2', title: 'Org A Two')],
+        sources: const [
+          SongSource(id: 'song-a2', source: '{title: Org A Two}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 3, 25, 14),
+      );
+
+      final orgBSummariesAfter =
+          await (database.select(database.cachedCatalogSummaries)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .get();
+      final orgBSourcesAfter =
+          await (database.select(database.cachedCatalogSources)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .get();
+      final orgBSnapshotAfter =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-b'),
+              ))
+              .getSingle();
+
+      expect(orgBSummariesAfter, orgBSummariesBefore);
+      expect(orgBSourcesAfter, orgBSourcesBefore);
+      expect(orgBSnapshotAfter, orgBSnapshotBefore);
+
+      // And organization A itself did get refreshed, so this was a real
+      // replace, not a no-op.
+      expect(
+        await store.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-a',
-          summaries: const [SongSummary(id: 'song-a1', title: 'Org A One')],
-          sources: const [
-            SongSource(id: 'song-a1', source: '{title: Org A One}'),
-          ],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-b',
-          summaries: const [SongSummary(id: 'song-b1', title: 'Org B One')],
-          sources: const [
-            SongSource(id: 'song-b1', source: '{title: Org B One}'),
-          ],
-          refreshedAt: DateTime.utc(2026, 3, 25, 13),
-        );
-
-        final orgBSummariesBefore =
-            await (database.select(database.cachedCatalogSummaries)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .get();
-        final orgBSourcesBefore =
-            await (database.select(database.cachedCatalogSources)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .get();
-        final orgBSnapshotBefore =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .getSingle();
-
-        // A third replace, refreshing organization A only -- this is the
-        // write that used to wipe organization B's entire cached snapshot
-        // as a side effect, because the old deletion only filtered by
-        // userId.
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-a',
-          summaries: const [SongSummary(id: 'song-a2', title: 'Org A Two')],
-          sources: const [
-            SongSource(id: 'song-a2', source: '{title: Org A Two}'),
-          ],
-          refreshedAt: DateTime.utc(2026, 3, 25, 14),
-        );
-
-        final orgBSummariesAfter =
-            await (database.select(database.cachedCatalogSummaries)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .get();
-        final orgBSourcesAfter =
-            await (database.select(database.cachedCatalogSources)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .get();
-        final orgBSnapshotAfter =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-b'),
-                ))
-                .getSingle();
-
-        expect(orgBSummariesAfter, orgBSummariesBefore);
-        expect(orgBSourcesAfter, orgBSourcesBefore);
-        expect(orgBSnapshotAfter, orgBSnapshotBefore);
-
-        // And organization A itself did get refreshed, so this was a real
-        // replace, not a no-op.
-        expect(
-          await store.readActiveSummaries(
-            userId: 'user-1',
-            organizationId: 'org-a',
-          ),
-          const [SongSummary(id: 'song-a2', title: 'Org A Two')],
-        );
-      },
-    );
+        ),
+        const [SongSummary(id: 'song-a2', title: 'Org A Two')],
+      );
+    });
 
     test('deletes the cached snapshot for one user and organization', () async {
       await store.replaceActiveSnapshot(
@@ -1621,48 +1618,42 @@ void main() {
         );
       }
 
-      test(
-        'calls evictToBudget with (totalBytes - budget) and the active '
-        '(userId, organizationId) when the measured footprint exceeds the '
-        'budget, after the write has succeeded',
-        () async {
-          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
-          final evictor = _FakeBudgetEvictor();
-          final store = DriftSongCatalogStore(
-            database,
-            evictor: evictor,
-            accountant: accountant,
-          );
+      test('calls evictToBudget with (totalBytes - budget) and the active '
+          '(userId, organizationId) when the measured footprint exceeds the '
+          'budget, after the write has succeeded', () async {
+        final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+        final evictor = _FakeBudgetEvictor();
+        final store = DriftSongCatalogStore(
+          database,
+          evictor: evictor,
+          accountant: accountant,
+        );
 
-          await replaceEmptySnapshot(store);
+        await replaceEmptySnapshot(store);
 
-          expect(evictor.calls, hasLength(1));
-          final call = evictor.calls.single;
-          expect(call.activeUserId, 'user-1');
-          expect(call.activeOrganizationId, 'org-1');
-          expect(call.targetBytes, 3000000000 - kCatalogStorageBudgetBytes);
-        },
-      );
+        expect(evictor.calls, hasLength(1));
+        final call = evictor.calls.single;
+        expect(call.activeUserId, 'user-1');
+        expect(call.activeOrganizationId, 'org-1');
+        expect(call.targetBytes, 3000000000 - kCatalogStorageBudgetBytes);
+      });
 
-      test(
-        'never calls evictToBudget when the measured footprint is at or '
-        'under the budget',
-        () async {
-          final accountant = _FakeBudgetAccountant(
-            totalBytes: kCatalogStorageBudgetBytes,
-          );
-          final evictor = _FakeBudgetEvictor();
-          final store = DriftSongCatalogStore(
-            database,
-            evictor: evictor,
-            accountant: accountant,
-          );
+      test('never calls evictToBudget when the measured footprint is at or '
+          'under the budget', () async {
+        final accountant = _FakeBudgetAccountant(
+          totalBytes: kCatalogStorageBudgetBytes,
+        );
+        final evictor = _FakeBudgetEvictor();
+        final store = DriftSongCatalogStore(
+          database,
+          evictor: evictor,
+          accountant: accountant,
+        );
 
-          await replaceEmptySnapshot(store);
+        await replaceEmptySnapshot(store);
 
-          expect(evictor.calls, isEmpty);
-        },
-      );
+        expect(evictor.calls, isEmpty);
+      });
 
       test(
         'never calls the evictor when no evictor/accountant is supplied '
@@ -1676,94 +1667,81 @@ void main() {
         },
       );
 
-      test(
-        'a measurement failure is best-effort: the write still proceeds '
-        'and the failure never surfaces',
-        () async {
-          final accountant = _FakeBudgetAccountant(throwsOnMeasure: true);
-          final evictor = _FakeBudgetEvictor();
-          final store = DriftSongCatalogStore(
-            database,
-            evictor: evictor,
-            accountant: accountant,
-          );
+      test('a measurement failure is best-effort: the write still proceeds '
+          'and the failure never surfaces', () async {
+        final accountant = _FakeBudgetAccountant(throwsOnMeasure: true);
+        final evictor = _FakeBudgetEvictor();
+        final store = DriftSongCatalogStore(
+          database,
+          evictor: evictor,
+          accountant: accountant,
+        );
 
-          await replaceEmptySnapshot(store);
+        await replaceEmptySnapshot(store);
 
-          expect(evictor.calls, isEmpty);
-        },
-      );
+        expect(evictor.calls, isEmpty);
+      });
 
-      test(
-        'an evictToBudget failure is best-effort: the write still proceeds '
-        'and the failure never surfaces',
-        () async {
-          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
-          final evictor = _FakeBudgetEvictor(throwsOnEvict: true);
-          final store = DriftSongCatalogStore(
-            database,
-            evictor: evictor,
-            accountant: accountant,
-          );
+      test('an evictToBudget failure is best-effort: the write still proceeds '
+          'and the failure never surfaces', () async {
+        final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+        final evictor = _FakeBudgetEvictor(throwsOnEvict: true);
+        final store = DriftSongCatalogStore(
+          database,
+          evictor: evictor,
+          accountant: accountant,
+        );
 
-          // Must not throw despite the evictor blowing up.
-          await replaceEmptySnapshot(store);
+        // Must not throw despite the evictor blowing up.
+        await replaceEmptySnapshot(store);
 
-          final summaries = await store.readActiveSummaries(
+        final summaries = await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(summaries, isEmpty);
+      });
+
+      test('a replaceActiveSnapshot write that ultimately fails never runs the '
+          'proactive budget eviction, even when over budget (finding 2: '
+          "don't evict another organization's data for a write that was "
+          'going to fail regardless)', () async {
+        final failingExecutor = InsertFailingExecutor(
+          NativeDatabase.memory(),
+          null, // no budget: every INSERT fails, unconditionally.
+        );
+        final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
+        addTearDown(failingDatabase.close);
+
+        final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
+        final evictor = _FakeBudgetEvictor();
+        final store = DriftSongCatalogStore(
+          failingDatabase,
+          evictor: evictor,
+          accountant: accountant,
+        );
+
+        await expectLater(
+          () => store.replaceActiveSnapshot(
             userId: 'user-1',
             organizationId: 'org-1',
-          );
-          expect(summaries, isEmpty);
-        },
-      );
+            summaries: const [SongSummary(id: 'song-1', title: 'Song One')],
+            sources: const [SongSource(id: 'song-1', source: 'chordpro body')],
+            refreshedAt: DateTime.utc(2026, 8, 22),
+          ),
+          throwsA(anything),
+        );
 
-      test(
-        'a replaceActiveSnapshot write that ultimately fails never runs the '
-        'proactive budget eviction, even when over budget (finding 2: '
-        "don't evict another organization's data for a write that was "
-        'going to fail regardless)',
-        () async {
-          final failingExecutor = InsertFailingExecutor(
-            NativeDatabase.memory(),
-            null, // no budget: every INSERT fails, unconditionally.
-          );
-          final failingDatabase = SongCatalogDatabase.connect(failingExecutor);
-          addTearDown(failingDatabase.close);
-
-          final accountant = _FakeBudgetAccountant(totalBytes: 3000000000);
-          final evictor = _FakeBudgetEvictor();
-          final store = DriftSongCatalogStore(
-            failingDatabase,
-            evictor: evictor,
-            accountant: accountant,
-          );
-
-          await expectLater(
-            () => store.replaceActiveSnapshot(
-              userId: 'user-1',
-              organizationId: 'org-1',
-              summaries: const [
-                SongSummary(id: 'song-1', title: 'Song One'),
-              ],
-              sources: const [
-                SongSource(id: 'song-1', source: 'chordpro body'),
-              ],
-              refreshedAt: DateTime.utc(2026, 8, 22),
-            ),
-            throwsA(anything),
-          );
-
-          expect(
-            evictor.calls,
-            isEmpty,
-            reason:
-                'the write failed, so the proactive eviction must never '
-                'have run -- it would have destroyed another '
-                "organization's droppable sources for zero benefit, since "
-                'the write it was supposedly making room for never landed',
-          );
-        },
-      );
+        expect(
+          evictor.calls,
+          isEmpty,
+          reason:
+              'the write failed, so the proactive eviction must never '
+              'have run -- it would have destroyed another '
+              "organization's droppable sources for zero benefit, since "
+              'the write it was supposedly making room for never landed',
+        );
+      });
     },
   );
 
@@ -2167,12 +2145,33 @@ void main() {
       expect(resolution, EmptySnapshotResolution.accept);
     });
 
-    test('accepts when the stored snapshot exists but is already empty', () async {
+    test(
+      'accepts when the stored snapshot exists but is already empty',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [],
+          sources: const [],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+
+        final resolution = await store.resolveEmptySnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        expect(resolution, EmptySnapshotResolution.accept);
+      },
+    );
+
+    test('rejects the first empty resolution against a non-empty stored '
+        'snapshot and sets the pending-confirmation marker', () async {
       await store.replaceActiveSnapshot(
         userId: 'user-1',
         organizationId: 'org-1',
-        summaries: const [],
-        sources: const [],
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
         refreshedAt: DateTime.utc(2026, 3, 25, 12),
       );
 
@@ -2181,339 +2180,304 @@ void main() {
         organizationId: 'org-1',
       );
 
-      expect(resolution, EmptySnapshotResolution.accept);
-    });
+      expect(resolution, EmptySnapshotResolution.reject);
 
-    test(
-      'rejects the first empty resolution against a non-empty stored '
-      'snapshot and sets the pending-confirmation marker',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-
-        final resolution = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-
-        expect(resolution, EmptySnapshotResolution.reject);
-
-        final snapshotRow =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-1'),
-                ))
-                .getSingle();
-        expect(snapshotRow.pendingEmptyConfirmationAt, isNotNull);
-      },
-    );
-
-    test(
-      'a rejection leaves the cached summaries, sources, and snapshot '
-      'version/refreshedAt fully unchanged',
-      () async {
-        final refreshedAt = DateTime.utc(2026, 3, 25, 12);
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: refreshedAt,
-        );
-
-        final summariesBefore = await database
-            .select(database.cachedCatalogSummaries)
-            .get();
-        final sourcesBefore = await database
-            .select(database.cachedCatalogSources)
-            .get();
-        final snapshotBefore =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-1'),
-                ))
-                .getSingle();
-
-        final resolution = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        expect(resolution, EmptySnapshotResolution.reject);
-
-        final summariesAfter = await database
-            .select(database.cachedCatalogSummaries)
-            .get();
-        final sourcesAfter = await database
-            .select(database.cachedCatalogSources)
-            .get();
-        final snapshotAfter =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-1'),
-                ))
-                .getSingle();
-
-        expect(summariesAfter, summariesBefore);
-        expect(sourcesAfter, sourcesBefore);
-        expect(snapshotAfter.snapshotVersion, snapshotBefore.snapshotVersion);
-        expect(snapshotAfter.refreshedAt, snapshotBefore.refreshedAt);
-        expect(
-          snapshotBefore.pendingEmptyConfirmationAt,
-          isNull,
-          reason: 'sanity: the marker must not already be set before this',
-        );
-        expect(snapshotAfter.pendingEmptyConfirmationAt, isNotNull);
-      },
-    );
-
-    test(
-      'accepts the second, independent empty resolution once the marker is '
-      'set',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-
-        final first = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        expect(first, EmptySnapshotResolution.reject);
-
-        final second = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        expect(second, EmptySnapshotResolution.accept);
-      },
-    );
-
-    test(
-      'an intervening normal non-empty replace clears the pending-empty '
-      'marker, so a later single empty response is rejected again rather '
-      'than wrongly treated as the second confirmation',
-      () async {
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 12),
-        );
-
-        final firstResolution = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        expect(firstResolution, EmptySnapshotResolution.reject);
-
-        // A normal, real, non-empty refresh lands in between -- this must
-        // clear the marker the rejection above set.
-        await store.replaceActiveSnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
-          sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
-          refreshedAt: DateTime.utc(2026, 3, 25, 13),
-        );
-
-        final snapshotRow =
-            await (database.select(database.cachedCatalogSnapshots)..where(
-                  (table) =>
-                      table.userId.equals('user-1') &
-                      table.organizationId.equals('org-1'),
-                ))
-                .getSingle();
-        expect(
-          snapshotRow.pendingEmptyConfirmationAt,
-          isNull,
-          reason:
-              'insertOnConflictUpdate only updates columns present in the '
-              'companion -- omitting pendingEmptyConfirmationAt here would '
-              'silently leave the earlier marker in place forever',
-        );
-
-        final thirdResolution = await store.resolveEmptySnapshot(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
-        expect(
-          thirdResolution,
-          EmptySnapshotResolution.reject,
-          reason:
-              'this is a fresh, independent single empty response against '
-              'the Beta snapshot -- the earlier rejection must not leak '
-              'across the intervening real refresh',
-        );
-      },
-    );
-  });
-
-  group(
-    'DriftSongCatalogStore blue/green replace atomicity (D4, ADR-035 Task '
-    '3.3)',
-    () {
-      // ADR-035 Task 3.3: _replaceActiveSnapshot's delete-then-insert
-      // sequence is claimed to already be blue/green-equivalent on native
-      // SQLite because it all runs inside one `_database.transaction()`
-      // block -- this test proves that claim rather than assuming Drift
-      // provides it. Three separate connections to the SAME on-disk
-      // database file, opened and closed in sequence (mirroring "can reopen
-      // a persisted catalog from a new database instance" above): the first
-      // seeds a real, non-empty snapshot and is closed; the second wraps its
-      // executor in InsertFailingExecutor (unlimited budget -- every INSERT
-      // fails) and attempts a second, different non-empty replace, which
-      // must fail partway through its transaction, after the old
-      // summaries/sources/snapshot row have already been deleted but before
-      // any row of the new snapshot is inserted; the third is a fresh,
-      // unwrapped connection used only to read back the data, so the
-      // failing executor never gets a chance to interfere with the
-      // assertion queries.
-      test(
-        'a write that fails after the old snapshot is deleted but before '
-        'the new snapshot commits leaves the previous snapshot fully intact',
-        () async {
-          final tempDir = await Directory.systemTemp.createTemp(
-            'song-catalog-blue-green-atomicity-test',
-          );
-          addTearDown(() async {
-            if (await tempDir.exists()) {
-              await tempDir.delete(recursive: true);
-            }
-          });
-          final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
-
-          const seededSummaries = [SongSummary(id: 'song-1', title: 'Alpha')];
-          const seededSources = [
-            SongSource(id: 'song-1', source: '{title: Alpha}'),
-          ];
-          final seededRefreshedAt = DateTime.utc(2026, 3, 25, 12);
-
-          final firstDatabase = SongCatalogDatabase.connect(
-            NativeDatabase.createInBackground(dbFile),
-          );
-          final firstStore = DriftSongCatalogStore(firstDatabase);
-          await firstStore.replaceActiveSnapshot(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            summaries: seededSummaries,
-            sources: seededSources,
-            refreshedAt: seededRefreshedAt,
-          );
-          // Read the seeded snapshot row back through the same connection
-          // that wrote it, rather than comparing against the literal
-          // `DateTime.utc(...)` passed in above: Drift's native codec
-          // round-trips `refreshedAt` as a local-time `DateTime` (same
-          // instant, `isUtc: false`), and Dart's `DateTime.==` treats a UTC
-          // and a local `DateTime` representing the identical instant as
-          // unequal. Comparing two DB reads to each other sidesteps that
-          // entirely and gives a true byte-identical check on every column.
-          final seededSnapshotRow =
-              await (firstDatabase.select(firstDatabase.cachedCatalogSnapshots)
-                    ..where(
-                      (table) =>
-                          table.userId.equals('user-1') &
-                          table.organizationId.equals('org-1'),
-                    ))
-                  .getSingle();
-          await firstDatabase.close();
-
-          // Deliberately no LocalStorageWriteRecovery here: this test
-          // targets the raw transaction's atomicity, not the eviction/retry
-          // behaviour already covered by the "storage recovery" group above
-          // -- a bare failing executor makes the single doomed attempt and
-          // its outcome unambiguous. With no writeRecovery, `_guarded` calls
-          // the write directly (see `_guarded` in song_catalog_store.dart),
-          // so the raw executor exception propagates as-is.
-          final secondDatabase = SongCatalogDatabase.connect(
-            InsertFailingExecutor(NativeDatabase.createInBackground(dbFile)),
-          );
-          final secondStore = DriftSongCatalogStore(secondDatabase);
-
-          await expectLater(
-            () => secondStore.replaceActiveSnapshot(
-              userId: 'user-1',
-              organizationId: 'org-1',
-              summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
-              sources: const [
-                SongSource(id: 'song-2', source: '{title: Beta}'),
-              ],
-              refreshedAt: DateTime.utc(2026, 3, 25, 13),
-            ),
-            throwsA(isA<StorageQuotaSimulatedException>()),
-          );
-          await secondDatabase.close();
-
-          final thirdDatabase = SongCatalogDatabase.connect(
-            NativeDatabase.createInBackground(dbFile),
-          );
-          addTearDown(thirdDatabase.close);
-          final thirdStore = DriftSongCatalogStore(thirdDatabase);
-
-          expect(
-            await thirdStore.readActiveSummaries(
-              userId: 'user-1',
-              organizationId: 'org-1',
-            ),
-            seededSummaries,
-            reason:
-                'the interrupted second replace must not leave the '
-                'summaries table empty or holding the Beta content',
-          );
-          final reopenedSource = await thirdStore.readActiveSource(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            songId: 'song-1',
-          );
-          expect(reopenedSource?.id, seededSources.single.id);
-          expect(reopenedSource?.source, seededSources.single.source);
-          final failedSource = await thirdStore.readActiveSource(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            songId: 'song-2',
-          );
-          expect(
-            failedSource,
-            isNull,
-            reason: 'the Beta source must never have become visible',
-          );
-
-          final snapshotRow =
-              await (thirdDatabase.select(
-                thirdDatabase.cachedCatalogSnapshots,
-              )..where(
+      final snapshotRow =
+          await (database.select(database.cachedCatalogSnapshots)..where(
                 (table) =>
                     table.userId.equals('user-1') &
                     table.organizationId.equals('org-1'),
-              )).getSingle();
-          expect(
-            snapshotRow,
-            seededSnapshotRow,
-            reason:
-                'the failed replace must leave the snapshot row fully '
-                'byte-identical to what was seeded -- not bumped, not '
-                'partially overwritten, and with the marker untouched -- '
-                'proving the interrupted transaction rolled back rather '
-                'than partially committing',
-          );
-          expect(snapshotRow.snapshotVersion, 1);
-          expect(snapshotRow.pendingEmptyConfirmationAt, isNull);
-        },
+              ))
+              .getSingle();
+      expect(snapshotRow.pendingEmptyConfirmationAt, isNotNull);
+    });
+
+    test('a rejection leaves the cached summaries, sources, and snapshot '
+        'version/refreshedAt fully unchanged', () async {
+      final refreshedAt = DateTime.utc(2026, 3, 25, 12);
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: refreshedAt,
       );
-    },
-  );
+
+      final summariesBefore = await database
+          .select(database.cachedCatalogSummaries)
+          .get();
+      final sourcesBefore = await database
+          .select(database.cachedCatalogSources)
+          .get();
+      final snapshotBefore =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-1'),
+              ))
+              .getSingle();
+
+      final resolution = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(resolution, EmptySnapshotResolution.reject);
+
+      final summariesAfter = await database
+          .select(database.cachedCatalogSummaries)
+          .get();
+      final sourcesAfter = await database
+          .select(database.cachedCatalogSources)
+          .get();
+      final snapshotAfter =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-1'),
+              ))
+              .getSingle();
+
+      expect(summariesAfter, summariesBefore);
+      expect(sourcesAfter, sourcesBefore);
+      expect(snapshotAfter.snapshotVersion, snapshotBefore.snapshotVersion);
+      expect(snapshotAfter.refreshedAt, snapshotBefore.refreshedAt);
+      expect(
+        snapshotBefore.pendingEmptyConfirmationAt,
+        isNull,
+        reason: 'sanity: the marker must not already be set before this',
+      );
+      expect(snapshotAfter.pendingEmptyConfirmationAt, isNotNull);
+    });
+
+    test('accepts the second, independent empty resolution once the marker is '
+        'set', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+
+      final first = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(first, EmptySnapshotResolution.reject);
+
+      final second = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(second, EmptySnapshotResolution.accept);
+    });
+
+    test('an intervening normal non-empty replace clears the pending-empty '
+        'marker, so a later single empty response is rejected again rather '
+        'than wrongly treated as the second confirmation', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+
+      final firstResolution = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(firstResolution, EmptySnapshotResolution.reject);
+
+      // A normal, real, non-empty refresh lands in between -- this must
+      // clear the marker the rejection above set.
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+        sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
+        refreshedAt: DateTime.utc(2026, 3, 25, 13),
+      );
+
+      final snapshotRow =
+          await (database.select(database.cachedCatalogSnapshots)..where(
+                (table) =>
+                    table.userId.equals('user-1') &
+                    table.organizationId.equals('org-1'),
+              ))
+              .getSingle();
+      expect(
+        snapshotRow.pendingEmptyConfirmationAt,
+        isNull,
+        reason:
+            'insertOnConflictUpdate only updates columns present in the '
+            'companion -- omitting pendingEmptyConfirmationAt here would '
+            'silently leave the earlier marker in place forever',
+      );
+
+      final thirdResolution = await store.resolveEmptySnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(
+        thirdResolution,
+        EmptySnapshotResolution.reject,
+        reason:
+            'this is a fresh, independent single empty response against '
+            'the Beta snapshot -- the earlier rejection must not leak '
+            'across the intervening real refresh',
+      );
+    });
+  });
+
+  group('DriftSongCatalogStore blue/green replace atomicity (D4, ADR-035 Task '
+      '3.3)', () {
+    // ADR-035 Task 3.3: _replaceActiveSnapshot's delete-then-insert
+    // sequence is claimed to already be blue/green-equivalent on native
+    // SQLite because it all runs inside one `_database.transaction()`
+    // block -- this test proves that claim rather than assuming Drift
+    // provides it. Three separate connections to the SAME on-disk
+    // database file, opened and closed in sequence (mirroring "can reopen
+    // a persisted catalog from a new database instance" above): the first
+    // seeds a real, non-empty snapshot and is closed; the second wraps its
+    // executor in InsertFailingExecutor (unlimited budget -- every INSERT
+    // fails) and attempts a second, different non-empty replace, which
+    // must fail partway through its transaction, after the old
+    // summaries/sources/snapshot row have already been deleted but before
+    // any row of the new snapshot is inserted; the third is a fresh,
+    // unwrapped connection used only to read back the data, so the
+    // failing executor never gets a chance to interfere with the
+    // assertion queries.
+    test(
+      'a write that fails after the old snapshot is deleted but before '
+      'the new snapshot commits leaves the previous snapshot fully intact',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'song-catalog-blue-green-atomicity-test',
+        );
+        addTearDown(() async {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(tempDir.path, 'catalog.sqlite'));
+
+        const seededSummaries = [SongSummary(id: 'song-1', title: 'Alpha')];
+        const seededSources = [
+          SongSource(id: 'song-1', source: '{title: Alpha}'),
+        ];
+        final seededRefreshedAt = DateTime.utc(2026, 3, 25, 12);
+
+        final firstDatabase = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        final firstStore = DriftSongCatalogStore(firstDatabase);
+        await firstStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: seededSummaries,
+          sources: seededSources,
+          refreshedAt: seededRefreshedAt,
+        );
+        // Read the seeded snapshot row back through the same connection
+        // that wrote it, rather than comparing against the literal
+        // `DateTime.utc(...)` passed in above: Drift's native codec
+        // round-trips `refreshedAt` as a local-time `DateTime` (same
+        // instant, `isUtc: false`), and Dart's `DateTime.==` treats a UTC
+        // and a local `DateTime` representing the identical instant as
+        // unequal. Comparing two DB reads to each other sidesteps that
+        // entirely and gives a true byte-identical check on every column.
+        final seededSnapshotRow =
+            await (firstDatabase.select(firstDatabase.cachedCatalogSnapshots)
+                  ..where(
+                    (table) =>
+                        table.userId.equals('user-1') &
+                        table.organizationId.equals('org-1'),
+                  ))
+                .getSingle();
+        await firstDatabase.close();
+
+        // Deliberately no LocalStorageWriteRecovery here: this test
+        // targets the raw transaction's atomicity, not the eviction/retry
+        // behaviour already covered by the "storage recovery" group above
+        // -- a bare failing executor makes the single doomed attempt and
+        // its outcome unambiguous. With no writeRecovery, `_guarded` calls
+        // the write directly (see `_guarded` in song_catalog_store.dart),
+        // so the raw executor exception propagates as-is.
+        final secondDatabase = SongCatalogDatabase.connect(
+          InsertFailingExecutor(NativeDatabase.createInBackground(dbFile)),
+        );
+        final secondStore = DriftSongCatalogStore(secondDatabase);
+
+        await expectLater(
+          () => secondStore.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [SongSummary(id: 'song-2', title: 'Beta')],
+            sources: const [SongSource(id: 'song-2', source: '{title: Beta}')],
+            refreshedAt: DateTime.utc(2026, 3, 25, 13),
+          ),
+          throwsA(isA<StorageQuotaSimulatedException>()),
+        );
+        await secondDatabase.close();
+
+        final thirdDatabase = SongCatalogDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(thirdDatabase.close);
+        final thirdStore = DriftSongCatalogStore(thirdDatabase);
+
+        expect(
+          await thirdStore.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          seededSummaries,
+          reason:
+              'the interrupted second replace must not leave the '
+              'summaries table empty or holding the Beta content',
+        );
+        final reopenedSource = await thirdStore.readActiveSource(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        );
+        expect(reopenedSource?.id, seededSources.single.id);
+        expect(reopenedSource?.source, seededSources.single.source);
+        final failedSource = await thirdStore.readActiveSource(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-2',
+        );
+        expect(
+          failedSource,
+          isNull,
+          reason: 'the Beta source must never have become visible',
+        );
+
+        final snapshotRow =
+            await (thirdDatabase.select(thirdDatabase.cachedCatalogSnapshots)
+                  ..where(
+                    (table) =>
+                        table.userId.equals('user-1') &
+                        table.organizationId.equals('org-1'),
+                  ))
+                .getSingle();
+        expect(
+          snapshotRow,
+          seededSnapshotRow,
+          reason:
+              'the failed replace must leave the snapshot row fully '
+              'byte-identical to what was seeded -- not bumped, not '
+              'partially overwritten, and with the marker untouched -- '
+              'proving the interrupted transaction rolled back rather '
+              'than partially committing',
+        );
+        expect(snapshotRow.snapshotVersion, 1);
+        expect(snapshotRow.pendingEmptyConfirmationAt, isNull);
+      },
+    );
+  });
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {

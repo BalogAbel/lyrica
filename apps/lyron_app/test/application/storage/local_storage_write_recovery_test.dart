@@ -220,7 +220,8 @@ void main() {
       expect(
         attempts,
         1,
-        reason: 'SQLITE_BUSY is transient -- retrying without eviction '
+        reason:
+            'SQLITE_BUSY is transient -- retrying without eviction '
             'would fail identically, so guard must not retry it at all',
       );
       expect(
