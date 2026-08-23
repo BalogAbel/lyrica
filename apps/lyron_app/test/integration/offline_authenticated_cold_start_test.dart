@@ -102,6 +102,12 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({required String userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({required String userId}) async {}
 }
 
 const _identity = LastKnownIdentity(
@@ -639,6 +645,15 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<void> clear() async {
     value = null;
   }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
 }
 
 /// A fully controllable AuthRepository fake, mirroring

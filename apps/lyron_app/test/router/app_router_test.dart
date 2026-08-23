@@ -1293,6 +1293,15 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
 
   @override
   Future<void> clear() async {}
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
 }
 
 class _FakePlanningRepository implements PlanningRepository {

@@ -1512,6 +1512,12 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({required String userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({required String userId}) async {}
 }
 
 class _TestAppForegroundState implements AppForegroundState {
