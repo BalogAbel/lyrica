@@ -28,12 +28,31 @@ final class ActiveOrganizationResolver {
   /// Raw resolution, then connectivity-gated cached fallback (ADR-016): a cached
   /// organization id is only reused on [ActiveOrganizationUnknownConnectivityFailure].
   Future<ActiveOrganizationResolution> resolveWithCachedFallback() async {
+    return (await resolveWithCachedFallbackDetailed()).resolution;
+  }
+
+  /// YELLOW 4 (final whole-branch review, D5.2): [resolveWithCachedFallback]
+  /// collapses a cached-fallback [ActiveOrganizationSelected] into the exact
+  /// same shape as a genuine, fresh, online [ActiveOrganizationSelected] --
+  /// a caller with only that return value cannot tell them apart. D5.2
+  /// forbids a connectivity failure from moving the membership-revocation
+  /// marker in either direction, so a caller that acts on the marker (see
+  /// `lastKnownIdentityPersistenceProvider` in auth_providers.dart) needs
+  /// the distinction this method exposes: [wasCachedFallback] is `true`
+  /// only when the raw resolution was itself a connectivity failure AND the
+  /// fallback substituted a cached organization id for it.
+  Future<({ActiveOrganizationResolution resolution, bool wasCachedFallback})>
+  resolveWithCachedFallbackDetailed() async {
     final resolution = await resolveRaw();
-    return resolveMembershipWithCachedFallback(
+    final withFallback = await resolveMembershipWithCachedFallback(
       resolution: resolution,
       userId: _readUserId(),
       readCachedOrganizationId: _readCachedOrganizationId,
     );
+    final wasCachedFallback =
+        resolution is ActiveOrganizationUnknownConnectivityFailure &&
+        withFallback is ActiveOrganizationSelected;
+    return (resolution: withFallback, wasCachedFallback: wasCachedFallback);
   }
 
   /// Projects the raw resolution to an organization id, throwing on failure

@@ -124,6 +124,75 @@ void main() {
   );
 
   test(
+    // YELLOW 4 (final whole-branch review, D5.2): membershipResolutionProvider
+    // is resolveWithCachedFallback, so an UnknownConnectivityFailure with a
+    // cached organization id arrives at persistIdentity's signedIn branch
+    // as an ordinary ActiveOrganizationSelected -- indistinguishable, from
+    // that branch's point of view, from a genuine fresh non-empty
+    // resolution. D5.2 forbids a connectivity failure from moving the
+    // marker in EITHER direction; a cached-fallback Selected must leave an
+    // existing marker exactly as it found it.
+    'signedIn falling back to a cached organization after a connectivity '
+    'failure leaves an existing membership-revocation marker set',
+    () async {
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-cached',
+        ),
+        membershipRevokedAt: DateTime.utc(2026, 8, 20, 12),
+      );
+      final cachedDatabase = SongCatalogDatabase.inMemory();
+      final cachedStore = DriftSongCatalogStore(cachedDatabase);
+      await cachedStore.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-cached',
+        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+        sources: const [
+          SongSource(id: 'song-1', source: '{title: Cached Song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 6, 28, 12),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogStoreProvider.overrideWithValue(cachedStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async =>
+                const ActiveOrganizationResolution.unknownConnectivityFailure(),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await cachedDatabase.close();
+      });
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.organizationId, 'org-cached');
+      expect(
+        identityStore.membershipRevokedAt,
+        isNotNull,
+        reason:
+            'a connectivity failure -- even one resolved to a usable '
+            'organization id through the cached fallback -- must never '
+            'clear an outstanding membership-revocation marker (D5.2)',
+      );
+    },
+  );
+
+  test(
     'stale signedIn persistence does not rewrite after signedOut clears identity',
     () async {
       final membershipLookup = Completer<ActiveOrganizationResolution>();
@@ -1710,9 +1779,12 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   /// does not show up in [writes] or [callLog]) -- models a
   /// LastKnownIdentity row already persisted from a PRIOR app session,
   /// before the transition under test begins.
-  void seed(LastKnownIdentity identity) {
+  void seed(LastKnownIdentity identity, {DateTime? membershipRevokedAt}) {
     _current = identity;
+    _membershipRevokedAt = membershipRevokedAt;
   }
+
+  DateTime? get membershipRevokedAt => _membershipRevokedAt;
 
   @override
   Future<LastKnownIdentity?> read() async {

@@ -204,8 +204,19 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         if (!isCurrent(generation, AppAuthStatus.signedIn, session)) return;
 
         ActiveOrganizationResolution? resolution;
+        // YELLOW 4: wasCachedFallback is true only when this resolution
+        // substituted a cached organization id for a genuine connectivity
+        // failure (ActiveOrganizationResolver.resolveWithCachedFallbackDetailed).
+        // D5.2 forbids a connectivity failure from moving the
+        // membership-revocation marker in either direction, so this must
+        // gate the clearMembershipRevocation call below.
+        var resolutionWasCachedFallback = false;
         try {
-          resolution = await ref.read(membershipResolutionProvider)();
+          final detailed = await ref.read(
+            membershipResolutionDetailedProvider,
+          )();
+          resolution = detailed.resolution;
+          resolutionWasCachedFallback = detailed.wasCachedFallback;
         } catch (_) {
           // Membership resolution unavailable (offline, a non-connectivity
           // error, or an uninitialized backend). Persist the identity with an
@@ -242,10 +253,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               // resolution -- the only thing that clears an outstanding
               // membership-revocation marker. A no-op (no audit record) when
               // there was no marker to clear, so an ordinary sign-in never
-              // writes a spurious audit row.
-              await lifecycle.clearMembershipRevocation(
-                userId: session.userId,
-              );
+              // writes a spurious audit row. YELLOW 4: a Selected that came
+              // from the connectivity-gated cached fallback (ADR-016) is NOT
+              // a fresh resolution -- D5.2 forbids a connectivity failure
+              // from moving the marker in either direction, so it must be
+              // excluded here.
+              if (!resolutionWasCachedFallback) {
+                await lifecycle.clearMembershipRevocation(
+                  userId: session.userId,
+                );
+              }
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
@@ -710,6 +727,24 @@ final membershipResolutionProvider =
       return ref
           .watch(activeOrganizationResolverProvider)
           .resolveWithCachedFallback;
+    });
+
+// YELLOW 4 (final whole-branch review, D5.2): the detailed variant of
+// membershipResolutionProvider, exposing whether a Selected resolution came
+// from the connectivity-gated cached fallback rather than a fresh, live
+// round trip. Used by lastKnownIdentityPersistenceProvider below to decide
+// whether a resolution may clear the membership-revocation marker --
+// membershipResolutionProvider itself stays unchanged for its other callers
+// (membershipRefreshEffectProvider, the membership gate), which do not act
+// on the marker.
+final membershipResolutionDetailedProvider =
+    Provider<
+      Future<({ActiveOrganizationResolution resolution, bool wasCachedFallback})>
+      Function()
+    >((ref) {
+      return ref
+          .watch(activeOrganizationResolverProvider)
+          .resolveWithCachedFallbackDetailed;
     });
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {
