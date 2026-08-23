@@ -28,7 +28,7 @@ import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repos
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
 typedef VerifiedEmptyMembershipCleanupHandler =
-    Future<void> Function({required String userId});
+    Future<void> Function({required String userId, required String email});
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
@@ -48,7 +48,10 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     _handlers.remove(handler);
   }
 
-  Future<void> handleVerifiedEmptyMembership({required String userId}) {
+  Future<void> handleVerifiedEmptyMembership({
+    required String userId,
+    required String email,
+  }) {
     _invalidateLastKnownIdentityPersistence();
     final handlers = _handlers.toList(growable: false);
     // D5/Phase 4 (ADR-035): registered handlers (PlanningSyncController's
@@ -62,10 +65,11 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     // here would double-count a single resolution once Task 4.2 adds the
     // confirmed-purge counting.
     final handlerNotifications = Future.wait([
-      for (final handler in handlers) handler(userId: userId),
+      for (final handler in handlers) handler(userId: userId, email: email),
     ]);
     final resolution = _localDataLifecycle.resolveVerifiedEmptyMembership(
       userId: userId,
+      email: email,
     );
 
     return Future.wait([handlerNotifications, resolution]);
@@ -206,9 +210,9 @@ final activePlanningContextControllerProvider =
               .read(planningLocalStoreProvider)
               .readLatestCachedOrganizationId(userId: userId);
         },
-        onVerifiedEmptyMembership: ({required userId}) => ref
+        onVerifiedEmptyMembership: ({required userId, required email}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-            .handleVerifiedEmptyMembership(userId: userId),
+            .handleVerifiedEmptyMembership(userId: userId, email: email),
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
@@ -272,7 +276,13 @@ final planningSyncControllerProvider =
           );
         },
       );
-      Future<void> handleVerifiedEmptyMembership({required String userId}) {
+      Future<void> handleVerifiedEmptyMembership({
+        required String userId,
+        required String email,
+      }) {
+        // `email` is unused here: PlanningSyncController's own
+        // handleVerifiedEmptyMembership only resets planning UI state --
+        // see the comment on that method for why it never writes identity.
         return controller.handleVerifiedEmptyMembership(userId: userId);
       }
 

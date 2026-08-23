@@ -256,6 +256,7 @@ void main() {
 
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
+          email: 'user1@example.com',
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
@@ -296,6 +297,7 @@ void main() {
 
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
+          email: 'user1@example.com',
         );
 
         expect(result, MembershipRevocationResolution.alreadyQuarantined);
@@ -309,7 +311,8 @@ void main() {
 
     test(
       'a mismatched stored identity (different userId) is treated as no '
-      'prior marker -- defensive branch',
+      'prior marker -- defensive branch -- and the new row gets the '
+      "caller's own passed-in email, never the mismatched row's email",
       () async {
         identityStore.seed(
           const LastKnownIdentity(
@@ -322,9 +325,35 @@ void main() {
 
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
+          email: 'user1@example.com',
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
+        expect(identityStore.writes, hasLength(1));
+        // The bug this guards against: durably attaching the OTHER
+        // (mismatched) user's real email to the new row for `userId`.
+        expect(identityStore.writes.single.email, 'user1@example.com');
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      'no prior identity row at all (fresh device / first-ever sign-in) '
+      "writes the caller's passed-in email, not a blank one",
+      () async {
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        expect(identityStore.writes, hasLength(1));
+        final written = identityStore.writes.single;
+        expect(written.userId, 'user-1');
+        expect(written.email, 'user1@example.com');
+        expect(written.organizationId, isNull);
+        expect(written.membershipRevokedAt, isNotNull);
         expect(songCatalogStore.deleteCalls, isEmpty);
         expect(planningLocalStore.deleteCalls, isEmpty);
       },
@@ -346,6 +375,7 @@ void main() {
 
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
+          email: 'user1@example.com',
         );
 
         expect(result, MembershipRevocationResolution.quarantined);

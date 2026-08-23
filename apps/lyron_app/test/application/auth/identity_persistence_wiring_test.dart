@@ -351,7 +351,10 @@ void main() {
 
       await container
           .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-          .handleVerifiedEmptyMembership(userId: 'user-1');
+          .handleVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user@example.com',
+          );
       membershipLookup.complete(
         const ActiveOrganizationResolution.selected('org-selected'),
       );
@@ -419,7 +422,10 @@ void main() {
 
     await container
         .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-        .handleVerifiedEmptyMembership(userId: 'user-1');
+        .handleVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user@example.com',
+        );
     await Future<void>.delayed(Duration.zero);
 
     // Nothing was cleared: the quarantine marker was set on the same row.
@@ -489,7 +495,10 @@ void main() {
     await expectLater(
       container
           .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-          .handleVerifiedEmptyMembership(userId: 'user-1'),
+          .handleVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user@example.com',
+          ),
       throwsStateError,
     );
 

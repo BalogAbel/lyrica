@@ -286,6 +286,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               // deletes nothing.
               await lifecycle.resolveVerifiedEmptyMembership(
                 userId: session.userId,
+                email: session.email,
               );
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():

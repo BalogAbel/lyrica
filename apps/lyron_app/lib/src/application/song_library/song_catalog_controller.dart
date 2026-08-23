@@ -66,7 +66,7 @@ class SongCatalogController extends ChangeNotifier {
     required String organizationId,
   })
   _onImplausibleEmptySnapshot;
-  final Future<void> Function({required String userId})?
+  final Future<void> Function({required String userId, required String email})?
   _onVerifiedEmptyMembership;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
@@ -233,7 +233,7 @@ class SongCatalogController extends ChangeNotifier {
       _verifiedEmptyMembershipSeen = true;
       final handler = _onVerifiedEmptyMembership;
       if (handler != null) {
-        await handler(userId: session.userId);
+        await handler(userId: session.userId, email: session.email);
       } else {
         await _localDataLifecycle.purgeSongCatalog(
           userId: session.userId,

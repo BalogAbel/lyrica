@@ -227,8 +227,14 @@ class LocalDataLifecycle {
   /// with the confirmed-purge decision (pending-work check, then the same
   /// purgeSongCatalog/purgePlanningData/clearIdentity triple every other
   /// `membershipRevokedConfirmed` call site already uses).
+  ///
+  /// [email] must be the caller's own live-session email (found in scope at
+  /// both call sites via the `AppAuthSession`/handler chain that is actively
+  /// resolving), never a value read back off any stored row -- see the
+  /// comment ahead of the `matchesCaller` branch below for why.
   Future<MembershipRevocationResolution> resolveVerifiedEmptyMembership({
     required String userId,
+    required String email,
   }) async {
     final existing = await _identityStore.read();
     // Defensive only (ADR-035): a different user's identity row reaching
@@ -248,6 +254,24 @@ class LocalDataLifecycle {
     }
 
     final revokedAt = DateTime.now().toUtc();
+    // [email] is always the caller's OWN, live-session email -- passed in
+    // by both call sites from the AppAuthSession that is actively resolving
+    // right now, never read off a stored row. That is deliberate: `existing`
+    // here covers two distinct, both-reachable sub-cases, and neither one
+    // may ever legitimately contribute its own `email` to the row being
+    // written for `userId` below.
+    //   1. existing == null: a fresh device / first-ever sign-in whose live
+    //      membership check resolves verified-empty before any
+    //      LastKnownIdentity row has ever existed for this user. Ordinary,
+    //      not defensive -- there is simply no row yet to read an email
+    //      from, so [email] is the only correct source.
+    //   2. existing != null but existing.userId != userId (matchesCaller is
+    //      false): the defensive case described above -- a stale row left
+    //      by a different user. Falling back to `existing.email` here would
+    //      durably attach that OTHER user's real email address to this
+    //      user's new identity row (see PR review on Task 4.1: this row
+    //      feeds AppAuthController._stateForSession, which would then show
+    //      the wrong account's email in the offline-authenticated banner).
     final quarantined = matchesCaller
         ? LastKnownIdentity(
             userId: existing.userId,
@@ -258,7 +282,7 @@ class LocalDataLifecycle {
           )
         : LastKnownIdentity(
             userId: userId,
-            email: existing?.email ?? '',
+            email: email,
             organizationId: null,
             membershipRevokedAt: revokedAt,
           );

@@ -89,9 +89,9 @@ final songCatalogControllerProvider =
                   userId: userId,
                   organizationId: organizationId,
                 ),
-        onVerifiedEmptyMembership: ({required userId}) => ref
+        onVerifiedEmptyMembership: ({required userId, required email}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-            .handleVerifiedEmptyMembership(userId: userId),
+            .handleVerifiedEmptyMembership(userId: userId, email: email),
         lastKnownIdentityReader: () {
           final identity = authController.lastKnownIdentity;
           if (identity == null) return null;

@@ -9,7 +9,7 @@ typedef LatestPlanningOrganizationReader =
     Future<String?> Function({required String userId});
 typedef PlanningAuthSessionReader = AppAuthSession? Function();
 typedef VerifiedEmptyMembershipHandler =
-    Future<void> Function({required String userId});
+    Future<void> Function({required String userId, required String email});
 
 class ActivePlanningContextController extends ChangeNotifier {
   ActivePlanningContextController({
@@ -45,7 +45,7 @@ class ActivePlanningContextController extends ChangeNotifier {
         _setState(null);
         final handler = _onVerifiedEmptyMembership;
         if (handler != null) {
-          await handler(userId: session.userId);
+          await handler(userId: session.userId, email: session.email);
         }
         return;
       }
