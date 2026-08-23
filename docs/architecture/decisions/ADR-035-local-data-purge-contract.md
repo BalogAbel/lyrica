@@ -280,18 +280,20 @@ own robustness next gets attention:
   local variable. Still an accepted gap, now with a concrete repro shape on
   record.
 
-### Decided, not yet implemented
+### Implemented in Phase 3 (this slice)
 
-The decisions listed here were settled — confirmed with the product owner where
-noted in the spec — and scheduled in
-`docs/plans/2026-08-19-local-data-durability-contract.md`. None of them are
-built as of this ADR revision (D4/D6, Phase 3's snapshot-replacement and
-eviction decisions, landed with PR #75 and are documented in the "Phase 3
-mechanism decisions" section below; this ADR's own "not yet implemented"
-framing for them was not updated at that time — flagged here rather than
-fixed, since correcting it is outside this revision's scope):
+**D4 — conditional, organization-scoped snapshot replacement** and **D6 —
+storage-pressure-triggered, proportionate eviction** landed with PR #75. The
+mechanism decisions they turned on are recorded in the "Phase 3 mechanism
+decisions" section below.
 
-### Implemented in Phase 4 (this slice — Task 4.4 only)
+A previous revision of this ADR carried a "Decided, not yet implemented"
+section listing them, which was already stale when Phase 3 merged. It has been
+removed rather than corrected in place: with Phase 4 complete, every one of
+D1–D8 is implemented, and a section for undelivered decisions no longer has
+any members.
+
+### Implemented in Phase 4 (this slice — D8 first, then D5)
 
 **D8 — Android backup: `allowBackup="false"` chosen over data-extraction
 rules.** `AndroidManifest.xml`'s `<application>` tag set neither attribute

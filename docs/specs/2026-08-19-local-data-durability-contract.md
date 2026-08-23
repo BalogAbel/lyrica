@@ -1,6 +1,11 @@
 # Local Data Durability Contract
 
-> Status: Specified (not yet implemented)
+> Status: Implemented. All four phases have landed — Phase 1 (PR #73),
+> Phase 2 (PR #74), Phase 3 (PR #75), Phase 4's D8 (PR #76), and Phase 4's D5
+> on `fix/membership-revocation-confirmation`. D5 shipped re-scoped: the
+> read-only quarantine was attempted, reviewed, discarded, and dropped
+> permanently; the two-confirmation purge gate is what survives. See D5.0 and
+> the Phase 4 closeout in the plan.
 >
 > Decisions to be recorded durably in
 > `docs/architecture/decisions/ADR-035-local-data-purge-contract.md`.

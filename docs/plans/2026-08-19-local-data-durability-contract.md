@@ -628,35 +628,39 @@ call.
 `drift_last_known_identity_store.dart`, `local_data_lifecycle.dart`,
 `auth_providers.dart`, `planning_providers.dart`, tests
 
-- [ ] Write the negative tests first: one `verifiedEmpty` resolution deletes
+- [x] Write the negative tests first: one `verifiedEmpty` resolution deletes
   nothing; a second one inside the cooldown deletes nothing; a second one after
   a session change, an organization change, or an intervening non-empty
   resolution deletes nothing; the marker survives a process restart without
   becoming a second confirmation on its own.
-- [ ] Write a failing test: advancing the wall clock past the cooldown does not
+- [x] Write a failing test: advancing the wall clock past the cooldown does not
   satisfy it. The in-process cooldown is measured on an injectable `Stopwatch`,
   never on `DateTime.now()` differences (spec D5.3, ADR-035). Across a process
   restart no cooldown check applies at all.
-- [ ] Write a failing test: an offline, connectivity-failure, unknown-failure or
+- [x] Write a failing test: an offline, connectivity-failure, unknown-failure or
   expired-session resolution neither sets nor clears the marker.
-- [ ] Add `membershipRevokedAt` (nullable) to `LastKnownIdentityRows`, with an
+- [x] Add `membershipRevokedAt` (nullable) to `LastKnownIdentityRows`, with an
   explicit v1 → v2 `onUpgrade` delta and a migration test that populates a v1
   database and asserts no row is lost. Never `createAll`.
-- [ ] Add `LastKnownIdentityStore.resolveEmptyMembership({userId, now})`: one
+- [x] Add `LastKnownIdentityStore.resolveEmptyMembership({userId, now})`: one
   atomic operation that reads the row, verifies it belongs to `userId`, and
   either records the marker or reports that the cooldown-separated second
   confirmation has been reached. Generalises Phase 3's `resolveEmptySnapshot`
   shape (ADR-035); it does not reuse Phase 3's column, and the ADR states why.
-- [ ] Add `LastKnownIdentityStore.clearMembershipRevocation({userId})`, ownership
+- [x] Add `LastKnownIdentityStore.clearMembershipRevocation({userId})`, ownership
   checked, reporting whether a marker was actually cleared (so no spurious audit
   rows on ordinary sign-ins).
-- [ ] Route every counted resolution through `LocalDataLifecycle` on its single
+- [x] Route every counted resolution through `LocalDataLifecycle` on its single
   global serialization chain. No `userId` keying.
-- [ ] A freshly verified non-empty resolution clears the marker with an audit
+- [x] A freshly verified non-empty resolution clears the marker with an audit
   record; nothing else clears it.
-- [ ] Both marker edges write a `local_data_events` record — setting as well as
+- [x] Both marker edges write a `local_data_events` record — setting as well as
   clearing — under their own audit `kind`, with no `PurgeReason` (neither is a
   purge). Test both.
+
+Delivered as commits `c27749b`..`44b2547`, plus `1f66148` (a review found the
+in-process marker tracking was reset before the identity write committed, so a
+failed write collapsed the two-confirmation gate to one).
 
 ## Task 4.2 — Confirmation and purge
 
@@ -664,25 +668,30 @@ call.
 `planning_providers.dart`, `reauth_prompt_controller.dart`,
 `reauth_prompt_host.dart`, a new dialog, tests
 
-- [ ] Write a failing test: two counted confirmations with no pending work purge
+- [x] Write a failing test: two counted confirmations with no pending work purge
   via `membershipRevokedConfirmed` and write the audit rows.
-- [ ] Write a failing test: pending work present → the purge waits for the user's
+- [x] Write a failing test: pending work present → the purge waits for the user's
   confirmation, and the confirmation names what is lost. Acceptance 5.
-- [ ] Write a failing test: a non-empty resolution arriving while the
+- [x] Write a failing test: a non-empty resolution arriving while the
   confirmation dialog is open cancels the purge.
-- [ ] Write a failing test: pending work appearing while the dialog is open
+- [x] Write a failing test: pending work appearing while the dialog is open
   aborts the purge rather than discarding it implicitly.
-- [ ] Implement: decision inputs read inside the chain, dialog awaited outside
+- [x] Implement: decision inputs read inside the chain, dialog awaited outside
   it, premises re-validated on re-entry, purge executed inside it.
-- [ ] Reuse ADR-029's `ReauthPromptController`/`ReauthPromptHost`; do not add a
+- [x] Reuse ADR-029's `ReauthPromptController`/`ReauthPromptHost`; do not add a
   second dialog owner.
-- [ ] Fix `auth_providers.dart`'s `persistNewIdentity` `ActiveOrganizationVerifiedEmpty`
+- [x] Fix `auth_providers.dart`'s `persistNewIdentity` `ActiveOrganizationVerifiedEmpty`
   branch, which today clears the identity under
   `PurgeReason.membershipRevokedConfirmed` on a single resolution, and
   `VerifiedEmptyMembershipCleanupCoordinator.handleVerifiedEmptyMembership`,
   which today purges everything on a single resolution. Both become callers of
   the gate.
-- [ ] Phase 2's architecture test stays green with its allow-list unwidened.
+- [x] Phase 2's architecture test stays green with its allow-list unwidened.
+
+Delivered as commits `96eb4f9`, `037ae99`, `2efecf9`, `a4b1500`. A review
+added the missing try/catch around the purge triple: every caller is a
+fire-and-forget listener, so a throw part way through left a half-purged device
+with nothing reported.
 
 ## Task 4.3 — Permanently unauthorized queued mutations
 
@@ -690,22 +699,30 @@ call.
 `supabase_planning_mutation_repository.dart`, the two mutation sync
 controllers, the unified sync surface, tests
 
-- [ ] Write a failing test: a queued mutation rejected with a permanent
+- [x] Write a failing test: a queued mutation rejected with a permanent
   authorization failure is not retried again and is visible to the user with a
   reason that says it can never succeed.
-- [ ] Write a failing test: a queued mutation rejected with `401` stays
+- [x] Write a failing test: a queued mutation rejected with `401` stays
   retryable and is not made terminal — an ordinary token expiry must not discard
   the user's queued work.
-- [ ] Classify permanent authorization rejections as terminal: `403`, `42501`,
+- [x] Classify permanent authorization rejections as terminal: `403`, `42501`,
   and a `permission denied` message (PostgREST does not always return a
   structured PostgreSQL error code). Confirm no retry path re-sends them.
   Do **not** fold `401` in — `SongCatalogController._isAuthorizationFailure`
   collapses all four correctly for its own decision, and that collapse must not
   be copied here (spec D5.6, ADR-035).
-- [ ] Surface them; do not fail silently and do not leave them queued forever
+- [x] Surface them; do not fail silently and do not leave them queued forever
   with no explanation.
-- [ ] General to any permanent authorization rejection, not specific to
+- [x] General to any permanent authorization rejection, not specific to
   membership revocation.
+
+Delivered as commits `8a2212f`..`79092bc`. The real defect turned out not to
+be the classification alone: the song sync controller wrote the record's own
+pending status back on an `authorizationDenied` failure, which
+`readPendingSongs` then picked up again — the literal retry-forever loop the
+closeout predicted. The `permission denied` match is narrowed to the full
+PostgreSQL phrase so an unrelated error quoting those two words is not
+misclassified as permanent.
 
 ## Task 4.4 — Android backup determinism (D8)
 
@@ -728,25 +745,56 @@ seams. The refresh performed during the first Phase 4 attempt indexed the
 discarded quarantine implementation and lives only on the archived branch, so it
 describes code that will never exist.
 
-- [ ] Run `graphify . --update` per `docs/workflows/ai-development.md:50`.
-- [ ] Spot-check `graphify explain "LocalDataLifecycle"` and
+- [x] Run `graphify . --update` per `docs/workflows/ai-development.md:50`.
+- [x] Spot-check `graphify explain "LocalDataLifecycle"` and
   `graphify query "what deletes local song catalog data"` against the post-slice
   architecture.
-- [ ] Commit separately from the code — it is a multi-megabyte generated
+- [x] Commit separately from the code — it is a multi-megabyte generated
   artifact and mixing it in makes the code commit unreviewable.
-- [ ] Sanity-check the node count before and after: `references/update.md`'s own
+- [x] Sanity-check the node count before and after: `references/update.md`'s own
   reference script passes changed files into `prune_sources` as well as deleted
   ones, which silently deletes every changed file's freshly-inserted nodes. Pass
   only genuinely deleted files. The first attempt produced a 4178-node graph
   instead of ~10000 this way, with no error or warning from the tool.
 
+
+## Phase 4 re-scope outcome
+
+The re-scope closed all six red findings and all three yellow risks from the
+first attempt. The final whole-branch review (opus) then found two further red
+findings and eight yellows on the re-scoped work, and a re-review of those
+fixes found five more. All are closed; the notable ones, because they are the
+kind that come back:
+
+- A freshly verified non-empty resolution cleared the marker only on the
+  sign-in edge, not on either controller's periodic live re-check. That let
+  `empty -> genuine non-empty -> empty` purge, which is two *non-consecutive*
+  empties — the first attempt's finding 2 re-entering through a different door.
+  The freshness distinction the fix needs (`organizationLookupWasConnectivityFailure`)
+  already existed in both controllers; an earlier survey had wrongly concluded
+  it did not.
+- Both marker clears were then written fire-and-forget. Because
+  `clearMembershipRevocation` propagates store failures, a dropped failure left
+  the marker set with no audit and no retry — silently reinstating the same
+  sequence. They are awaited and reported now.
+- Suppressing the conflict affordances for a permanently unauthorized row
+  removed **Discard mine** along with **Keep mine**, stranding the row in the
+  sync list forever. Discard is purely local and needs no authorization, so
+  only Keep mine is suppressed.
+- Two code comments justified a load-bearing guard with control flow that does
+  not hold, which would have led a future reader to delete the guard.
+
+The lesson the first attempt already recorded held again: every round of this
+work produced at least one defect in the "value read before an await, written
+after it" or "fire-and-forget a call that can fail" family.
+
 ---
 
 ## Verification before each merge
 
-- [ ] `flutter analyze` clean.
-- [ ] `flutter test` green, including the acceptance tests introduced so far.
-- [ ] The relevant acceptance items from the spec pass, run and observed — not
+- [x] `flutter analyze` clean.
+- [x] `flutter test` green, including the acceptance tests introduced so far.
+- [x] The relevant acceptance items from the spec pass, run and observed — not
   assumed.
-- [ ] Documentation updated in the same PR as the code it justifies
+- [x] Documentation updated in the same PR as the code it justifies
   (AGENTS.md rule 4).
