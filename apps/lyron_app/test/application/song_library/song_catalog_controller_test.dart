@@ -1126,6 +1126,120 @@ void main() {
         const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
       );
     });
+
+    group('quarantine clearing on a genuine live resolution (Task 4.3)', () {
+      test(
+        'a fresh, live organization resolution clears an existing '
+        'quarantine marker and records a clear audit event',
+        () async {
+          final identityStore = _RecordingLastKnownIdentityStore();
+          final eventsRecorder = _RecordingLocalDataEventsRecorder();
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+          final testLifecycle = LocalDataLifecycle(
+            songCatalogStore: store,
+            planningLocalStore: _NoopPlanningLocalStore(),
+            identityStore: identityStore,
+            noteLastKnownIdentity: (_) {},
+            eventsRecorder: eventsRecorder,
+          );
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: testLifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+          );
+
+          await controller.refreshCatalog();
+
+          expect(identityStore.writes, hasLength(1));
+          final written = identityStore.writes.single;
+          expect(written.userId, 'user-1');
+          expect(written.membershipRevokedAt, isNull);
+
+          expect(eventsRecorder.quarantineCalls, hasLength(1));
+          final recorded = eventsRecorder.quarantineCalls.single;
+          expect(recorded.reason, 'membershipRevokedCleared');
+          expect(recorded.userId, 'user-1');
+        },
+      );
+
+      test(
+        'a cached-fallback organization id (connectivity failure, not a '
+        'genuine live resolution) does NOT clear an existing quarantine '
+        'marker',
+        () async {
+          await store.replaceActiveSnapshot(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            summaries: const [
+              SongSummary(id: 'song-1', title: 'Cached Song'),
+            ],
+            sources: const [
+              SongSource(id: 'song-1', source: '{title: Cached Song}'),
+            ],
+            refreshedAt: DateTime.utc(2026, 3, 25, 10),
+          );
+          final identityStore = _RecordingLastKnownIdentityStore();
+          final eventsRecorder = _RecordingLocalDataEventsRecorder();
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+          final testLifecycle = LocalDataLifecycle(
+            songCatalogStore: store,
+            planningLocalStore: _NoopPlanningLocalStore(),
+            identityStore: identityStore,
+            noteLastKnownIdentity: (_) {},
+            eventsRecorder: eventsRecorder,
+          );
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: testLifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async =>
+                throw const SocketException('offline'),
+            sessionVerifier: () async =>
+                CatalogSessionStatus.unverifiableDueToConnectivity,
+          );
+
+          await controller.refreshCatalog();
+
+          expect(
+            controller.state.context,
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          );
+          expect(identityStore.writes, isEmpty);
+          expect(eventsRecorder.quarantineCalls, isEmpty);
+        },
+      );
+    });
   });
 
   group('SongCatalogController implausible-empty snapshot handling (D4, '
@@ -1486,6 +1600,87 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
 class _NoopLastKnownIdentityStore implements LastKnownIdentityStore {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Task 4.3: a recording fake, distinct from [_NoopLastKnownIdentityStore]
+/// above (which throws on every call), for the quarantine-clearing tests
+/// that need to seed a prior identity and observe what gets written.
+class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
+  LastKnownIdentity? _current;
+  final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
+
+  void seed(LastKnownIdentity identity) {
+    _current = identity;
+  }
+
+  @override
+  Future<LastKnownIdentity?> read() async => _current;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) async {
+    writes.add(identity);
+    _current = identity;
+  }
+
+  @override
+  Future<void> clear() async {
+    _current = null;
+  }
+}
+
+class _RecordedQuarantineCall {
+  const _RecordedQuarantineCall({
+    required this.target,
+    required this.reason,
+    this.userId,
+  });
+
+  final PurgeTarget target;
+  final String reason;
+  final String? userId;
+}
+
+/// Task 4.3: a recording fake, distinct from [_NoopLocalDataEventsRecorder]
+/// below (which discards everything), for the quarantine-clearing tests
+/// that need to observe the audit trail.
+class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
+  final List<_RecordedQuarantineCall> quarantineCalls =
+      <_RecordedQuarantineCall>[];
+
+  @override
+  Future<void> recordPurge({
+    required PurgeTarget target,
+    required PurgeReason reason,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordEviction({
+    required String target,
+    String? userId,
+    int? rowsAffected,
+  }) async {}
+
+  @override
+  Future<void> recordRejectedEmptySnapshot({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
+  Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordQuarantine({
+    required PurgeTarget target,
+    required String reason,
+    String? userId,
+  }) async {
+    quarantineCalls.add(
+      _RecordedQuarantineCall(target: target, reason: reason, userId: userId),
+    );
+  }
 }
 
 class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {

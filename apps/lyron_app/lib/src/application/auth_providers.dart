@@ -253,22 +253,33 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
+              // Task 4.3 (docs/specs/2026-08-19-local-data-durability
+              // -contract.md): an ActiveOrganizationSelected resolution is,
+              // by construction, a verified non-empty membership --
+              // quarantine can never survive it. membershipRevokedAt is
+              // therefore always written as null here, never carried
+              // forward from priorIdentity (unlike the unknown-failure
+              // branch below, which preserves an existing marker precisely
+              // because it has NOT verified anything). The audit event is
+              // recorded only when there was actually a marker to clear, so
+              // an ordinary sign-in for an already-unquarantined user never
+              // writes a spurious 'quarantine'/'membershipRevokedCleared'
+              // row (D7).
+              final hadQuarantineMarker =
+                  priorIdentity?.userId == session.userId &&
+                  priorIdentity?.membershipRevokedAt != null;
               final identity = LastKnownIdentity(
                 userId: session.userId,
                 email: session.email,
                 organizationId: organizationId,
-                // D5/Phase 4: this write must not silently clear an
-                // existing quarantine marker as a side effect of an
-                // unrelated resolution for the SAME user -- Task 4.3, not
-                // this branch, owns deliberately clearing it (with its own
-                // audit record) on a genuine non-empty resolution. Carrying
-                // it forward here is a no-op once Task 4.3 lands its own
-                // explicit clear.
-                membershipRevokedAt: priorIdentity?.userId == session.userId
-                    ? priorIdentity?.membershipRevokedAt
-                    : null,
+                membershipRevokedAt: null,
               );
               await lifecycle.writeIdentity(identity);
+              if (hadQuarantineMarker) {
+                await lifecycle.recordMembershipRevocationCleared(
+                  userId: session.userId,
+                );
+              }
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;

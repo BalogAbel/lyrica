@@ -197,6 +197,108 @@ void main() {
   );
 
   test(
+    'a genuine selected resolution at sign-in clears an existing quarantine '
+    'marker and records a clear audit event (Task 4.3)',
+    () async {
+      identityStore.seed(
+        LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+          membershipRevokedAt: DateTime.utc(2026, 8, 1),
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-1'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.writes, hasLength(1));
+      final written = identityStore.writes.single;
+      expect(written.userId, 'user-1');
+      expect(written.organizationId, 'org-1');
+      expect(written.membershipRevokedAt, isNull);
+
+      final events = await container
+          .read(localDataEventsReaderProvider)
+          .readRecent();
+      final clearEvents = events.where(
+        (event) => event.reason == 'membershipRevokedCleared',
+      );
+      expect(clearEvents, hasLength(1));
+      expect(clearEvents.single.kind, 'quarantine');
+      expect(clearEvents.single.userId, 'user-1');
+    },
+  );
+
+  test(
+    'a selected resolution for an already-unquarantined identity does not '
+    'record a spurious clear audit event (Task 4.3)',
+    () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-1'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.membershipRevokedAt, isNull);
+
+      final events = await container
+          .read(localDataEventsReaderProvider)
+          .readRecent();
+      expect(
+        events.where((event) => event.reason == 'membershipRevokedCleared'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
     'a NonConnectivityFailure resolution never reaches '
     'resolveVerifiedEmptyMembership and never sets the quarantine marker '
     '(D5/Phase 4 guardrail)',

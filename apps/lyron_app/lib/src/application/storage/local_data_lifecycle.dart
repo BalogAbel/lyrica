@@ -325,6 +325,81 @@ class LocalDataLifecycle {
     return resolution;
   }
 
+  /// Task 4.3 (docs/specs/2026-08-19-local-data-durability-contract.md):
+  /// clears an existing `membershipRevokedAt` quarantine marker for
+  /// [userId] on a genuine subsequent non-empty membership resolution,
+  /// restoring normal read/write operation -- the write-guard (Task 4.2)
+  /// and the quarantine banner (Task 4.1) both key off that field read
+  /// fresh from [LastKnownIdentityStore], so clearing it here is the whole
+  /// fix; neither needs to be touched separately.
+  ///
+  /// Self-contained, like [_resolveVerifiedEmptyMembership]: reads the
+  /// current row itself rather than trusting a caller-supplied snapshot, so
+  /// a caller with no identity object in hand -- e.g.
+  /// SongCatalogController's periodic live re-check, which only ever sees a
+  /// resolved organization id, not the full [LastKnownIdentity] row -- only
+  /// needs to pass [userId].
+  ///
+  /// A no-op -- no identity write, no audit record -- when there is nothing
+  /// to clear: no row exists for [userId], the stored row belongs to a
+  /// different user (defensive, mirrors the same guard in
+  /// [_resolveVerifiedEmptyMembership]), or the row's marker is already
+  /// null. D7 requires auditing real events only, never every identity
+  /// read, so an ordinary already-unquarantined resolution must not write a
+  /// spurious `'quarantine'`/`'membershipRevokedCleared'` row.
+  ///
+  /// See [recordMembershipRevocationCleared] for the audit-only sibling
+  /// used by a caller that has already written the cleared identity itself
+  /// as part of a larger write it was making anyway.
+  Future<void> clearMembershipRevocation({required String userId}) async {
+    final existing = await _identityStore.read();
+    if (existing == null || existing.userId != userId) {
+      return;
+    }
+    if (existing.membershipRevokedAt == null) {
+      return;
+    }
+
+    final cleared = LastKnownIdentity(
+      userId: existing.userId,
+      email: existing.email,
+      organizationId: existing.organizationId,
+      updatedAt: existing.updatedAt,
+      membershipRevokedAt: null,
+    );
+    await writeIdentity(cleared);
+    unawaited(
+      _recordQuarantineBestEffort(
+        target: PurgeTarget.identity,
+        reason: 'membershipRevokedCleared',
+        userId: userId,
+      ),
+    );
+  }
+
+  /// Task 4.3: records the `'quarantine'`/`'membershipRevokedCleared'`
+  /// audit event without performing any identity write of its own -- for a
+  /// caller that has ALREADY written the cleared identity itself as part of
+  /// a larger write it was making anyway (auth_providers.dart's
+  /// `persistNewIdentity` always writes a fresh identity row for a selected
+  /// resolution; it only needs the standalone audit entry when that write
+  /// actually changed `membershipRevokedAt` from non-null to null -- it
+  /// decides that itself and calls this only then, so unlike
+  /// [clearMembershipRevocation] this method does not re-check).
+  ///
+  /// Best-effort, same shape as [_recordQuarantineBestEffort]: a failure
+  /// here is reported, never thrown, since the identity write it describes
+  /// already committed by the time this runs.
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) {
+    return _recordQuarantineBestEffort(
+      target: PurgeTarget.identity,
+      reason: 'membershipRevokedCleared',
+      userId: userId,
+    );
+  }
+
   Future<MembershipRevocationResolution> _resolveVerifiedEmptyMembership({
     required String userId,
     required String email,

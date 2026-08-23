@@ -244,6 +244,114 @@ void main() {
     }
   });
 
+  group('clearMembershipRevocation (Task 4.3)', () {
+    test(
+      'a quarantined identity has its marker cleared, the write notes the '
+      'controller cache, and a clear audit event is recorded',
+      () async {
+        identityStore.seed(
+          LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+            membershipRevokedAt: DateTime.utc(2026, 8, 1),
+          ),
+        );
+
+        await lifecycle.clearMembershipRevocation(userId: 'user-1');
+
+        expect(identityStore.writes, hasLength(1));
+        final written = identityStore.writes.single;
+        expect(written.userId, 'user-1');
+        expect(written.email, 'user1@example.com');
+        expect(written.organizationId, 'org-1');
+        expect(written.membershipRevokedAt, isNull);
+        expect(notedIdentities, [written]);
+
+        expect(eventsRecorder.quarantineCalls, hasLength(1));
+        final recorded = eventsRecorder.quarantineCalls.single;
+        expect(recorded.target, PurgeTarget.identity);
+        expect(recorded.reason, 'membershipRevokedCleared');
+        expect(recorded.userId, 'user-1');
+      },
+    );
+
+    test(
+      'an identity whose marker is already null is a no-op -- no write, no '
+      'audit event',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+
+        await lifecycle.clearMembershipRevocation(userId: 'user-1');
+
+        expect(identityStore.writes, isEmpty);
+        expect(notedIdentities, isEmpty);
+        expect(eventsRecorder.quarantineCalls, isEmpty);
+      },
+    );
+
+    test('no identity row at all is a no-op', () async {
+      await lifecycle.clearMembershipRevocation(userId: 'user-1');
+
+      expect(identityStore.writes, isEmpty);
+      expect(eventsRecorder.quarantineCalls, isEmpty);
+    });
+
+    test(
+      "a different user's identity row is left untouched (defensive) -- a "
+      'mismatched row is treated as nothing to clear',
+      () async {
+        identityStore.seed(
+          LastKnownIdentity(
+            userId: 'someone-else',
+            email: 'someone-else@example.com',
+            organizationId: 'org-9',
+            membershipRevokedAt: DateTime.utc(2026, 8, 1),
+          ),
+        );
+
+        await lifecycle.clearMembershipRevocation(userId: 'user-1');
+
+        expect(identityStore.writes, isEmpty);
+        expect(eventsRecorder.quarantineCalls, isEmpty);
+      },
+    );
+  });
+
+  group('recordMembershipRevocationCleared (Task 4.3)', () {
+    test(
+      'records the clear audit event without touching the identity store',
+      () async {
+        await lifecycle.recordMembershipRevocationCleared(userId: 'user-1');
+
+        expect(identityStore.callLog, isEmpty);
+        expect(identityStore.writes, isEmpty);
+        expect(notedIdentities, isEmpty);
+        expect(eventsRecorder.quarantineCalls, hasLength(1));
+        final recorded = eventsRecorder.quarantineCalls.single;
+        expect(recorded.target, PurgeTarget.identity);
+        expect(recorded.reason, 'membershipRevokedCleared');
+        expect(recorded.userId, 'user-1');
+      },
+    );
+
+    test(
+      'when the audit recorder throws, the failure is swallowed '
+      '(best-effort) -- the method completes without throwing',
+      () async {
+        eventsRecorder.throwOnQuarantineRecord = true;
+
+        await lifecycle.recordMembershipRevocationCleared(userId: 'user-1');
+      },
+    );
+  });
+
   group('resolveVerifiedEmptyMembership (D5, Task 4.1)', () {
     test(
       'first resolution quarantines: sets membershipRevokedAt, records a '

@@ -167,8 +167,18 @@ class SongCatalogController extends ChangeNotifier {
 
     String? organizationId;
     var organizationLookupWasConnectivityFailure = false;
+    // Task 4.3 (docs/specs/2026-08-19-local-data-durability-contract.md):
+    // true only when this refresh's organization id came from a genuine,
+    // fresh RPC round trip that actually succeeded -- never from the
+    // connectivity-failure cached fallback a few lines below, which has not
+    // verified anything. Gates the quarantine-clearing call further down:
+    // only a real, live non-empty membership resolution may clear the
+    // marker, mirroring how only a real ActiveOrganizationVerifiedEmpty
+    // resolution may set it in the first place.
+    var organizationIdWasFreshlyVerified = false;
     try {
       organizationId = await _resolveOrganizationId();
+      organizationIdWasFreshlyVerified = true;
     } catch (error) {
       if (_isAuthorizationFailure(error)) {
         _setStateIfCurrent(
@@ -250,6 +260,35 @@ class SongCatalogController extends ChangeNotifier {
         ),
       );
       return;
+    }
+
+    if (organizationIdWasFreshlyVerified) {
+      // Task 4.3: a genuine, fresh non-empty membership resolution clears
+      // any existing quarantine marker for this user, restoring normal
+      // read/write operation without waiting for a sign-out/sign-in cycle
+      // -- this is the periodic/live counterpart to the sign-in-time clear
+      // in auth_providers.dart's persistNewIdentity. Best-effort: a failure
+      // here (e.g. a local identity-store read/write error) must never
+      // break the catalog refresh itself, mirroring the try/catch around
+      // _onImplausibleEmptySnapshot below.
+      try {
+        await _localDataLifecycle.clearMembershipRevocation(
+          userId: session.userId,
+        );
+      } catch (error, stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'SongCatalogController',
+            context: ErrorDescription(
+              'failed to clear an existing membership-revocation '
+              'quarantine marker after a genuine non-empty membership '
+              'resolution -- the refresh itself continues unaffected',
+            ),
+          ),
+        );
+      }
     }
 
     final context = ActiveCatalogContext(
