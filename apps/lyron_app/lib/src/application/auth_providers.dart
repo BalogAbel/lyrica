@@ -274,19 +274,41 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 return false;
               }
               // D5/Phase 4 (ADR-035): a single fresh verifiedEmpty
-              // membership resolution at sign-in time now quarantines
-              // rather than purging -- resolveVerifiedEmptyMembership is
-              // the one gate both this call site and
-              // planning_providers.dart's VerifiedEmptyMembershipCleanup
-              // Coordinator go through, so "two consecutive confirmations"
-              // is one definition regardless of which call site observes
-              // either resolution. Task 4.2 completes the confirmed-purge
-              // half of this gate; today this call only ever quarantines
-              // (or is a documented no-op if already quarantined) and
-              // deletes nothing.
+              // membership resolution at sign-in time quarantines rather
+              // than purging -- resolveVerifiedEmptyMembership is the one
+              // gate both this call site and planning_providers.dart's
+              // VerifiedEmptyMembershipCleanupCoordinator go through, so
+              // "two consecutive confirmations" is one definition
+              // regardless of which call site observes either resolution.
+              // The second, independent resolution completes the
+              // confirmed-purge decision (Task 4.2): countPendingWork
+              // mirrors countPriorPendingWorkFor's catch-and-report-null
+              // shape below (a storage failure must read as "unknown", per
+              // D5, never as zero), and requestConfirmation surfaces the
+              // ADR-035 Gap 3 dialog through the same
+              // ReauthPromptController/ReauthPromptHost pair the
+              // different-user prompt already uses.
               await lifecycle.resolveVerifiedEmptyMembership(
                 userId: session.userId,
                 email: session.email,
+                countPendingWork: () async {
+                  try {
+                    return await ref
+                        .read(pendingLocalWorkCounterProvider)
+                        .count(userId: session.userId);
+                  } catch (_) {
+                    return null;
+                  }
+                },
+                requestConfirmation: (pendingCount) async {
+                  final result = await ref
+                      .read(reauthPromptControllerProvider)
+                      .requestMembershipQuarantinePurgeConfirmation(
+                        userId: session.userId,
+                        pendingCount: pendingCount,
+                      );
+                  return result == ReauthPromptResult.confirmed;
+                },
               );
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():

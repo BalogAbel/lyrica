@@ -22,20 +22,29 @@ enum PurgeReason {
 enum PurgeTarget { songCatalog, planningData, identity }
 
 /// D5 (docs/specs/2026-08-19-local-data-durability-contract.md): the result
-/// of [LocalDataLifecycle.resolveVerifiedEmptyMembership]. Deliberately
-/// minimal -- Task 4.2 adds the variants for a confirmed purge and for a
-/// purge pending user confirmation; this phase only ever quarantines.
+/// of [LocalDataLifecycle.resolveVerifiedEmptyMembership].
 enum MembershipRevocationResolution {
   /// This call recorded the first verified-empty-membership resolution for
   /// this user: the identity row's `membershipRevokedAt` marker was just
   /// set, and nothing was deleted.
   quarantined,
 
-  /// A marker was already present for this user before this call; this
-  /// call made no further changes. (Task 4.2 will replace this branch with
-  /// the confirmed-purge decision -- see the `TODO` on
-  /// [LocalDataLifecycle.resolveVerifiedEmptyMembership].)
-  alreadyQuarantined,
+  /// A marker was already present for this user before this call (the
+  /// second, independent verified-empty resolution) and the purge triple
+  /// (`purgeSongCatalog` + `purgePlanningData` + `clearIdentity`, all
+  /// [PurgeReason.membershipRevokedConfirmed]) ran -- either because
+  /// [LocalDataLifecycle.resolveVerifiedEmptyMembership]'s `countPendingWork`
+  /// callback reported zero pending work (no confirmation needed, nothing to
+  /// lose), or because it reported nonzero/unreadable work and the caller's
+  /// `requestConfirmation` callback resolved `true`.
+  purgedConfirmed,
+
+  /// A marker was already present for this user before this call, pending
+  /// work was nonzero or unreadable, and `requestConfirmation` resolved
+  /// `false` (declined, dismissed, or superseded). Nothing was purged; the
+  /// user remains quarantined exactly as before this call -- the marker is
+  /// untouched.
+  confirmationDeclined,
 }
 
 /// Thrown by a mutation-service write guard when the acting user's local
@@ -219,14 +228,23 @@ class LocalDataLifecycle {
   /// what keeps quarantine from ever being entered on anything less than a
   /// real verified-empty resolution.
   ///
-  /// Task 4.1 implements only the first-resolution half: a null
-  /// `membershipRevokedAt` on the caller's identity row is set to now, via
-  /// the same non-destructive [writeIdentity] path every other identity
-  /// write already uses -- nothing is purged. A non-null marker already
-  /// present is a documented no-op for now; Task 4.2 replaces that branch
-  /// with the confirmed-purge decision (pending-work check, then the same
+  /// The first-resolution half sets a null `membershipRevokedAt` on the
+  /// caller's identity row to now, via the same non-destructive
+  /// [writeIdentity] path every other identity write already uses -- nothing
+  /// is purged. A non-null marker already present (the second, independent
+  /// resolution) runs the confirmed-purge decision (Task 4.2, ADR-035 Phase
+  /// 4 "Gap 1" step 3): [countPendingWork] is consulted, and either the same
   /// purgeSongCatalog/purgePlanningData/clearIdentity triple every other
-  /// `membershipRevokedConfirmed` call site already uses).
+  /// `membershipRevokedConfirmed` call site already uses runs directly (zero
+  /// pending work), or [requestConfirmation] is awaited first (nonzero or
+  /// unreadable pending work -- an unreadable count is treated exactly like
+  /// a nonzero one, never as "safe to skip", mirroring ADR-029 D5).
+  ///
+  /// [countPendingWork] and [requestConfirmation] are only ever invoked on
+  /// the second-resolution branch -- a first resolution always quarantines
+  /// without consulting either. [countPendingWork] returning `null` means
+  /// "could not be determined" (a storage failure, say), which
+  /// [requestConfirmation] must still be asked about, never treated as zero.
   ///
   /// [email] must be the caller's own live-session email (found in scope at
   /// both call sites via the `AppAuthSession`/handler chain that is actively
@@ -235,6 +253,8 @@ class LocalDataLifecycle {
   Future<MembershipRevocationResolution> resolveVerifiedEmptyMembership({
     required String userId,
     required String email,
+    required Future<int?> Function() countPendingWork,
+    required Future<bool> Function(int? pendingCount) requestConfirmation,
   }) async {
     final existing = await _identityStore.read();
     // Defensive only (ADR-035): a different user's identity row reaching
@@ -244,13 +264,32 @@ class LocalDataLifecycle {
     final matchesCaller = existing != null && existing.userId == userId;
 
     if (matchesCaller && existing.membershipRevokedAt != null) {
-      // TODO(Task 4.2): this is the second, independent verified-empty
-      // resolution. Check PendingLocalWorkCounter.count(userId): zero ->
-      // purgeSongCatalog + purgePlanningData + clearIdentity, all
-      // PurgeReason.membershipRevokedConfirmed; nonzero or unreadable ->
-      // surface a confirmation request instead of purging (ADR-035 Phase 4,
-      // Gap 1 step 3 / Gap 3).
-      return MembershipRevocationResolution.alreadyQuarantined;
+      // Second, independent verified-empty resolution (independent by
+      // construction -- see the "Freshness" note in ADR-035's Gap 1: each
+      // call site only ever reaches this branch off a genuine new RPC round
+      // trip, never a replay of the first). Uncertainty must never authorise
+      // a silent purge, so a null count is asked about exactly like a
+      // nonzero one.
+      final pendingCount = await countPendingWork();
+      if (pendingCount != 0) {
+        final confirmed = await requestConfirmation(pendingCount);
+        if (!confirmed) {
+          return MembershipRevocationResolution.confirmationDeclined;
+        }
+      }
+      await purgeSongCatalog(
+        userId: userId,
+        reason: PurgeReason.membershipRevokedConfirmed,
+      );
+      await purgePlanningData(
+        userId: userId,
+        reason: PurgeReason.membershipRevokedConfirmed,
+      );
+      await clearIdentity(
+        reason: PurgeReason.membershipRevokedConfirmed,
+        userId: userId,
+      );
+      return MembershipRevocationResolution.purgedConfirmed;
     }
 
     final revokedAt = DateTime.now().toUtc();

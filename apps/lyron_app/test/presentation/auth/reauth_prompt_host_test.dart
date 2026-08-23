@@ -344,4 +344,143 @@ void main() {
       expect(find.byType(AlertDialog), findsOneWidget);
     },
   );
+
+  group(
+    'MembershipQuarantinePurgePrompt (D5, Task 4.2, ADR-035 Gap 3 -- same '
+    'host, new prompt variant)',
+    () {
+      testWidgets(
+        'shows the quarantine-purge dialog when the controller publishes '
+        'that variant, and feeds confirm back to the controller',
+        (tester) async {
+          final container = ProviderContainer();
+          addTearDown(container.dispose);
+
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: const MaterialApp(
+                home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+              ),
+            ),
+          );
+
+          final controller = container.read(reauthPromptControllerProvider);
+          ReauthPromptResult? result;
+          unawaited(
+            controller
+                .requestMembershipQuarantinePurgeConfirmation(
+                  userId: 'user-1',
+                  pendingCount: 3,
+                )
+                .then((value) => result = value),
+          );
+
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text(AppStrings.membershipQuarantinePurgeTitle),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              AppStrings.membershipQuarantinePurgePendingMessage(count: 3),
+            ),
+            findsOneWidget,
+          );
+          // Never shows the OTHER dialog for this variant.
+          expect(
+            find.text(AppStrings.reauthDifferentUserTitle),
+            findsNothing,
+          );
+
+          await tester.tap(
+            find.byKey(const Key('membership-quarantine-purge-confirm')),
+          );
+          await tester.pumpAndSettle();
+
+          expect(result, ReauthPromptResult.confirmed);
+          expect(controller.pending, isNull);
+        },
+      );
+
+      testWidgets('feeds cancel back to the controller as false', (
+        tester,
+      ) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(
+              home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+            ),
+          ),
+        );
+
+        final controller = container.read(reauthPromptControllerProvider);
+        ReauthPromptResult? result;
+        unawaited(
+          controller
+              .requestMembershipQuarantinePurgeConfirmation(
+                userId: 'user-1',
+                pendingCount: null,
+              )
+              .then((value) => result = value),
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(AppStrings.membershipQuarantinePurgeUnknownPendingMessage),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('membership-quarantine-purge-cancel')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(result, ReauthPromptResult.cancelled);
+        expect(controller.pending, isNull);
+      });
+
+      testWidgets(
+        'a barrier dismissal counts as cancel, never as confirm',
+        (tester) async {
+          final container = ProviderContainer();
+          addTearDown(container.dispose);
+
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: const MaterialApp(
+                home: ReauthPromptHost(child: Text('CHILD CONTENT')),
+              ),
+            ),
+          );
+
+          final controller = container.read(reauthPromptControllerProvider);
+          ReauthPromptResult? result;
+          unawaited(
+            controller
+                .requestMembershipQuarantinePurgeConfirmation(
+                  userId: 'user-1',
+                  pendingCount: 1,
+                )
+                .then((value) => result = value),
+          );
+
+          await tester.pumpAndSettle();
+
+          await tester.tapAt(const Offset(10, 10));
+          await tester.pumpAndSettle();
+
+          expect(result, ReauthPromptResult.cancelled);
+          expect(controller.pending, isNull);
+        },
+      );
+    },
+  );
 }

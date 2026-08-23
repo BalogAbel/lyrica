@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
@@ -34,10 +35,20 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   VerifiedEmptyMembershipCleanupCoordinator({
     required this._localDataLifecycle,
     required this._invalidateLastKnownIdentityPersistence,
+    required this._countPendingWork,
+    required this._requestConfirmation,
   });
 
   final LocalDataLifecycle _localDataLifecycle;
   final void Function() _invalidateLastKnownIdentityPersistence;
+  // D5/Phase 4 (ADR-035 Gap 1 step 3 / Task 4.2): passed straight through to
+  // resolveVerifiedEmptyMembership's own callbacks below -- this class has
+  // no `ref` of its own (it is a plain, provider-constructed object, not a
+  // widget/provider builder), so the caller-supplied closures below are how
+  // it reaches PendingLocalWorkCounter and ReauthPromptController.
+  final Future<int?> Function(String userId) _countPendingWork;
+  final Future<bool> Function(String userId, int? pendingCount)
+  _requestConfirmation;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -70,6 +81,9 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     final resolution = _localDataLifecycle.resolveVerifiedEmptyMembership(
       userId: userId,
       email: email,
+      countPendingWork: () => _countPendingWork(userId),
+      requestConfirmation: (pendingCount) =>
+          _requestConfirmation(userId, pendingCount),
     );
 
     return Future.wait([handlerNotifications, resolution]);
@@ -82,6 +96,29 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
         localDataLifecycle: ref.watch(localDataLifecycleProvider),
         invalidateLastKnownIdentityPersistence: () {
           ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
+        // Mirrors auth_providers.dart's persistNewIdentity wiring for the
+        // same gate: a storage failure counting pending work must read as
+        // "unknown" (D5), never as zero, and the confirmation prompt goes
+        // through the same ReauthPromptController/ReauthPromptHost pair the
+        // different-user prompt already uses (ADR-035 Gap 3).
+        countPendingWork: (userId) async {
+          try {
+            return await ref
+                .read(pendingLocalWorkCounterProvider)
+                .count(userId: userId);
+          } catch (_) {
+            return null;
+          }
+        },
+        requestConfirmation: (userId, pendingCount) async {
+          final result = await ref
+              .read(reauthPromptControllerProvider)
+              .requestMembershipQuarantinePurgeConfirmation(
+                userId: userId,
+                pendingCount: pendingCount,
+              );
+          return result == ReauthPromptResult.confirmed;
         },
       );
     });

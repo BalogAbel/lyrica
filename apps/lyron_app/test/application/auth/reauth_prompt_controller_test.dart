@@ -15,9 +15,11 @@ void main() {
       ),
     );
 
-    expect(controller.pending?.email, 'prior@example.com');
-    expect(controller.pending?.pendingCount, 4);
-    expect(controller.pending?.requestId, isNotNull);
+    final pending = controller.pending;
+    expect(pending, isA<ReauthDifferentUserPrompt>());
+    expect((pending as ReauthDifferentUserPrompt).email, 'prior@example.com');
+    expect(pending.pendingCount, 4);
+    expect(pending.requestId, isNotNull);
   });
 
   test('requesting a confirmation with an unknown (null) pending count '
@@ -31,8 +33,10 @@ void main() {
       ),
     );
 
-    expect(controller.pending?.email, 'prior@example.com');
-    expect(controller.pending?.pendingCount, isNull);
+    final pending = controller.pending;
+    expect(pending, isA<ReauthDifferentUserPrompt>());
+    expect((pending as ReauthDifferentUserPrompt).email, 'prior@example.com');
+    expect(pending.pendingCount, isNull);
   });
 
   test('answer completes the returned future and clears the prompt', () async {
@@ -159,7 +163,10 @@ void main() {
         throwsStateError,
       );
 
-      expect(controller.pending?.email, 'prior@example.com');
+      expect(
+        (controller.pending as ReauthDifferentUserPrompt?)?.email,
+        'prior@example.com',
+      );
       expect(controller.pending?.pendingCount, 3);
 
       controller.answer(true, requestId: controller.pending!.requestId);
@@ -193,5 +200,156 @@ void main() {
 
     controller.answer(true, requestId: controller.pending!.requestId);
     expect(notifications, 2);
+  });
+
+  group('requestMembershipQuarantinePurgeConfirmation (D5, Task 4.2, '
+      'ADR-035 Gap 3 -- reuses the same host/controller, new prompt '
+      'variant)', () {
+    test('publishes a pending MembershipQuarantinePurgePrompt', () {
+      final controller = ReauthPromptController();
+      expect(controller.pending, isNull);
+
+      unawaited(
+        controller.requestMembershipQuarantinePurgeConfirmation(
+          userId: 'user-1',
+          pendingCount: 5,
+        ),
+      );
+
+      final pending = controller.pending;
+      expect(pending, isA<MembershipQuarantinePurgePrompt>());
+      expect((pending as MembershipQuarantinePurgePrompt).userId, 'user-1');
+      expect(pending.pendingCount, 5);
+      expect(pending.requestId, isNotNull);
+    });
+
+    test('an unknown (null) pending count publishes as unknown, not a '
+        'fabricated number', () {
+      final controller = ReauthPromptController();
+
+      unawaited(
+        controller.requestMembershipQuarantinePurgeConfirmation(
+          userId: 'user-1',
+          pendingCount: null,
+        ),
+      );
+
+      expect(controller.pending?.pendingCount, isNull);
+    });
+
+    test('answer completes the returned future and clears the prompt', () async {
+      final controller = ReauthPromptController();
+      final future = controller.requestMembershipQuarantinePurgeConfirmation(
+        userId: 'user-1',
+        pendingCount: 2,
+      );
+
+      controller.answer(true, requestId: controller.pending!.requestId);
+
+      expect(await future, ReauthPromptResult.confirmed);
+      expect(controller.pending, isNull);
+    });
+
+    test('answer(false) completes the future as cancelled', () async {
+      final controller = ReauthPromptController();
+      final future = controller.requestMembershipQuarantinePurgeConfirmation(
+        userId: 'user-1',
+        pendingCount: 1,
+      );
+
+      controller.answer(false, requestId: controller.pending!.requestId);
+
+      expect(await future, ReauthPromptResult.cancelled);
+    });
+
+    test('supersedePending completes it as superseded, same as a '
+        'different-user prompt', () async {
+      final controller = ReauthPromptController();
+      ReauthPromptResult? result;
+      unawaited(
+        controller
+            .requestMembershipQuarantinePurgeConfirmation(
+              userId: 'user-1',
+              pendingCount: 3,
+            )
+            .then((value) => result = value),
+      );
+
+      controller.supersedePending();
+
+      await Future<void>.delayed(Duration.zero);
+      expect(result, ReauthPromptResult.superseded);
+      expect(controller.pending, isNull);
+    });
+
+    test(
+      // D2/D3 of ADR-029, reused unchanged for the new variant: the two
+      // kinds of prompt are mutually exclusive by construction, but the "at
+      // most one pending" guard must still hold across variants -- a
+      // quarantine-purge request cannot be issued while a different-user
+      // prompt is pending, and vice versa.
+      'a quarantine-purge request while a different-user prompt is pending '
+      'throws, leaving the first prompt untouched',
+      () async {
+        final controller = ReauthPromptController();
+        final first = controller.requestConfirmation(
+          email: 'prior@example.com',
+          pendingCount: 3,
+        );
+
+        expect(
+          () => controller.requestMembershipQuarantinePurgeConfirmation(
+            userId: 'user-1',
+            pendingCount: 9,
+          ),
+          throwsStateError,
+        );
+
+        expect(controller.pending, isA<ReauthDifferentUserPrompt>());
+        controller.answer(true, requestId: controller.pending!.requestId);
+        expect(await first, ReauthPromptResult.confirmed);
+      },
+    );
+
+    test(
+      'a different-user request while a quarantine-purge prompt is pending '
+      'throws, leaving the first prompt untouched',
+      () async {
+        final controller = ReauthPromptController();
+        final first = controller.requestMembershipQuarantinePurgeConfirmation(
+          userId: 'user-1',
+          pendingCount: 3,
+        );
+
+        expect(
+          () => controller.requestConfirmation(
+            email: 'someone-else@example.com',
+            pendingCount: 9,
+          ),
+          throwsStateError,
+        );
+
+        expect(controller.pending, isA<MembershipQuarantinePurgePrompt>());
+        controller.answer(true, requestId: controller.pending!.requestId);
+        expect(await first, ReauthPromptResult.confirmed);
+      },
+    );
+
+    test('notifies listeners on request and on answer', () {
+      final controller = ReauthPromptController();
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+
+      unawaited(
+        controller.requestMembershipQuarantinePurgeConfirmation(
+          userId: 'user-1',
+          pendingCount: 1,
+        ),
+      );
+      expect(notifications, 1);
+
+      controller.answer(true, requestId: controller.pending!.requestId);
+      expect(notifications, 2);
+    });
   });
 }

@@ -257,6 +257,8 @@ void main() {
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
           email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
@@ -282,30 +284,25 @@ void main() {
     );
 
     test(
-      'a second call while already quarantined is a documented no-op: '
-      'returns alreadyQuarantined, writes nothing further, deletes nothing',
+      // Guardrail: the purge must be impossible to reach with one
+      // confirmation, regardless of pending-work state. Even though a
+      // *second* resolution with zero pending work purges outright (see the
+      // Task 4.2 group below), a *single* resolution never does -- it always
+      // quarantines and never even asks `countPendingWork`.
+      'a single verified-empty resolution never purges even when pending '
+      'work is (hypothetically) zero -- one confirmation is never enough',
       () async {
-        final revokedAt = DateTime.utc(2026, 8, 20);
-        identityStore.seed(
-          LastKnownIdentity(
-            userId: 'user-1',
-            email: 'user1@example.com',
-            organizationId: 'org-1',
-            membershipRevokedAt: revokedAt,
-          ),
-        );
-
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
           email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
         );
 
-        expect(result, MembershipRevocationResolution.alreadyQuarantined);
-        expect(identityStore.writes, isEmpty);
-        expect(notedIdentities, isEmpty);
-        expect(eventsRecorder.quarantineCalls, isEmpty);
+        expect(result, MembershipRevocationResolution.quarantined);
         expect(songCatalogStore.deleteCalls, isEmpty);
         expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
       },
     );
 
@@ -326,6 +323,8 @@ void main() {
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
           email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
@@ -345,6 +344,8 @@ void main() {
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
           email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
@@ -376,6 +377,8 @@ void main() {
         final result = await lifecycle.resolveVerifiedEmptyMembership(
           userId: 'user-1',
           email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
         );
 
         expect(result, MembershipRevocationResolution.quarantined);
@@ -383,7 +386,327 @@ void main() {
       },
     );
   });
+
+  group('resolveVerifiedEmptyMembership: confirmed purge (D5, Task 4.2)', () {
+    test(
+      'two consecutive fresh online empty resolutions with no pending work '
+      'purge via membershipRevokedConfirmed and write the audit row '
+      '(Acceptance 5)',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+
+        final first = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+        expect(first, MembershipRevocationResolution.quarantined);
+
+        var countCalls = 0;
+        final second = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: () async {
+            countCalls++;
+            return 0;
+          },
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        expect(second, MembershipRevocationResolution.purgedConfirmed);
+        expect(countCalls, 1);
+        expect(songCatalogStore.deleteCalls, ['user-1']);
+        expect(planningLocalStore.deleteCalls, hasLength(1));
+        expect(planningLocalStore.deleteCalls.single.userId, 'user-1');
+        expect(identityStore.callLog, contains('clear'));
+
+        final purgeReasons = eventsRecorder.purgeCalls
+            .map((call) => call.reason)
+            .toSet();
+        expect(purgeReasons, {PurgeReason.membershipRevokedConfirmed});
+        final purgeTargets = eventsRecorder.purgeCalls
+            .map((call) => call.target)
+            .toSet();
+        expect(purgeTargets, {
+          PurgeTarget.songCatalog,
+          PurgeTarget.planningData,
+          PurgeTarget.identity,
+        });
+        for (final call in eventsRecorder.purgeCalls) {
+          expect(call.userId, 'user-1');
+        }
+      },
+    );
+
+    test(
+      'pending work present on the second resolution waits for user '
+      'confirmation instead of purging outright (Acceptance 5)',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        var confirmationRequested = false;
+        int? seenPendingCount;
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: () async => 3,
+          requestConfirmation: (pendingCount) async {
+            confirmationRequested = true;
+            seenPendingCount = pendingCount;
+            return false;
+          },
+        );
+
+        expect(confirmationRequested, isTrue);
+        expect(seenPendingCount, 3);
+        expect(result, MembershipRevocationResolution.confirmationDeclined);
+        // Nothing destroyed while awaiting/declining confirmation.
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      'a confirmed answer after nonzero pending work runs the same purge '
+      'triple as the zero-pending path',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: () async => 2,
+          requestConfirmation: (pendingCount) async => true,
+        );
+
+        expect(result, MembershipRevocationResolution.purgedConfirmed);
+        expect(songCatalogStore.deleteCalls, ['user-1']);
+        expect(planningLocalStore.deleteCalls, hasLength(1));
+        expect(identityStore.callLog, contains('clear'));
+      },
+    );
+
+    test(
+      // D5: an unreadable pending count (null) must be treated exactly like
+      // a nonzero one -- it asks for confirmation, never treated as "safe
+      // to skip".
+      'an unreadable pending count (null) on the second resolution requests '
+      'confirmation rather than purging outright',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        var confirmationRequested = false;
+        int? seenPendingCount = -1; // sentinel, overwritten if called
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: () async => null,
+          requestConfirmation: (pendingCount) async {
+            confirmationRequested = true;
+            seenPendingCount = pendingCount;
+            return false;
+          },
+        );
+
+        expect(confirmationRequested, isTrue);
+        expect(seenPendingCount, isNull);
+        expect(result, MembershipRevocationResolution.confirmationDeclined);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      // Guardrail: the second-resolution detection must come from the
+      // persisted marker, not from any in-memory state held by the
+      // LocalDataLifecycle instance itself -- simulated here by resolving
+      // the first call through one LocalDataLifecycle instance and the
+      // second through a brand new one, both wired to the SAME underlying
+      // stores (standing in for "same on-disk database after a process
+      // restart").
+      'a second resolution reaching the gate after a simulated store '
+      'reopen (fresh LocalDataLifecycle instance, same underlying stores) '
+      'still detects the persisted marker and completes the purge',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+
+        final first = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+        expect(first, MembershipRevocationResolution.quarantined);
+
+        // A fresh instance -- no in-memory state carried over -- wired to
+        // the exact same store doubles, standing in for "the app restarted
+        // and reopened the same on-disk database".
+        final reopenedLifecycle = LocalDataLifecycle(
+          songCatalogStore: songCatalogStore,
+          planningLocalStore: planningLocalStore,
+          identityStore: identityStore,
+          noteLastKnownIdentity: notedIdentities.add,
+          eventsRecorder: eventsRecorder,
+        );
+
+        final second = await reopenedLifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: () async => 0,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        expect(second, MembershipRevocationResolution.purgedConfirmed);
+        expect(songCatalogStore.deleteCalls, ['user-1']);
+        expect(identityStore.callLog, contains('clear'));
+      },
+    );
+
+    test(
+      // Guardrail: a differentUserSignIn between the two resolutions fully
+      // clears the identity row (existing, untouched behaviour) -- the
+      // NEXT verified-empty resolution, now for a genuinely different
+      // situation, must look like a fresh first resolution, never
+      // accidentally count as the original user's second confirmation.
+      'a differentUserSignIn clearing the identity row between two '
+      "resolutions resets the gate -- the next user's resolution is a "
+      'fresh first resolution, not a second confirmation',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        final first = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+        expect(first, MembershipRevocationResolution.quarantined);
+
+        // A different user signs in: the real flow clears the row via
+        // LocalDataLifecycle.clearIdentity(reason: differentUserSignIn)
+        // before ever writing the new user's identity.
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.differentUserSignIn,
+          userId: 'user-1',
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-2',
+          email: 'user2@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        // Still nothing purged for user-2 -- this was its first
+        // resolution, not a second confirmation carried over from user-1.
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      'a differentUserSignIn clear followed by the SAME user resolving '
+      'verified-empty again also starts over as a fresh first resolution',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            organizationId: 'org-1',
+          ),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.differentUserSignIn,
+          userId: 'user-1',
+        );
+
+        final result = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          countPendingWork: _neverCalledCountPendingWork,
+          requestConfirmation: _neverCalledRequestConfirmation,
+        );
+
+        expect(result, MembershipRevocationResolution.quarantined);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+  });
 }
+
+Future<int?> _neverCalledCountPendingWork() =>
+    throw StateError(
+      'countPendingWork should not be called on a first resolution',
+    );
+
+Future<bool> _neverCalledRequestConfirmation(int? pendingCount) => throw StateError(
+  'requestConfirmation should not be called when pending work is zero '
+  'or the resolution never reached the confirmation gate',
+);
 
 class _RecordingSongCatalogStore implements SongCatalogStore {
   final List<String> deleteCalls = <String>[];

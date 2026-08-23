@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
+import 'package:lyron_app/src/presentation/auth/membership_quarantine_purge_dialog.dart';
 import 'package:lyron_app/src/presentation/auth/reauth_different_user_dialog.dart';
 
 /// Mounted in `MaterialApp.router`'s `builder:`, wrapping the routed child.
@@ -98,11 +99,23 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
     _dialogOpen = true;
     final bool confirmed;
     try {
-      confirmed = await showReauthDifferentUserDialog(
-        context,
-        email: prompt.email,
-        pendingCount: prompt.pendingCount,
-      );
+      // D5/Phase 4 (ADR-035 Gap 3): switches on the *sealed* ReauthPrompt to
+      // show the right dialog for whichever variant is pending -- a variant
+      // added later fails this switch to compile instead of silently
+      // showing the wrong (or no) dialog.
+      switch (prompt) {
+        case ReauthDifferentUserPrompt():
+          confirmed = await showReauthDifferentUserDialog(
+            context,
+            email: prompt.email,
+            pendingCount: prompt.pendingCount,
+          );
+        case MembershipQuarantinePurgePrompt():
+          confirmed = await showMembershipQuarantinePurgeDialog(
+            context,
+            pendingCount: prompt.pendingCount,
+          );
+      }
     } finally {
       _dialogOpen = false;
     }

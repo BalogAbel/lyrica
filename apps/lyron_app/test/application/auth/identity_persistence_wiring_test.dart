@@ -683,7 +683,10 @@ void main() {
       expect(await priorPlanningProjectionStillPresent(), isTrue);
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect(prompt.pending!.email, 'user1@example.com');
+      expect(
+        (prompt.pending! as ReauthDifferentUserPrompt).email,
+        'user1@example.com',
+      );
 
       prompt.answer(false);
       await pump();
@@ -877,7 +880,10 @@ void main() {
 
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect(prompt.pending!.email, 'user1@example.com');
+      expect(
+        (prompt.pending! as ReauthDifferentUserPrompt).email,
+        'user1@example.com',
+      );
       expect(prompt.pending!.pendingCount, 3);
       expect(seenUserId, 'user-1');
       // Nothing destroyed yet -- confirmation has not resolved.
@@ -1225,7 +1231,10 @@ void main() {
       await pump();
 
       expect(promptController.pending, isNotNull);
-      expect(promptController.pending!.email, 'user0@example.com');
+      expect(
+        (promptController.pending! as ReauthDifferentUserPrompt).email,
+        'user0@example.com',
+      );
       final staleRequestId = promptController.pending!.requestId;
 
       authRepository.emit(
@@ -1251,7 +1260,10 @@ void main() {
         isTrue,
       );
       expect(promptController.pending?.requestId, isNot(staleRequestId));
-      expect(promptController.pending?.email, 'user0@example.com');
+      expect(
+        (promptController.pending as ReauthDifferentUserPrompt?)?.email,
+        'user0@example.com',
+      );
     });
 
     test('supersession while the pending-work count is blocked prevents a '

@@ -2,20 +2,55 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// A pending different-user reauth prompt: the prior user's email and how
-/// much local work a wipe would destroy. `null` means the count could not
-/// be determined -- an honest "unknown", not a guess (see D4 in
+/// A pending confirmation prompt owned by [ReauthPromptController]. `null`
+/// on [pendingCount] means the count could not be determined -- an honest
+/// "unknown", not a guess (see D4 in
 /// `docs/specs/2026-07-30-recovery-actions-that-outlive-their-widget.md`).
-class ReauthPrompt {
-  const ReauthPrompt({
-    required this.requestId,
-    required this.email,
-    required this.pendingCount,
-  });
+///
+/// Sealed with two variants (D5/Phase 4, ADR-035 Gap 3): the pre-existing
+/// different-user reauth prompt ([ReauthDifferentUserPrompt]), and the new
+/// membership-quarantine confirmed-purge prompt
+/// ([MembershipQuarantinePurgePrompt]). Both are surfaced through this same
+/// controller/host pair rather than a second one -- see the class doc below
+/// and `ReauthPromptHost` (`presentation/auth/reauth_prompt_host.dart`),
+/// which switches on the variant to show the right dialog. The two are
+/// mutually exclusive by construction (a quarantine-purge prompt requires
+/// the SAME user's membership resolving empty twice; a different-user
+/// prompt requires a DIFFERENT user signing in, which clears any pending
+/// quarantine marker as part of its own wipe-or-confirm path first), but the
+/// "at most one prompt pending" guard below still applies uniformly across
+/// both variants.
+sealed class ReauthPrompt {
+  const ReauthPrompt({required this.requestId, required this.pendingCount});
 
   final int requestId;
-  final String email;
   final int? pendingCount;
+}
+
+/// The pre-existing different-user reauth prompt: the prior user's email
+/// and how much local work a wipe would destroy.
+class ReauthDifferentUserPrompt extends ReauthPrompt {
+  const ReauthDifferentUserPrompt({
+    required super.requestId,
+    required super.pendingCount,
+    required this.email,
+  });
+
+  final String email;
+}
+
+/// D5/Phase 4 (ADR-035 Gap 3): the second, independent verified-empty
+/// membership resolution for [userId] found nonzero or unreadable pending
+/// local work, and needs the user's confirmation before
+/// `LocalDataLifecycle.resolveVerifiedEmptyMembership` proceeds to purge.
+class MembershipQuarantinePurgePrompt extends ReauthPrompt {
+  const MembershipQuarantinePurgePrompt({
+    required super.requestId,
+    required super.pendingCount,
+    required this.userId,
+  });
+
+  final String userId;
 }
 
 enum ReauthPromptResult { confirmed, cancelled, superseded }
@@ -54,6 +89,40 @@ class ReauthPromptController extends ChangeNotifier {
     required String email,
     required int? pendingCount,
   }) {
+    return _request(
+      (requestId) => ReauthDifferentUserPrompt(
+        requestId: requestId,
+        email: email,
+        pendingCount: pendingCount,
+      ),
+    );
+  }
+
+  /// D5/Phase 4 (ADR-035 Gap 3): publishes [userId]/[pendingCount] as the
+  /// pending membership-quarantine confirmed-purge prompt and returns a
+  /// future that completes with the answer once [answer] is called.
+  /// [pendingCount] of `null` means the count could not be determined --
+  /// the caller must still ask, never treat it as zero (D5).
+  Future<ReauthPromptResult> requestMembershipQuarantinePurgeConfirmation({
+    required String userId,
+    required int? pendingCount,
+  }) {
+    return _request(
+      (requestId) => MembershipQuarantinePurgePrompt(
+        requestId: requestId,
+        userId: userId,
+        pendingCount: pendingCount,
+      ),
+    );
+  }
+
+  /// Shared "at most one prompt pending" machinery (D2/D3 of ADR-029) behind
+  /// both [requestConfirmation] and
+  /// [requestMembershipQuarantinePurgeConfirmation] -- see the class doc on
+  /// [ReauthPrompt] for why the two variants share this guard uniformly.
+  Future<ReauthPromptResult> _request(
+    ReauthPrompt Function(int requestId) buildPrompt,
+  ) {
     if (_pending != null) {
       throw StateError(
         'A reauth prompt is already pending; cannot request a second one '
@@ -62,11 +131,7 @@ class ReauthPromptController extends ChangeNotifier {
     }
     final completer = Completer<ReauthPromptResult>();
     _completer = completer;
-    _pending = ReauthPrompt(
-      requestId: _nextRequestId++,
-      email: email,
-      pendingCount: pendingCount,
-    );
+    _pending = buildPrompt(_nextRequestId++);
     notifyListeners();
     return completer.future;
   }
