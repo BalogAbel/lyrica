@@ -403,8 +403,8 @@ void main() {
     // suppressed. The row itself, and its reason, must still be visible
     // (the user is told retrying cannot help, not left with no row at
     // all).
-    'authorizationDenied song row hides Keep mine and Discard mine, but '
-    'still shows the row and its reason',
+    'authorizationDenied song row hides Keep mine but keeps Discard mine, '
+    'and still shows the row and its reason',
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -432,12 +432,23 @@ void main() {
 
       expect(find.text('Hymn'), findsOneWidget);
       expect(
+        find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
+        findsOneWidget,
+      );
+      // Keep mine re-sends the local version, which a permanent
+      // authorization rejection can never accept -- offering it would be a
+      // retry that provably cannot succeed (spec D5.6).
+      expect(
         find.byKey(const ValueKey('unified-sync-song-keep-s1')),
         findsNothing,
       );
+      // Discard mine is purely local and needs no authorization. It is the
+      // user's only way to clear a permanently unauthorized row out of the
+      // sync queue, so it must stay -- without it the row sits in the list
+      // forever with no affordance at all.
       expect(
         find.byKey(const ValueKey('unified-sync-song-discard-s1')),
-        findsNothing,
+        findsOneWidget,
       );
     },
   );

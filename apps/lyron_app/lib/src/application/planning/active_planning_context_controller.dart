@@ -122,14 +122,39 @@ class ActivePlanningContextController extends ChangeNotifier {
       return;
     }
 
-    // RED 2 fix (D5.2): this organizationId is only reachable here from a
-    // fresh, live lookup -- the cached-fallback path above never reaches
-    // this line, since it either returns early or the fallback organization
-    // id still leaves organizationLookupWasConnectivityFailure set. A
-    // genuinely fresh non-empty resolution is the only event D5.2 permits
-    // to clear the marker.
+    // D5.2: a genuinely fresh non-empty resolution is the only event
+    // permitted to clear the revocation marker.
+    //
+    // The `organizationLookupWasConnectivityFailure` guard is load-bearing,
+    // not a belt-and-braces check: the cached-fallback path above does reach
+    // this line, with a cached organizationId and the flag set. Deleting the
+    // guard would let an offline cached fallback clear the marker, which
+    // D5.2 forbids in both directions.
+    //
+    // Awaited and reported rather than fire-and-forget, for the same reason
+    // as the equivalent call in `SongCatalogController._refreshCatalog`: a
+    // dropped store failure would leave the marker set with no audit record
+    // and no retry, silently reinstating the empty/non-empty/empty sequence
+    // this clear exists to break. Reported rather than rethrown so a
+    // transient identity-store error cannot break the read path (ADR-020).
     if (organizationId != null && !organizationLookupWasConnectivityFailure) {
-      unawaited(_onVerifiedNonEmptyMembership?.call(userId: session.userId));
+      try {
+        await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
+      } catch (error, stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'ActivePlanningContextController',
+            context: ErrorDescription(
+              'failed to clear the membership-revocation marker after a '
+              'freshly verified non-empty membership resolution -- the '
+              'marker is still set and will be cleared by the next '
+              'successful non-empty refresh',
+            ),
+          ),
+        );
+      }
     }
 
     _setState(

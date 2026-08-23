@@ -298,17 +298,45 @@ class SongCatalogController extends ChangeNotifier {
       organizationId: organizationId,
     );
     _verifiedEmptyMembershipSeen = false;
-    // RED 1 fix (D5.2): this organizationId is only reachable here from a
-    // fresh, live current_organization_ids() round trip -- the connectivity-
-    // fallback branch above (organizationLookupWasConnectivityFailure) never
+    // D5.2: a genuinely fresh non-empty resolution is the only event
+    // permitted to clear the revocation marker.
+    //
+    // The `organizationLookupWasConnectivityFailure` guard is load-bearing,
+    // not a belt-and-braces check: the connectivity-fallback branch above
     // reaches this line with an organizationId that came from
-    // readLatestCachedOrganizationId, because that branch returns before
-    // this point whenever it applies. A genuinely fresh non-empty resolution
-    // is the only event D5.2 permits to clear the marker.
+    // readLatestCachedOrganizationId and the flag set. Deleting the guard
+    // would let an offline cached fallback clear the marker, which D5.2
+    // forbids in both directions.
+    //
+    // Awaited, not fire-and-forget. `clearMembershipRevocation` propagates a
+    // store failure to its caller, and a dropped failure here would leave
+    // the marker set with no audit record and no retry -- silently
+    // reinstating the very sequence this clear exists to break (one empty,
+    // a genuine non-empty, another empty, purge). The failure is reported
+    // rather than rethrown so a transient identity-store error can never
+    // break the read path (ADR-020); the next refresh tick with a non-empty
+    // resolution clears the marker again.
     if (!organizationLookupWasConnectivityFailure) {
-      unawaited(
-        _onVerifiedNonEmptyMembership?.call(userId: session.userId),
-      );
+      try {
+        await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
+      } catch (error, stackTrace) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'SongCatalogController',
+            context: ErrorDescription(
+              'failed to clear the membership-revocation marker after a '
+              'freshly verified non-empty membership resolution -- the '
+              'marker is still set and will be cleared by the next '
+              'successful non-empty refresh',
+            ),
+          ),
+        );
+      }
+      if (_isStale(generation)) {
+        return;
+      }
     }
     final hasCachedCatalog = await _hasCachedCatalog(context);
     if (_isStale(generation)) {

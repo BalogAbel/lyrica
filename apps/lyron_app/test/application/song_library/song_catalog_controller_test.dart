@@ -507,6 +507,66 @@ void main() {
     );
 
     test(
+      // The marker clear is awaited, not fire-and-forget: a dropped store
+      // failure would leave the marker set with no audit record and no
+      // retry, silently reinstating the empty/non-empty/empty purge
+      // sequence the clear exists to break. It must still not break the
+      // read path (ADR-020) -- the failure is reported, not rethrown.
+      'a failing membership-revocation marker clear is reported and does '
+      'not break the refresh or hide the cached catalog',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final reported = <FlutterErrorDetails>[];
+        final previousOnError = FlutterError.onError;
+        FlutterError.onError = reported.add;
+        addTearDown(() => FlutterError.onError = previousOnError);
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedNonEmptyMembership: ({required userId}) async {
+            throw StateError('simulated identity store failure');
+          },
+        );
+        addTearDown(controller.dispose);
+
+        await controller.refreshCatalog();
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'the clear failure must be reported, not swallowed -- it '
+              'leaves the marker set',
+        );
+        expect(controller.state.context, isNotNull);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isNotEmpty,
+        );
+      },
+    );
+
+    test(
       // YELLOW 7 (final whole-branch review, D5.5 rule 4): `session` is
       // captured at the top of _refreshCatalog and used, unrevalidated, to
       // enter the purge gate. Re-read and compare identity immediately

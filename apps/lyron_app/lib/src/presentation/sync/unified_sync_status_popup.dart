@@ -181,25 +181,32 @@ class _SongRowTile extends ConsumerWidget {
           _ReasonChip(reason: row.reasonCode),
         ],
       ),
-      // YELLOW 9 (final whole-branch review, spec D5.6): authorizationDenied
-      // is folded into the same conflict severity as an ordinary conflict
-      // (unified_sync_overview.dart), which is the one bucket whose actions
-      // are Keep mine / Discard mine -- but neither can help a permanently
-      // unauthorized row (SongMutationSyncController.keepMine now refuses
-      // it, and there is no retry that changes a permanent authorization
-      // rejection). Suppress both affordances; the row and its reason chip
-      // stay visible so the user is told retrying cannot help.
-      trailing:
-          row.severity == UnifiedSyncRowSeverity.conflict &&
-              row.reasonCode != UnifiedSyncReasonCode.authorizationDenied
+      // spec D5.6: authorizationDenied is folded into the same conflict
+      // severity as an ordinary conflict (unified_sync_overview.dart), which
+      // is the one bucket whose actions are Keep mine / Discard mine.
+      //
+      // Keep mine cannot help a permanently unauthorized row -- it re-sends
+      // the local version, and SongMutationSyncController.keepMine now
+      // refuses it outright -- so that button is suppressed rather than
+      // offered as a retry that provably cannot succeed.
+      //
+      // Discard mine IS kept. It is a purely local operation that needs no
+      // authorization, and it is the user's only way to clear the row out of
+      // the sync queue. Suppressing it too would leave a permanently
+      // unauthorized row in the list forever with no affordance at all.
+      //
+      // The row and its reason chip stay visible either way, so the user is
+      // told retrying cannot help rather than the row quietly disappearing.
+      trailing: row.severity == UnifiedSyncRowSeverity.conflict
           ? Wrap(
               spacing: 8,
               children: [
-                TextButton(
-                  key: ValueKey('unified-sync-song-keep-${row.songId}'),
-                  onPressed: () => unawaited(_keepMine(context, ref)),
-                  child: const Text(AppStrings.songKeepMineAction),
-                ),
+                if (row.reasonCode != UnifiedSyncReasonCode.authorizationDenied)
+                  TextButton(
+                    key: ValueKey('unified-sync-song-keep-${row.songId}'),
+                    onPressed: () => unawaited(_keepMine(context, ref)),
+                    child: const Text(AppStrings.songKeepMineAction),
+                  ),
                 TextButton(
                   key: ValueKey('unified-sync-song-discard-${row.songId}'),
                   onPressed: () => unawaited(_discardMine(context, ref)),
