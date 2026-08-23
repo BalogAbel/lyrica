@@ -97,6 +97,15 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
     ReauthPrompt prompt,
   ) async {
     _dialogOpen = true;
+    // YELLOW 10 (final whole-branch review): captured now, while the widget
+    // is certainly still mounted, so it can still be used to answer the
+    // completer below even if the widget is unmounted by the time the
+    // dialog await returns. `ref` itself must not be touched again after an
+    // unmount -- reading through it post-dispose is unsafe -- but this
+    // controller reference is just a plain object and outlives the widget
+    // (it is app-scoped and NOT autoDispose; see the class doc on
+    // ReauthPromptController).
+    final promptController = ref.read(reauthPromptControllerProvider);
     final bool confirmed;
     try {
       switch (prompt) {
@@ -115,15 +124,23 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
     } finally {
       _dialogOpen = false;
     }
-    if (!mounted) return;
+    if (!mounted) {
+      // YELLOW 10 fix: an unmounted host must still answer the completer
+      // this prompt is backing -- leaving it unanswered means every caller
+      // awaiting it (D5 newly routes some of these through callers that
+      // hold outer locks, e.g. SongCatalogController._refreshFuture and
+      // lastKnownIdentityPersistenceProvider's resolution chain) stays
+      // blocked until the next supersedePending. Not confirmed: an unmount
+      // mid-dialog is not a user answer.
+      promptController.answer(false, requestId: prompt.requestId);
+      return;
+    }
     // For a live request this resolves the pending future with the user's
     // answer. If [prompt] was superseded instead -- the listener above
     // already cleared and popped it before this await returned -- the
     // controller's own requestId check turns this into a no-op: it can
     // never resolve or otherwise touch a newer prompt.
-    ref
-        .read(reauthPromptControllerProvider)
-        .answer(confirmed, requestId: prompt.requestId);
+    promptController.answer(confirmed, requestId: prompt.requestId);
     if (_activeRequestId == prompt.requestId) {
       _activeRequestId = null;
     }
