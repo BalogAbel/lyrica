@@ -229,7 +229,12 @@ class AppStrings {
   static const unifiedSyncReasonPendingLocal = 'pending_local';
   static const unifiedSyncReasonSyncFailed = 'sync_failed';
   static const unifiedSyncReasonConflict = 'conflict';
-  static const unifiedSyncReasonAuthorizationDenied = 'authorization_denied';
+  // spec D5.6 / ADR-035: unlike its sibling reason labels above (short,
+  // code-shaped chip text), this one must let the user tell "you no longer
+  // have permission and retrying will not help" apart from an ordinary
+  // retryable failure -- so it is a short phrase rather than a code.
+  static const unifiedSyncReasonAuthorizationDenied =
+      'Not permitted — retrying will not help';
   static const unifiedSyncReasonDependencyBlocked = 'dependency_blocked';
   static const unifiedSyncReasonRemoteMissing = 'remote_missing';
   static const unifiedSyncReasonUnknown = 'unknown';
