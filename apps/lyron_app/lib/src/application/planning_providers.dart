@@ -250,6 +250,13 @@ final activePlanningContextControllerProvider =
         onVerifiedEmptyMembership: ({required userId}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
             .handleVerifiedEmptyMembership(userId: userId),
+        // RED 2 (final whole-branch review, D5.2): a fresh, online,
+        // authenticated non-empty resolution seen by this controller's own
+        // refresh must also be able to clear an outstanding
+        // membership-revocation marker.
+        onVerifiedNonEmptyMembership: ({required userId}) => ref
+            .read(localDataLifecycleProvider)
+            .clearMembershipRevocation(userId: userId),
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
