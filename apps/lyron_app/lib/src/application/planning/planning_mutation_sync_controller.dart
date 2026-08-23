@@ -439,6 +439,32 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
+    // spec D5.6 / ADR-035: a mutation the last sync pass classified
+    // `failedAuthorization` was permanently rejected -- the server knows
+    // the caller and the caller lacks the right, and (unlike a `401`,
+    // which stays an ordinary retryable failure) re-authentication cannot
+    // change that outcome. Resending it here would not be a real retry,
+    // just a wasted round trip that is guaranteed to fail the same way
+    // again. Refusing is not silent, though: this throws the same
+    // exception the row already carries, which the popup's existing
+    // "action failed" surfacing (identical to the connectivityFailure path
+    // below) reports to the user -- so a press of "retry" on a permanently
+    // unauthorized row visibly does nothing rather than looking like it
+    // worked.
+    final existing = await _mutationStore().readMutation(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    );
+    if (existing != null &&
+        existing.syncStatus == PlanningMutationSyncStatus.failedAuthorization) {
+      throw PlanningMutationSyncException(
+        PlanningMutationSyncErrorCode.authorizationDenied,
+        message: existing.errorMessage,
+      );
+    }
+
     await _mutationStore().retryMutation(
       userId: context.userId,
       organizationId: context.organizationId,

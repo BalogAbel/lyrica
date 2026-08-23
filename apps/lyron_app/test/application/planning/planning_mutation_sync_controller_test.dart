@@ -98,6 +98,116 @@ void main() {
       },
     );
 
+    test(
+      'retryMutation refuses to resend a permanently unauthorized mutation '
+      'and surfaces the failure instead of silently doing nothing',
+      () async {
+        // spec D5.6 / ADR-035, Task 4.3 decision: retrying a mutation the
+        // server has already permanently rejected cannot succeed --
+        // re-authentication does not change a `403`/`42501`/permission-
+        // denied outcome the way it does a `401`. retryMutation must
+        // refuse to resend it (no network round trip, no reset back to
+        // `pending`) and must not look like a silent success: it throws
+        // the same authorizationDenied exception the row already carries,
+        // which the popup's existing failure surfacing reports.
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Revoked Plan',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.failedAuthorization,
+              errorCode: PlanningMutationSyncErrorCode.authorizationDenied,
+              errorMessage: 'permission denied',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await expectLater(
+          () => controller.retryMutation(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            aggregateType: PlanningMutationKind.planEdit.aggregateType,
+            aggregateId: 'plan-1',
+          ),
+          throwsA(
+            isA<PlanningMutationSyncException>().having(
+              (error) => error.code,
+              'code',
+              PlanningMutationSyncErrorCode.authorizationDenied,
+            ),
+          ),
+        );
+
+        expect(store.retriedAggregateIds, isEmpty);
+        expect(repository.calls, 0);
+        expect(store.clearedAggregateIds, isEmpty);
+      },
+    );
+
+    test(
+      'a 401 (unknown, not authorizationDenied) stays pending/retryable, '
+      'never failedAuthorization -- regression guard for ordinary token '
+      'expiry (spec D5.6 / ADR-035)',
+      () async {
+        // The repository layer maps a bare `401` to `unknown`, never to
+        // `authorizationDenied` (SupabasePlanningMutationRepository._mapError).
+        // `unknown` was already routed to `PlanningMutationSyncStatus.pending`
+        // before this slice (see the switch in `_run`); this test pins
+        // that this D5.6 change did not alter it.
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.unknown,
+          ),
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(store.lastSavedStatus, PlanningMutationSyncStatus.pending);
+        expect(store.clearedAggregateIds, isEmpty);
+        expect(repository.calls, 1);
+      },
+    );
+
     test('connectivity failure stops the remaining queue', () async {
       final store = _FakePlanningMutationStore(
         pending: [
@@ -1140,7 +1250,17 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
   }) async {
+    // Mirrors DriftPlanningMutationStore.readMutation: finds the row by key
+    // regardless of status, not just the still-"pending" bucket -- callers
+    // (e.g. PlanningMutationSyncController.retryMutation's D5.6 terminal
+    // check) need to see a `failedAuthorization` row too.
     for (final record in pending) {
+      if (record.kind.aggregateType == aggregateType &&
+          record.aggregateId == aggregateId) {
+        return record;
+      }
+    }
+    for (final record in all) {
       if (record.kind.aggregateType == aggregateType &&
           record.aggregateId == aggregateId) {
         return record;
