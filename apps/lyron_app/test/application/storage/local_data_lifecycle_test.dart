@@ -352,6 +352,116 @@ void main() {
     );
   });
 
+  group(
+    'clearMembershipRevocation serializes against other identity mutations '
+    'for the same userId (review fix, Task 4.3)',
+    () {
+      test(
+        'a clearMembershipRevocation call issued while a second-resolution '
+        'confirmed purge is in flight for the same userId waits for the '
+        'purge and does NOT resurrect the row it just deleted',
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+          final pendingCount = Completer<int?>();
+
+          // Second, independent verified-empty resolution: matchesCaller is
+          // true and a marker is already present, so this takes the
+          // confirmed-purge branch -- blocked on countPendingWork, i.e.
+          // genuinely in flight and still holding user-1's mutation slot.
+          final resolveFuture = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () => pendingCount.future,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+
+          // Issued while the purge above is still blocked -- before the
+          // fix, this would race straight to its own read (seeing the
+          // still-quarantined row) instead of waiting its turn.
+          final clearFuture = lifecycle.clearMembershipRevocation(
+            userId: 'user-1',
+          );
+
+          pendingCount.complete(0); // zero pending work -> purges directly
+
+          expect(
+            await resolveFuture,
+            MembershipRevocationResolution.purgedConfirmed,
+          );
+          await clearFuture;
+
+          // The purge's clearIdentity() ran, and clearMembershipRevocation
+          // -- having waited its turn -- found nothing left to clear: no
+          // resurrecting write, and the row is still gone.
+          expect(identityStore.writes, isEmpty);
+          expect(await identityStore.read(), isNull);
+        },
+      );
+
+      test(
+        'a writeIdentity call issued right after clearMembershipRevocation '
+        'for the same userId waits for the clear to finish, so the newer '
+        "write's data is never clobbered by the clear's stale read",
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+          identityStore.blockNextRead();
+
+          final clearFuture = lifecycle.clearMembershipRevocation(
+            userId: 'user-1',
+          );
+          // Confirm the clear is genuinely parked inside its own read, not
+          // merely about to run it, before issuing the concurrent write.
+          await identityStore.readStarted;
+
+          final writeFuture = lifecycle.writeIdentity(
+            const LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-2',
+              membershipRevokedAt: null,
+            ),
+          );
+
+          // The write must not have run yet: it is queued behind the
+          // still-blocked clear for the SAME userId.
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+          expect(identityStore.writes, isEmpty);
+
+          identityStore.releaseRead();
+          await clearFuture;
+          await writeFuture;
+
+          // clearMembershipRevocation's own (now-stale-by-comparison) write
+          // landed first, then writeIdentity's fresher intent landed
+          // second and is what the store ends up holding -- the newer
+          // write was not clobbered by the clear's stale read.
+          expect(identityStore.writes, hasLength(2));
+          expect(identityStore.writes[0].organizationId, 'org-1');
+          expect(identityStore.writes[0].membershipRevokedAt, isNull);
+          expect(identityStore.writes[1].organizationId, 'org-2');
+          final finalIdentity = await identityStore.read();
+          expect(finalIdentity?.organizationId, 'org-2');
+          expect(finalIdentity?.membershipRevokedAt, isNull);
+        },
+      );
+    },
+  );
+
   group('resolveVerifiedEmptyMembership (D5, Task 4.1)', () {
     test(
       'first resolution quarantines: sets membershipRevokedAt, records a '
@@ -1399,13 +1509,41 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   final List<String> callLog = <String>[];
   bool throwOnClear = false;
+  Completer<void>? _readStarted;
+  Completer<void>? _readGate;
 
   void seed(LastKnownIdentity identity) {
     _current = identity;
   }
 
+  /// Makes the NEXT [read] block after logging the call (so the caller is
+  /// genuinely awaiting inside `_identityStore.read()`) until [releaseRead]
+  /// is called. Used to prove, observably, that a concurrent per-userId
+  /// mutation genuinely waits for an in-flight one to finish rather than
+  /// merely happening to run in order by luck of scheduling.
+  void blockNextRead() {
+    _readStarted = Completer<void>();
+    _readGate = Completer<void>();
+  }
+
+  /// Completes once the blocked [read] call has actually started (i.e. is
+  /// parked awaiting the gate) -- lets a test know it is safe to assert
+  /// "nothing else has run yet" without a race against the read itself not
+  /// having started.
+  Future<void> get readStarted => _readStarted!.future;
+
+  void releaseRead() => _readGate!.complete();
+
   @override
   Future<LastKnownIdentity?> read() async {
+    final started = _readStarted;
+    final gate = _readGate;
+    if (started != null && gate != null) {
+      started.complete();
+      await gate.future;
+      _readStarted = null;
+      _readGate = null;
+    }
     callLog.add('read');
     return _current;
   }

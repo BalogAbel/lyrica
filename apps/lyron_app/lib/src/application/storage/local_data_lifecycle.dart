@@ -175,6 +175,42 @@ class LocalDataLifecycle {
   final _inFlightResolutions =
       <String, Future<MembershipRevocationResolution>>{};
 
+  // Review fix (Task 4.3): _inFlightResolutions above only dedups identical
+  // CONCURRENT resolveVerifiedEmptyMembership calls into a single execution
+  // -- it says nothing about ordering that execution against
+  // clearMembershipRevocation or writeIdentity for the SAME userId. Both of
+  // those also read-then-write (or just write) the same identity row, so
+  // without a shared serialization point a straggling stale read from one
+  // could clobber a newer write from another, or -- worse -- resurrect a row
+  // a concurrent confirmed-purge just deleted. Every identity-row mutation
+  // below is scheduled through this per-userId chain via
+  // [_scheduleIdentityMutation] instead of running immediately, so mutations
+  // for the SAME userId always execute one at a time, in the order they were
+  // scheduled, regardless of which method they came from. Never cleaned up
+  // (unlike [_inFlightResolutions]): a resolved entry is cheap to chain onto
+  // and the map is bounded by the number of distinct userIds a single
+  // LocalDataLifecycle instance ever sees (in practice 0-2 per device), so
+  // there is no meaningful leak to guard against.
+  final _identityMutationChain = <String, Future<void>>{};
+
+  /// Runs [operation] only after every previously scheduled identity
+  /// mutation for [userId] has finished (successfully or not), and makes
+  /// every later call for the same [userId] wait for THIS one in turn.
+  /// [operation] itself must never call a PUBLIC identity-mutating method
+  /// on `this` (e.g. [writeIdentity]) for the same [userId] -- that would
+  /// re-enter this same chain slot and deadlock, since the outer call
+  /// cannot finish (and free the slot) until the inner call does. Internal
+  /// callers use the `_...Unlocked` variants instead.
+  Future<T> _scheduleIdentityMutation<T>(
+    String userId,
+    Future<T> Function() operation,
+  ) {
+    final previous = _identityMutationChain[userId] ?? Future<void>.value();
+    final scheduled = previous.then((_) => operation());
+    _identityMutationChain[userId] = scheduled.then((_) {}, onError: (_) {});
+    return scheduled;
+  }
+
   Future<void> purgeSongCatalog({
     required String userId,
     required PurgeReason reason,
@@ -232,8 +268,27 @@ class LocalDataLifecycle {
     );
   }
 
-  /// Not a purge -- no reason required, no audit record.
-  Future<void> writeIdentity(LastKnownIdentity identity) async {
+  /// Not a purge -- no reason required, no audit record. Review fix (Task
+  /// 4.3): scheduled through [_scheduleIdentityMutation] so a bare write
+  /// from a caller like `auth_providers.dart`'s `persistIdentity` can never
+  /// interleave with a concurrent [clearMembershipRevocation] or
+  /// [resolveVerifiedEmptyMembership] read-then-write for the SAME userId
+  /// -- whichever was scheduled first completes first, and the later one
+  /// always sees the earlier one's result rather than stale data.
+  Future<void> writeIdentity(LastKnownIdentity identity) {
+    return _scheduleIdentityMutation(
+      identity.userId,
+      () => _writeIdentityUnlocked(identity),
+    );
+  }
+
+  /// The actual write, without acquiring [_scheduleIdentityMutation]'s
+  /// per-userId slot -- for internal call sites (e.g.
+  /// [_resolveVerifiedEmptyMembership], [_clearMembershipRevocationUnlocked])
+  /// that already hold that slot for this userId; calling the public
+  /// [writeIdentity] from inside one of those would deadlock (see
+  /// [_scheduleIdentityMutation]'s doc).
+  Future<void> _writeIdentityUnlocked(LastKnownIdentity identity) async {
     await _identityStore.write(identity);
     _noteLastKnownIdentity(identity);
   }
@@ -290,11 +345,19 @@ class LocalDataLifecycle {
     final inFlight = _inFlightResolutions[userId];
     if (inFlight != null) return inFlight;
 
-    final resolution = _resolveVerifiedEmptyMembership(
-      userId: userId,
-      email: email,
-      countPendingWork: countPendingWork,
-      requestConfirmation: requestConfirmation,
+    // Review fix (Task 4.3): scheduled through _scheduleIdentityMutation,
+    // not called directly, so this (deduped) execution also serializes
+    // against a concurrent clearMembershipRevocation or writeIdentity call
+    // for the same userId -- not just against other resolveVerifiedEmpty
+    // Membership calls, which _inFlightResolutions above already handles.
+    final resolution = _scheduleIdentityMutation(
+      userId,
+      () => _resolveVerifiedEmptyMembership(
+        userId: userId,
+        email: email,
+        countPendingWork: countPendingWork,
+        requestConfirmation: requestConfirmation,
+      ),
     );
     _inFlightResolutions[userId] = resolution;
     // Only remove THIS execution's own entry: guards against a pathological
@@ -351,7 +414,21 @@ class LocalDataLifecycle {
   /// See [recordMembershipRevocationCleared] for the audit-only sibling
   /// used by a caller that has already written the cleared identity itself
   /// as part of a larger write it was making anyway.
-  Future<void> clearMembershipRevocation({required String userId}) async {
+  ///
+  /// Review fix (Task 4.3): this reads then writes the identity row, so it
+  /// is scheduled through [_scheduleIdentityMutation] like every other
+  /// identity mutation -- without that, a straggling stale read here could
+  /// clobber a newer [writeIdentity] write, or resurrect a row a concurrent
+  /// [resolveVerifiedEmptyMembership]-driven purge just legitimately
+  /// deleted.
+  Future<void> clearMembershipRevocation({required String userId}) {
+    return _scheduleIdentityMutation(
+      userId,
+      () => _clearMembershipRevocationUnlocked(userId),
+    );
+  }
+
+  Future<void> _clearMembershipRevocationUnlocked(String userId) async {
     final existing = await _identityStore.read();
     if (existing == null || existing.userId != userId) {
       return;
@@ -367,7 +444,11 @@ class LocalDataLifecycle {
       updatedAt: existing.updatedAt,
       membershipRevokedAt: null,
     );
-    await writeIdentity(cleared);
+    // Unlocked variant: this method already runs inside the per-userId slot
+    // clearMembershipRevocation opened for it above -- calling the public
+    // writeIdentity here would try to re-acquire that same slot and
+    // deadlock.
+    await _writeIdentityUnlocked(cleared);
     unawaited(
       _recordQuarantineBestEffort(
         target: PurgeTarget.identity,
@@ -476,7 +557,11 @@ class LocalDataLifecycle {
             membershipRevokedAt: revokedAt,
           );
 
-    await writeIdentity(quarantined);
+    // Unlocked variant: this method already runs inside the per-userId slot
+    // _scheduleIdentityMutation opened for it (see resolveVerifiedEmpty
+    // Membership above) -- calling the public writeIdentity here would try
+    // to re-acquire that same slot and deadlock.
+    await _writeIdentityUnlocked(quarantined);
     unawaited(
       _recordQuarantineBestEffort(
         target: PurgeTarget.identity,
