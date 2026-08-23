@@ -186,6 +186,30 @@ class DriftLocalDataEventsStore
         );
   }
 
+  /// YELLOW 3 (final whole-branch review, D5.4): records that an authorized
+  /// purge did not run -- the diagnostic explaining why. `reason` carries
+  /// [MembershipRevocationPurgeDeclineReason.name], following the same
+  /// generic-`reason`-column reuse `recordRejectedEmptySnapshot` set for a
+  /// non-`PurgeReason` event.
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'membership-revocation-purge-declined',
+            target: 'identity',
+            reason: Value(reason.name),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
   @override
   Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
     // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`

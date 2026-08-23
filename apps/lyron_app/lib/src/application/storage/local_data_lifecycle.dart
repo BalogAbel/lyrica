@@ -78,6 +78,34 @@ final class MembershipRevocationPurgeAuthorized
   final DateTime markedAt;
 }
 
+/// YELLOW 3 (final whole-branch review, D5.4): why an authorized purge
+/// (two counted confirmations) did not run in
+/// [LocalDataLifecycle.maybePurgeForMembershipRevocation]. Distinguished so
+/// the audit trail -- the diagnostic explaining why a purge that was
+/// authorized did not happen -- can tell these apart, not merely record
+/// that it didn't happen.
+enum MembershipRevocationPurgeDeclineReason {
+  /// The user explicitly declined the confirmation dialog.
+  cancelled,
+
+  /// A newer prompt superseded this one before it was answered.
+  superseded,
+
+  /// [ReauthPromptController.requestConfirmation] could not show a prompt
+  /// (a different prompt was already pending) and threw `StateError`.
+  promptUnavailable,
+
+  /// On re-entry, the identity row no longer exists, belongs to a
+  /// different user, or carries a different `membershipRevokedAt` than the
+  /// one this decision was authorized against (D5.5 rule 3) -- a
+  /// concurrent non-empty resolution or another purge changed the premise.
+  markerChanged,
+
+  /// On re-entry, the pending-work count is unknown or grew past the count
+  /// named to the user in the confirmation dialog (D5.5 rule 3).
+  pendingWorkIncreased,
+}
+
 /// The durable audit trail for [LocalDataLifecycle]'s purges.
 ///
 /// The real Drift-backed implementation is a later task; this interface
@@ -133,6 +161,19 @@ abstract interface class LocalDataEventsRecorder {
   /// a device that reached one confirmation and then recovered leaves no
   /// trace of it at all.
   Future<void> recordMembershipRevocationCleared({required String userId});
+
+  /// YELLOW 3 (final whole-branch review, D5.4): records that a purge
+  /// [maybePurgeForMembershipRevocation] authorized (two counted
+  /// confirmations) did NOT run -- cancelled or dismissed, superseded, the
+  /// confirmation prompt could not be shown, or the purge's premises no
+  /// longer held on re-entry. Not a purge -- no [PurgeReason] applies --
+  /// but this is the diagnostic that explains why an authorized purge did
+  /// not happen; without it, the audit trail is silent on the exact cases
+  /// D5.4 exists to make safe.
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  });
 }
 
 /// D7: the single gate every local-data purge primitive must be reached
@@ -496,13 +537,32 @@ class LocalDataLifecycle {
         // A different prompt is already pending (closeout yellow risk 3,
         // e.g. a concurrent different-user reauth prompt). Not a
         // confirmation -- abort without deleting anything.
+        unawaited(
+          _recordMembershipRevocationPurgeDeclinedBestEffort(
+            userId,
+            MembershipRevocationPurgeDeclineReason.promptUnavailable,
+          ),
+        );
         return false;
       }
       switch (result) {
         case ReauthPromptResult.confirmed:
           break;
         case ReauthPromptResult.cancelled:
+          unawaited(
+            _recordMembershipRevocationPurgeDeclinedBestEffort(
+              userId,
+              MembershipRevocationPurgeDeclineReason.cancelled,
+            ),
+          );
+          return false;
         case ReauthPromptResult.superseded:
+          unawaited(
+            _recordMembershipRevocationPurgeDeclinedBestEffort(
+              userId,
+              MembershipRevocationPurgeDeclineReason.superseded,
+            ),
+          );
           return false;
       }
     }
@@ -514,11 +574,23 @@ class LocalDataLifecycle {
             markedAt: markedAt,
           );
       if (!premisesHold) {
+        unawaited(
+          _recordMembershipRevocationPurgeDeclinedBestEffort(
+            userId,
+            MembershipRevocationPurgeDeclineReason.markerChanged,
+          ),
+        );
         return false;
       }
       if (initialCount != null) {
         final currentCount = await countPendingWork();
         if (currentCount == null || currentCount > initialCount) {
+          unawaited(
+            _recordMembershipRevocationPurgeDeclinedBestEffort(
+              userId,
+              MembershipRevocationPurgeDeclineReason.pendingWorkIncreased,
+            ),
+          );
           return false;
         }
       }
@@ -609,6 +681,34 @@ class LocalDataLifecycle {
             'failed to write a local_data_events audit record for a '
             'membership-revocation marker that was already cleared for '
             '$userId -- the clear itself is unaffected',
+          ),
+        ),
+      );
+    }
+  }
+
+  /// YELLOW 3: mirrors [_recordBestEffort]'s failure isolation for the
+  /// declined-purge audit trail -- a failure writing this record must never
+  /// make the (already-correct) decision not to purge look like it failed.
+  Future<void> _recordMembershipRevocationPurgeDeclinedBestEffort(
+    String userId,
+    MembershipRevocationPurgeDeclineReason reason,
+  ) async {
+    try {
+      await _eventsRecorder.recordMembershipRevocationPurgeDeclined(
+        userId: userId,
+        reason: reason,
+      );
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'LocalDataLifecycle',
+          context: ErrorDescription(
+            'failed to write a local_data_events audit record for a '
+            'declined membership-revocation purge ($reason) for $userId -- '
+            'the decision not to purge is unaffected',
           ),
         ),
       );

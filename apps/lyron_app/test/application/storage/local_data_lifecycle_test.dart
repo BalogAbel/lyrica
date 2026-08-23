@@ -1071,6 +1071,115 @@ void main() {
         expect(reportedErrors.single.exception, isA<StateError>());
       },
     );
+
+    // YELLOW 3 (final whole-branch review, D5.4): "Cancelled or dismissed
+    // -> nothing is deleted, the marker stays set, an audit record is
+    // written." Every path that declines an authorized purge must write
+    // one, distinguishing why.
+    test(
+      'writes a membership-revocation-purge-declined audit record naming '
+      'the reason for every way an authorized purge can be declined',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+
+        // Each decline path below leaves the marker set (D5.4), so re-drive
+        // a fresh two-confirmation cycle for the next path by explicitly
+        // clearing first -- a no-op the one time (markerChanged) the
+        // previous path already cleared it itself. The monotonic clock is
+        // advanced by a fresh 60s each time rather than reset, matching
+        // D5.3's "never operand in a duration comparison against wall
+        // time" contract this suite already follows elsewhere.
+        Future<DateTime> authorizeFreshCycle() async {
+          await lifecycle.clearMembershipRevocation(userId: 'u1');
+          final first = await lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'u1',
+          );
+          expect(first, isA<MembershipRevocationMarkerRecorded>());
+          monotonicElapsed += const Duration(seconds: 60);
+          final second = await lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'u1',
+          );
+          expect(second, isA<MembershipRevocationPurgeAuthorized>());
+          return (second as MembershipRevocationPurgeAuthorized).markedAt;
+        }
+
+        // cancelled
+        var markedAt = await authorizeFreshCycle();
+        await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 1,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.cancelled,
+        );
+
+        // superseded
+        markedAt = await authorizeFreshCycle();
+        await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 1,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.superseded,
+        );
+
+        // promptUnavailable (StateError from requestConfirmation)
+        markedAt = await authorizeFreshCycle();
+        await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 1,
+          requestConfirmation: ({required pendingCount}) async =>
+              throw StateError('a different prompt is already pending'),
+        );
+
+        // markerChanged (premise mismatch on re-entry) -- countPendingWork
+        // must be nonzero so the confirmation dialog actually opens (D5.4:
+        // a zero count purges without a dialog at all, which would skip
+        // the concurrent-clear this scenario simulates).
+        markedAt = await authorizeFreshCycle();
+        await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 1,
+          requestConfirmation: ({required pendingCount}) async {
+            await lifecycle.clearMembershipRevocation(userId: 'u1');
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        // pendingWorkIncreased (count grew past what was named to the user)
+        markedAt = await authorizeFreshCycle();
+        var calls = 0;
+        await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async {
+            calls += 1;
+            return calls == 1 ? 2 : 5;
+          },
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.confirmed,
+        );
+
+        final reasons = eventsRecorder.purgeDeclinedCalls
+            .map((call) => call.reason)
+            .toList();
+        expect(reasons, [
+          MembershipRevocationPurgeDeclineReason.cancelled,
+          MembershipRevocationPurgeDeclineReason.superseded,
+          MembershipRevocationPurgeDeclineReason.promptUnavailable,
+          MembershipRevocationPurgeDeclineReason.markerChanged,
+          MembershipRevocationPurgeDeclineReason.pendingWorkIncreased,
+        ]);
+        expect(
+          eventsRecorder.purgeDeclinedCalls.every((call) => call.userId == 'u1'),
+          isTrue,
+        );
+      },
+    );
   });
 }
 
@@ -1560,4 +1669,24 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
     }
     membershipRevocationClearedCalls.add(userId);
   }
+
+  final List<_RecordedPurgeDeclineCall> purgeDeclinedCalls =
+      <_RecordedPurgeDeclineCall>[];
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {
+    purgeDeclinedCalls.add(
+      _RecordedPurgeDeclineCall(userId: userId, reason: reason),
+    );
+  }
+}
+
+class _RecordedPurgeDeclineCall {
+  const _RecordedPurgeDeclineCall({required this.userId, required this.reason});
+
+  final String userId;
+  final MembershipRevocationPurgeDeclineReason reason;
 }

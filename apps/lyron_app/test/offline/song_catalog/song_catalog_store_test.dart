@@ -3043,6 +3043,12 @@ class _RecordingLocalDataEventsRecorderForEviction
   Future<void> recordMembershipRevocationCleared({
     required String userId,
   }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }
 
 /// Records every [evictToBudget] call without touching a real database, so

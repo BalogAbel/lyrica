@@ -448,6 +448,12 @@ class _NoopLocalDataEventsRecorderForLifecycle
   Future<void> recordMembershipRevocationCleared({
     required String userId,
   }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {

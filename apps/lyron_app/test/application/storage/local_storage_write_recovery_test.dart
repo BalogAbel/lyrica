@@ -433,4 +433,10 @@ class _FakeEventsRecorder implements LocalDataEventsRecorder {
   Future<void> recordMembershipRevocationCleared({
     required String userId,
   }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }

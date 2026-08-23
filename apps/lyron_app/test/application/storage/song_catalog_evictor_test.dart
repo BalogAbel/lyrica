@@ -1256,4 +1256,12 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
   }) async {
     throw UnimplementedError('not exercised by the evictor audit tests');
   }
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {
+    throw UnimplementedError('not exercised by the evictor audit tests');
+  }
 }
