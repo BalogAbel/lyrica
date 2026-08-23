@@ -71,4 +71,19 @@ abstract interface class LastKnownIdentityStore {
   /// a marker was actually cleared, so an ordinary sign-in that finds no
   /// marker writes no spurious audit row.
   Future<bool> clearMembershipRevocation({required String userId});
+
+  /// D5.5 rule 3: one atomic, ownership-checked read used to re-validate a
+  /// purge decision's premises after the confirmation dialog has been
+  /// awaited outside [LocalDataLifecycle]'s serialization chain. Returns
+  /// `true` only if the stored row still exists, still belongs to [userId],
+  /// AND still carries a `membershipRevokedAt` equal to [markedAt] -- the
+  /// exact token the earlier [resolveEmptyMembership] call handed back.
+  /// `false` on any mismatch (no row, different owner, marker cleared or
+  /// moved), which is exactly the signal that a concurrent non-empty
+  /// resolution -- or any other identity mutation -- must be able to cancel
+  /// a pending purge.
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  });
 }

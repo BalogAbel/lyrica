@@ -128,6 +128,19 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
     });
   }
 
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async {
+    final row = await _readRow();
+    if (row == null || row.userId != userId) {
+      return false;
+    }
+    final marker = row.membershipRevokedAt;
+    return marker != null && marker.isAtSameMomentAs(markedAt);
+  }
+
   Future<LastKnownIdentityRow?> _readRow() {
     return (_database.select(
       _database.lastKnownIdentityRows,

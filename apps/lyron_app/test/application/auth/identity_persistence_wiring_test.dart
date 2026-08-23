@@ -564,7 +564,7 @@ void main() {
       expect(await priorPlanningProjectionStillPresent(), isTrue);
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect(prompt.pending!.email, 'user1@example.com');
+      expect((prompt.pending! as ReauthDifferentUserPrompt).email, 'user1@example.com');
 
       prompt.answer(false);
       await pump();
@@ -758,8 +758,8 @@ void main() {
 
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect(prompt.pending!.email, 'user1@example.com');
-      expect(prompt.pending!.pendingCount, 3);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).email, 'user1@example.com');
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
       expect(seenUserId, 'user-1');
       // Nothing destroyed yet -- confirmation has not resolved.
       expect(identityStore.clearCount, 0);
@@ -1053,7 +1053,7 @@ void main() {
         // Uncertainty took the confirm path...
         expect(prompt.pending, isNotNull);
         // ...as an honest unknown, never a fabricated number...
-        expect(prompt.pending!.pendingCount, isNull);
+        expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, isNull);
         // ...never the silent-wipe path.
         expect(identityStore.clearCount, 0);
         expect(identityStore.writes, isEmpty);
@@ -1106,7 +1106,7 @@ void main() {
       await pump();
 
       expect(promptController.pending, isNotNull);
-      expect(promptController.pending!.email, 'user0@example.com');
+      expect((promptController.pending! as ReauthDifferentUserPrompt).email, 'user0@example.com');
       final staleRequestId = promptController.pending!.requestId;
 
       authRepository.emit(
@@ -1132,7 +1132,7 @@ void main() {
         isTrue,
       );
       expect(promptController.pending?.requestId, isNot(staleRequestId));
-      expect(promptController.pending?.email, 'user0@example.com');
+      expect((promptController.pending as ReauthDifferentUserPrompt?)?.email, 'user0@example.com');
     });
 
     test('supersession while the pending-work count is blocked prevents a '
@@ -1547,6 +1547,19 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
     }
     _membershipRevokedAt = null;
     return true;
+  }
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async {
+    final current = _current;
+    if (current == null || current.userId != userId) {
+      return false;
+    }
+    final marker = _membershipRevokedAt;
+    return marker != null && marker.isAtSameMomentAs(markedAt);
   }
 }
 

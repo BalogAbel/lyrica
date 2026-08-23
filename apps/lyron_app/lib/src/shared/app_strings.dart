@@ -26,6 +26,16 @@ class AppStrings {
       'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
   static const reauthConfirmWipeAction = 'Folytatás';
   static const reauthCancelAction = 'Mégse';
+  static const membershipRevocationPurgeTitle =
+      'A szervezeti tagságod megszűnt.';
+  static String membershipRevocationPurgePendingMessage({
+    required int count,
+  }) =>
+      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet, beleértve $count mentetlen változtatást is.';
+  static const membershipRevocationPurgeUnknownPendingMessage =
+      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet. A mentetlen változtatások pontos száma nem állapítható meg, de a folytatás ezeket is törli.';
+  static const membershipRevocationPurgeConfirmAction = 'Törlés';
+  static const membershipRevocationPurgeCancelAction = 'Mégse';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';

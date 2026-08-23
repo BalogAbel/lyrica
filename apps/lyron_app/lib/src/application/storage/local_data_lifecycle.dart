@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
@@ -295,24 +296,35 @@ class LocalDataLifecycle {
     required PurgeReason reason,
     String? userId,
   }) {
-    return _runOnChain(() async {
-      if (userId != null) {
-        final current = await _identityStore.read();
-        if (current == null || current.userId != userId) {
-          return;
-        }
+    return _runOnChain(() => _clearIdentityLocked(reason: reason, userId: userId));
+  }
+
+  /// The body [clearIdentity] runs as one link of [_runOnChain]. Extracted
+  /// so [maybePurgeForMembershipRevocation] -- which is already executing
+  /// inside its own chain link when it needs to clear the identity row --
+  /// can call this directly instead of re-entering [_runOnChain], which
+  /// would deadlock (a chain link can never wait on a second enqueue of
+  /// itself; see that method's doc).
+  Future<void> _clearIdentityLocked({
+    required PurgeReason reason,
+    String? userId,
+  }) async {
+    if (userId != null) {
+      final current = await _identityStore.read();
+      if (current == null || current.userId != userId) {
+        return;
       }
-      await _identityStore.clear();
-      _noteLastKnownIdentity(null);
-      _resetMembershipRevocationTracking();
-      unawaited(
-        _recordBestEffort(
-          target: PurgeTarget.identity,
-          reason: reason,
-          userId: userId,
-        ),
-      );
-    });
+    }
+    await _identityStore.clear();
+    _noteLastKnownIdentity(null);
+    _resetMembershipRevocationTracking();
+    unawaited(
+      _recordBestEffort(
+        target: PurgeTarget.identity,
+        reason: reason,
+        userId: userId,
+      ),
+    );
   }
 
   /// Not a purge -- no reason required, no audit record.
@@ -424,6 +436,106 @@ class LocalDataLifecycle {
       }
       _resetMembershipRevocationTracking();
       unawaited(_recordMembershipRevocationClearedBestEffort(userId));
+    });
+  }
+
+  /// D5.4/D5.5 -- Step 2: consumes a [MembershipRevocationPurgeAuthorized]
+  /// outcome from [resolveVerifiedEmptyMembership] and runs (or correctly
+  /// declines to run) the actual purge.
+  ///
+  /// Shape, per D5.5 rule 2 ("no user interaction inside the chain"):
+  /// 1. Inside the chain: read the current pending-work count.
+  /// 2. Outside the chain (no chain slot held): if the count is nonzero or
+  ///    unknown (`null`), await [requestConfirmation]. Zero skips this step
+  ///    entirely -- no dialog.
+  /// 3. Re-enter the chain: re-validate that the identity row still exists,
+  ///    still belongs to [userId], and still carries a
+  ///    `membershipRevokedAt` equal to [markedAt] (D5.5 rule 3) -- a
+  ///    concurrent non-empty resolution, a different-user write, or another
+  ///    purge must be able to cancel this one. Also re-validate that the
+  ///    current pending-work count is no greater than the count the
+  ///    confirmation named (an unknown/`null` count at step 1 is never
+  ///    compared numerically here -- it was already the maximally-cautious
+  ///    case at step 2, so nothing stricter to re-check). Any mismatch
+  ///    aborts: nothing is deleted, the marker is left exactly as found.
+  /// 4. On a genuine go-ahead: purge the song catalog, planning data, and
+  ///    identity row for [userId], each through the existing primitives
+  ///    with `PurgeReason.membershipRevokedConfirmed`, each with its own
+  ///    audit record.
+  ///
+  /// [requestConfirmation] must never be awaited while holding a chain slot
+  /// -- an unanswered dialog would otherwise block every other identity
+  /// mutation in the app, including the very `clearMembershipRevocation`
+  /// call a concurrent non-empty resolution needs to cancel this purge (the
+  /// discarded first attempt's root cause -- see the Phase 4 closeout in
+  /// docs/plans/2026-08-19-local-data-durability-contract.md). A prompt that
+  /// cannot be shown -- [ReauthPromptController.requestConfirmation] throws
+  /// `StateError` when a different prompt is already pending -- is treated
+  /// as "not confirmed," never rethrown: a caller reached from a
+  /// fire-and-forget auth listener must not let an uncaught exception vanish
+  /// into the zone (closeout yellow risk 3), and a prompt that could not be
+  /// shown is not a confirmation.
+  ///
+  /// Returns `true` only if a purge actually ran, so callers know whether to
+  /// reset any of their own in-memory read state (ADR-020: reads must not be
+  /// reset on a resolution that deleted nothing).
+  Future<bool> maybePurgeForMembershipRevocation({
+    required String userId,
+    required DateTime markedAt,
+    required Future<int?> Function() countPendingWork,
+    required Future<ReauthPromptResult> Function({required int? pendingCount})
+    requestConfirmation,
+  }) async {
+    final initialCount = await _runOnChain(() => countPendingWork());
+
+    if (initialCount == null || initialCount != 0) {
+      final ReauthPromptResult result;
+      try {
+        result = await requestConfirmation(pendingCount: initialCount);
+      } on StateError {
+        // A different prompt is already pending (closeout yellow risk 3,
+        // e.g. a concurrent different-user reauth prompt). Not a
+        // confirmation -- abort without deleting anything.
+        return false;
+      }
+      switch (result) {
+        case ReauthPromptResult.confirmed:
+          break;
+        case ReauthPromptResult.cancelled:
+        case ReauthPromptResult.superseded:
+          return false;
+      }
+    }
+
+    return _runOnChain(() async {
+      final premisesHold = await _identityStore
+          .hasCurrentMembershipRevocationMarker(
+            userId: userId,
+            markedAt: markedAt,
+          );
+      if (!premisesHold) {
+        return false;
+      }
+      if (initialCount != null) {
+        final currentCount = await countPendingWork();
+        if (currentCount == null || currentCount > initialCount) {
+          return false;
+        }
+      }
+
+      await purgeSongCatalog(
+        userId: userId,
+        reason: PurgeReason.membershipRevokedConfirmed,
+      );
+      await purgePlanningData(
+        userId: userId,
+        reason: PurgeReason.membershipRevokedConfirmed,
+      );
+      await _clearIdentityLocked(
+        reason: PurgeReason.membershipRevokedConfirmed,
+        userId: userId,
+      );
+      return true;
     });
   }
 

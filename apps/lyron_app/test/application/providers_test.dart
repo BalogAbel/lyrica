@@ -1595,6 +1595,12 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   @override
   Future<bool> clearMembershipRevocation({required String userId}) async =>
       false;
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async => false;
 }
 
 class _MutablePlanningRepository implements PlanningRepository {

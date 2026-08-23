@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
+import 'package:lyron_app/src/presentation/auth/membership_revocation_purge_dialog.dart';
 import 'package:lyron_app/src/presentation/auth/reauth_different_user_dialog.dart';
 
 /// Mounted in `MaterialApp.router`'s `builder:`, wrapping the routed child.
@@ -98,11 +99,19 @@ class _ReauthPromptHostState extends ConsumerState<ReauthPromptHost> {
     _dialogOpen = true;
     final bool confirmed;
     try {
-      confirmed = await showReauthDifferentUserDialog(
-        context,
-        email: prompt.email,
-        pendingCount: prompt.pendingCount,
-      );
+      switch (prompt) {
+        case ReauthDifferentUserPrompt():
+          confirmed = await showReauthDifferentUserDialog(
+            context,
+            email: prompt.email,
+            pendingCount: prompt.pendingCount,
+          );
+        case MembershipRevocationPurgePrompt():
+          confirmed = await showMembershipRevocationPurgeDialog(
+            context,
+            pendingCount: prompt.pendingCount,
+          );
+      }
     } finally {
       _dialogOpen = false;
     }

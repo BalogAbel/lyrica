@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -651,6 +652,387 @@ void main() {
       expect(eventsRecorder.purgeCalls.single.reason, reason);
     }
   });
+
+  // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035 Phase 4, Task 4.2): maybePurgeForMembershipRevocation.
+  group('maybePurgeForMembershipRevocation', () {
+    // Drives a userId to a MembershipRevocationPurgeAuthorized decision --
+    // two counted confirmations, cooldown-separated, in the same process --
+    // and returns the markedAt token that decision carries.
+    Future<DateTime> authorizeTwoConfirmations(String userId) async {
+      final first = await lifecycle.resolveVerifiedEmptyMembership(
+        userId: userId,
+      );
+      expect(first, isA<MembershipRevocationMarkerRecorded>());
+      monotonicElapsed = const Duration(seconds: 60);
+      final second = await lifecycle.resolveVerifiedEmptyMembership(
+        userId: userId,
+      );
+      expect(second, isA<MembershipRevocationPurgeAuthorized>());
+      return (second as MembershipRevocationPurgeAuthorized).markedAt;
+    }
+
+    test(
+      '1. a non-empty resolution arriving while the confirmation dialog is '
+      'open cancels the purge',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 2,
+          requestConfirmation: ({required pendingCount}) async {
+            // A concurrent listener's fresh, online, non-empty resolution
+            // lands while this dialog is still open.
+            await lifecycle.clearMembershipRevocation(userId: 'u1');
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      '2. pending work appearing while the dialog is open aborts the '
+      'purge rather than discarding it implicitly',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        var calls = 0;
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async {
+            calls += 1;
+            // Named 2 at decision time; grown to 5 by the time the purge
+            // re-validates, after the dialog closed.
+            return calls == 1 ? 2 : 5;
+          },
+          requestConfirmation: ({required pendingCount}) async {
+            expect(pendingCount, 2);
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.membershipRevokedAt, isNotNull);
+      },
+    );
+
+    test(
+      '3. the dialog cancelled -> nothing deleted, the marker stays set',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 3,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.cancelled,
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+        expect(identityStore.membershipRevokedAt, isNotNull);
+      },
+    );
+
+    test(
+      '3b. the dialog dismissed (also reported as cancelled by the host) '
+      '-> nothing deleted, the marker stays set -- a later counted '
+      'confirmation may ask again',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => null,
+          requestConfirmation: ({required pendingCount}) async {
+            expect(pendingCount, isNull);
+            return ReauthPromptResult.cancelled;
+          },
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.membershipRevokedAt, isNotNull);
+      },
+    );
+
+    test(
+      '4. a StateError from requestConfirmation (a different prompt already '
+      'pending) aborts without deleting anything and without an exception '
+      'escaping',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 4,
+          requestConfirmation: ({required pendingCount}) async =>
+              throw StateError(
+                'A reauth prompt is already pending; cannot request a '
+                'second one before the first is answered.',
+              ),
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.membershipRevokedAt, isNotNull);
+      },
+    );
+
+    test(
+      '5. ReauthPromptResult.superseded -> nothing deleted',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 1,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.superseded,
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      '6. a session/organization change (a different-user identity write) '
+      'between the two resolutions -> no purge',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        // A different user signs in on this device before the purge is
+        // applied -- the stored row no longer belongs to u1.
+        await lifecycle.writeIdentity(
+          const LastKnownIdentity(userId: 'u2', email: 'b@x', organizationId: null),
+        );
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 0,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.confirmed,
+        );
+
+        expect(purged, isFalse);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      '7. across a process restart, a single confirmation recorded on an '
+      'earlier launch does not by itself purge anything without a further '
+      'resolution',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+        expect(decision, isA<MembershipRevocationMarkerRecorded>());
+
+        // Models a process restart: a fresh LocalDataLifecycle over the
+        // same store, with no in-process tracking and -- critically -- no
+        // further resolution or purge call ever made against it.
+        LocalDataLifecycle(
+          songCatalogStore: songCatalogStore,
+          planningLocalStore: planningLocalStore,
+          identityStore: identityStore,
+          noteLastKnownIdentity: notedIdentities.add,
+          eventsRecorder: eventsRecorder,
+          monotonicNow: () => Duration.zero,
+        );
+
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      '8. after a confirmed purge, a further verified-empty resolution does '
+      'not purge again and does not recreate the identity row',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 0,
+          requestConfirmation: ({required pendingCount}) async =>
+              ReauthPromptResult.confirmed,
+        );
+        expect(purged, isTrue);
+        expect(identityStore.callLog, contains('clear'));
+
+        eventsRecorder.purgeCalls.clear();
+        songCatalogStore.deleteCalls.clear();
+        planningLocalStore.deleteCalls.clear();
+        identityStore.writes.clear();
+
+        final again = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(
+          again,
+          equals(
+            const MembershipRevocationIgnored(
+              MembershipRevocationIgnoredReason.noRow,
+            ),
+          ),
+        );
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        // The identity row was never recreated by the second resolution.
+        expect(identityStore.writes, isEmpty);
+      },
+    );
+
+    test(
+      'Acceptance 5 (first half): two counted confirmations with no '
+      'pending work purge WITHOUT a dialog and write '
+      'membershipRevokedConfirmed audit rows for catalog, planning and '
+      'identity',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        var dialogShown = false;
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 0,
+          requestConfirmation: ({required pendingCount}) async {
+            dialogShown = true;
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        expect(purged, isTrue);
+        expect(dialogShown, isFalse);
+        expect(songCatalogStore.deleteCalls, ['u1']);
+        expect(planningLocalStore.deleteCalls, hasLength(1));
+        expect(planningLocalStore.deleteCalls.single.userId, 'u1');
+        expect(identityStore.callLog, contains('clear'));
+
+        final reasons = eventsRecorder.purgeCalls
+            .map((call) => call.reason)
+            .toSet();
+        expect(reasons, {PurgeReason.membershipRevokedConfirmed});
+        final targets = eventsRecorder.purgeCalls
+            .map((call) => call.target)
+            .toSet();
+        expect(targets, {
+          PurgeTarget.songCatalog,
+          PurgeTarget.planningData,
+          PurgeTarget.identity,
+        });
+      },
+    );
+
+    test(
+      'Acceptance 5 (second half): two counted confirmations with pending '
+      'work wait for the user\'s confirmation, and the confirmation names '
+      'what is lost',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        int? namedCount;
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => 7,
+          requestConfirmation: ({required pendingCount}) async {
+            namedCount = pendingCount;
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        expect(namedCount, 7);
+        expect(purged, isTrue);
+        expect(songCatalogStore.deleteCalls, ['u1']);
+      },
+    );
+
+    test(
+      'an unknown (null) pending-work count is named honestly to the '
+      'dialog, never fabricated as a number, and still purges on confirm',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+
+        int? namedCount = -1;
+        final purged = await lifecycle.maybePurgeForMembershipRevocation(
+          userId: 'u1',
+          markedAt: markedAt,
+          countPendingWork: () async => null,
+          requestConfirmation: ({required pendingCount}) async {
+            namedCount = pendingCount;
+            return ReauthPromptResult.confirmed;
+          },
+        );
+
+        expect(namedCount, isNull);
+        expect(purged, isTrue);
+        expect(songCatalogStore.deleteCalls, ['u1']);
+      },
+    );
+  });
 }
 
 class _RecordingSongCatalogStore implements SongCatalogStore {
@@ -1045,6 +1427,20 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
     }
     _membershipRevokedAt = null;
     return true;
+  }
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async {
+    callLog.add('hasCurrentMembershipRevocationMarker:$userId');
+    final current = _current;
+    if (current == null || current.userId != userId) {
+      return false;
+    }
+    final marker = _membershipRevokedAt;
+    return marker != null && marker.isAtSameMomentAs(markedAt);
   }
 }
 
