@@ -313,6 +313,22 @@ class SongMutationSyncController {
       songId: songId,
       includeConflicts: true,
     );
+    // YELLOW 9 (final whole-branch review, spec D5.6): authorizationDenied
+    // is folded into the same `conflict` status as an ordinary version
+    // conflict (see the comment on the saveSyncAttemptResult call in
+    // _runSync above), which is the one bucket whose UI action is
+    // keepMine -- re-sending via overwriteSong. That makes the row
+    // terminal for the bulk sync pass but not for this user-facing retry.
+    // Refuse here the same way PlanningMutationSyncController.retryMutation
+    // refuses: throw the exception the row already carries rather than
+    // making a wasted round trip guaranteed to fail the same way again.
+    if (record.syncStatus == SongSyncStatus.conflict &&
+        record.errorCode == SongMutationSyncErrorCode.authorizationDenied) {
+      throw SongMutationSyncException(
+        SongMutationSyncErrorCode.authorizationDenied,
+        message: record.errorMessage,
+      );
+    }
     if (record.isRemoteDeletedConflict &&
         record.effectiveSyncStatus == SongSyncStatus.pendingDelete) {
       await _store.deleteSong(

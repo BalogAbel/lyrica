@@ -396,6 +396,52 @@ void main() {
     );
   });
 
+  testWidgets(
+    // YELLOW 9 (final whole-branch review, spec D5.6): keepMine re-sends
+    // via overwriteSong, and discard is a no-op retry affordance too --
+    // neither can help a permanently unauthorized row, so both must be
+    // suppressed. The row itself, and its reason, must still be visible
+    // (the user is told retrying cannot help, not left with no row at
+    // all).
+    'authorizationDenied song row hides Keep mine and Discard mine, but '
+    'still shows the row and its reason',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                songs: const [
+                  UnifiedSyncSongRow(
+                    songId: 's1',
+                    title: 'Hymn',
+                    entityState: SongSyncStatus.conflict,
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.authorizationDenied,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+
+      expect(find.text('Hymn'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('unified-sync-song-keep-s1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('conflict song row Discard mine calls controller', (
     tester,
   ) async {

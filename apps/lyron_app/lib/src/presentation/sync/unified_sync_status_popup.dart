@@ -181,7 +181,17 @@ class _SongRowTile extends ConsumerWidget {
           _ReasonChip(reason: row.reasonCode),
         ],
       ),
-      trailing: row.severity == UnifiedSyncRowSeverity.conflict
+      // YELLOW 9 (final whole-branch review, spec D5.6): authorizationDenied
+      // is folded into the same conflict severity as an ordinary conflict
+      // (unified_sync_overview.dart), which is the one bucket whose actions
+      // are Keep mine / Discard mine -- but neither can help a permanently
+      // unauthorized row (SongMutationSyncController.keepMine now refuses
+      // it, and there is no retry that changes a permanent authorization
+      // rejection). Suppress both affordances; the row and its reason chip
+      // stay visible so the user is told retrying cannot help.
+      trailing:
+          row.severity == UnifiedSyncRowSeverity.conflict &&
+              row.reasonCode != UnifiedSyncReasonCode.authorizationDenied
           ? Wrap(
               spacing: 8,
               children: [

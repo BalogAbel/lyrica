@@ -369,6 +369,59 @@ void main() {
     );
 
     test(
+      // YELLOW 9 (final whole-branch review, spec D5.6): a row terminally
+      // rejected as authorizationDenied lands in the same `conflict`
+      // bucket as an ordinary version conflict, whose UI action is
+      // keepMine -- so keepMine must refuse to re-send it, the same way
+      // PlanningMutationSyncController.retryMutation already refuses.
+      // Without this, D5.6's "stop being retried" guarantee is terminal
+      // for the bulk sync pass but not for this user-facing retry.
+      'keep mine refuses to re-send a permanently unauthorized row',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.authorizationDenied,
+              conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository();
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await expectLater(
+          () => controller.keepMine(
+            const SongMutationContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            songId: 'song-1',
+          ),
+          throwsA(
+            isA<SongMutationSyncException>().having(
+              (error) => error.code,
+              'code',
+              SongMutationSyncErrorCode.authorizationDenied,
+            ),
+          ),
+        );
+
+        expect(repository.overwriteCalls, 0);
+      },
+    );
+
+    test(
       'keep mine accepts deletion when remote-delete conflict came from pending delete',
       () async {
         final store = _FakeSongMutationStore(
