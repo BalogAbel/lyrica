@@ -24,9 +24,28 @@ class LastKnownIdentityDatabase extends _$LastKnownIdentityDatabase {
   }
 
   @override
-  MigrationStrategy get migration =>
-      MigrationStrategy(onCreate: (m) async => m.createAll());
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) async => m.createAll(),
+    // schemaVersion 1 was the initial shipped schema; no historical column
+    // delta exists before this. This is this database's first onUpgrade
+    // delta -- never rely on createAll() to bring an existing installation
+    // forward.
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        // D5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+        // ADR-035 Phase 4): every pre-migration row predates the
+        // membership-revocation marker, so it has no empty resolution in
+        // flight to distinguish from -- nullable, defaulting to null on
+        // upgrade, is the correct starting state (the same as a freshly
+        // inserted row).
+        await m.addColumn(
+          lastKnownIdentityRows,
+          lastKnownIdentityRows.membershipRevokedAt,
+        );
+      }
+    },
+  );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 }
