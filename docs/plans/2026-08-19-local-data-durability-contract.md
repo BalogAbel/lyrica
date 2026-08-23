@@ -555,9 +555,41 @@ review.
 rules file existed or was needed. `flutter build apk --debug` verified
 green. Decision and consequence already recorded in ADR-035's D8 section.
 
----
+## Task 4.5 — Refresh the committed knowledge graph
 
-## Verification before each merge
+**Files:** `graphify-out/`
+
+`graphify-out/` was last rebuilt in PR #72, before this slice started; Phases
+2-4 (PR #73-75 plus this phase) all left it untouched, so it was unaware of
+every seam those phases introduced.
+
+- [x] Run `graphify . --update` (via the `/graphify` skill's own pipeline —
+  the raw CLI needs a provider API key for the semantic/doc pass that no key
+  in this environment has; the skill instead uses the host session's own
+  model, dispatched as Task-tool subagents, model haiku for cost).
+- [x] Spot-check that the new seams resolve: `graphify explain
+  "storage_local_data_lifecycle_localdatalifecycle"` resolves the node as the
+  sole `implements` source for `purgeSongCatalog`, `purgePlanningData`,
+  `clearIdentity`, `writeIdentity`, `resolveVerifiedEmptyMembership`, and
+  `clearMembershipRevocation` — the post-Phase-2/4 gate, not direct primitive
+  calls.
+- [x] Commit as its own commit, separate from code (`d5454ee`).
+
+10092 nodes (was 9650), 13843 edges, 611 communities (all labeled via 6
+parallel haiku subagents batching ~100 communities each). **Bug found and
+worked around, not yet fixed upstream:** `references/update.md`'s own
+reference script passes both `deleted` and `changed` files into
+`build_merge`'s `prune_sources` — but `build_merge` already replaces a
+changed file's stale contribution internally (its own docstring: "Files
+absent from new_chunks are preserved unchanged; deleted files are removed
+via prune_sources"). Passing `changed` files into `prune_sources` too means:
+insert fresh nodes for a changed file → then immediately re-remove those same
+fresh nodes in the `prune_sources` pass, since their `source_file` matches.
+First attempt at this task silently produced a 4178-node graph (vs. the
+correct 10092) with every changed file's fresh nodes deleted — caught by a
+before/after node-count sanity check, not by any error or warning from the
+tool itself. Fixed by passing only genuinely-deleted files (empty in this
+run) into `prune_sources`.
 
 - [ ] `flutter analyze` clean.
 - [ ] `flutter test` green, including the acceptance tests introduced so far.
