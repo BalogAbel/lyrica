@@ -251,6 +251,17 @@ class SongCatalogController extends ChangeNotifier {
         return;
       }
       _verifiedEmptyMembershipSeen = true;
+      // YELLOW 7 fix (final whole-branch review, D5.5 rule 4): `session`
+      // was captured at the top of this method, before the awaited
+      // organization lookup above. _isStale(generation) does not assert
+      // session identity -- re-read and compare immediately before
+      // entering the purge gate, so a resolution captured under one user
+      // can never purge a different user's data after that user signed in
+      // during the await.
+      final currentSession = _authSessionReader();
+      if (currentSession == null || currentSession.userId != session.userId) {
+        return;
+      }
       final handler = _onVerifiedEmptyMembership;
       // D5.4/D5.5 -- Step 2: a single verified-empty resolution must never
       // reset a still-intact catalog to empty (ADR-020: reads are
