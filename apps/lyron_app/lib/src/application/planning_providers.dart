@@ -31,13 +31,9 @@ typedef VerifiedEmptyMembershipCleanupHandler =
     Future<void> Function({required String userId});
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
-  VerifiedEmptyMembershipCleanupCoordinator({
-    required this._localDataLifecycle,
-    required this._invalidateLastKnownIdentityPersistence,
-  });
+  VerifiedEmptyMembershipCleanupCoordinator({required this._localDataLifecycle});
 
   final LocalDataLifecycle _localDataLifecycle;
-  final void Function() _invalidateLastKnownIdentityPersistence;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -48,56 +44,39 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
     _handlers.remove(handler);
   }
 
-  Future<void> handleVerifiedEmptyMembership({required String userId}) {
-    _invalidateLastKnownIdentityPersistence();
-    final handlers = _handlers.toList(growable: false);
-    final planningCleanup = handlers.isEmpty
-        ? _deletePlanningDataWithoutRegisteredHandler(userId: userId)
-        : _runRegisteredPlanningCleanupHandlers(
-            userId: userId,
-            handlers: handlers,
-          );
-
-    // This is the real membershipRevokedConfirmed handler: the gate mirrors
-    // the durable clear into AppAuthController's in-memory cache only after
-    // the clear itself has actually succeeded, not before it -- updating the
-    // cache first would let it observe a purge that never durably committed
-    // if the store write then failed (see the class-level note on
-    // AppAuthController._identity).
-    final identityClear = _localDataLifecycle.clearIdentity(
-      reason: PurgeReason.membershipRevokedConfirmed,
+  // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Phase 4, Task 4.1 -- Step 1 of 2): this used to purge the song catalog,
+  // planning data, and the identity row on a SINGLE verified-empty
+  // resolution -- exactly the single-confirmation purge D5 exists to
+  // prevent. It now only routes the resolution through
+  // LocalDataLifecycle's two-confirmation gate and stops: the registered
+  // planning cleanup handlers may not run unless a purge actually happened,
+  // and Step 1 deliberately never lets one happen (see
+  // resolveVerifiedEmptyMembership's doc). A later step consumes
+  // MembershipRevocationPurgeAuthorized to run the real purge, the pending-
+  // work check, and the confirmation dialog (D5.4).
+  Future<void> handleVerifiedEmptyMembership({required String userId}) async {
+    final decision = await _localDataLifecycle.resolveVerifiedEmptyMembership(
       userId: userId,
     );
-
-    return Future.wait([
-      planningCleanup,
-      _localDataLifecycle.purgeSongCatalog(
-        userId: userId,
-        reason: PurgeReason.membershipRevokedConfirmed,
-      ),
-      identityClear,
-    ]);
-  }
-
-  Future<void> _runRegisteredPlanningCleanupHandlers({
-    required String userId,
-    required List<VerifiedEmptyMembershipCleanupHandler> handlers,
-  }) {
-    return Future.wait([
-      for (final handler in handlers) handler(userId: userId),
-    ]);
-  }
-
-  Future<void> _deletePlanningDataWithoutRegisteredHandler({
-    required String userId,
-  }) {
-    // Production wiring registers PlanningSyncController so it owns planning
-    // cleanup and state reset. This direct store delete is only the fallback
-    // for verified-empty calls that happen before that handler is active.
-    return _localDataLifecycle.purgePlanningData(
-      userId: userId,
-      reason: PurgeReason.membershipRevokedConfirmed,
-    );
+    switch (decision) {
+      case MembershipRevocationIgnored():
+      case MembershipRevocationMarkerRecorded():
+        return;
+      case MembershipRevocationPurgeAuthorized():
+        // TODO(Step 2): consume this outcome to run the actual purge
+        // (song catalog + planning data + identity row, each through
+        // LocalDataLifecycle with PurgeReason.membershipRevokedConfirmed),
+        // gated on the pending-work check and confirmation dialog D5.4
+        // requires, re-validating this decision's premises on re-entry per
+        // D5.5 rule 3. Step 1 intentionally deletes nothing here. Step 2
+        // must also reintroduce a way to invalidate
+        // lastKnownIdentityPersistenceEpochProvider once the identity row
+        // is actually cleared, mirroring what this coordinator used to do
+        // unconditionally via an injected invalidation callback -- removed
+        // here because Step 1 never reaches this branch's deletion.
+        return;
+    }
   }
 }
 
@@ -105,9 +84,6 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
     Provider<VerifiedEmptyMembershipCleanupCoordinator>((ref) {
       return VerifiedEmptyMembershipCleanupCoordinator(
         localDataLifecycle: ref.watch(localDataLifecycleProvider),
-        invalidateLastKnownIdentityPersistence: () {
-          ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
-        },
       );
     });
 

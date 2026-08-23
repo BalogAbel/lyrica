@@ -236,19 +236,32 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 organizationId: organizationId,
               );
               await lifecycle.writeIdentity(identity);
+              // D5.2 (docs/specs/2026-08-19-local-data-durability-contract
+              // .md, ADR-035 Phase 4): a fresh, online, authenticated
+              // ActiveOrganizationSelected is a genuinely non-empty
+              // resolution -- the only thing that clears an outstanding
+              // membership-revocation marker. A no-op (no audit record) when
+              // there was no marker to clear, so an ordinary sign-in never
+              // writes a spurious audit row.
+              await lifecycle.clearMembershipRevocation(
+                userId: session.userId,
+              );
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              // This is a single fresh verifiedEmpty membership resolution
-              // at sign-in time -- the closest of the 4 documented
-              // PurgeReasons, though D5's "two consecutive confirmations
-              // before purge" quarantine gate is not yet built (that's
-              // Phase 4) -- this call only ever clears the identity row,
-              // never the song catalog or planning data, so its blast
-              // radius stays small even before Phase 4 lands.
-              await lifecycle.clearIdentity(
-                reason: PurgeReason.membershipRevokedConfirmed,
+              // D5 (docs/specs/2026-08-19-local-data-durability-contract
+              // .md, ADR-035 Phase 4, Task 4.1 -- Step 1 of 2): a single
+              // fresh, online, authenticated verifiedEmpty resolution no
+              // longer purges anything by itself. It is routed through
+              // LocalDataLifecycle's two-confirmation gate, which records
+              // (or re-confirms, past a cooldown) the membershipRevokedAt
+              // marker and returns a decision. Step 1 deliberately never
+              // acts on MembershipRevocationPurgeAuthorized -- no purge
+              // executes here yet; a later step wires the actual deletion
+              // (with its own pending-work check and confirmation dialog,
+              // D5.4) onto that outcome.
+              await lifecycle.resolveVerifiedEmptyMembership(
                 userId: session.userId,
               );
             case ActiveOrganizationUnknownConnectivityFailure():

@@ -141,8 +141,17 @@ void main() {
     );
   });
 
+  // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Phase 4, Task 4.1 -- Step 1 of 2): these two tests used to prove that a
+  // SINGLE verified-empty membership resolution purged the planning
+  // projection, the song catalog, and its pending mutations end to end --
+  // exactly the single-confirmation purge D5 exists to prevent. They now
+  // prove the opposite invariant Step 1 requires through the same full
+  // provider graph: a single resolution deletes nothing at all, and
+  // everything stays readable.
   test(
-    'verified empty membership on the planning boundary clears song caches too',
+    'verified empty membership on the planning boundary leaves planning and '
+    'song data intact after one resolution',
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
@@ -211,33 +220,37 @@ void main() {
       );
       await controller.refresh();
 
+      // The active planning context clears (no organization resolved), but
+      // nothing was deleted -- one verified-empty resolution only records
+      // the membership-revocation marker (D5.1/D5.2).
       expect(controller.state, isNull);
       expect(
         await planningStore.hasProjection(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         await songStore.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        isNotEmpty,
       );
       expect(
         await songStore.readSongMutations(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        isNotEmpty,
       );
     },
   );
 
   test(
-    'verified empty membership on the song catalog path invalidates planning sync before clearing song caches',
+    'verified empty membership on the song catalog path leaves planning and '
+    'song data intact after one resolution',
     () async {
       final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
       final authController = AppAuthController(_SignedInAuthRepository());
@@ -305,31 +318,38 @@ void main() {
       final controller = container.read(songCatalogControllerProvider);
       await controller.refreshCatalog();
 
+      // The catalog context clears (no organization resolved), but nothing
+      // was deleted. planningSyncStateProvider's accessStatus is left
+      // exactly as it was before this resolution -- Step 1 no longer runs
+      // PlanningSyncController.handleVerifiedEmptyMembership's state reset
+      // on a first resolution (that reset only belongs to an actual purge,
+      // which does not happen here); with no organization ever resolved in
+      // this test, that status never left its signedOut default.
       expect(controller.state.context, isNull);
       expect(
         container.read(planningSyncStateProvider).accessStatus,
-        PlanningAccessStatus.signedIn,
+        PlanningAccessStatus.signedOut,
       );
       expect(
         await planningStore.hasProjection(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         await songStore.readActiveSummaries(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        isNotEmpty,
       );
       expect(
         await songStore.readSongMutations(
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        isEmpty,
+        isNotEmpty,
       );
     },
   );
@@ -1566,6 +1586,15 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<void> clear() async {
     value = null;
   }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
 }
 
 class _MutablePlanningRepository implements PlanningRepository {

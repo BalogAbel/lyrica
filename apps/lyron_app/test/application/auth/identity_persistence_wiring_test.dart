@@ -210,8 +210,20 @@ void main() {
     },
   );
 
+  // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Phase 4, Task 4.1 -- Step 1 of 2): VerifiedEmptyMembershipCleanupCoordinator
+  // used to purge the identity row (and catalog/planning data) on a SINGLE
+  // verified-empty resolution -- exactly the single-confirmation purge D5
+  // exists to prevent. These three tests used to prove properties of that
+  // purge (an epoch bump that discarded a stale concurrent write, a
+  // synchronous controller-cache clear, and a durable-clear failure leaving
+  // the cache untouched); they now prove the opposite invariant Step 1
+  // requires -- that a single resolution deletes nothing at all -- per the
+  // task instructions that explicitly call out this call site.
   test(
-    'stale signedIn persistence does not rewrite after verified-empty cleanup',
+    'a single verified-empty resolution records the marker and does not '
+    'clear the identity, so a concurrent legitimate resolution is not '
+    'discarded',
     () async {
       final membershipLookup = Completer<ActiveOrganizationResolution>();
       authRepository.currentSession = const AppAuthSession(
@@ -250,19 +262,21 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
 
-      expect(identityStore.writes, isEmpty);
-      expect(identityStore.clearCount, 1);
+      // Nothing was deleted -- the marker was recorded (a first
+      // confirmation), and the concurrent org-selected resolution wrote
+      // normally, unimpeded.
+      expect(identityStore.clearCount, 0);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.organizationId, 'org-selected');
       expect(authController.state.status, AppAuthStatus.signedIn);
     },
   );
 
-  test('verified-empty cleanup clears the controller cache so a later null '
-      'session maps to signedOut, not sessionExpired', () async {
+  test('a single verified-empty resolution does not clear the controller '
+      'cache -- a later null session still maps to sessionExpired, exactly '
+      'as it would with no marker at all', () async {
     // Seed the controller with a prior identity, the same way
-    // 'sessionExpired does not clear the stored identity' does, so a null
-    // session would map to sessionExpired if the cache were never
-    // updated -- isolating the coordinator's own cache write as the thing
-    // under test.
+    // 'sessionExpired does not clear the stored identity' does.
     identityStore.seed(
       const LastKnownIdentity(
         userId: 'user-1',
@@ -309,23 +323,24 @@ void main() {
         .handleVerifiedEmptyMembership(userId: 'user-1');
     await Future<void>.delayed(Duration.zero);
 
-    expect(identityStore.clearCount, 1);
-    // The purge must be visible to the controller's cache synchronously
-    // with the durable clear, not just eventually -- see the class-level
-    // note on AppAuthController._identity.
-    expect(authController.lastKnownIdentity, isNull);
+    // Step 1: a single resolution deletes nothing at all -- the identity
+    // row, and therefore the controller's cache of it, is untouched.
+    expect(identityStore.clearCount, 0);
+    expect(authController.lastKnownIdentity, isNotNull);
 
     authRepository.emit(null);
     await Future<void>.delayed(Duration.zero);
     await Future<void>.delayed(Duration.zero);
 
-    expect(authController.state.status, AppAuthStatus.signedOut);
+    // The identity was never cleared, so this is the offline-authenticated
+    // path (D2/D3), not a genuine sign-out.
+    expect(authController.state.status, AppAuthStatus.sessionExpired);
   });
 
-  test("verified-empty cleanup's durable-clear failure leaves the "
-      'controller cache untouched -- PR #73 review finding 2: the cache '
-      'must not be nulled before the durable clear it mirrors has actually '
-      'succeeded', () async {
+  test('a resolveEmptyMembership storage failure propagates and leaves the '
+      'controller cache untouched -- mirrors PR #73 review finding 2 for '
+      "the gate's own atomic operation: a failure must never look like it "
+      'committed', () async {
     identityStore.seed(
       const LastKnownIdentity(
         userId: 'user-1',
@@ -367,7 +382,7 @@ void main() {
 
     expect(authController.lastKnownIdentity, isNotNull);
 
-    identityStore.throwOnClear = true;
+    identityStore.throwOnResolveEmptyMembership = true;
     await expectLater(
       container
           .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
@@ -375,9 +390,6 @@ void main() {
       throwsStateError,
     );
 
-    // The durable clear never actually committed -- the cache must not
-    // have been nulled either, or it would diverge from a store that
-    // still (as far as this failure proves) holds the old identity.
     expect(identityStore.clearCount, 0);
     expect(authController.lastKnownIdentity, isNotNull);
     expect(authController.lastKnownIdentity?.userId, 'user-1');
@@ -1415,6 +1427,7 @@ void main() {
 
 class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   LastKnownIdentity? _current;
+  DateTime? _membershipRevokedAt;
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   int clearCount = 0;
   Completer<void>? _clearStarted;
@@ -1434,6 +1447,11 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   /// throwing clear leaves both exactly as they were, never recorded as if
   /// it had applied.
   bool throwOnClear = false;
+
+  /// Makes the NEXT [resolveEmptyMembership] throw instead of applying, to
+  /// model a storage failure on the D5 gate's own atomic read-and-decide
+  /// operation.
+  bool throwOnResolveEmptyMembership = false;
 
   Future<void> get clearStarted => _clearStarted!.future;
 
@@ -1472,6 +1490,9 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
     }
     callLog.add('write:${identity.userId}');
     writes.add(identity);
+    if (_current?.userId != identity.userId) {
+      _membershipRevokedAt = null;
+    }
     _current = identity;
   }
 
@@ -1491,6 +1512,41 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
     callLog.add('clear');
     clearCount += 1;
     _current = null;
+    _membershipRevokedAt = null;
+  }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async {
+    if (throwOnResolveEmptyMembership) {
+      throw StateError('storage failure: resolveEmptyMembership');
+    }
+    final current = _current;
+    if (current == null || current.userId != userId) {
+      return const EmptyMembershipResolutionIgnored();
+    }
+    final existingMarker = _membershipRevokedAt;
+    if (existingMarker != null) {
+      return EmptyMembershipResolutionSecondConfirmationAvailable(
+        markedAt: existingMarker,
+      );
+    }
+    final markedAt = DateTime.now().toUtc();
+    _membershipRevokedAt = markedAt;
+    return EmptyMembershipResolutionMarkerRecorded(markedAt: markedAt);
+  }
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async {
+    final current = _current;
+    if (current == null ||
+        current.userId != userId ||
+        _membershipRevokedAt == null) {
+      return false;
+    }
+    _membershipRevokedAt = null;
+    return true;
   }
 }
 
