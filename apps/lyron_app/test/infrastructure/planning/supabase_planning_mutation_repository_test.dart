@@ -398,6 +398,50 @@ void main() {
     );
   });
 
+
+  // The `permission denied` match is narrowed to the full PostgreSQL phrase
+  // so an unrelated error that merely quotes those two words is not
+  // misclassified as permanently unauthorized.
+  test(
+    'does NOT map an unrelated message merely quoting "permission denied" to '
+    'authorizationDenied -- it stays retryable',
+    () async {
+      final repository = SupabasePlanningMutationRepository.testing(
+        rpc: (name, {params}) async {
+          throw const PostgrestException(
+            message:
+                'planning_import_failed: the source said "permission denied" '
+                'in its header',
+            code: 'P0001',
+          );
+        },
+      );
+
+      await expectLater(
+        () => repository.syncMutation(
+          organizationId: 'org-1',
+          record: PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Weekend Service',
+            baseVersion: 1,
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ),
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (error) => error.code,
+            'code',
+            isNot(PlanningMutationSyncErrorCode.authorizationDenied),
+          ),
+        ),
+      );
+    },
+  );
+
   test(
     'maps a "permission denied" message with no structured code to '
     'authorizationDenied',

@@ -140,9 +140,16 @@ class SupabasePlanningMutationRepository
     }
     if (error is PostgrestException) {
       final message = error.message.toLowerCase();
-      // spec D5.6 / ADR-035: `403`, PostgreSQL `42501`, and a bare
-      // `permission denied` message all mean the server knows the caller
-      // and the caller lacks the right -- permanent, terminal. `401` is
+      // spec D5.6 / ADR-035: `403`, PostgreSQL `42501`, and a
+      // `permission denied for ...` message all mean the server knows the
+      // caller and the caller lacks the right -- permanent, terminal.
+      //
+      // The message match is deliberately narrowed to the full PostgreSQL
+      // phrase (`permission denied for table/schema/function ...`) rather
+      // than a bare `permission denied` substring, so an unrelated
+      // `RAISE EXCEPTION` quoting those two words is not misclassified as
+      // permanently unauthorized. See the same comment in
+      // `supabase_song_mutation_repository.dart`. `401` is
       // deliberately NOT folded in here (unlike
       // `SongCatalogController._isAuthorizationFailure`, which collapses
       // 401/403/42501/permission-denied for a different decision where
@@ -152,7 +159,7 @@ class SupabasePlanningMutationRepository
       if (error.code == '42501' ||
           error.code == '403' ||
           message.contains('not_authorized') ||
-          message.contains('permission denied')) {
+          message.contains('permission denied for')) {
         return PlanningMutationSyncException(
           PlanningMutationSyncErrorCode.authorizationDenied,
           message: error.message,
