@@ -313,7 +313,7 @@ gaps surfaced (not fixed, out of this task's scope; recorded in ADR-035):
 the `ActiveOrganizationVerifiedEmpty` identity-clear in
 `auth_providers.dart`'s sign-in resolution is labelled
 `membershipRevokedConfirmed` as the closest fit, ahead of D5's
-two-confirmation quarantine gate (Phase 4).
+two-confirmation purge gate (Phase 4).
 
 ## Task 2.4 — Architecture test
 
@@ -436,46 +436,296 @@ unfiltered column, unchanged; it is not repurposed into a pointer.
 
 ---
 
-# Phase 4 — Membership-revocation quarantine (D5, D8)
+# Phase 4 — Membership-revocation purge gate (D5, D8)
 
-**Branch:** `feat/membership-revocation-quarantine`
+**Branch (first attempt, discarded):** `feat/membership-revocation-quarantine`
+**Branch (re-scope):** `fix/membership-revocation-confirmation`
 
 Closes F4 and F6. The only phase that adds a genuinely destructive path.
 
-## Task 4.1 — Quarantine on first empty resolution
+Phase 4 was attempted once as a read-only quarantine, reviewed, and found to
+have six real concurrency defects. That implementation was discarded and the
+phase re-scoped. The closeout of the first attempt is carried forward verbatim
+below, ahead of the re-scoped tasks, because it is the specification for what
+must not happen again. Its `file:line` references are against the archived
+branch `feat/membership-revocation-quarantine` (HEAD `c70834f`), not against
+`main`.
 
-**Files:** `planning_providers.dart`, `song_catalog_controller.dart`, store
-migration for `membershipRevokedAt`, tests
+## Phase 4 closeout: Tasks 4.1-4.3 superseded, re-scope required
 
-- [ ] Write a failing test: one `verifiedEmpty` resolution deletes nothing and
-  records the quarantine marker.
-- [ ] Implement read-only quarantine: data remains readable, writes are blocked,
-  a banner explains why.
+**Status as of this closeout: Tasks 4.1-4.3's implementation is complete,
+reviewed, and committed (`8a87c05` through `7d21efc`, plus fixes), but the
+final whole-branch review (opus, `cavecrew-reviewer`) found the underlying
+concurrency design does not satisfy D5's two-confirmation guarantee. Do not
+build on top of this implementation. A fresh session re-scopes Tasks 4.1-4.3
+from the spec; this section is written so that session doesn't need this
+conversation's context to act.** Task 4.4 (Android backup) is unaffected and
+ships separately (see below). Task 4.5 (knowledge graph refresh) is complete
+and unaffected.
 
-## Task 4.2 — Confirmed purge
+### Root cause
 
-**Files:** same, plus `LocalDataLifecycle`
+Two design choices compound into the failure, neither wrong in isolation:
 
-- [ ] Write a failing test: two consecutive fresh online empty resolutions with no
-  pending work purge via `membershipRevokedConfirmed` and write the audit row.
-- [ ] Write a failing test: pending work present → the purge waits for user
-  confirmation. Acceptance 5.
-- [ ] Reuse the existing confirmation host rather than adding a second dialog
-  owner (ADR-029).
+1. **The identity mutation chain (`LocalDataLifecycle._identityMutationChain`,
+   `_inFlightResolutions`) is keyed by `userId`.** But
+   `LastKnownIdentityStore` is a single global row (`DriftLastKnownIdentityStore`,
+   `rowId: 1` — there is exactly one "last known identity" per device, by
+   design, per the spec's confirmed-out-of-scope multi-account decision). Two
+   different `userId`s therefore mutate the *same underlying row* through
+   *different* lock keys — the keying assumes per-user state the storage
+   doesn't have, so it serializes nothing across a user change.
+2. **The confirmation dialog (`requestConfirmation`, backed by
+   `ReauthPromptController`/`ReauthPromptHost`) is awaited from inside
+   `resolveVerifiedEmptyMembership` while that call still holds its
+   `_identityMutationChain` slot.** Any other same-key writer — critically,
+   `clearMembershipRevocation`, which is exactly the call a concurrent
+   *non-empty* resolution makes to say "false alarm, membership is back" —
+   queues *behind* the pending confirmation instead of being able to
+   invalidate it. The dialog can resolve `true` on a premise the app has
+   already disproved online, and nothing re-checks state between the await
+   and the purge.
 
-## Task 4.3 — Clearing quarantine
+Neither of these is what ADR-029's `ReauthPromptController` pattern does
+(D3/Hazard 3 there rechecks currentness after every await boundary before a
+destructive action) — the Phase 4 work re-used the *host* (correctly, per
+ADR-035 Gap 3) but not that pattern's currentness-recheck discipline.
 
-- [ ] Any subsequent non-empty membership resolution clears the marker and
-  restores normal operation, with an audit record.
+### The six red findings (genuine paths to a purge with fewer than two real confirmations, or other correctness failures)
+
+All file:line references are against the final state of `feat/membership-revocation-quarantine`
+(commit `7d21efc` and earlier; the closeout/graph commits after it touch none
+of this code).
+
+1. **`local_data_lifecycle.dart:536-542`** — no re-validation between
+   `requestConfirmation` returning `true` and the purge triple running.
+   Sequence: gate #2 for user A opens the confirmation dialog and holds A's
+   chain slot. Membership is restored server-side. `SongCatalogController`'s
+   independent periodic refresh gets a fresh, online, non-empty resolution
+   and calls `clearMembershipRevocation(A)` — which queues *behind* the
+   held slot instead of cancelling it. User taps confirm. Full purge runs
+   under `membershipRevokedConfirmed` for a membership the app has already
+   verified, online, is present.
+2. **`auth_providers.dart:226` + `:337-339`** — the unknown-failure/
+   connectivity-failure branch writes back `membershipRevokedAt` from a
+   `priorIdentity` snapshot read *before* the RPC, not from current state.
+   Sequence: marker set at T0. A concurrent verified-non-empty resolution
+   legitimately clears it at T1. A stale connectivity-failure branch,
+   already in flight since before T1, completes at T1.5 and re-writes the
+   marker from its T0 snapshot. A single verified-empty resolution after
+   that is read as "the second confirmation," even though a genuine
+   non-empty sat between the two empties — violates D5's "two *consecutive*"
+   requirement.
+3. **`local_data_lifecycle.dart:197`** — the per-`userId` keying itself (see
+   Root cause #1): two different users' writes to the single global identity
+   row are completely unserialized against each other.
+4. **`local_data_lifecycle.dart:292`** (`_clearIdentityUnlocked`) — clears
+   the identity row unconditionally, with no check that the stored row still
+   belongs to the caller's `userId`. Combined with #3's cross-user gap, a
+   stale confirmation for user A can delete user B's identity row.
+5. **`local_data_lifecycle.dart:581-594`** (the `matchesCaller == false`
+   branch) — writes a *new* quarantine identity row when none exists for the
+   caller, or overwrites a different user's row when one does. Two
+   consequences: (a) after a confirmed purge deletes the row, a live
+   session's periodic refresh can resolve verified-empty again (nothing
+   stops the refresh timer post-purge), recreate the row via this branch,
+   and reach a *second* silent purge (pending count now genuinely `0`) —
+   repeating every refresh interval indefinitely; (b) a stale resolution
+   captured under user A's identity, evaluated after B has since signed in,
+   writes A's data into the single-row store, corrupting B's displayed
+   identity.
+6. **No call site in `lib/` catches `MembershipQuarantinedException`** — grep
+   confirms only the two throw sites exist. ADR-035 Gap 2 promised the
+   presentation layer catches it and shows a distinct message; it does not.
+   A blocked write during quarantine currently surfaces as an uncaught
+   exception — in at least one call site (`song_list_screen.dart:137`) inside
+   an `unawaited` future, so it vanishes into the zone with no user-visible
+   feedback and the user's edit is silently lost.
+
+### Three yellow risks (lower severity, still real)
+
+- **Deadlock.** The confirmation await is held inside the chain slot with no
+  timeout. If the dialog never resolves (app backgrounded before the user
+  answers; `ReauthPromptHost` can return early on an unmounted host without
+  calling `answer`), every subsequent identity mutation for that `userId` —
+  including `wipePriorAndProceedFor`'s `clearIdentity` call on the
+  different-user sign-in path — hangs permanently. Only a superseding prompt
+  rescues it.
+- **Quarantine-entry cache reset contradicts D5's "read-only, not
+  read-blocked."** `SongCatalogController`, `PlanningSyncController`, and
+  `ActivePlanningContextController` all reset their in-memory context to
+  empty/`null` on the *first* (quarantine-only) resolution, not just on a
+  confirmed purge. The user sees an empty library and no plans during
+  quarantine — visually indistinguishable from the purge D5 exists to defer,
+  even though nothing has actually been deleted yet.
+- **`ReauthPromptController`'s `StateError` is reachable**, contrary to its
+  class doc, because `_inFlightResolutions` only dedups the quarantine
+  prompt variant per-`userId` — it does not exclude a concurrent
+  `ReauthDifferentUserPrompt` for a different user racing in via the
+  cross-user path above.
+
+### Decision: drop the read-only quarantine UX, keep D5's purge gate
+
+The re-scope keeps D5's core requirement — two consecutive fresh, online,
+authenticated empty resolutions, with no pending work or explicit
+confirmation, before any purge — but drops the *intermediate read-only
+quarantine state* (Task 4.1's `membershipRevokedAt`-marker-blocks-writes
+design) entirely. The purge gate becomes a two-hit counter that either
+purges on the second hit or doesn't; it no longer puts the device into a
+distinct, user-visible "quarantined, editing disabled" state between the two
+hits.
+
+**Rationale.** A *false* quarantine entry — reachable through any of the six
+findings above, or simply through the ordinary variance of two independent
+concurrent listeners racing on one sign-in edge — locks a legitimately
+member-in-good-standing user out of editing, with no offline way to clear it
+(clearing requires a second *online* resolution). On a stage/rehearsal
+device, exactly the scenario this whole durability contract exists to
+protect, that lockout is worse than the narrow window it was meant to close:
+a revoked member editing locally for the brief period before the second
+online confirmation lands. Critically, **the quarantine was never what
+protected the data** — backend RLS already rejects an unauthorized member's
+writes (`has_capability`-gated policies on the songs/plans tables require an
+active membership row; a revoked member's sync attempts already fail
+authorization server-side, unchanged by anything in this phase). The local
+quarantine only ever added a client-side UX affordance and a new way to
+lock out a legitimate user; it did not add a security boundary AGENTS.md
+rule 5 already requires to live server-side.
+
+### One open item the re-scope must cover
+
+A mutation queued locally before authorization was revoked can now never
+sync — the backend will reject it with a permanent `403`/authorization
+failure, not a transient one. Nothing in the current sync/retry machinery
+distinguishes "will succeed if retried" from "will never succeed, ever,
+because the actor's authorization was permanently revoked." The re-scope
+must define a stop-and-tell-the-user behaviour for this case: detect a
+permanent-authorization-failure response, stop retrying that specific
+mutation (do not spin forever), and surface it to the user rather than
+failing silently or leaving it queued forever with no explanation. This
+generalizes beyond membership revocation — it applies to any permanent `403`
+a queued mutation can receive (e.g. a capability grant revoked mid-flight for
+an unrelated reason), so the re-scope should design it as a general
+"queued mutation received a permanent authorization rejection" handler, not
+a membership-revocation-specific one.
+
+---
+
+## Re-scoped Phase 4 tasks
+
+Scope after the re-scope: the read-only quarantine UX is dropped entirely (spec
+D5.0, ADR-035). What survives is D5's two-confirmation purge gate. Reading and
+editing are unchanged in every state this phase can reach.
+
+The concurrency model is prescribed by spec D5.5 and ADR-035 up front, not
+derived task by task. Deviating from it is a stop condition, not a judgment
+call.
+
+## Task 4.1 — The marker and the gate
+
+**Files:** `last_known_identity_tables.dart`, `last_known_identity_database.dart`
+(v1 → v2 `onUpgrade`), `last_known_identity.dart`,
+`drift_last_known_identity_store.dart`, `local_data_lifecycle.dart`,
+`auth_providers.dart`, `planning_providers.dart`, tests
+
+- [ ] Write the negative tests first: one `verifiedEmpty` resolution deletes
+  nothing; a second one inside the cooldown deletes nothing; a second one after
+  a session change, an organization change, or an intervening non-empty
+  resolution deletes nothing; the marker survives a process restart without
+  becoming a second confirmation on its own.
+- [ ] Write a failing test: an offline, connectivity-failure, unknown-failure or
+  expired-session resolution neither sets nor clears the marker.
+- [ ] Add `membershipRevokedAt` (nullable) to `LastKnownIdentityRows`, with an
+  explicit v1 → v2 `onUpgrade` delta and a migration test that populates a v1
+  database and asserts no row is lost. Never `createAll`.
+- [ ] Add `LastKnownIdentityStore.resolveEmptyMembership({userId, now})`: one
+  atomic operation that reads the row, verifies it belongs to `userId`, and
+  either records the marker or reports that the cooldown-separated second
+  confirmation has been reached. Generalises Phase 3's `resolveEmptySnapshot`
+  shape (ADR-035); it does not reuse Phase 3's column, and the ADR states why.
+- [ ] Add `LastKnownIdentityStore.clearMembershipRevocation({userId})`, ownership
+  checked, reporting whether a marker was actually cleared (so no spurious audit
+  rows on ordinary sign-ins).
+- [ ] Route every counted resolution through `LocalDataLifecycle` on its single
+  global serialization chain. No `userId` keying.
+- [ ] A freshly verified non-empty resolution clears the marker with an audit
+  record; nothing else clears it.
+
+## Task 4.2 — Confirmation and purge
+
+**Files:** `local_data_lifecycle.dart`, `auth_providers.dart`,
+`planning_providers.dart`, `reauth_prompt_controller.dart`,
+`reauth_prompt_host.dart`, a new dialog, tests
+
+- [ ] Write a failing test: two counted confirmations with no pending work purge
+  via `membershipRevokedConfirmed` and write the audit rows.
+- [ ] Write a failing test: pending work present → the purge waits for the user's
+  confirmation, and the confirmation names what is lost. Acceptance 5.
+- [ ] Write a failing test: a non-empty resolution arriving while the
+  confirmation dialog is open cancels the purge.
+- [ ] Write a failing test: pending work appearing while the dialog is open
+  aborts the purge rather than discarding it implicitly.
+- [ ] Implement: decision inputs read inside the chain, dialog awaited outside
+  it, premises re-validated on re-entry, purge executed inside it.
+- [ ] Reuse ADR-029's `ReauthPromptController`/`ReauthPromptHost`; do not add a
+  second dialog owner.
+- [ ] Fix `auth_providers.dart`'s `persistNewIdentity` `ActiveOrganizationVerifiedEmpty`
+  branch, which today clears the identity under
+  `PurgeReason.membershipRevokedConfirmed` on a single resolution, and
+  `VerifiedEmptyMembershipCleanupCoordinator.handleVerifiedEmptyMembership`,
+  which today purges everything on a single resolution. Both become callers of
+  the gate.
+- [ ] Phase 2's architecture test stays green with its allow-list unwidened.
+
+## Task 4.3 — Permanently unauthorized queued mutations
+
+**Files:** `supabase_song_mutation_repository.dart`,
+`supabase_planning_mutation_repository.dart`, the two mutation sync
+controllers, the unified sync surface, tests
+
+- [ ] Write a failing test: a queued mutation rejected with a permanent
+  authorization failure is not retried again and is visible to the user with a
+  reason that says it can never succeed.
+- [ ] Classify permanent authorization rejections (including a bare HTTP 403,
+  not only the RLS `42501` path already mapped) as terminal, and confirm no
+  retry path re-sends them.
+- [ ] Surface them; do not fail silently and do not leave them queued forever
+  with no explanation.
+- [ ] General to any permanent authorization rejection, not specific to
+  membership revocation.
 
 ## Task 4.4 — Android backup determinism (D8)
 
 **Files:** `apps/lyron_app/android/app/src/main/AndroidManifest.xml`
 
-- [ ] Set `android:allowBackup="false"`, or add data-extraction rules keeping the
+- [x] Set `android:allowBackup="false"`, or add data-extraction rules keeping the
   session store and the SQLite databases in one backup set.
-- [ ] Note the choice and its consequence (no cloud restore of local catalogs) in
+- [x] Note the choice and its consequence (no cloud restore of local catalogs) in
   ADR-035.
+
+Landed independently of D5 as PR #76 (`android:allowBackup="false"`; no
+data-extraction rules file was needed). Recorded in ADR-035's D8 section.
+
+## Task 4.5 — Refresh the committed knowledge graph
+
+**Files:** `graphify-out/`
+
+`graphify-out/` was last rebuilt in PR #72, before Phases 2-4 introduced their
+seams. The refresh performed during the first Phase 4 attempt indexed the
+discarded quarantine implementation and lives only on the archived branch, so it
+describes code that will never exist.
+
+- [ ] Run `graphify . --update` per `docs/workflows/ai-development.md:50`.
+- [ ] Spot-check `graphify explain "LocalDataLifecycle"` and
+  `graphify query "what deletes local song catalog data"` against the post-slice
+  architecture.
+- [ ] Commit separately from the code — it is a multi-megabyte generated
+  artifact and mixing it in makes the code commit unreviewable.
+- [ ] Sanity-check the node count before and after: `references/update.md`'s own
+  reference script passes changed files into `prune_sources` as well as deleted
+  ones, which silently deletes every changed file's freshly-inserted nodes. Pass
+  only genuinely deleted files. The first attempt produced a 4178-node graph
+  instead of ~10000 this way, with no error or warning from the tool.
 
 ---
 

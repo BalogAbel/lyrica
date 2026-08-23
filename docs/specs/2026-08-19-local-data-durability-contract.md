@@ -277,14 +277,154 @@ read path itself no longer depends on anything that can expire.
 Confirmed with the product owner 2026-08-19: it is acceptable for a genuinely
 deleted song to remain visible locally until the second confirmation arrives.
 
-### D5 — `verifiedEmpty` quarantines before it purges
+### D5 — `verifiedEmpty` is confirmed twice before it purges, and never quarantines
 
-The first empty-membership resolution records `membershipRevokedAt` locally and
-places the data in a read-only quarantine. It deletes nothing. The purge
-(`membershipRevokedConfirmed`) runs only when both hold:
+An empty membership resolution is the server's claim that the signed-in user
+belongs to no organization. Acting on one such claim is F4. D5 makes the purge
+require two of them, separated in time, and nothing else.
 
-1. two consecutive fresh, online, authenticated resolutions report empty, and
-2. there is no pending local work, or the user confirmed the loss.
+#### D5.0 — The read-only quarantine is dropped
+
+An earlier revision of this decision also placed the device in a read-only
+quarantine between the two confirmations: reads allowed, local edits blocked, a
+banner explaining why. **That is dropped, permanently.**
+
+Backend RLS is already what stops a revoked member from writing: the `songs`
+policies require `has_capability(organization_id, 'canEditSongs')`, which
+requires an active membership row, so a revoked member's queued mutation is
+rejected server-side regardless of what the client permits. Authorization lives
+in the backend (AGENTS.md rule 5). The quarantine therefore never protected the
+data; it only prevented a revoked member from making local edits that could
+never have synced.
+
+Against that narrow benefit stands a concrete harm. A *false* quarantine entry —
+one transient empty resolution, or two independent listeners racing on a single
+sign-in edge — locks a member in good standing out of editing, and clearing it
+requires a second *online* resolution the device may be unable to obtain. On a
+stage or rehearsal device, the exact device this whole contract exists to
+protect, that lockout is a worse outcome than the edits it would have prevented.
+
+Consequently, D5 introduces **no** read-only mode, **no** banner, and **no**
+`MembershipQuarantinedException`. Reading and editing are unchanged in every
+state this decision can reach; ADR-020's offline-authenticated read *and* edit
+access is untouched. The only user-visible artefact D5 may produce is the
+confirmation dialog in D5.4, and only immediately before a purge.
+
+#### D5.1 — The marker
+
+A nullable `membershipRevokedAt` timestamp is persisted on the single
+`LastKnownIdentity` row. It is a counter with two states — absent (no empty
+resolution outstanding) and present (exactly one empty resolution outstanding) —
+and nothing else in the app reads it. It survives process restarts, which is
+required: the second confirmation legitimately arrives on a later cold start.
+
+This deliberately generalises Phase 3's `pendingEmptyConfirmationAt` mechanism
+(D4) rather than inventing a second shape. What is reused is the property that
+made Phase 3's version correct: **the marker is read and set in one atomic store
+operation that returns the decision**, never as a read in application code
+followed by a later write. What cannot be reused is the storage location —
+Phase 3's marker lives on a `(userId, organizationId)` snapshot row, and an
+empty *membership* resolution has no organization to key by and must be
+recordable on a device that holds no snapshot at all.
+
+#### D5.2 — Which resolutions count
+
+A resolution counts toward the gate only when it is **fresh, online and
+authenticated**: a live `current_organization_ids()` round trip made under a
+valid session on this launch, returning `ActiveOrganizationVerifiedEmpty`.
+
+Explicitly never counted, and never permitted to write the marker:
+
+- `ActiveOrganizationUnknownConnectivityFailure`
+- `ActiveOrganizationUnknownNonConnectivityFailure`
+- a resolution that threw and was caught (the `null` case)
+- any cached or fallback organization resolution (ADR-016)
+- any offline-authenticated (`sessionExpired`) path
+- any expired-session or re-auth path
+
+A fresh, online, authenticated `ActiveOrganizationSelected` — a genuinely
+non-empty resolution — **clears** the marker, with an audit record. No other
+event clears it. In particular, a connectivity failure neither sets nor clears
+it; it leaves the marker exactly as it found it.
+
+#### D5.3 — Separation between the two confirmations
+
+The two confirmations must be genuinely independent observations, not one
+observation seen twice. Two independent listeners already react to a single
+sign-in edge, and each can issue its own RPC; two empty answers to those two
+calls are two server round trips but only one underlying event, and treating
+them as two confirmations would reduce the gate to a single confirmation in
+ordinary operation.
+
+The second confirmation therefore counts only if it arrives at least
+**`membershipConfirmationCooldown` = 60 seconds** after the marker was set. An
+empty resolution arriving inside that window is a no-op: it does not purge, and
+it does not move the marker. The cooldown is compared against an injectable
+clock so it is deterministically testable.
+
+Delay costs nothing here — during the cooldown the data stays fully readable and
+editable, and the revoked member's writes are already rejected by RLS — while
+the alternative failure mode is a total, unrecoverable local purge.
+
+#### D5.4 — The purge and its confirmation
+
+On a second counted confirmation, the purge (`membershipRevokedConfirmed`) runs
+only when there is **no pending local work**, or the user **explicitly
+confirmed** the loss.
+
+- Pending work count is read at decision time. Zero → purge without a dialog.
+- Nonzero, or unknown because the count could not be read → the user is asked,
+  through ADR-029's existing `ReauthPromptController`/`ReauthPromptHost`. No
+  second dialog owner is introduced. Unknown is treated as nonzero, never as
+  zero (matching ADR-029's existing rule).
+- The dialog names what is lost, including the pending count.
+- Cancelled or dismissed → nothing is deleted, the marker stays set, an audit
+  record is written. A later counted confirmation may ask again.
+
+The purge deletes the song catalog, the planning data, and the identity row for
+that `userId`, each through `LocalDataLifecycle` with
+`PurgeReason.membershipRevokedConfirmed`, each with its audit record.
+
+#### D5.5 — Concurrency model (normative)
+
+The gate's correctness is a concurrency property, so the model is part of the
+decision rather than an implementation detail.
+
+1. **One global serialization chain.** `LastKnownIdentity` is a single global row
+   (`rowId = 1`) and D1 excludes multi-account use of a device. Every identity
+   and marker mutation, for every user, is serialized on one FIFO chain. Keying
+   the chain by `userId` is forbidden: two users' writes would target the same
+   row under different keys and serialize nothing.
+2. **No user interaction inside the chain.** The confirmation dialog is awaited
+   strictly outside it. The chain is entered once to read the decision inputs
+   and exited; it is re-entered to apply the decision.
+3. **Premises are re-validated on re-entry.** The world may have changed while
+   the dialog was open. On re-entry the purge proceeds only if the identity row
+   still exists, still belongs to the acting `userId`, still carries the *same*
+   `membershipRevokedAt` value the decision was made against, and the pending
+   work count is still no greater than the count the user confirmed. Any
+   mismatch aborts the purge without deleting anything — a concurrent
+   non-empty resolution must be able to cancel a pending purge.
+4. **No value read before an await is written after it.** Any state captured
+   before an await is re-read or re-validated before it is used to write.
+5. **No caller may act on another user's row.** Every marker and identity
+   mutation verifies the stored row belongs to the calling `userId` before
+   acting, and is a no-op otherwise. A caller may never create an identity row
+   for a user that does not own the stored one.
+6. **No unbounded wait inside the chain.** Only local store operations run
+   under it.
+
+#### D5.6 — A permanently unauthorized queued mutation stops and says so
+
+A mutation queued before authorization was revoked can never sync: the backend
+rejects it permanently, not transiently. Any queued mutation that receives a
+permanent authorization rejection must stop being retried and must be surfaced
+to the user; it must never retry indefinitely and must never fail silently.
+
+This is deliberately general — it is scoped to any permanent authorization
+rejection a queued mutation can receive, not to membership revocation — and it
+is what makes dropping the quarantine (D5.0) safe from the user's point of view:
+the edits a revoked member makes are not silently lost, they are reported.
 
 ### D6 — Eviction is triggered by storage pressure and is proportionate to it
 
@@ -330,7 +470,8 @@ device must not be representable.
 - **Reworking `SongCatalogController`'s refresh state machine.** Only its
   entry conditions and its snapshot-write decision change.
 - **Introducing multi-account support.** Confirmed out of scope.
-- **Server-side soft delete or undo.** Quarantine (D5) is local only.
+- **Server-side soft delete or undo.** D5's confirmation gate is local
+  only, and it defers a purge rather than making one reversible.
 
 ## Acceptance
 
@@ -342,8 +483,10 @@ device must not be representable.
    survives → zero deletions, songs visible.
 4. `listSongs()` returns empty with HTTP 200 → cache untouched, refresh reports
    the implausible-empty status.
-5. `verifiedEmpty` once → no deletion, quarantine recorded. Twice, with no
+5. `verifiedEmpty` once → no deletion, marker recorded, reading and editing
+   unchanged. A second counted `verifiedEmpty` after the cooldown, with no
    pending work → purge executes with a `membershipRevokedConfirmed` audit row.
+   With pending work → the purge waits for the user's confirmation.
 6. A guarded write throws `SqliteException(BUSY)` → no eviction.
 7. Simulated multi-day offline span with an advanced clock → songs remain
    visible on every cold start.
