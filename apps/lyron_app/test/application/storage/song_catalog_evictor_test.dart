@@ -1242,4 +1242,18 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
   Future<void> recordStorageWriteFailure({String? userId}) async {
     throw UnimplementedError('not exercised by the evictor audit tests');
   }
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {
+    throw UnimplementedError('not exercised by the evictor audit tests');
+  }
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {
+    throw UnimplementedError('not exercised by the evictor audit tests');
+  }
 }

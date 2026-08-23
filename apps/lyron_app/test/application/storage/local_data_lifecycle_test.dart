@@ -16,6 +16,11 @@ void main() {
   late _RecordingLocalDataEventsRecorder eventsRecorder;
   late List<LastKnownIdentity?> notedIdentities;
   late LocalDataLifecycle lifecycle;
+  // A controllable stand-in for D5.3's monotonic clock -- tests advance
+  // this directly instead of sleeping for a real 60 seconds. Never wired to
+  // wall-clock time, matching the constraint the cooldown itself has to
+  // satisfy.
+  late Duration monotonicElapsed;
 
   setUp(() {
     songCatalogStore = _RecordingSongCatalogStore();
@@ -23,12 +28,14 @@ void main() {
     identityStore = _RecordingLastKnownIdentityStore();
     eventsRecorder = _RecordingLocalDataEventsRecorder();
     notedIdentities = <LastKnownIdentity?>[];
+    monotonicElapsed = Duration.zero;
     lifecycle = LocalDataLifecycle(
       songCatalogStore: songCatalogStore,
       planningLocalStore: planningLocalStore,
       identityStore: identityStore,
       noteLastKnownIdentity: notedIdentities.add,
       eventsRecorder: eventsRecorder,
+      monotonicNow: () => monotonicElapsed,
     );
   });
 
@@ -150,14 +157,29 @@ void main() {
   });
 
   group('clearIdentity', () {
+    // D5.5 rule 5 / closeout finding 4: clearIdentity with a non-null
+    // userId now checks ownership first (reads, then clears only if the
+    // stored row belongs to that userId), which is why every test that
+    // supplies a userId now seeds a matching row first. The old
+    // "no internal identity read" behaviour was exactly the bug closeout
+    // finding 4 describes -- see local_data_lifecycle.dart's clearIdentity
+    // doc for why that invariant was deliberately dropped, not preserved.
     test('clears, notes null, and records the caller-supplied userId on the '
-        'audit row -- no internal identity read', () async {
+        'audit row, when the stored row is owned by that userId', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-3',
+          email: 'user3@example.com',
+          organizationId: 'org-3',
+        ),
+      );
+
       await lifecycle.clearIdentity(
         reason: PurgeReason.accountDeleted,
         userId: 'user-3',
       );
 
-      expect(identityStore.callLog, ['clear']);
+      expect(identityStore.callLog, ['read', 'clear']);
       expect(notedIdentities, [null]);
       expect(eventsRecorder.purgeCalls, hasLength(1));
       final recorded = eventsRecorder.purgeCalls.single;
@@ -167,8 +189,42 @@ void main() {
       expect(recorded.rowsAffected, isNull);
     });
 
-    test('when the caller has no userId to supply, records a null userId '
-        '(does not read the identity store to derive one)', () async {
+    test(
+      'a userId that does not own the stored row -- no write of any kind',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(
+            userId: 'owner',
+            email: 'owner@example.com',
+            organizationId: 'org-3',
+          ),
+        );
+
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.accountDeleted,
+          userId: 'someone-else',
+        );
+
+        expect(identityStore.callLog, ['read']);
+        expect(notedIdentities, isEmpty);
+        expect(eventsRecorder.purgeCalls, isEmpty);
+      },
+    );
+
+    test('a userId with no stored row at all -- no write of any kind', () async {
+      await lifecycle.clearIdentity(
+        reason: PurgeReason.accountDeleted,
+        userId: 'user-3',
+      );
+
+      expect(identityStore.callLog, ['read']);
+      expect(notedIdentities, isEmpty);
+      expect(eventsRecorder.purgeCalls, isEmpty);
+    });
+
+    test('when the caller has no userId to supply, clears unconditionally '
+        'and records a null userId (explicit sign-out; no owner to check '
+        'against)', () async {
       identityStore.seed(
         const LastKnownIdentity(
           userId: 'user-3',
@@ -186,6 +242,13 @@ void main() {
 
     test('when clear throws, the exception propagates and neither note nor '
         'record happen', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-4',
+          email: 'user4@example.com',
+          organizationId: 'org-4',
+        ),
+      );
       identityStore.throwOnClear = true;
 
       await expectLater(
@@ -196,7 +259,7 @@ void main() {
         throwsA(isA<StateError>()),
       );
 
-      expect(identityStore.callLog, ['clear']);
+      expect(identityStore.callLog, ['read', 'clear']);
       expect(notedIdentities, isEmpty);
       expect(eventsRecorder.purgeCalls, isEmpty);
     });
@@ -204,6 +267,13 @@ void main() {
     test('when the audit recorder throws, the clear and the note already '
         'committed are NOT undone or reported as a failure -- the method '
         'completes without throwing', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-5',
+          email: 'user5@example.com',
+          organizationId: 'org-5',
+        ),
+      );
       eventsRecorder.throwOnRecord = true;
 
       await lifecycle.clearIdentity(
@@ -211,7 +281,7 @@ void main() {
         userId: 'user-5',
       );
 
-      expect(identityStore.callLog, ['clear']);
+      expect(identityStore.callLog, ['read', 'clear']);
       expect(notedIdentities, [null]);
     });
   });
@@ -230,6 +300,304 @@ void main() {
       expect(identityStore.writes, [identity]);
       expect(notedIdentities, [identity]);
       expect(eventsRecorder.purgeCalls, isEmpty);
+    });
+  });
+
+  // D5 (docs/specs/2026-08-19-local-data-durability-contract.md) Step 1
+  // (docs/plans/2026-08-19-local-data-durability-contract.md, Task 4.1):
+  // the required negative tests. Every one of these asserts NOTHING is
+  // deleted -- Step 1 adds no new deletion at all, membership revocation
+  // purges nothing after Step 1, and these tests exist to make sure that
+  // stays true even as Step 2 later wires a real purge onto
+  // MembershipRevocationPurgeAuthorized.
+  group('resolveVerifiedEmptyMembership', () {
+    test(
+      '1. one verifiedEmpty resolution -> nothing deleted, marker recorded, '
+      'catalog and planning still fully readable',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(decision, isA<MembershipRevocationMarkerRecorded>());
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.read(), completion(isNotNull));
+        expect(
+          eventsRecorder.membershipRevocationMarkedCalls,
+          ['u1'],
+        );
+        expect(eventsRecorder.purgeCalls, isEmpty);
+      },
+    );
+
+    test(
+      '2. a second verifiedEmpty inside the cooldown -> nothing deleted, '
+      'marker unchanged',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'u1');
+        final markedAt = identityStore.membershipRevokedAt;
+
+        monotonicElapsed = const Duration(seconds: 59);
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(
+          decision,
+          equals(
+            const MembershipRevocationIgnored(
+              MembershipRevocationIgnoredReason.insideCooldown,
+            ),
+          ),
+        );
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.membershipRevokedAt, markedAt);
+        // Only the first confirmation's marked-edge is audited -- the
+        // inside-cooldown no-op writes no audit record of its own.
+        expect(eventsRecorder.membershipRevocationMarkedCalls, ['u1']);
+      },
+    );
+
+    test(
+      '3. advancing the WALL clock past the cooldown does not satisfy it '
+      '(the injected monotonic source has not advanced)',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'u1');
+        // monotonicElapsed is deliberately left at Duration.zero -- only
+        // wall-clock time (which this store's DateTime.now() calls still
+        // advance through) has "passed".
+
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(
+          decision,
+          equals(
+            const MembershipRevocationIgnored(
+              MembershipRevocationIgnoredReason.insideCooldown,
+            ),
+          ),
+        );
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      '4. marker set, then a fresh non-empty resolution clears it, then a '
+      'verifiedEmpty -> nothing deleted (this is a first confirmation '
+      'again, not a second)',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'u1');
+
+        await lifecycle.clearMembershipRevocation(userId: 'u1');
+
+        // Even past the cooldown, the very next verifiedEmpty is a FIRST
+        // confirmation, not a second -- the marker was genuinely cleared.
+        monotonicElapsed = const Duration(seconds: 120);
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(decision, isA<MembershipRevocationMarkerRecorded>());
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(
+          eventsRecorder.membershipRevocationClearedCalls,
+          ['u1'],
+        );
+      },
+    );
+
+    test(
+      '5. marker set for user A, user B signs in -> B\'s row carries no '
+      'marker; a verifiedEmpty for B is B\'s first confirmation',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'A', email: 'a@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'A');
+
+        await lifecycle.writeIdentity(
+          const LastKnownIdentity(userId: 'B', email: 'b@x', organizationId: null),
+        );
+
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'B',
+        );
+
+        expect(decision, isA<MembershipRevocationMarkerRecorded>());
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
+      '6. a resolution for a user who does not own the stored row -> no '
+      'write of any kind',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'owner', email: 'o@x', organizationId: null),
+        );
+
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'someone-else',
+        );
+
+        expect(
+          decision,
+          equals(
+            const MembershipRevocationIgnored(
+              MembershipRevocationIgnoredReason.notThisUser,
+            ),
+          ),
+        );
+        expect(identityStore.writes, isEmpty);
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(eventsRecorder.membershipRevocationMarkedCalls, isEmpty);
+        expect(eventsRecorder.membershipRevocationClearedCalls, isEmpty);
+      },
+    );
+
+    test('6b. a resolution with no stored row at all -> ignored as noRow', () async {
+      final decision = await lifecycle.resolveVerifiedEmptyMembership(
+        userId: 'nobody-yet',
+      );
+
+      expect(
+        decision,
+        equals(
+          const MembershipRevocationIgnored(
+            MembershipRevocationIgnoredReason.noRow,
+          ),
+        ),
+      );
+      expect(songCatalogStore.deleteCalls, isEmpty);
+      expect(planningLocalStore.deleteCalls, isEmpty);
+    });
+
+    test(
+      '8. the marker survives a process restart (a new LocalDataLifecycle '
+      'over the same store) and does not by itself become a second '
+      'confirmation',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'u1');
+
+        // A fresh LocalDataLifecycle over the SAME identityStore -- models
+        // a process restart. Its own in-process tracking starts empty, so
+        // it did not record the marker itself.
+        final restarted = LocalDataLifecycle(
+          songCatalogStore: songCatalogStore,
+          planningLocalStore: planningLocalStore,
+          identityStore: identityStore,
+          noteLastKnownIdentity: notedIdentities.add,
+          eventsRecorder: eventsRecorder,
+          monotonicNow: () => Duration.zero,
+        );
+
+        // Per D5.3, a resolution from a separate launch is an independent
+        // event -- no cooldown check applies, so this is the genuine
+        // second, cooldown-independent confirmation.
+        final decision = await restarted.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(decision, isA<MembershipRevocationPurgeAuthorized>());
+        // Step 1: even the second, cooldown-independent confirmation
+        // deletes nothing yet -- Step 2 wires the actual purge onto this
+        // outcome.
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.callLog, isNot(contains('clear')));
+      },
+    );
+
+    test(
+      'a second confirmation past the cooldown, in the SAME process, '
+      'authorizes a purge decision but Step 1 deletes nothing',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final first = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+        expect(first, isA<MembershipRevocationMarkerRecorded>());
+
+        monotonicElapsed = const Duration(seconds: 60);
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'u1',
+        );
+
+        expect(decision, isA<MembershipRevocationPurgeAuthorized>());
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+        expect(identityStore.writes, isEmpty);
+      },
+    );
+  });
+
+  group('clearMembershipRevocation', () {
+    test('7. offline/connectivity-failure/unknown-failure/expired-session '
+        'resolutions never call this -- clearing only ever runs for a '
+        'genuinely owned, marked row, and is a no-op with no audit record '
+        'otherwise', () async {
+      identityStore.seed(
+        const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+      );
+      // No marker was ever set -- an ordinary sign-in must not write a
+      // spurious audit row.
+      await lifecycle.clearMembershipRevocation(userId: 'u1');
+
+      expect(eventsRecorder.membershipRevocationClearedCalls, isEmpty);
+      expect(songCatalogStore.deleteCalls, isEmpty);
+      expect(planningLocalStore.deleteCalls, isEmpty);
+    });
+
+    test('clears a genuinely set marker and writes exactly one audit '
+        'record', () async {
+      identityStore.seed(
+        const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+      );
+      await lifecycle.resolveVerifiedEmptyMembership(userId: 'u1');
+
+      await lifecycle.clearMembershipRevocation(userId: 'u1');
+
+      expect(identityStore.membershipRevokedAt, isNull);
+      expect(eventsRecorder.membershipRevocationClearedCalls, ['u1']);
+    });
+
+    test('a userId that does not own the marked row -> no clear, no audit '
+        'record', () async {
+      identityStore.seed(
+        const LastKnownIdentity(userId: 'owner', email: 'o@x', organizationId: null),
+      );
+      await lifecycle.resolveVerifiedEmptyMembership(userId: 'owner');
+
+      await lifecycle.clearMembershipRevocation(userId: 'someone-else');
+
+      expect(identityStore.membershipRevokedAt, isNotNull);
+      expect(eventsRecorder.membershipRevocationClearedCalls, isEmpty);
     });
   });
 
@@ -558,13 +926,17 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
 
 class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   LastKnownIdentity? _current;
+  DateTime? _membershipRevokedAt;
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   final List<String> callLog = <String>[];
   bool throwOnClear = false;
 
-  void seed(LastKnownIdentity identity) {
+  void seed(LastKnownIdentity identity, {DateTime? membershipRevokedAt}) {
     _current = identity;
+    _membershipRevokedAt = membershipRevokedAt;
   }
+
+  DateTime? get membershipRevokedAt => _membershipRevokedAt;
 
   @override
   Future<LastKnownIdentity?> read() async {
@@ -576,6 +948,12 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<void> write(LastKnownIdentity identity) async {
     callLog.add('write');
     writes.add(identity);
+    // Mirrors DriftLastKnownIdentityStore.write()'s marker contract: the
+    // marker survives a same-user write, and is reset for a different user
+    // (or when no row previously existed).
+    if (_current?.userId != identity.userId) {
+      _membershipRevokedAt = null;
+    }
     _current = identity;
   }
 
@@ -586,6 +964,40 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
       throw StateError('simulated clear failure');
     }
     _current = null;
+    _membershipRevokedAt = null;
+  }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async {
+    callLog.add('resolveEmptyMembership:$userId');
+    final current = _current;
+    if (current == null || current.userId != userId) {
+      return const EmptyMembershipResolutionIgnored();
+    }
+    final existingMarker = _membershipRevokedAt;
+    if (existingMarker != null) {
+      return EmptyMembershipResolutionSecondConfirmationAvailable(
+        markedAt: existingMarker,
+      );
+    }
+    final markedAt = DateTime.now().toUtc();
+    _membershipRevokedAt = markedAt;
+    return EmptyMembershipResolutionMarkerRecorded(markedAt: markedAt);
+  }
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async {
+    callLog.add('clearMembershipRevocation:$userId');
+    final current = _current;
+    if (current == null ||
+        current.userId != userId ||
+        _membershipRevokedAt == null) {
+      return false;
+    }
+    _membershipRevokedAt = null;
+    return true;
   }
 }
 
@@ -605,7 +1017,11 @@ class _RecordedPurgeCall {
 
 class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
   final List<_RecordedPurgeCall> purgeCalls = <_RecordedPurgeCall>[];
+  final List<String> membershipRevocationMarkedCalls = <String>[];
+  final List<String> membershipRevocationClearedCalls = <String>[];
   bool throwOnRecord = false;
+  bool throwOnMembershipRevocationMarked = false;
+  bool throwOnMembershipRevocationCleared = false;
 
   @override
   Future<void> recordPurge({
@@ -642,4 +1058,24 @@ class _RecordingLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {
+    if (throwOnMembershipRevocationMarked) {
+      throw StateError('simulated recordMembershipRevocationMarked failure');
+    }
+    membershipRevocationMarkedCalls.add(userId);
+  }
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {
+    if (throwOnMembershipRevocationCleared) {
+      throw StateError('simulated recordMembershipRevocationCleared failure');
+    }
+    membershipRevocationClearedCalls.add(userId);
+  }
 }
