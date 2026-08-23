@@ -500,8 +500,16 @@ trip under a valid session, returning `ActiveOrganizationVerifiedEmpty`.
 Connectivity failures, non-connectivity failures, caught exceptions, cached or
 fallback organization resolutions (ADR-016), and every offline-authenticated or
 expired-session path neither set nor clear the marker — they leave it exactly as
-they found it. A freshly verified `ActiveOrganizationSelected` clears it, with an
-audit record; nothing else clears it.
+they found it. A freshly verified `ActiveOrganizationSelected` clears it;
+nothing else clears it.
+
+**Both marker edges write a `local_data_events` record — setting it as well as
+clearing it.** The set record is the diagnostic proving a purge nearly happened;
+it is the first thing anyone will look for if a data-loss report arrives, and
+without it a device that reached one confirmation and then recovered leaves no
+trace at all. Neither edge is a purge, so neither carries a `PurgeReason`; both
+use their own audit `kind`, following the precedent D4 set with
+`empty-snapshot-rejected`.
 
 ### A 60-second cooldown separates the two confirmations
 
@@ -513,9 +521,28 @@ attempt tried to close this with per-`userId` in-flight coalescing, which is
 both weaker (it only dedups concurrent calls) and unsound on a single-row store.
 
 **Decision: the second confirmation counts only if it arrives at least 60
-seconds after the marker was set.** An empty resolution inside that window is a
-no-op — it neither purges nor moves the marker. The comparison uses an injectable
-clock so the rule is deterministically testable.
+seconds after the marker was set, measured on a monotonic clock.** An empty
+resolution inside that window is a no-op — it neither purges nor moves the
+marker.
+
+**The clock choice is the load-bearing part of this decision, not a detail.**
+Within one process the gap is measured with an injectable `Stopwatch` started
+when the marker was set. Across a process restart there is no cooldown check at
+all: two resolutions from two separate launches under two separate auth cycles
+are independent events by construction, so there is nothing left for a duration
+comparison to establish. The persisted `membershipRevokedAt` column records
+*that* the marker is set and *when*, for the audit trail and for a human reading
+the row — it is never an operand in a duration comparison.
+
+This repository already treats the device clock as unanchored; that is why
+`localRevision` exists instead of an `updatedAt` comparison (ADR-030, LF-T6). An
+NTP correction at boot can jump the wall clock forward past 60 seconds, and the
+resulting error falls in the *unsafe* direction: the cooldown appears elapsed
+when no time has passed, and the gate collapses to a single confirmation exactly
+on the devices whose clocks were wrong. `DateTime.now()` differences are
+therefore forbidden here. This is recorded explicitly because it is the kind of
+thing a future reader simplifies back into a wall-clock subtraction without
+noticing what it costs.
 
 Delay is free here: during the cooldown the data stays fully readable and
 editable and the revoked member's writes are already rejected by RLS. The
@@ -565,6 +592,21 @@ Those edits must not be silently lost, so a queued mutation that receives a
 user rather than retried indefinitely or failed silently. This is scoped to any
 permanent authorization rejection a queued mutation can receive, not to
 membership revocation specifically.
+
+**In the mutation queue, `401` and `403` are different decisions.** `403`,
+PostgreSQL `42501`, and a `permission denied` message all mean the server knows
+the caller and the caller lacks the right: permanent, terminal,
+`authorizationDenied`, never retried again. `401` means the token is missing,
+malformed, or expired: re-authentication can make the very same mutation
+succeed, so it stays retryable.
+
+`SongCatalogController._isAuthorizationFailure` deliberately collapses all four
+into one branch, and is right to — the decision it feeds (fall back to the
+cached organization id) is the same either way. Copying that collapse into the
+mutation queue would discard the user's queued work on an ordinary token expiry,
+which is the same class of harm this whole contract exists to prevent. The
+`permission denied` message pattern is matched alongside the codes because
+PostgREST does not always return a structured PostgreSQL error code.
 
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 

@@ -633,6 +633,10 @@ call.
   a session change, an organization change, or an intervening non-empty
   resolution deletes nothing; the marker survives a process restart without
   becoming a second confirmation on its own.
+- [ ] Write a failing test: advancing the wall clock past the cooldown does not
+  satisfy it. The in-process cooldown is measured on an injectable `Stopwatch`,
+  never on `DateTime.now()` differences (spec D5.3, ADR-035). Across a process
+  restart no cooldown check applies at all.
 - [ ] Write a failing test: an offline, connectivity-failure, unknown-failure or
   expired-session resolution neither sets nor clears the marker.
 - [ ] Add `membershipRevokedAt` (nullable) to `LastKnownIdentityRows`, with an
@@ -650,6 +654,9 @@ call.
   global serialization chain. No `userId` keying.
 - [ ] A freshly verified non-empty resolution clears the marker with an audit
   record; nothing else clears it.
+- [ ] Both marker edges write a `local_data_events` record — setting as well as
+  clearing — under their own audit `kind`, with no `PurgeReason` (neither is a
+  purge). Test both.
 
 ## Task 4.2 — Confirmation and purge
 
@@ -686,9 +693,15 @@ controllers, the unified sync surface, tests
 - [ ] Write a failing test: a queued mutation rejected with a permanent
   authorization failure is not retried again and is visible to the user with a
   reason that says it can never succeed.
-- [ ] Classify permanent authorization rejections (including a bare HTTP 403,
-  not only the RLS `42501` path already mapped) as terminal, and confirm no
-  retry path re-sends them.
+- [ ] Write a failing test: a queued mutation rejected with `401` stays
+  retryable and is not made terminal — an ordinary token expiry must not discard
+  the user's queued work.
+- [ ] Classify permanent authorization rejections as terminal: `403`, `42501`,
+  and a `permission denied` message (PostgREST does not always return a
+  structured PostgreSQL error code). Confirm no retry path re-sends them.
+  Do **not** fold `401` in — `SongCatalogController._isAuthorizationFailure`
+  collapses all four correctly for its own decision, and that collapse must not
+  be copied here (spec D5.6, ADR-035).
 - [ ] Surface them; do not fail silently and do not leave them queued forever
   with no explanation.
 - [ ] General to any permanent authorization rejection, not specific to

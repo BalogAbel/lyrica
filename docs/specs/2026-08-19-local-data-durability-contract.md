@@ -347,6 +347,14 @@ non-empty resolution — **clears** the marker, with an audit record. No other
 event clears it. In particular, a connectivity failure neither sets nor clears
 it; it leaves the marker exactly as it found it.
 
+**Both edges are audited.** Setting the marker writes a `local_data_events`
+record, exactly as clearing it does. That record is the diagnostic showing that
+a purge nearly happened, and it is the first thing anyone will look for if a
+data-loss report arrives; without it, the only trace of a device that reached
+one confirmation and then recovered is the absence of a purge row, which proves
+nothing. Neither edge is a purge, so neither carries a `PurgeReason`; both use
+their own audit `kind`, alongside D4's `empty-snapshot-rejected` precedent.
+
 #### D5.3 — Separation between the two confirmations
 
 The two confirmations must be genuinely independent observations, not one
@@ -357,10 +365,26 @@ them as two confirmations would reduce the gate to a single confirmation in
 ordinary operation.
 
 The second confirmation therefore counts only if it arrives at least
-**`membershipConfirmationCooldown` = 60 seconds** after the marker was set. An
-empty resolution arriving inside that window is a no-op: it does not purge, and
-it does not move the marker. The cooldown is compared against an injectable
-clock so it is deterministically testable.
+**`membershipConfirmationCooldown` = 60 seconds** after the marker was set,
+where "60 seconds" is measured on a **monotonic** clock, not on wall-clock time.
+
+- **Within one process**, the gap is measured with a `Stopwatch` started when the
+  marker was set, injectable so it is deterministically testable. A device clock
+  adjustment cannot shorten it.
+- **Across a process restart**, no cooldown check applies at all: two resolutions
+  from two separate launches, under two separate auth cycles, are independent
+  events by construction. The persisted `membershipRevokedAt` records *that* the
+  marker is set and *when* — it is a timestamp for the audit trail and for a
+  human reading the row, never an operand in a duration comparison.
+
+This repository already treats the device clock as unanchored — it is why
+`localRevision` exists instead of an `updatedAt` comparison (ADR-030, LF-T6).
+An NTP correction at boot can jump the wall clock forward past 60 seconds, and
+that error falls in the unsafe direction: the cooldown would appear elapsed when
+no time has passed. A monotonic source cannot fail that way.
+
+An empty resolution arriving inside the cooldown is a no-op: it does not purge,
+and it does not move the marker.
 
 Delay costs nothing here — during the cooldown the data stays fully readable and
 editable, and the revoked member's writes are already rejected by RLS — while
@@ -420,6 +444,24 @@ A mutation queued before authorization was revoked can never sync: the backend
 rejects it permanently, not transiently. Any queued mutation that receives a
 permanent authorization rejection must stop being retried and must be surfaced
 to the user; it must never retry indefinitely and must never fail silently.
+
+**Permanent and transient authorization failures must be told apart here**, even
+though elsewhere in the app they are deliberately not:
+
+| Response | Meaning | In the mutation queue |
+| --- | --- | --- |
+| `403`, PostgreSQL `42501`, or a `permission denied` message | The server knows who you are and you lack the right | Permanent. Terminal, `authorizationDenied`, no further retry, surfaced. |
+| `401` | The token is missing, malformed, or expired | **Not** permanent. Re-authentication can make the same mutation succeed. Stays retryable. |
+
+`SongCatalogController._isAuthorizationFailure`
+(`song_catalog_controller.dart`) collapses `401`, `403`, `42501` and
+`permission denied` into one branch. That is correct *there*, because the
+decision it feeds is the same either way — fall back to the cached organization
+id. It is not correct in the mutation queue, where treating a `401` as terminal
+would discard the user's queued work on an ordinary token expiry.
+
+The `permission denied` message pattern is matched alongside the codes, because
+PostgREST does not always return a structured PostgreSQL error code.
 
 This is deliberately general — it is scoped to any permanent authorization
 rejection a queued mutation can receive, not to membership revocation — and it
