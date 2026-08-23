@@ -178,15 +178,18 @@ class LocalDataLifecycle {
   // Review fix (Task 4.3): _inFlightResolutions above only dedups identical
   // CONCURRENT resolveVerifiedEmptyMembership calls into a single execution
   // -- it says nothing about ordering that execution against
-  // clearMembershipRevocation or writeIdentity for the SAME userId. Both of
-  // those also read-then-write (or just write) the same identity row, so
-  // without a shared serialization point a straggling stale read from one
-  // could clobber a newer write from another, or -- worse -- resurrect a row
-  // a concurrent confirmed-purge just deleted. Every identity-row mutation
-  // below is scheduled through this per-userId chain via
-  // [_scheduleIdentityMutation] instead of running immediately, so mutations
-  // for the SAME userId always execute one at a time, in the order they were
-  // scheduled, regardless of which method they came from. Never cleaned up
+  // clearMembershipRevocation, writeIdentity, or clearIdentity for the SAME
+  // userId. All of those also read-then-write, just write, or just clear the
+  // same identity row, so without a shared serialization point a straggling
+  // stale read from one could clobber a newer write from another, or --
+  // worse -- resurrect a row a concurrent confirmed-purge just deleted, or
+  // silently drop a fresh write behind an unguarded clear. Every
+  // identity-row mutation below is scheduled through this per-userId chain
+  // via [_scheduleIdentityMutation] instead of running immediately, so
+  // mutations for the SAME userId always execute one at a time, in the order
+  // they were scheduled, regardless of which method they came from --
+  // [clearIdentity] is the one exception, and only when called with no
+  // [String? userId] to key the chain on (see its doc). Never cleaned up
   // (unlike [_inFlightResolutions]): a resolved entry is cheap to chain onto
   // and the map is bounded by the number of distinct userIds a single
   // LocalDataLifecycle instance ever sees (in practice 0-2 per device), so
@@ -253,7 +256,36 @@ class LocalDataLifecycle {
   /// (see the comment on the `isCurrent` re-check ahead of
   /// `wipePriorAndProceedFor`'s clear). Most call sites already have the
   /// userId in hand from their own context.
-  Future<void> clearIdentity({
+  ///
+  /// Review fix (Task 4.3): when [userId] IS known, this is scheduled
+  /// through [_scheduleIdentityMutation] like every other identity
+  /// mutation -- unguarded, this method's `_identityStore.clear()` could
+  /// interleave with a concurrent [writeIdentity] / [clearMembershipRevocation]
+  /// / [resolveVerifiedEmptyMembership] for the SAME userId (e.g.
+  /// `auth_providers.dart`'s `differentUserSignIn` clear racing
+  /// `SongCatalogController`'s periodic live re-check for the user being
+  /// signed out of), resurrecting a row meant to be gone or silently
+  /// dropping a fresher write. When [userId] is null there is no key to
+  /// schedule against -- this stays a bare, unserialized clear exactly as
+  /// before, per the no-extra-read reasoning above.
+  Future<void> clearIdentity({required PurgeReason reason, String? userId}) {
+    final key = userId;
+    if (key == null) {
+      return _clearIdentityUnlocked(reason: reason, userId: userId);
+    }
+    return _scheduleIdentityMutation(
+      key,
+      () => _clearIdentityUnlocked(reason: reason, userId: userId),
+    );
+  }
+
+  /// The actual clear, without acquiring [_scheduleIdentityMutation]'s
+  /// per-userId slot -- for the internal call site in
+  /// [_resolveVerifiedEmptyMembership]'s confirmed-purge branch, which
+  /// already holds that slot for this userId; calling the public
+  /// [clearIdentity] from there would deadlock (see
+  /// [_scheduleIdentityMutation]'s doc).
+  Future<void> _clearIdentityUnlocked({
     required PurgeReason reason,
     String? userId,
   }) async {
@@ -516,7 +548,11 @@ class LocalDataLifecycle {
         userId: userId,
         reason: PurgeReason.membershipRevokedConfirmed,
       );
-      await clearIdentity(
+      // Unlocked variant: this method already runs inside the per-userId
+      // slot resolveVerifiedEmptyMembership opened for it -- calling the
+      // public clearIdentity here would try to re-acquire that same slot
+      // and deadlock.
+      await _clearIdentityUnlocked(
         reason: PurgeReason.membershipRevokedConfirmed,
         userId: userId,
       );

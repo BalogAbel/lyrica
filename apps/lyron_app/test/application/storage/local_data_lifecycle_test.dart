@@ -459,6 +459,97 @@ void main() {
           expect(finalIdentity?.membershipRevokedAt, isNull);
         },
       );
+
+      test(
+        'a clearIdentity(userId: ...) call issued while a '
+        'clearMembershipRevocation read is still in flight for the same '
+        'userId waits its turn instead of clearing out of order (review '
+        'fix, clearIdentity was the one mutator left unguarded)',
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 1),
+            ),
+          );
+          identityStore.blockNextRead();
+
+          final clearMarkerFuture = lifecycle.clearMembershipRevocation(
+            userId: 'user-1',
+          );
+          await identityStore.readStarted;
+
+          // Issued while clearMembershipRevocation's read is still blocked
+          // -- before this fix, clearIdentity did not read at all and
+          // would have run its clear() immediately, ahead of the
+          // in-flight read/write pair above.
+          final clearIdentityFuture = lifecycle.clearIdentity(
+            reason: PurgeReason.differentUserSignIn,
+            userId: 'user-1',
+          );
+
+          // Nothing has happened against the store yet: both calls are
+          // queued behind the still-blocked read.
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+          expect(identityStore.callLog, isEmpty);
+
+          identityStore.releaseRead();
+          await clearMarkerFuture;
+          await clearIdentityFuture;
+
+          // Strict order: clearMembershipRevocation's read then write ran
+          // to completion FIRST, and only then did clearIdentity's clear()
+          // run -- never interleaved, never reordered ahead of them.
+          expect(identityStore.callLog, ['read', 'write', 'clear']);
+          expect(await identityStore.read(), isNull);
+        },
+      );
+
+      test(
+        "resolveVerifiedEmptyMembership's confirmed-purge branch (which "
+        'calls the internal, unlocked clearIdentity variant while still '
+        "holding this userId's mutation slot) completes without "
+        'self-deadlocking',
+        () async {
+          identityStore.seed(
+            const LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+            ),
+          );
+          final first = await lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+          expect(first, MembershipRevocationResolution.quarantined);
+
+          // Second, independent resolution -> confirmed-purge branch,
+          // which internally calls _clearIdentityUnlocked from inside the
+          // slot this very call already holds. A regression back to the
+          // public, slot-acquiring clearIdentity here would hang forever
+          // instead of completing -- flutter_test's default test timeout
+          // would fail this test if that happened, so completing at all is
+          // the assertion that matters, tightened with an explicit short
+          // timeout for a fast, clear failure instead of a 30s hang.
+          final second = await lifecycle
+              .resolveVerifiedEmptyMembership(
+                userId: 'user-1',
+                email: 'user1@example.com',
+                countPendingWork: () async => 0,
+                requestConfirmation: _neverCalledRequestConfirmation,
+              )
+              .timeout(const Duration(seconds: 5));
+
+          expect(second, MembershipRevocationResolution.purgedConfirmed);
+          expect(identityStore.callLog, contains('clear'));
+        },
+      );
     },
   );
 
