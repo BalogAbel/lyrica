@@ -523,18 +523,47 @@ class LocalDataLifecycle {
         }
       }
 
-      await purgeSongCatalog(
-        userId: userId,
-        reason: PurgeReason.membershipRevokedConfirmed,
-      );
-      await purgePlanningData(
-        userId: userId,
-        reason: PurgeReason.membershipRevokedConfirmed,
-      );
-      await _clearIdentityLocked(
-        reason: PurgeReason.membershipRevokedConfirmed,
-        userId: userId,
-      );
+      try {
+        await purgeSongCatalog(
+          userId: userId,
+          reason: PurgeReason.membershipRevokedConfirmed,
+        );
+        await purgePlanningData(
+          userId: userId,
+          reason: PurgeReason.membershipRevokedConfirmed,
+        );
+        await _clearIdentityLocked(
+          reason: PurgeReason.membershipRevokedConfirmed,
+          userId: userId,
+        );
+      } catch (error, stackTrace) {
+        // Every caller of this method is reached from a fire-and-forget auth
+        // or refresh listener, so an exception escaping here would vanish
+        // into the zone unreported and leave a half-purged device behind
+        // (mirrors the ADR-029 Finding 1 fix on the sibling
+        // `wipePriorAndProceedFor` wipe path).
+        //
+        // Reporting `false` rather than rethrowing is the conservative
+        // claim: a partial purge is not a completed one, so callers must not
+        // reset their read state as though it were. The marker is
+        // deliberately left set, so a later counted confirmation re-runs the
+        // purge -- each primitive deletes by `userId` and is idempotent, so
+        // repeating the already-committed part is harmless.
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'LocalDataLifecycle',
+            context: ErrorDescription(
+              'a confirmed membership-revocation purge for $userId failed '
+              'part way through -- the device may be partially purged, the '
+              'revocation marker is left set so a later confirmation can '
+              'retry it',
+            ),
+          ),
+        );
+        return false;
+      }
       return true;
     });
   }

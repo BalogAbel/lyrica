@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
@@ -1030,6 +1031,44 @@ void main() {
         expect(namedCount, isNull);
         expect(purged, isTrue);
         expect(songCatalogStore.deleteCalls, ['u1']);
+      },
+    );
+
+    test(
+      'a mid-purge throw (planning delete fails after the catalog delete '
+      'already committed) does not rethrow, reports itself, and leaves the '
+      'marker set for a later retry',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'u1', email: 'e@x', organizationId: null),
+        );
+        final markedAt = await authorizeTwoConfirmations('u1');
+        planningLocalStore.throwOnDelete = true;
+
+        final reportedErrors = <FlutterErrorDetails>[];
+        final previousOnError = FlutterError.onError;
+        FlutterError.onError = reportedErrors.add;
+        bool purged;
+        try {
+          purged = await lifecycle.maybePurgeForMembershipRevocation(
+            userId: 'u1',
+            markedAt: markedAt,
+            countPendingWork: () async => 0,
+            requestConfirmation: ({required pendingCount}) async =>
+                ReauthPromptResult.confirmed,
+          );
+        } finally {
+          FlutterError.onError = previousOnError;
+        }
+
+        expect(purged, isFalse);
+        // The catalog delete committed before the throw; the identity clear
+        // never ran.
+        expect(songCatalogStore.deleteCalls, ['u1']);
+        expect(identityStore.callLog, isNot(contains('clear')));
+        expect(identityStore.membershipRevokedAt, isNotNull);
+        expect(reportedErrors, hasLength(1));
+        expect(reportedErrors.single.exception, isA<StateError>());
       },
     );
   });
