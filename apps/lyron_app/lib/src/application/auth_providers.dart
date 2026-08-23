@@ -251,19 +251,23 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 return false;
               }
               // D5 (docs/specs/2026-08-19-local-data-durability-contract
-              // .md, ADR-035 Phase 4, Task 4.1 -- Step 1 of 2): a single
-              // fresh, online, authenticated verifiedEmpty resolution no
-              // longer purges anything by itself. It is routed through
-              // LocalDataLifecycle's two-confirmation gate, which records
-              // (or re-confirms, past a cooldown) the membershipRevokedAt
-              // marker and returns a decision. Step 1 deliberately never
-              // acts on MembershipRevocationPurgeAuthorized -- no purge
-              // executes here yet; a later step wires the actual deletion
-              // (with its own pending-work check and confirmation dialog,
-              // D5.4) onto that outcome.
-              await lifecycle.resolveVerifiedEmptyMembership(
-                userId: session.userId,
-              );
+              // .md, ADR-035 Phase 4, Task 4.2 -- Step 2 of 2): a fresh,
+              // online, authenticated verifiedEmpty resolution on THIS edge
+              // is reconciled onto the same
+              // VerifiedEmptyMembershipCleanupCoordinator path
+              // (planning_providers.dart) that ActivePlanningContextController
+              // and PlanningSyncController already use -- the one, certain,
+              // unambiguous membershipRevokedConfirmed handler (ADR-035's
+              // Phase 2 "reason-mapping judgment call" note). It owns the
+              // full two-confirmation gate: reading LocalDataLifecycle's
+              // decision, the pending-work check, the confirmation dialog
+              // (outside any chain lock), premise re-validation on
+              // re-entry, and -- only once a purge has genuinely run --
+              // invalidating this listener's own epoch and firing the
+              // registered planning cleanup handlers.
+              await ref
+                  .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+                  .handleVerifiedEmptyMembership(userId: session.userId);
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
             case null:

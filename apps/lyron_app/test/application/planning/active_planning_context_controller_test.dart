@@ -138,6 +138,15 @@ void main() {
     );
 
     test(
+      // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+      // ADR-035 Phase 4): a verified-empty resolution no longer clears
+      // _state by itself -- the controller now defers entirely to the
+      // injected handler's reported outcome (in production,
+      // VerifiedEmptyMembershipCleanupCoordinator, gated on two
+      // confirmations through LocalDataLifecycle). The handler here
+      // simulates a genuine purge having already run (returns true) so this
+      // test keeps pinning the controller's OWN responsibility once told
+      // that happened.
       'keeps cached fallback blocked after verified empty membership clears the planning boundary',
       () async {
         final controller = ActivePlanningContextController(
@@ -152,6 +161,7 @@ void main() {
             expect(userId, 'user-1');
             return latestCachedOrganizationId;
           },
+          onVerifiedEmptyMembership: ({required userId}) async => true,
         );
 
         await controller.refresh();
@@ -174,6 +184,44 @@ void main() {
         await controller.refresh(allowCachedFallback: true);
 
         expect(controller.state, isNull);
+      },
+    );
+
+    test(
+      // Required test 9 (D5.4/D5.5, ADR-035 Phase 4): reads stay served
+      // when nothing was purged -- ADR-020's read access is unchanged until
+      // data is genuinely gone.
+      'a verified empty membership resolution that does not purge (handler '
+      'reports false, or no handler at all) leaves the planning context '
+      'fully intact',
+      () async {
+        final controller = ActivePlanningContextController(
+          authSessionReader: () => session,
+          organizationReader: () async => organizationId,
+          latestOrganizationReader: ({required userId}) async =>
+              latestCachedOrganizationId,
+          onVerifiedEmptyMembership: ({required userId}) async => false,
+        );
+
+        await controller.refresh();
+        expect(
+          controller.state,
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        organizationId = null;
+        await controller.refresh();
+
+        expect(
+          controller.state,
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
       },
     );
 

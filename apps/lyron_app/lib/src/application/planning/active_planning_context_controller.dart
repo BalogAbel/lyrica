@@ -8,8 +8,11 @@ import 'package:lyron_app/src/shared/connectivity_failure.dart';
 typedef LatestPlanningOrganizationReader =
     Future<String?> Function({required String userId});
 typedef PlanningAuthSessionReader = AppAuthSession? Function();
+// D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+// ADR-035 Phase 4): reports whether a purge actually ran, mirroring
+// SongCatalogController's identically-motivated handler type.
 typedef VerifiedEmptyMembershipHandler =
-    Future<void> Function({required String userId});
+    Future<bool> Function({required String userId});
 
 class ActivePlanningContextController extends ChangeNotifier {
   ActivePlanningContextController({
@@ -42,10 +45,18 @@ class ActivePlanningContextController extends ChangeNotifier {
       organizationId = await _organizationReader();
       if (organizationId == null) {
         _verifiedEmptyMembershipSeen = true;
-        _setState(null);
+        // D5.4/D5.5 -- Step 2: do NOT clear _state up front. A single
+        // verified-empty resolution must not hide plans that are still
+        // fully intact (ADR-020) -- only clear once the handler reports a
+        // purge genuinely ran. With no handler wired (test-only
+        // construction), there is nothing to gate a purge on, so this
+        // conservatively leaves the state untouched.
         final handler = _onVerifiedEmptyMembership;
-        if (handler != null) {
-          await handler(userId: session.userId);
+        final purged = handler == null
+            ? false
+            : await handler(userId: session.userId);
+        if (purged) {
+          _setState(null);
         }
         return;
       }

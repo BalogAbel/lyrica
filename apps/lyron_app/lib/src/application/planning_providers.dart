@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
@@ -31,9 +32,26 @@ typedef VerifiedEmptyMembershipCleanupHandler =
     Future<void> Function({required String userId});
 
 final class VerifiedEmptyMembershipCleanupCoordinator {
-  VerifiedEmptyMembershipCleanupCoordinator({required this._localDataLifecycle});
+  VerifiedEmptyMembershipCleanupCoordinator({
+    required this._localDataLifecycle,
+    required this._countPendingWork,
+    required this._requestConfirmation,
+    required this._invalidateLastKnownIdentityPersistence,
+  });
 
   final LocalDataLifecycle _localDataLifecycle;
+  // Honest-null count, same contract as auth_providers.dart's
+  // countPriorPendingWorkFor: a storage failure becomes "unknown" here, not
+  // a silently-assumed zero (ADR-020/D5.4).
+  final Future<int?> Function({required String userId}) _countPendingWork;
+  final Future<ReauthPromptResult> Function({required int? pendingCount})
+  _requestConfirmation;
+  // D5.4/D5.5 -- Step 2: restores the invalidation Step 1 removed as
+  // newly-unused. Fired only when a purge actually ran, so the next
+  // signedIn-edge resolution on auth_providers.dart's serial chain sees a
+  // fresh epoch and does not act on a now-stale generation captured before
+  // the identity row was cleared.
+  final Future<void> Function() _invalidateLastKnownIdentityPersistence;
   final _handlers = <VerifiedEmptyMembershipCleanupHandler>{};
 
   void addHandler(VerifiedEmptyMembershipCleanupHandler handler) {
@@ -45,37 +63,41 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
   }
 
   // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
-  // Phase 4, Task 4.1 -- Step 1 of 2): this used to purge the song catalog,
-  // planning data, and the identity row on a SINGLE verified-empty
-  // resolution -- exactly the single-confirmation purge D5 exists to
-  // prevent. It now only routes the resolution through
-  // LocalDataLifecycle's two-confirmation gate and stops: the registered
-  // planning cleanup handlers may not run unless a purge actually happened,
-  // and Step 1 deliberately never lets one happen (see
-  // resolveVerifiedEmptyMembership's doc). A later step consumes
-  // MembershipRevocationPurgeAuthorized to run the real purge, the pending-
-  // work check, and the confirmation dialog (D5.4).
-  Future<void> handleVerifiedEmptyMembership({required String userId}) async {
+  // Phase 4, Task 4.2 -- Step 2 of 2): routes the resolution through
+  // LocalDataLifecycle's two-confirmation gate and reports whether a purge
+  // actually ran, so callers (e.g. SongCatalogController) know whether to
+  // reset their own in-memory read state -- ADR-020 requires reads stay
+  // unchanged on anything short of a genuine purge. On anything short of a
+  // second, confirmed, genuine purge (MembershipRevocationIgnored,
+  // MembershipRevocationMarkerRecorded, or a PurgeAuthorized decision whose
+  // pending-work check/confirmation/re-validation ultimately declines to
+  // purge), this deletes nothing and runs neither the identity-epoch
+  // invalidation nor any registered planning cleanup handler -- those only
+  // run once a purge has genuinely happened.
+  Future<bool> handleVerifiedEmptyMembership({required String userId}) async {
     final decision = await _localDataLifecycle.resolveVerifiedEmptyMembership(
       userId: userId,
     );
     switch (decision) {
       case MembershipRevocationIgnored():
       case MembershipRevocationMarkerRecorded():
-        return;
-      case MembershipRevocationPurgeAuthorized():
-        // TODO(Step 2): consume this outcome to run the actual purge
-        // (song catalog + planning data + identity row, each through
-        // LocalDataLifecycle with PurgeReason.membershipRevokedConfirmed),
-        // gated on the pending-work check and confirmation dialog D5.4
-        // requires, re-validating this decision's premises on re-entry per
-        // D5.5 rule 3. Step 1 intentionally deletes nothing here. Step 2
-        // must also reintroduce a way to invalidate
-        // lastKnownIdentityPersistenceEpochProvider once the identity row
-        // is actually cleared, mirroring what this coordinator used to do
-        // unconditionally via an injected invalidation callback -- removed
-        // here because Step 1 never reaches this branch's deletion.
-        return;
+        return false;
+      case MembershipRevocationPurgeAuthorized(:final markedAt):
+        final purged = await _localDataLifecycle
+            .maybePurgeForMembershipRevocation(
+              userId: userId,
+              markedAt: markedAt,
+              countPendingWork: () => _countPendingWork(userId: userId),
+              requestConfirmation: _requestConfirmation,
+            );
+        if (!purged) {
+          return false;
+        }
+        await _invalidateLastKnownIdentityPersistence();
+        for (final handler in _handlers) {
+          await handler(userId: userId);
+        }
+        return true;
     }
   }
 }
@@ -84,6 +106,21 @@ final verifiedEmptyMembershipCleanupCoordinatorProvider =
     Provider<VerifiedEmptyMembershipCleanupCoordinator>((ref) {
       return VerifiedEmptyMembershipCleanupCoordinator(
         localDataLifecycle: ref.watch(localDataLifecycleProvider),
+        countPendingWork: ({required userId}) async {
+          try {
+            return await ref
+                .read(pendingLocalWorkCounterProvider)
+                .count(userId: userId);
+          } catch (_) {
+            return null;
+          }
+        },
+        requestConfirmation: ref
+            .read(reauthPromptControllerProvider)
+            .requestMembershipRevocationConfirmation,
+        invalidateLastKnownIdentityPersistence: () async {
+          ref.read(lastKnownIdentityPersistenceEpochProvider).invalidate();
+        },
       );
     });
 

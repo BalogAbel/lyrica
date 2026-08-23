@@ -251,7 +251,20 @@ void main() {
     );
 
     test(
-      'verified empty membership clears cached song data and prevents cached fallback from reopening later',
+      // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+      // ADR-035 Phase 4): a verified-empty resolution no longer purges by
+      // itself -- SongCatalogController now defers entirely to the injected
+      // handler's reported outcome (in production,
+      // VerifiedEmptyMembershipCleanupCoordinator, gated on two confirmations
+      // through LocalDataLifecycle). This test simulates a handler that has
+      // already run a genuine purge (returns true) to pin the controller's
+      // OWN responsibility on that outcome: reset _state to empty and let the
+      // cached-fallback short-circuit stay closed. The single-confirmation
+      // behaviour this test used to pin (no handler at all) was exactly the
+      // F4 bug D5 exists to close, and is now covered separately by "a
+      // verified empty membership resolution with no purge handler leaves
+      // cached song data untouched" below.
+      'verified empty membership clears cached song data and prevents cached fallback from reopening later once the handler reports a genuine purge',
       () async {
         await store.replaceActiveSnapshot(
           userId: 'user-1',
@@ -287,6 +300,18 @@ void main() {
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
           organizationReader: () => organizationReader(),
           sessionVerifier: () async => CatalogSessionStatus.verified,
+          // Stands in for VerifiedEmptyMembershipCleanupCoordinator having
+          // already run a genuine two-confirmation purge through
+          // LocalDataLifecycle -- this test is only pinning what the
+          // CONTROLLER does once told a purge happened, not the gate itself
+          // (covered by local_data_lifecycle_test.dart).
+          onVerifiedEmptyMembership: ({required userId}) async {
+            await lifecycle.purgeSongCatalog(
+              userId: userId,
+              reason: PurgeReason.membershipRevokedConfirmed,
+            );
+            return true;
+          },
         );
 
         await controller.refreshCatalog();
@@ -323,6 +348,52 @@ void main() {
         );
         expect(controller.state.hasCachedCatalog, isFalse);
         expect(remoteRepository.listSongsCalls, 0);
+      },
+    );
+
+    test(
+      // Required test 9 (D5.4/D5.5, ADR-035 Phase 4): reads stay served
+      // during and after a first (non-purging) confirmation -- the catalog
+      // context must NOT be reset when the coordinator reports nothing was
+      // purged (a single verified-empty resolution, or a second one still
+      // short of a confirmed purge). ADR-020's read access is unchanged
+      // until data is genuinely gone.
+      'a verified empty membership resolution that does not purge (handler '
+      'reports false) leaves cached song data and context fully intact',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => null,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          // Only the marker was recorded / re-confirmed -- no purge ran.
+          onVerifiedEmptyMembership: ({required userId}) async => false,
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          hasLength(1),
+        );
       },
     );
 

@@ -66,7 +66,12 @@ class SongCatalogController extends ChangeNotifier {
     required String organizationId,
   })
   _onImplausibleEmptySnapshot;
-  final Future<void> Function({required String userId})?
+  // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035 Phase 4): returns whether a purge actually ran. A verified-empty
+  // resolution that only recorded/re-confirmed the marker without reaching
+  // the second, confirmed purge must NOT reset _state -- ADR-020's read
+  // access is unchanged until data is genuinely gone (see the caller below).
+  final Future<bool> Function({required String userId})?
   _onVerifiedEmptyMembership;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
@@ -232,15 +237,25 @@ class SongCatalogController extends ChangeNotifier {
       }
       _verifiedEmptyMembershipSeen = true;
       final handler = _onVerifiedEmptyMembership;
-      if (handler != null) {
-        await handler(userId: session.userId);
-      } else {
-        await _localDataLifecycle.purgeSongCatalog(
-          userId: session.userId,
-          reason: PurgeReason.membershipRevokedConfirmed,
-        );
-      }
+      // D5.4/D5.5 -- Step 2: a single verified-empty resolution must never
+      // reset a still-intact catalog to empty (ADR-020: reads are
+      // unchanged until data is genuinely purged). `handler` reports
+      // whether a purge actually ran; with no handler injected (test-only
+      // construction), there is nothing to gate the purge, so this branch
+      // conservatively does nothing rather than purging unconditionally --
+      // the single-confirmation purge this replaces was exactly F4.
+      final purged = handler == null ? false : await handler(userId: session.userId);
       if (_isStale(generation)) {
+        return;
+      }
+      if (!purged) {
+        // Nothing was deleted -- leave context/hasCachedCatalog exactly as
+        // found (ADR-020) and only note that the resolution came back
+        // verified.
+        _setStateIfCurrent(
+          generation,
+          _state.copyWith(sessionStatus: CatalogSessionStatus.verified),
+        );
         return;
       }
       _setStateIfCurrent(
