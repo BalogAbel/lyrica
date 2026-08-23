@@ -177,8 +177,19 @@ class SupabaseSongMutationRemoteRepository
     }
     if (error is PostgrestException) {
       final message = error.message.toLowerCase();
+      // spec D5.6 / ADR-035: `403`, PostgreSQL `42501`, and a bare
+      // `permission denied` message all mean the server knows the caller
+      // and the caller lacks the right -- permanent, terminal. `401` is
+      // deliberately NOT folded in here (unlike
+      // `SongCatalogController._isAuthorizationFailure`, which collapses
+      // 401/403/42501/permission-denied for a different decision where
+      // that collapse is correct): a missing/malformed/expired token can
+      // succeed again after re-authentication, so it must stay retryable
+      // rather than discarding the user's queued edit.
       if (error.code == '42501' ||
-          message.contains('song_write_not_authorized')) {
+          error.code == '403' ||
+          message.contains('song_write_not_authorized') ||
+          message.contains('permission denied')) {
         return SongMutationSyncException(
           SongMutationSyncErrorCode.authorizationDenied,
           message: error.message,
