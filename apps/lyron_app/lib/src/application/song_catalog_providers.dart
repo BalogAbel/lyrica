@@ -92,6 +92,15 @@ final songCatalogControllerProvider =
         onVerifiedEmptyMembership: ({required userId}) => ref
             .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
             .handleVerifiedEmptyMembership(userId: userId),
+        // RED 1 (final whole-branch review, D5.2): a fresh, online,
+        // authenticated non-empty resolution seen by THIS controller's own
+        // periodic refresh must also be able to clear an outstanding
+        // membership-revocation marker, independently of the
+        // lastKnownIdentityPersistenceProvider signedIn-edge path that
+        // already does the same thing on sign-in.
+        onVerifiedNonEmptyMembership: ({required userId}) => ref
+            .read(localDataLifecycleProvider)
+            .clearMembershipRevocation(userId: userId),
         lastKnownIdentityReader: () {
           final identity = authController.lastKnownIdentity;
           if (identity == null) return null;

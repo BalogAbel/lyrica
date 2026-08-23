@@ -38,6 +38,7 @@ class SongCatalogController extends ChangeNotifier {
     required this._sessionVerifier,
     required this._onImplausibleEmptySnapshot,
     this._onVerifiedEmptyMembership,
+    this._onVerifiedNonEmptyMembership,
     this._lastKnownIdentityReader,
     AppForegroundState? foregroundState,
     this._refreshInterval = _defaultRefreshInterval,
@@ -73,6 +74,20 @@ class SongCatalogController extends ChangeNotifier {
   // access is unchanged until data is genuinely gone (see the caller below).
   final Future<bool> Function({required String userId})?
   _onVerifiedEmptyMembership;
+  // RED 1 (final whole-branch review, docs/specs/2026-08-19-local-data
+  // -durability-contract.md D5.2): a genuine, fresh, online, authenticated
+  // non-empty resolution is the only event that clears an outstanding
+  // membership-revocation marker. Without this, empty -> fresh non-empty ->
+  // empty is wrongly counted as two confirmations of the SAME revocation
+  // instead of two independent first confirmations -- see the non-empty
+  // branch of _refreshCatalog below, which only calls this when the
+  // organization id came from a fresh live RPC (never from the cached-
+  // fallback path organizationLookupWasConnectivityFailure guards).
+  // Best-effort/no-op-safe by contract (LocalDataLifecycle
+  // .clearMembershipRevocation itself no-ops when there is no marker to
+  // clear), so an ordinary sign-in never writes a spurious audit row.
+  final Future<void> Function({required String userId})?
+  _onVerifiedNonEmptyMembership;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
   final Duration _refreshInterval;
@@ -272,6 +287,18 @@ class SongCatalogController extends ChangeNotifier {
       organizationId: organizationId,
     );
     _verifiedEmptyMembershipSeen = false;
+    // RED 1 fix (D5.2): this organizationId is only reachable here from a
+    // fresh, live current_organization_ids() round trip -- the connectivity-
+    // fallback branch above (organizationLookupWasConnectivityFailure) never
+    // reaches this line with an organizationId that came from
+    // readLatestCachedOrganizationId, because that branch returns before
+    // this point whenever it applies. A genuinely fresh non-empty resolution
+    // is the only event D5.2 permits to clear the marker.
+    if (!organizationLookupWasConnectivityFailure) {
+      unawaited(
+        _onVerifiedNonEmptyMembership?.call(userId: session.userId),
+      );
+    }
     final hasCachedCatalog = await _hasCachedCatalog(context);
     if (_isStale(generation)) {
       return;

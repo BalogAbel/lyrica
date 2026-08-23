@@ -5,6 +5,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
@@ -16,6 +17,8 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
@@ -393,6 +396,112 @@ void main() {
             organizationId: 'org-1',
           ),
           hasLength(1),
+        );
+      },
+    );
+
+    test(
+      // RED 1 (final whole-branch review): empty -> fresh non-empty -> empty
+      // must be TWO independent first confirmations, not one confirmation
+      // plus a second. The middle, genuine non-empty resolution must clear
+      // the D5.1 marker; a bug that skips the clear lets the trailing empty
+      // count as the "second" confirmation and purge on a false premise.
+      'a genuine fresh non-empty resolution between two empties clears the '
+      'membership-revocation marker so the trailing empty is a first '
+      'confirmation again, not a purge',
+      () async {
+        final identityDatabase = LastKnownIdentityDatabase.inMemory();
+        addTearDown(identityDatabase.close);
+        final identityStore = DriftLastKnownIdentityStore(identityDatabase);
+        final gatedLifecycle = LocalDataLifecycle(
+          songCatalogStore: store,
+          planningLocalStore: _NoopPlanningLocalStore(),
+          identityStore: identityStore,
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorder(),
+          // Cooldown is irrelevant to this repro (it is about which
+          // resolution counts as first vs. second, not timing), so zero it
+          // out to keep the test deterministic without a fake clock.
+          membershipConfirmationCooldown: Duration.zero,
+        );
+        await identityStore.write(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'demo@lyron.local',
+            organizationId: 'org-1',
+          ),
+        );
+
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        Future<bool> handleVerifiedEmptyMembership({
+          required String userId,
+        }) async {
+          final decision = await gatedLifecycle.resolveVerifiedEmptyMembership(
+            userId: userId,
+          );
+          if (decision is! MembershipRevocationPurgeAuthorized) {
+            return false;
+          }
+          return gatedLifecycle.maybePurgeForMembershipRevocation(
+            userId: userId,
+            markedAt: decision.markedAt,
+            countPendingWork: () async => 0,
+            requestConfirmation: ({required pendingCount}) async =>
+                ReauthPromptResult.confirmed,
+          );
+        }
+
+        final organizationIds = <String?>[null, 'org-1', null];
+        var callIndex = 0;
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: gatedLifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => organizationIds[callIndex++],
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedEmptyMembership: handleVerifiedEmptyMembership,
+          onVerifiedNonEmptyMembership: ({required userId}) =>
+              gatedLifecycle.clearMembershipRevocation(userId: userId),
+        );
+
+        // T0: live RPC -> VerifiedEmpty (transient) -> marker set.
+        await controller.refreshCatalog();
+
+        // T0+30s: live RPC -> Selected('org-1') -- a genuine, fresh,
+        // online, authenticated non-empty resolution. Must clear the
+        // marker.
+        await controller.refreshCatalog();
+
+        // T0+90s: live RPC -> VerifiedEmpty again. If the marker was
+        // correctly cleared above, this is a FIRST confirmation again, not
+        // a second -- nothing may be deleted.
+        await controller.refreshCatalog();
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isNotEmpty,
+          reason:
+              'the genuine non-empty resolution between the two empties '
+              'must have cleared the marker, so the second empty is a '
+              'first confirmation again -- nothing should have been '
+              'purged',
         );
       },
     );
