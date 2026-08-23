@@ -62,19 +62,42 @@ enum ReauthPromptResult { confirmed, cancelled, superseded }
 /// whatever screen happens to be on top when the different-user sign-in is
 /// detected, not get torn down along with it.
 ///
-/// Only one prompt may be pending at a time. `resolveReauth` awaits a single
-/// `confirmDifferentUser` call per `signedIn` transition before doing
-/// anything else, so a second concurrent request would mean two
-/// different-user resolutions racing. `lastKnownIdentityPersistenceProvider`
-/// (`auth_providers.dart`) enforces this structurally, not just by
-/// assertion: it serializes every signedIn-edge resolution through a single
-/// future chain, so a second resolution's `confirmDifferentUser` call can
-/// only ever start after the first has fully finished, including the wait
-/// for its own dialog answer. The `StateError` below is therefore a
-/// defence-in-depth invariant, not a path any caller in this codebase can
-/// currently reach -- rejecting the second request turns a would-be race
-/// into a loud bug instead of silently queueing or dropping a confirmation
-/// that guards data deletion.
+/// Only one prompt may be pending at a time, across BOTH prompt variants
+/// (different-user reauth and membership-quarantine purge) -- they are
+/// mutually exclusive by construction (see the class doc on [ReauthPrompt]),
+/// but the guard below applies uniformly regardless. Two different, single-
+/// producer-per-variant mechanisms are what keep the `StateError` below from
+/// ever firing in practice, not a shared one:
+///
+///  * `requestConfirmation` (different-user reauth): `resolveReauth` awaits
+///    a single `confirmDifferentUser` call per `signedIn` transition before
+///    doing anything else, so a second concurrent request would mean two
+///    different-user resolutions racing.
+///    `lastKnownIdentityPersistenceProvider` (`auth_providers.dart`)
+///    enforces this structurally, not just by assertion: it serializes
+///    every signedIn-edge resolution through a single future chain, so a
+///    second resolution's `confirmDifferentUser` call can only ever start
+///    after the first has fully finished, including the wait for its own
+///    dialog answer.
+///  * `requestMembershipQuarantinePurgeConfirmation` (membership-quarantine
+///    purge): up to three independent listeners can call
+///    `LocalDataLifecycle.resolveVerifiedEmptyMembership` for the same
+///    `userId` off the same `signedIn` transition (`auth_providers.dart`'s
+///    `persistIdentity`, and `VerifiedEmptyMembershipCleanupCoordinator`
+///    reached separately from `SongCatalogController` and
+///    `ActivePlanningContextController`) -- there is no single serialized
+///    producer here. What prevents a second concurrent request instead is
+///    `LocalDataLifecycle`'s own in-flight coalescing, keyed per `userId`
+///    (`_inFlightResolutions` in `local_data_lifecycle.dart`): concurrent
+///    callers for the same `userId` are handed the SAME `Future` rather
+///    than each performing its own read-decide-act pass, so only one
+///    execution per `userId` ever reaches this controller at a time.
+///
+/// The `StateError` below is therefore a defence-in-depth invariant for
+/// each variant's own upstream guarantee, not a path either mechanism's
+/// caller can currently reach -- rejecting the second request turns a
+/// would-be race into a loud bug instead of silently queueing or dropping a
+/// confirmation that guards data deletion.
 class ReauthPromptController extends ChangeNotifier {
   int _nextRequestId = 0;
   ReauthPrompt? _pending;

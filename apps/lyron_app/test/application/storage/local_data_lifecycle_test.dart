@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
@@ -696,6 +699,267 @@ void main() {
       },
     );
   });
+
+  group(
+    'resolveVerifiedEmptyMembership: concurrent-caller coalescing '
+    '(follow-up fix, post-6853b08 review)',
+    () {
+      test(
+        // Bug: auth_providers.dart's persistIdentity AND
+        // VerifiedEmptyMembershipCleanupCoordinator (reached from BOTH
+        // SongCatalogController and ActivePlanningContextController) can
+        // all call resolveVerifiedEmptyMembership for the SAME userId on
+        // the SAME signedIn transition, with no serialization between them.
+        // Without coalescing, two calls that both read the identity row
+        // before either has written its marker both take the
+        // first-resolution branch and both write -- one real event
+        // producing two writes.
+        'two concurrent calls for the same userId coalesce: only one '
+        'marker write happens and both callers see the same result',
+        () async {
+          identityStore.seed(
+            const LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+            ),
+          );
+
+          final first = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+          final second = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+
+          // Coalescing means the second caller is handed the exact same
+          // Future as the first, not a second independent execution.
+          expect(identical(first, second), isTrue);
+
+          final results = await Future.wait([first, second]);
+          expect(results, [
+            MembershipRevocationResolution.quarantined,
+            MembershipRevocationResolution.quarantined,
+          ]);
+          expect(identityStore.writes, hasLength(1));
+          expect(eventsRecorder.quarantineCalls, hasLength(1));
+        },
+      );
+
+      test(
+        'concurrent calls at the confirmation-needed second-resolution '
+        'stage invoke requestConfirmation exactly once, never twice -- '
+        'this is what would otherwise throw ReauthPromptController\'s '
+        '"already pending" StateError',
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 20),
+            ),
+          );
+          var confirmationCalls = 0;
+          Future<bool> requestConfirmation(int? pendingCount) async {
+            confirmationCalls++;
+            return true;
+          }
+
+          final first = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () async => 2,
+            requestConfirmation: requestConfirmation,
+          );
+          final second = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () async => 2,
+            requestConfirmation: requestConfirmation,
+          );
+
+          final results = await Future.wait([first, second]);
+
+          expect(confirmationCalls, 1);
+          expect(results, [
+            MembershipRevocationResolution.purgedConfirmed,
+            MembershipRevocationResolution.purgedConfirmed,
+          ]);
+        },
+      );
+
+      test(
+        // Verifies the StateError risk against the REAL
+        // ReauthPromptController, not just a stub -- proves the
+        // "at most one prompt pending" invariant is never hit by
+        // concurrent callers of this gate.
+        'a real ReauthPromptController used as requestConfirmation across '
+        'concurrent calls for the same userId never throws',
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 20),
+            ),
+          );
+          final promptController = ReauthPromptController();
+          Future<bool> requestConfirmation(int? pendingCount) async {
+            final result = await promptController
+                .requestMembershipQuarantinePurgeConfirmation(
+                  userId: 'user-1',
+                  pendingCount: pendingCount,
+                );
+            return result == ReauthPromptResult.confirmed;
+          }
+
+          final first = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () async => 2,
+            requestConfirmation: requestConfirmation,
+          );
+          final second = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () async => 2,
+            requestConfirmation: requestConfirmation,
+          );
+
+          await Future<void>.delayed(Duration.zero);
+          expect(promptController.pending, isNotNull);
+          promptController.answer(
+            true,
+            requestId: promptController.pending!.requestId,
+          );
+
+          final results = await Future.wait([first, second]);
+          expect(results, [
+            MembershipRevocationResolution.purgedConfirmed,
+            MembershipRevocationResolution.purgedConfirmed,
+          ]);
+        },
+      );
+
+      test(
+        // Coalescing must not become permanent queueing/memoization: once
+        // the in-flight execution completes, a LATER, genuinely separate
+        // call must run its own fresh pass against the now-current marker.
+        'after a coalesced pair completes, a later independent call for '
+        'the same userId runs its own fresh execution (not blocked or '
+        'memoized) and correctly sees the second resolution',
+        () async {
+          identityStore.seed(
+            const LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+            ),
+          );
+
+          final first = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+          final second = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+          await Future.wait([first, second]);
+
+          final third = await lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: () async => 0,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+
+          expect(third, MembershipRevocationResolution.purgedConfirmed);
+          expect(songCatalogStore.deleteCalls, ['user-1']);
+        },
+      );
+
+      test(
+        // The in-flight map entry's cleanup runs via an unawaited
+        // `resolution.whenComplete(...)` chain. `.whenComplete()`'s OWN
+        // returned Future rethrows `resolution`'s error, and being
+        // unawaited, that rethrow must not surface as a second, separate
+        // unhandled exception in the zone alongside the one every real
+        // caller of resolveVerifiedEmptyMembership already awaits/catches
+        // on `resolution` itself.
+        'a rejected resolution does not leak a second, unhandled exception '
+        'via the in-flight cleanup chain',
+        () async {
+          identityStore.seed(
+            LastKnownIdentity(
+              userId: 'user-1',
+              email: 'user1@example.com',
+              organizationId: 'org-1',
+              membershipRevokedAt: DateTime.utc(2026, 8, 20),
+            ),
+          );
+          identityStore.throwOnClear = true;
+
+          final uncaught = <Object>[];
+          await runZonedGuarded(() async {
+            await expectLater(
+              lifecycle.resolveVerifiedEmptyMembership(
+                userId: 'user-1',
+                email: 'user1@example.com',
+                countPendingWork: () async => 0,
+                requestConfirmation: _neverCalledRequestConfirmation,
+              ),
+              throwsA(isA<StateError>()),
+            );
+            // Give the unawaited in-flight cleanup chain a turn to
+            // (mis)behave before the zone closes.
+            await Future<void>.delayed(Duration.zero);
+          }, (error, stack) => uncaught.add(error));
+
+          expect(uncaught, isEmpty);
+        },
+      );
+
+      test(
+        'concurrent calls for DIFFERENT userIds are keyed independently '
+        'and do not coalesce with each other',
+        () async {
+          final first = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-1',
+            email: 'user1@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+          final second = lifecycle.resolveVerifiedEmptyMembership(
+            userId: 'user-2',
+            email: 'user2@example.com',
+            countPendingWork: _neverCalledCountPendingWork,
+            requestConfirmation: _neverCalledRequestConfirmation,
+          );
+
+          expect(identical(first, second), isFalse);
+
+          final results = await Future.wait([first, second]);
+          expect(results, [
+            MembershipRevocationResolution.quarantined,
+            MembershipRevocationResolution.quarantined,
+          ]);
+        },
+      );
+    },
+  );
 }
 
 Future<int?> _neverCalledCountPendingWork() =>

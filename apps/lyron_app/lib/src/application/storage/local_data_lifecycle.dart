@@ -154,6 +154,27 @@ class LocalDataLifecycle {
   final void Function(LastKnownIdentity?) _noteLastKnownIdentity;
   final LocalDataEventsRecorder _eventsRecorder;
 
+  // Post-6853b08 review fix: three independent listeners can each run their
+  // own live `current_organization_ids()` RPC and call
+  // resolveVerifiedEmptyMembership for the SAME userId off the SAME signedIn
+  // transition -- auth_providers.dart's persistIdentity, and
+  // VerifiedEmptyMembershipCleanupCoordinator (reached independently from
+  // both SongCatalogController and ActivePlanningContextController, neither
+  // of which dedups against the other). With no serialization, one real
+  // membership check could be read as two: either two callers both see the
+  // marker unset and both write (first-resolution), or one caller's write
+  // lands before another's read, making that second caller wrongly treat
+  // ONE event as "the second, independent confirmation" and purge on a
+  // single genuine RPC result. Keyed in-flight coalescing closes this: a
+  // second call for a userId already in flight is handed the SAME Future
+  // (and therefore the same decision) rather than performing its own
+  // read-decide-act pass. Removed from the map once the execution
+  // completes, so a LATER, genuinely separate call (e.g. a subsequent
+  // periodic check) still runs its own fresh pass -- only calls that
+  // overlap in time share a result.
+  final _inFlightResolutions =
+      <String, Future<MembershipRevocationResolution>>{};
+
   Future<void> purgeSongCatalog({
     required String userId,
     required PurgeReason reason,
@@ -250,7 +271,61 @@ class LocalDataLifecycle {
   /// both call sites via the `AppAuthSession`/handler chain that is actively
   /// resolving), never a value read back off any stored row -- see the
   /// comment ahead of the `matchesCaller` branch below for why.
+  ///
+  /// Coalesces concurrent calls for the same [userId] (see
+  /// [_inFlightResolutions]'s doc): a call that arrives while another for
+  /// the same [userId] is still running is handed that SAME `Future`
+  /// instead of starting its own independent read-decide-act pass. This
+  /// method itself stays synchronous up to that check (no `async` keyword)
+  /// specifically so two back-to-back, unawaited calls from the same
+  /// synchronous caller both see the map update before either yields to the
+  /// event loop -- an `async` wrapper here would let both calls race past
+  /// the check before either's map write lands.
   Future<MembershipRevocationResolution> resolveVerifiedEmptyMembership({
+    required String userId,
+    required String email,
+    required Future<int?> Function() countPendingWork,
+    required Future<bool> Function(int? pendingCount) requestConfirmation,
+  }) {
+    final inFlight = _inFlightResolutions[userId];
+    if (inFlight != null) return inFlight;
+
+    final resolution = _resolveVerifiedEmptyMembership(
+      userId: userId,
+      email: email,
+      countPendingWork: countPendingWork,
+      requestConfirmation: requestConfirmation,
+    );
+    _inFlightResolutions[userId] = resolution;
+    // Only remove THIS execution's own entry: guards against a pathological
+    // case where a stale `whenComplete` fires after a newer execution has
+    // already replaced the map entry for the same userId (not reachable
+    // today, since a new execution only ever starts when the map has no
+    // entry for that userId, but cheap to make correct regardless).
+    //
+    // `resolution.then(_, onError: _)` first collapses BOTH the success and
+    // failure case of `resolution` into a `Future<void>` that never itself
+    // rejects, specifically so the subsequent `.whenComplete()`'s own
+    // returned Future (which would otherwise rethrow `resolution`'s error)
+    // has nothing left to rethrow. This chain is fire-and-forget cleanup
+    // only -- `resolution` itself, returned below, is the one every real
+    // caller awaits/catches -- so swallowing the error HERE does not affect
+    // what `resolution` resolves or throws for its actual callers; it only
+    // stops this unawaited chain from surfacing as a second, never-caught
+    // rejection in the zone alongside the one every caller already handles.
+    unawaited(
+      resolution
+          .then((_) {}, onError: (_) {})
+          .whenComplete(() {
+            if (identical(_inFlightResolutions[userId], resolution)) {
+              _inFlightResolutions.remove(userId);
+            }
+          }),
+    );
+    return resolution;
+  }
+
+  Future<MembershipRevocationResolution> _resolveVerifiedEmptyMembership({
     required String userId,
     required String email,
     required Future<int?> Function() countPendingWork,
