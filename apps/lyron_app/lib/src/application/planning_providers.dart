@@ -94,7 +94,13 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
           return false;
         }
         await _invalidateLastKnownIdentityPersistence();
-        for (final handler in _handlers) {
+        // YELLOW 8 (final whole-branch review): iterate a snapshot, not the
+        // live Set. A handler firing here can itself call removeHandler
+        // (e.g. a provider disposing while this purge is committing) --
+        // mutating _handlers while it is being iterated throws
+        // ConcurrentModificationError out of this fire-and-forget listener
+        // AFTER the purge has already committed.
+        for (final handler in _handlers.toList(growable: false)) {
           await handler(userId: userId);
         }
         return true;
