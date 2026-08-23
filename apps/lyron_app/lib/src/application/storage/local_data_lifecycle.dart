@@ -325,11 +325,19 @@ class LocalDataLifecycle {
   /// with that same rule.
   Future<void> writeIdentity(LastKnownIdentity identity) {
     return _runOnChain(() async {
+      await _identityStore.write(identity);
+      // Only after the store write has actually committed. Resetting the
+      // tracking first would, on a failed write, leave the prior user's
+      // marker fully intact in storage while this process forgot that it
+      // was the one that recorded it -- and a marker this process does not
+      // remember recording is treated as "from an earlier launch," which
+      // skips the D5.3 cooldown entirely and collapses the two-confirmation
+      // gate to one. Nothing can interleave between the write and this
+      // reset: the whole method is one link of [_runOnChain].
       if (_markerRecordedForUserId != null &&
           _markerRecordedForUserId != identity.userId) {
         _resetMembershipRevocationTracking();
       }
-      await _identityStore.write(identity);
       _noteLastKnownIdentity(identity);
     });
   }

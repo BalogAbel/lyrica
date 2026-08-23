@@ -449,6 +449,49 @@ void main() {
     );
 
     test(
+      "5b. a different-user identity write that FAILS leaves user A's marker "
+      'and its cooldown intact -- a failed write must not turn A\'s next '
+      'resolution into an uncooled second confirmation',
+      () async {
+        identityStore.seed(
+          const LastKnownIdentity(userId: 'A', email: 'a@x', organizationId: null),
+        );
+        await lifecycle.resolveVerifiedEmptyMembership(userId: 'A');
+
+        identityStore.throwOnWrite = true;
+        await expectLater(
+          lifecycle.writeIdentity(
+            const LastKnownIdentity(
+              userId: 'B',
+              email: 'b@x',
+              organizationId: null,
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+        identityStore.throwOnWrite = false;
+
+        // The store rolled the write back, so A still owns the row and A's
+        // marker is still the one this process recorded. The cooldown must
+        // still apply to it.
+        final decision = await lifecycle.resolveVerifiedEmptyMembership(
+          userId: 'A',
+        );
+
+        expect(
+          decision,
+          equals(
+            const MembershipRevocationIgnored(
+              MembershipRevocationIgnoredReason.insideCooldown,
+            ),
+          ),
+        );
+        expect(songCatalogStore.deleteCalls, isEmpty);
+        expect(planningLocalStore.deleteCalls, isEmpty);
+      },
+    );
+
+    test(
       '6. a resolution for a user who does not own the stored row -> no '
       'write of any kind',
       () async {
@@ -930,6 +973,7 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   final List<LastKnownIdentity> writes = <LastKnownIdentity>[];
   final List<String> callLog = <String>[];
   bool throwOnClear = false;
+  bool throwOnWrite = false;
 
   void seed(LastKnownIdentity identity, {DateTime? membershipRevokedAt}) {
     _current = identity;
@@ -947,6 +991,9 @@ class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {
   @override
   Future<void> write(LastKnownIdentity identity) async {
     callLog.add('write');
+    if (throwOnWrite) {
+      throw StateError('simulated write failure');
+    }
     writes.add(identity);
     // Mirrors DriftLastKnownIdentityStore.write()'s marker contract: the
     // marker survives a same-user write, and is reset for a different user
