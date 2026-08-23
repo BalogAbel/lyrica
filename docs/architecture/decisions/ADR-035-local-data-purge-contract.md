@@ -617,6 +617,32 @@ is a deliberate, user-visible trade-off in exchange for making the
 inconsistent-partial-restore failure mode (the actual F6 defect) structurally
 impossible rather than merely unlikely.
 
+### Residual risk: `clearIdentity`'s `userId: null` path stays outside the mutation chain
+
+Task 4.2's review found that concurrent callers of `resolveVerifiedEmptyMembership`
+for the same `userId` could race; Task 4.3's review found the fix needed to
+extend to `clearMembershipRevocation` too, and then to `clearIdentity` itself,
+since all four are mutators of the same single-row `LastKnownIdentity` store.
+All four now serialize through one shared FIFO `_identityMutationChain` keyed
+by `userId` (`LocalDataLifecycle`, commits `670b6f7`/`7d21efc`) — with one
+deliberate exception: `clearIdentity`'s `userId: null` call shape (the
+ordinary explicit-sign-out path, `auth_providers.dart` sign-out flow) has no
+key to schedule against and stays unserialized. Its safety currently depends
+on an out-of-file invariant — `SongCatalogController` bumps its refresh
+generation synchronously before any `await`, so an in-flight offline read or
+quarantine-clear aborts at its next staleness checkpoint before reaching the
+lifecycle call — which is real but not proven to run before every sign-out
+trigger path reaches `clearIdentity`, since `auth_providers.dart` and
+`song_catalog_controller.dart` are two independent listeners with no shared
+generation or fence between them. Not fixed in this phase: sign-out is
+already `PurgeReason.userSignOut`, unconditionally destructive by design
+(D1), so the worst outcome of this residual race is a corrupted-but-still-
+being-deleted row, not a wrongly-preserved or wrongly-purged one — lower
+stakes than the membership-revocation races this phase closed. Tracked here
+so a future change to `clearIdentity`'s call shape (e.g. if a `userId`
+becomes available at that call site) closes it rather than leaving it as an
+unexamined gap.
+
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
 Both acceptance tests defend against "the catalog going empty while offline,"

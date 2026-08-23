@@ -482,26 +482,78 @@ offline-authenticated read paths do not consult the marker.
 
 **Files:** same, plus `LocalDataLifecycle`
 
-- [ ] Write a failing test: two consecutive fresh online empty resolutions with no
+- [x] Write a failing test: two consecutive fresh online empty resolutions with no
   pending work purge via `membershipRevokedConfirmed` and write the audit row.
-- [ ] Write a failing test: pending work present → the purge waits for user
+- [x] Write a failing test: pending work present → the purge waits for user
   confirmation. Acceptance 5.
-- [ ] Reuse the existing confirmation host rather than adding a second dialog
+- [x] Reuse the existing confirmation host rather than adding a second dialog
   owner (ADR-029).
+
+`resolveVerifiedEmptyMembership`'s "already quarantined" branch completed:
+zero pending work (`PendingLocalWorkCounter`) purges immediately; nonzero or
+unreadable count requests confirmation via `ReauthPromptController`, extended
+to a sealed `ReauthPrompt` with a new `MembershipQuarantinePurgePrompt`
+variant, shown by the existing `ReauthPromptHost` through a new
+`membership_quarantine_purge_dialog.dart` (mirrors
+`reauth_different_user_dialog.dart`'s structure; states plainly that local
+songs and plans are deleted; honest `null`-count handling). No second
+controller/host built. Review found and fixed a real race: three independent
+listeners (`auth_providers.dart`, and two triggers into
+`VerifiedEmptyMembershipCleanupCoordinator` via `SongCatalogController`/
+`ActivePlanningContextController`) could each call the gate for the same
+`userId` on one sign-in edge, letting one genuine membership check masquerade
+as two confirmations, and could throw an uncaught `StateError` from the
+prompt controller. Fixed with per-`userId` in-flight coalescing inside
+`LocalDataLifecycle` (commit `ce25b02`), verified structural (protects all
+callers, not just the three found) and reviewed clean.
 
 ## Task 4.3 — Clearing quarantine
 
-- [ ] Any subsequent non-empty membership resolution clears the marker and
+- [x] Any subsequent non-empty membership resolution clears the marker and
   restores normal operation, with an audit record.
+
+Two genuine live-resolution paths found (`ActiveOrganizationSelected` is
+otherwise collapsed to a bare `String?` before reaching most callers):
+`auth_providers.dart`'s `persistNewIdentity` at sign-in, and
+`SongCatalogController`'s periodic (5-min) live re-check —
+`ActivePlanningContextController` has no independent RPC trigger of its own,
+confirmed not to need wiring. Both now clear `membershipRevokedAt` (via new
+`LocalDataLifecycle.clearMembershipRevocation`/`recordMembershipRevocationCleared`)
+only on a freshly-verified non-empty resolution, never on the cached
+connectivity-fallback path, with a `local_data_events` audit row
+(`reason: 'membershipRevokedCleared'`), and only when a marker actually
+existed (no spurious audit rows on ordinary sign-ins). Two rounds of review
+found real races: `clearMembershipRevocation`'s bare read-then-write could
+lost-update a concurrent identity write or resurrect a row a concurrent purge
+had just deleted (same anti-pattern `clearIdentity` was originally designed
+to avoid, reintroduced in the opposite direction); and `clearIdentity` itself
+turned out to be the one `_identityStore` mutator left outside the
+resulting per-`userId` mutation chain, reopening the same race on the
+`differentUserSignIn` path. Both closed by routing all four `_identityStore`
+mutators (`write`, `clear`, and the reads inside `clearMembershipRevocation`/
+`resolveVerifiedEmptyMembership`) through one shared FIFO
+`_identityMutationChain` keyed by `userId` (commits `670b6f7`, `7d21efc`).
+One non-blocking risk noted by the final review and not yet closed:
+`clearIdentity`'s `userId: null` path (the ordinary explicit-sign-out flow)
+stays outside the chain by design (no key to schedule against); its safety
+depends on `SongCatalogController` bumping its refresh generation before any
+same-user chained op can reach the lifecycle call, which is real but not
+proven to run before every sign-out trigger path. Left as a residual risk
+(see ADR-035) rather than a blocker — flagged for the final whole-branch
+review.
 
 ## Task 4.4 — Android backup determinism (D8)
 
 **Files:** `apps/lyron_app/android/app/src/main/AndroidManifest.xml`
 
-- [ ] Set `android:allowBackup="false"`, or add data-extraction rules keeping the
+- [x] Set `android:allowBackup="false"`, or add data-extraction rules keeping the
   session store and the SQLite databases in one backup set.
-- [ ] Note the choice and its consequence (no cloud restore of local catalogs) in
+- [x] Note the choice and its consequence (no cloud restore of local catalogs) in
   ADR-035.
+
+`android:allowBackup="false"` added (commit `ef7230e`); no data-extraction
+rules file existed or was needed. `flutter build apk --debug` verified
+green. Decision and consequence already recorded in ADR-035's D8 section.
 
 ---
 
