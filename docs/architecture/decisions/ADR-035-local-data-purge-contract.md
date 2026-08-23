@@ -593,8 +593,9 @@ would clear any pending quarantine marker as part of `clearIdentity`).
 
 ### D8 — Android backup: `allowBackup="false"` chosen over data-extraction rules
 
-`AndroidManifest.xml`'s `<application>` tag sets neither attribute today (no
-`res/xml/` data-extraction-rules file exists either). Between D8's two
+`AndroidManifest.xml`'s `<application>` tag set neither attribute before this
+phase (no `res/xml/` data-extraction-rules file exists either; Task 4.4 added
+`android:allowBackup="false"`, commit `ef7230e`). Between D8's two
 options, **`android:allowBackup="false"`** is chosen over authoring
 data-extraction rules: the rules approach would need to keep the Supabase
 session (SharedPreferences), the song-catalog, planning, last-known-identity,
