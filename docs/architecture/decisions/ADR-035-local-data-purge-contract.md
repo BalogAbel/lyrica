@@ -278,35 +278,51 @@ own robustness next gets attention:
   local variable. Still an accepted gap, now with a concrete repro shape on
   record.
 
-### Decided, not yet implemented (Phases 3–4)
+### Decided, not yet implemented
 
-The remaining four decisions are settled — confirmed with the product owner
-where noted in the spec — and scheduled in
+The remaining decisions are settled — confirmed with the product owner where
+noted in the spec — and scheduled in
 `docs/plans/2026-08-19-local-data-durability-contract.md`. None of them are
-built as of this ADR:
+built as of this ADR revision (D4/D6, Phase 3's snapshot-replacement and
+eviction decisions, landed with PR #75 and are documented in the "Phase 3
+mechanism decisions" section below; this ADR's own "not yet implemented"
+framing for them was not updated at that time — flagged here rather than
+fixed, since correcting it is outside this revision's scope):
 
-- **D4 — conditional, organization-scoped snapshot replacement** (Phase 3).
-  An empty incoming snapshot must not replace a non-empty stored one without a
-  second independent empty confirmation; `_deleteUserSnapshots` narrows from
-  `(userId)` to `(userId, organizationId)`; replacement adopts an explicit
-  blue/green write shape.
-- **D5 — `verifiedEmpty` quarantines before it purges** (Phase 4). The first
-  empty-membership resolution records `membershipRevokedAt` and quarantines
-  the data read-only; the purge itself needs a second fresh, online,
-  authenticated empty resolution plus no pending work or user confirmation.
-- **D6 — eviction is triggered by storage pressure and proportionate to it**
-  (Phase 3). Amends ADR-028: eviction fires only on a concrete
-  storage-exhaustion signal or a measured footprint over budget, evicts
-  least-recently-read first, and marks the affected snapshot recoverable on
-  the next online refresh.
-- **D8 — Android backup is deterministic** (Phase 4). Set
-  `android:allowBackup="false"`, or supply data-extraction rules that keep the
-  session store and the SQLite databases in the same backup set, so a
-  half-restored device cannot be representable.
+- **D5 — `verifiedEmpty` quarantines before it purges** (Phase 4). Scoped and
+  attempted; a final whole-branch review found the concurrency design
+  underneath the attempt does not actually satisfy this decision's
+  two-confirmation guarantee. Not implemented as of this ADR revision; being
+  re-scoped from the spec in a fresh session. See
+  `docs/plans/2026-08-19-local-data-durability-contract.md`'s Phase 4
+  closeout section for the full finding set and the re-scope decision.
 
-Do not read D4–D6/D8 as implemented from this ADR's existence. They are
-recorded here, ahead of their landing, so the full contract has one durable
-home; each lands with its own commits and its own review in Phases 3–4.
+### Implemented in Phase 4 (this slice — Task 4.4 only)
+
+**D8 — Android backup: `allowBackup="false"` chosen over data-extraction
+rules.** `AndroidManifest.xml`'s `<application>` tag set neither attribute
+before this task (no `res/xml/` data-extraction-rules file exists either).
+Between D8's two options, **`android:allowBackup="false"`** is chosen over
+authoring data-extraction rules: the rules approach would need to keep the
+Supabase session (SharedPreferences), the song-catalog, planning,
+last-known-identity, and local-data-events SQLite files all in the same
+backup set to avoid a half-restored device — five independent files that
+would all need updating in lockstep on every future schema change, a
+maintenance tax with no corresponding benefit, since this app has no product
+requirement for cross-device backup/restore of local data (the server is the
+durable store once synced; local data existing only to survive offline is
+the entire premise of this contract). Setting `allowBackup="false"` makes "a
+half-restored device" unrepresentable by construction instead of by rule
+maintenance.
+
+**Consequence:** a user who backs up their Android device (cloud backup,
+device-to-device transfer) will not have their local song/plan cache or
+session restored on a new device — they will see a normal signed-out state
+and need to sign in and re-sync, exactly as a first install would look. This
+is a deliberate, user-visible trade-off in exchange for making the
+inconsistent-partial-restore failure mode (the actual F6 defect) structurally
+impossible rather than merely unlikely. D8 does not depend on D5 or any other
+undelivered Phase 4 decision and ships independently.
 
 ## Phase 3 mechanism decisions
 
