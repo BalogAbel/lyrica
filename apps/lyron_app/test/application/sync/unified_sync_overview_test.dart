@@ -206,6 +206,40 @@ void main() {
       );
     });
 
+    // spec D5.6 / ADR-035: a permanently unauthorized song row (surfaced by
+    // SongMutationSyncController writing `SongSyncStatus.conflict` for an
+    // authorizationDenied failure, see song_mutation_sync_controller.dart)
+    // must be distinguishable from an ordinary retryable failure, not just
+    // shown as a generic conflict -- reasonCode carries that distinction,
+    // separately from severity (which both share `conflict`, matching
+    // planning's equivalent row above).
+    test('authorization_denied song row yields red conflict severity', () {
+      final overview = _compute(
+        songs: [
+          _song(
+            id: 's1',
+            title: 'Revoked',
+            status: SongSyncStatus.conflict,
+            errorCode: SongMutationSyncErrorCode.authorizationDenied,
+          ),
+        ],
+      );
+      expect(
+        overview.songRows.single.reasonCode,
+        UnifiedSyncReasonCode.authorizationDenied,
+      );
+      expect(
+        overview.songRows.single.severity,
+        UnifiedSyncRowSeverity.conflict,
+      );
+      // Distinguishable from a merely retryable failure: an ordinary
+      // syncFailed/unknown row never reaches conflict severity.
+      expect(
+        overview.songRows.single.severity,
+        isNot(UnifiedSyncRowSeverity.retryableFailure),
+      );
+    });
+
     test('synced song entries are filtered from rows', () {
       final overview = _compute(
         songs: [

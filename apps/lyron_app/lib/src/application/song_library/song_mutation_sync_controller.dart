@@ -241,9 +241,21 @@ class SongMutationSyncController {
             userId: context.userId,
             organizationId: context.organizationId,
             songId: record.id,
+            // spec D5.6 / ADR-035: a permanent authorization rejection
+            // (authorizationDenied) is folded into the same `conflict`
+            // status as an ordinary version conflict or a remote delete --
+            // NOT left on `pendingCreate`/`pendingUpdate`/`pendingDelete`.
+            // `conflict` is excluded from readPendingSongs' candidate
+            // filter, which is what makes this terminal: nothing resends
+            // the row again. Reusing the existing status also means the
+            // existing conflictSourceSyncStatus bookkeeping (below, at the
+            // storage boundary) and the existing unified-sync-overview
+            // conflict-severity surfacing apply unchanged -- no new status
+            // or surface needed.
             syncStatus:
                 error.code == SongMutationSyncErrorCode.conflict ||
-                    error.code == SongMutationSyncErrorCode.remoteDeleted
+                    error.code == SongMutationSyncErrorCode.remoteDeleted ||
+                    error.code == SongMutationSyncErrorCode.authorizationDenied
                 ? SongSyncStatus.conflict
                 : (isCreate ? SongSyncStatus.pendingCreate : record.syncStatus),
             errorCode: error.code,
