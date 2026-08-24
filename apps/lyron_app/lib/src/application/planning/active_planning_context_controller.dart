@@ -138,22 +138,35 @@ class ActivePlanningContextController extends ChangeNotifier {
     // this clear exists to break. Reported rather than rethrown so a
     // transient identity-store error cannot break the read path (ADR-020).
     if (organizationId != null && !organizationLookupWasConnectivityFailure) {
-      try {
-        await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
-      } catch (error, stackTrace) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            stack: stackTrace,
-            library: 'ActivePlanningContextController',
-            context: ErrorDescription(
-              'failed to clear the membership-revocation marker after a '
-              'freshly verified non-empty membership resolution -- the '
-              'marker is still set and will be cleared by the next '
-              'successful non-empty refresh',
+      // D5.5 rule 4, mirroring SongCatalogController's identical guard:
+      // `session` was captured before the awaited organization lookup, and
+      // staleness alone does not assert session identity. Re-read and
+      // compare before clearing the marker.
+      //
+      // This SKIPS the clear rather than returning. The rest of this method
+      // establishes the planning read context; returning here would leave
+      // that context unset whenever the session changed mid-lookup.
+      final currentSession = _authSessionReader();
+      final sessionUnchanged =
+          currentSession != null && currentSession.userId == session.userId;
+      if (sessionUnchanged) {
+        try {
+          await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'ActivePlanningContextController',
+              context: ErrorDescription(
+                'failed to clear the membership-revocation marker after a '
+                'freshly verified non-empty membership resolution -- the '
+                'marker is still set and will be cleared by the next '
+                'successful non-empty refresh',
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     }
 

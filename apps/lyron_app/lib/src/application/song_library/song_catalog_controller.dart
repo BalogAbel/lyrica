@@ -319,25 +319,46 @@ class SongCatalogController extends ChangeNotifier {
     // break the read path (ADR-020); the next refresh tick with a non-empty
     // resolution clears the marker again.
     if (!organizationLookupWasConnectivityFailure) {
-      try {
-        await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
-      } catch (error, stackTrace) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            stack: stackTrace,
-            library: 'SongCatalogController',
-            context: ErrorDescription(
-              'failed to clear the membership-revocation marker after a '
-              'freshly verified non-empty membership resolution -- the '
-              'marker is still set and will be cleared by the next '
-              'successful non-empty refresh',
+      // D5.5 rule 4: `session` was captured at the top of this method,
+      // before the awaited organization lookup, and _isStale(generation)
+      // does not assert session identity. Re-read and compare before
+      // clearing the marker, so a resolution captured under one user can
+      // never clear a marker after a different user signed in during the
+      // await. The store's ownership check bounds the damage today, but
+      // the rule requires the value to be re-read here, not merely
+      // neutralised downstream.
+      //
+      // This SKIPS the clear rather than returning from _refreshCatalog.
+      // Unlike the verified-empty branch above -- which ends the method
+      // anyway -- the rest of this branch is the ordinary refresh: it
+      // establishes the read context and loads the snapshot. Returning
+      // here would abandon all of that whenever the session changed
+      // mid-lookup, including on the explicit sign-out path, which is
+      // governed by the existing generation/staleness guards below.
+      final currentSession = _authSessionReader();
+      final sessionUnchanged =
+          currentSession != null && currentSession.userId == session.userId;
+      if (sessionUnchanged) {
+        try {
+          await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'SongCatalogController',
+              context: ErrorDescription(
+                'failed to clear the membership-revocation marker after a '
+                'freshly verified non-empty membership resolution -- the '
+                'marker is still set and will be cleared by the next '
+                'successful non-empty refresh',
+              ),
             ),
-          ),
-        );
-      }
-      if (_isStale(generation)) {
-        return;
+          );
+        }
+        if (_isStale(generation)) {
+          return;
+        }
       }
     }
     final hasCachedCatalog = await _hasCachedCatalog(context);

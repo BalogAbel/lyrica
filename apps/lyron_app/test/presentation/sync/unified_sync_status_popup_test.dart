@@ -610,6 +610,61 @@ void main() {
     );
   });
 
+  testWidgets(
+    // Mirrors the song-row authorizationDenied test: retryMutation now
+    // throws for a failedAuthorization row, so Keep mine on a plan row
+    // must be suppressed the same way it is on a song row -- offering a
+    // retry that provably cannot succeed just produces a generic partial
+    // failure snackbar. Discard mine stays: it is purely local, needs no
+    // authorization, and is the user's only way to clear the row.
+    'authorizationDenied plan row hides Keep mine but keeps Discard mine, '
+    'and still shows the row and its reason',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                plans: const [
+                  UnifiedSyncPlanRow(
+                    planId: 'p1',
+                    title: 'Closed Plan',
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.authorizationDenied,
+                    nestedSummaries: ['plan edited'],
+                    mutationRefs: [
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'plan',
+                        aggregateId: 'p1',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      expect(find.text('Closed Plan'), findsOneWidget);
+      expect(
+        find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('conflict plan row Discard mine discards all grouped mutations', (
     tester,
   ) async {

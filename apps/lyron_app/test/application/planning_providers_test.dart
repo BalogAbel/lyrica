@@ -92,6 +92,58 @@ void main() {
         );
       },
     );
+
+    test(
+      // FIX 4 (re-review): fan-out is run with Future.wait over the
+      // snapshot, not a sequential await loop. A handler that throws must
+      // not stop later handlers from running -- these handlers run AFTER
+      // the purge has already committed, so a skipped one leaves a
+      // controller holding state for data that no longer exists. The
+      // snapshot is what fixes the ConcurrentModificationError (see the
+      // test above); Future.wait is what fixes the sequencing.
+      'a throwing handler does not prevent other handlers from running, '
+      'and the error still propagates',
+      () async {
+        var firstHandlerCalls = 0;
+        var thirdHandlerCalls = 0;
+
+        Future<void> firstHandler({required String userId}) async {
+          firstHandlerCalls += 1;
+        }
+
+        Future<void> throwingHandler({required String userId}) async {
+          throw StateError('simulated cleanup handler failure');
+        }
+
+        Future<void> thirdHandler({required String userId}) async {
+          thirdHandlerCalls += 1;
+        }
+
+        coordinator.addHandler(firstHandler);
+        coordinator.addHandler(throwingHandler);
+        coordinator.addHandler(thirdHandler);
+
+        await driveToConfirmedPurge();
+
+        await expectLater(
+          () => coordinator.handleVerifiedEmptyMembership(userId: 'user-1'),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(
+          firstHandlerCalls,
+          1,
+          reason: 'a handler queued before the throwing one must still run',
+        );
+        expect(
+          thirdHandlerCalls,
+          1,
+          reason:
+              'a handler queued after the throwing one must still run -- '
+              'sequential await would have stopped it from ever starting',
+        );
+      },
+    );
   });
 }
 

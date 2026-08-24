@@ -100,9 +100,19 @@ final class VerifiedEmptyMembershipCleanupCoordinator {
         // mutating _handlers while it is being iterated throws
         // ConcurrentModificationError out of this fire-and-forget listener
         // AFTER the purge has already committed.
-        for (final handler in _handlers.toList(growable: false)) {
-          await handler(userId: userId);
-        }
+        //
+        // FIX 4 (re-review): run the snapshot with Future.wait, not a
+        // sequential await loop. These handlers all run AFTER the purge has
+        // already committed, so a handler that throws must not stop later
+        // handlers from running at all -- a skipped one would leave its
+        // controller holding state for data that has already been deleted.
+        // Future.wait runs every handler and still propagates the first
+        // error to this call's caller.
+        await Future.wait(
+          _handlers
+              .toList(growable: false)
+              .map((handler) => handler(userId: userId)),
+        );
         return true;
     }
   }

@@ -390,6 +390,47 @@ void main() {
       },
     );
 
+    test(
+      // FIX 2 (re-review, D5.5 rule 4): mirrors SongCatalogController's
+      // identical fix. The non-empty branch used to enter the marker-clear
+      // gate with no re-check of session identity after the awaited
+      // organization lookup -- re-read and compare immediately before the
+      // clear call.
+      'does not enter the marker-clear gate when a different user signed '
+      'in while the organization lookup was in flight',
+      () async {
+        var handlerCalls = 0;
+        final controller = ActivePlanningContextController(
+          authSessionReader: () => session,
+          organizationReader: () async {
+            // Simulate a different user signing in during this await --
+            // exactly the race the currentness re-check must catch.
+            session = const AppAuthSession(
+              userId: 'user-2',
+              email: 'other@lyron.local',
+            );
+            return 'org-1';
+          },
+          latestOrganizationReader: ({required userId}) async =>
+              latestCachedOrganizationId,
+          onVerifiedNonEmptyMembership: ({required userId}) async {
+            handlerCalls++;
+          },
+        );
+
+        await controller.refresh();
+
+        expect(
+          handlerCalls,
+          0,
+          reason:
+              'the marker-clear gate must not run for a resolution '
+              'captured under a user who is no longer the current session '
+              'by the time the gate is entered',
+        );
+      },
+    );
+
     test('clears state when no signed-in session is available', () async {
       final controller = ActivePlanningContextController(
         authSessionReader: () => session,

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/shared/connectivity_failure.dart';
+import 'package:lyron_app/src/shared/permanent_authorization_denial.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseSongMutationRemoteRepository
@@ -177,31 +178,13 @@ class SupabaseSongMutationRemoteRepository
     }
     if (error is PostgrestException) {
       final message = error.message.toLowerCase();
-      // spec D5.6 / ADR-035: `403`, PostgreSQL `42501`, and a
-      // `permission denied for ...` message all mean the server knows the
-      // caller and the caller lacks the right -- permanent, terminal.
-      //
-      // The message match is deliberately narrowed to the full PostgreSQL
-      // phrase (`permission denied for table/schema/function ...`) rather
-      // than a bare `permission denied` substring. A bare substring would
-      // also match any unrelated `RAISE EXCEPTION` whose free text happens
-      // to quote those two words, and misclassifying such an error as
-      // permanent tells the user their edit can never sync when it still
-      // could. Matching the phrase rather than anchoring to the start of
-      // the message keeps it robust to PostgREST wrapping the text.
-      // `SongCatalogController._isAuthorizationFailure` keeps the looser
-      // bare-substring form; there a false positive only costs a fallback
-      // to the cached organization id. `401` is
-      // deliberately NOT folded in here (unlike
-      // `SongCatalogController._isAuthorizationFailure`, which collapses
-      // 401/403/42501/permission-denied for a different decision where
-      // that collapse is correct): a missing/malformed/expired token can
-      // succeed again after re-authentication, so it must stay retryable
-      // rather than discarding the user's queued edit.
-      if (error.code == '42501' ||
-          error.code == '403' ||
-          message.contains('song_write_not_authorized') ||
-          message.contains('permission denied for')) {
+      // spec D5.6 / ADR-035: permanent, terminal -- see
+      // isPermanentAuthorizationDenial's doc comment for the full
+      // rationale (shared with supabase_planning_mutation_repository.dart).
+      // `song_write_not_authorized` is this repository's own
+      // domain-specific signal on top of that shared predicate.
+      if (isPermanentAuthorizationDenial(error) ||
+          message.contains('song_write_not_authorized')) {
         return SongMutationSyncException(
           SongMutationSyncErrorCode.authorizationDenied,
           message: error.message,

@@ -300,15 +300,21 @@ class _PlanRowTile extends ConsumerWidget {
 
   Widget? _actions(BuildContext context, WidgetRef ref) {
     return switch (row.severity) {
+      // Mirrors _SongRowTile: retryMutation now throws for a row whose
+      // reasonCode is authorizationDenied, so Keep mine is a retry that
+      // provably cannot succeed -- it is suppressed rather than offered.
+      // Discard mine stays: purely local, needs no authorization, and is
+      // the user's only way to clear the row out of the queue.
       UnifiedSyncRowSeverity.conflict => Wrap(
         spacing: 8,
         children: [
-          TextButton(
-            key: ValueKey('unified-sync-plan-keep-${row.planId}'),
-            onPressed: () =>
-                unawaited(_applyToGroup(context, ref, retry: true)),
-            child: const Text(AppStrings.songKeepMineAction),
-          ),
+          if (row.reasonCode != UnifiedSyncReasonCode.authorizationDenied)
+            TextButton(
+              key: ValueKey('unified-sync-plan-keep-${row.planId}'),
+              onPressed: () =>
+                  unawaited(_applyToGroup(context, ref, retry: true)),
+              child: const Text(AppStrings.songKeepMineAction),
+            ),
           TextButton(
             key: ValueKey('unified-sync-plan-discard-${row.planId}'),
             onPressed: () =>

@@ -258,14 +258,18 @@ class LocalDataLifecycle {
   /// -- whenever the underlying marker itself is known to be gone (a
   /// cleared marker, a different-user write, or an identity clear).
   ///
-  /// When [_markerRecordedForUserId] is `null`, or does not match the
-  /// `userId` a later resolution names, the marker (if the store reports
-  /// one) was not set by this process's tracking -- most commonly because
-  /// it was recorded on an earlier launch. Per D5.3, separate launches are
+  /// When this is `null`, or its `userId` does not match the `userId` a
+  /// later resolution names, the marker (if the store reports one) was not
+  /// set by this process's tracking -- most commonly because it was
+  /// recorded on an earlier launch. Per D5.3, separate launches are
   /// independent events by construction, so no cooldown check applies in
   /// that case at all.
-  String? _markerRecordedForUserId;
-  Duration? _markerRecordedAtMonotonic;
+  ///
+  /// FIX 6 (re-review): a single nullable record rather than two separate
+  /// fields that were always written and cleared together. Collapsing them
+  /// makes "these two never disagree" structural instead of merely
+  /// maintained by hand at every write site.
+  ({String userId, Duration recordedAt})? _markerRecordedBy;
 
   /// Runs [action] after every previously enqueued action on the identity
   /// chain has finished, and before any action enqueued after it starts.
@@ -282,10 +286,25 @@ class LocalDataLifecycle {
   }
 
   void _resetMembershipRevocationTracking() {
-    _markerRecordedForUserId = null;
-    _markerRecordedAtMonotonic = null;
+    _markerRecordedBy = null;
   }
 
+  /// Deliberately does NOT run on [_runOnChain], unlike [clearIdentity].
+  ///
+  /// A review observed that this and [purgePlanningData] can therefore run
+  /// concurrently with [maybePurgeForMembershipRevocation]'s own purge for
+  /// the same userId — `wipePriorAndProceedFor` calls them from outside the
+  /// chain while the membership purge calls them from inside its link. That
+  /// is real, but the deletes are idempotent and keyed by userId, so the
+  /// consequence is a duplicated audit row, not corruption or data loss.
+  ///
+  /// Putting them on the chain was tried and reverted: it deadlocks the
+  /// explicit sign-out path (`SongCatalogController.handleExplicitSignOut`
+  /// awaits this from a context that cannot make chain progress), which two
+  /// existing tests caught as a hard timeout. Serialising the single most
+  /// destructive path in the app in exchange for tidier audit rows is the
+  /// wrong trade. The chain's actual contract (D5.5 rule 1) is identity and
+  /// marker mutations — neither of these is one.
   Future<void> purgeSongCatalog({
     required String userId,
     required PurgeReason reason,
@@ -300,6 +319,7 @@ class LocalDataLifecycle {
     );
   }
 
+  /// Not on [_runOnChain], for the same reason as [purgeSongCatalog].
   Future<void> purgePlanningData({
     required String userId,
     required PurgeReason reason,
@@ -386,8 +406,8 @@ class LocalDataLifecycle {
       // skips the D5.3 cooldown entirely and collapses the two-confirmation
       // gate to one. Nothing can interleave between the write and this
       // reset: the whole method is one link of [_runOnChain].
-      if (_markerRecordedForUserId != null &&
-          _markerRecordedForUserId != identity.userId) {
+      final recordedBy = _markerRecordedBy;
+      if (recordedBy != null && recordedBy.userId != identity.userId) {
         _resetMembershipRevocationTracking();
       }
       _noteLastKnownIdentity(identity);
@@ -432,24 +452,22 @@ class LocalDataLifecycle {
           return MembershipRevocationIgnored(reason);
 
         case EmptyMembershipResolutionMarkerRecorded():
-          _markerRecordedForUserId = userId;
-          _markerRecordedAtMonotonic = _monotonicNow();
+          _markerRecordedBy = (userId: userId, recordedAt: _monotonicNow());
           unawaited(_recordMembershipRevocationMarkedBestEffort(userId));
           return const MembershipRevocationMarkerRecorded();
 
         case EmptyMembershipResolutionSecondConfirmationAvailable(
           :final markedAt,
         ):
-          final recordedByThisProcess =
-              _markerRecordedForUserId == userId &&
-              _markerRecordedAtMonotonic != null;
+          final recordedBy = _markerRecordedBy;
+          final recordedByThisProcess = recordedBy?.userId == userId;
           if (!recordedByThisProcess) {
             // Either an earlier launch recorded it, or this process never
             // tracked it -- D5.3: separate launches are independent events
             // by construction, so no cooldown check applies at all.
             return MembershipRevocationPurgeAuthorized(markedAt: markedAt);
           }
-          final elapsed = _monotonicNow() - _markerRecordedAtMonotonic!;
+          final elapsed = _monotonicNow() - recordedBy!.recordedAt;
           if (elapsed >= membershipConfirmationCooldown) {
             return MembershipRevocationPurgeAuthorized(markedAt: markedAt);
           }
@@ -594,6 +612,12 @@ class LocalDataLifecycle {
       }
 
       try {
+        // This whole block already runs as one link of _runOnChain (see
+        // the enclosing `return _runOnChain(...)` above). purgeSongCatalog
+        // and purgePlanningData do not enter the chain themselves, so
+        // calling them here is safe; _clearIdentityLocked exists precisely
+        // because clearIdentity DOES enter it, and re-entering from inside
+        // a link would deadlock.
         await purgeSongCatalog(
           userId: userId,
           reason: PurgeReason.membershipRevokedConfirmed,
