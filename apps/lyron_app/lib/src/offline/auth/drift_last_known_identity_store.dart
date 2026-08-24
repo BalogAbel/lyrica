@@ -99,13 +99,11 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
       }
 
       final markedAt = DateTime.now().toUtc();
-      await (_database.update(_database.lastKnownIdentityRows)
-            ..where((table) => table.rowId.equals(1)))
-          .write(
-            LastKnownIdentityRowsCompanion(
-              membershipRevokedAt: Value(markedAt),
-            ),
-          );
+      await (_database.update(
+        _database.lastKnownIdentityRows,
+      )..where((table) => table.rowId.equals(1))).write(
+        LastKnownIdentityRowsCompanion(membershipRevokedAt: Value(markedAt)),
+      );
       return EmptyMembershipResolutionMarkerRecorded(markedAt: markedAt);
     });
   }
@@ -114,16 +112,16 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<bool> clearMembershipRevocation({required String userId}) async {
     return _database.transaction(() async {
       final row = await _readRow();
-      if (row == null || row.userId != userId || row.membershipRevokedAt == null) {
+      if (row == null ||
+          row.userId != userId ||
+          row.membershipRevokedAt == null) {
         return false;
       }
-      await (_database.update(_database.lastKnownIdentityRows)
-            ..where((table) => table.rowId.equals(1)))
-          .write(
-            const LastKnownIdentityRowsCompanion(
-              membershipRevokedAt: Value(null),
-            ),
-          );
+      await (_database.update(
+        _database.lastKnownIdentityRows,
+      )..where((table) => table.rowId.equals(1))).write(
+        const LastKnownIdentityRowsCompanion(membershipRevokedAt: Value(null)),
+      );
       return true;
     });
   }

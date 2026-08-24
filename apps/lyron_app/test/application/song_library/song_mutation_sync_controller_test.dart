@@ -33,10 +33,9 @@ void main() {
           ],
         );
         final repository = _FakeSongMutationRemoteRepository(
-          syncHandler: (record) async =>
-              throw const SongMutationSyncException(
-                SongMutationSyncErrorCode.authorizationDenied,
-              ),
+          syncHandler: (record) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.authorizationDenied,
+          ),
         );
         final controller = SongMutationSyncController(
           store: store,
@@ -67,56 +66,52 @@ void main() {
       },
     );
 
-    test(
-      'a 401 (unknown, not authorizationDenied) stays retryable and is '
-      'resent on the next sync pass -- regression guard for ordinary token '
-      'expiry (spec D5.6 / ADR-035)',
-      () async {
-        // The repository layer maps a bare `401` to `unknown`, never to
-        // `authorizationDenied` (SupabaseSongMutationRemoteRepository._mapError).
-        // This test pins what the controller does with that: `unknown`
-        // must NOT be folded into the terminal `conflict` write path above,
-        // so the row stays pending and readPendingSongs keeps offering it.
-        final store = _FakeSongMutationStore(
-          pendingSongs: const [
-            SongMutationRecord(
-              id: 'song-1',
-              organizationId: 'org-1',
-              slug: 'alpha',
-              title: 'Alpha',
-              chordproSource: '{title: Alpha}',
-              version: 3,
-              baseVersion: 3,
-              syncStatus: SongSyncStatus.pendingUpdate,
-            ),
-          ],
-        );
-        final repository = _FakeSongMutationRemoteRepository(
-          syncHandler: (record) async =>
-              throw const SongMutationSyncException(
-                SongMutationSyncErrorCode.unknown,
-              ),
-        );
-        final controller = SongMutationSyncController(
-          store: store,
-          remoteRepository: repository,
-        );
-        final context = const SongMutationContext(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        );
+    test('a 401 (unknown, not authorizationDenied) stays retryable and is '
+        'resent on the next sync pass -- regression guard for ordinary token '
+        'expiry (spec D5.6 / ADR-035)', () async {
+      // The repository layer maps a bare `401` to `unknown`, never to
+      // `authorizationDenied` (SupabaseSongMutationRemoteRepository._mapError).
+      // This test pins what the controller does with that: `unknown`
+      // must NOT be folded into the terminal `conflict` write path above,
+      // so the row stays pending and readPendingSongs keeps offering it.
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async => throw const SongMutationSyncException(
+          SongMutationSyncErrorCode.unknown,
+        ),
+      );
+      final controller = SongMutationSyncController(
+        store: store,
+        remoteRepository: repository,
+      );
+      final context = const SongMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
 
-        await controller.syncPendingSongs(context);
+      await controller.syncPendingSongs(context);
 
-        expect(store.lastSavedErrorCode, SongMutationSyncErrorCode.unknown);
-        expect(store.lastSavedStatus, SongSyncStatus.pendingUpdate);
+      expect(store.lastSavedErrorCode, SongMutationSyncErrorCode.unknown);
+      expect(store.lastSavedStatus, SongSyncStatus.pendingUpdate);
 
-        // A second sync pass DOES resend it: unlike the terminal case
-        // above, the row is still in readPendingSongs' candidate set.
-        await controller.syncPendingSongs(context);
-        expect(repository.syncedSongIds, ['song-1', 'song-1']);
-      },
-    );
+      // A second sync pass DOES resend it: unlike the terminal case
+      // above, the row is still in readPendingSongs' candidate set.
+      await controller.syncPendingSongs(context);
+      expect(repository.syncedSongIds, ['song-1', 'song-1']);
+    });
 
     test('reclassifies stale ordinary writes as conflict', () async {
       final store = _FakeSongMutationStore(

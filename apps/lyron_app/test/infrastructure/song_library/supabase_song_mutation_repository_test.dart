@@ -141,7 +141,6 @@ void main() {
     );
   });
 
-
   // The `permission denied` match is narrowed to the full PostgreSQL phrase
   // so an unrelated error that merely quotes those two words is not
   // misclassified as permanently unauthorized -- that would tell the user
@@ -187,43 +186,40 @@ void main() {
     },
   );
 
-  test(
-    'maps a "permission denied" message with no structured code to '
-    'authorizationDenied',
-    () async {
-      final repository = SupabaseSongMutationRemoteRepository.testing(
-        rpc: (name, {params}) async {
-          throw const PostgrestException(
-            message: 'permission denied for table songs',
-          );
-        },
-        fetchSongRow: (organizationId, songId) async => null,
-      );
+  test('maps a "permission denied" message with no structured code to '
+      'authorizationDenied', () async {
+    final repository = SupabaseSongMutationRemoteRepository.testing(
+      rpc: (name, {params}) async {
+        throw const PostgrestException(
+          message: 'permission denied for table songs',
+        );
+      },
+      fetchSongRow: (organizationId, songId) async => null,
+    );
 
-      await expectLater(
-        () => repository.syncSong(
+    await expectLater(
+      () => repository.syncSong(
+        organizationId: 'org-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
           organizationId: 'org-1',
-          record: const SongMutationRecord(
-            id: 'song-1',
-            organizationId: 'org-1',
-            slug: 'alpha',
-            title: 'Alpha',
-            chordproSource: '{title: Alpha}',
-            version: 2,
-            baseVersion: 2,
-            syncStatus: SongSyncStatus.pendingUpdate,
-          ),
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 2,
+          baseVersion: 2,
+          syncStatus: SongSyncStatus.pendingUpdate,
         ),
-        throwsA(
-          isA<SongMutationSyncException>().having(
-            (error) => error.code,
-            'code',
-            SongMutationSyncErrorCode.authorizationDenied,
-          ),
+      ),
+      throwsA(
+        isA<SongMutationSyncException>().having(
+          (error) => error.code,
+          'code',
+          SongMutationSyncErrorCode.authorizationDenied,
         ),
-      );
-    },
-  );
+      ),
+    );
+  });
 
   // Regression guard for spec D5.6 / ADR-035: `401` means the token is
   // missing, malformed, or expired -- re-authentication can make the very
@@ -254,9 +250,11 @@ void main() {
       ),
       throwsA(
         isA<SongMutationSyncException>()
-            .having((error) => error.code, 'code', isNot(
-              SongMutationSyncErrorCode.authorizationDenied,
-            ))
+            .having(
+              (error) => error.code,
+              'code',
+              isNot(SongMutationSyncErrorCode.authorizationDenied),
+            )
             .having(
               (error) => error.code,
               'code',

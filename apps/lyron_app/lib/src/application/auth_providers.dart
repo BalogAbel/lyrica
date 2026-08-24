@@ -739,7 +739,9 @@ final membershipResolutionProvider =
 // on the marker.
 final membershipResolutionDetailedProvider =
     Provider<
-      Future<({ActiveOrganizationResolution resolution, bool wasCachedFallback})>
+      Future<
+        ({ActiveOrganizationResolution resolution, bool wasCachedFallback})
+      >
       Function()
     >((ref) {
       return ref

@@ -291,57 +291,54 @@ void main() {
   // the cache untouched); they now prove the opposite invariant Step 1
   // requires -- that a single resolution deletes nothing at all -- per the
   // task instructions that explicitly call out this call site.
-  test(
-    'a single verified-empty resolution records the marker and does not '
-    'clear the identity, so a concurrent legitimate resolution is not '
-    'discarded',
-    () async {
-      final membershipLookup = Completer<ActiveOrganizationResolution>();
-      authRepository.currentSession = const AppAuthSession(
-        userId: 'user-1',
-        email: 'user@example.com',
-      );
-      final planningDatabase = PlanningLocalDatabase.inMemory();
-      final songDatabase = SongCatalogDatabase.inMemory();
-      final container = ProviderContainer(
-        overrides: [
-          appAuthControllerProvider.overrideWith((_) => authController),
-          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
-          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
-          activeOrganizationResolutionProvider.overrideWithValue(
-            () => membershipLookup.future,
-          ),
-        ],
-      );
-      addTearDown(() async {
-        container.dispose();
-        await planningDatabase.close();
-        await songDatabase.close();
-      });
+  test('a single verified-empty resolution records the marker and does not '
+      'clear the identity, so a concurrent legitimate resolution is not '
+      'discarded', () async {
+    final membershipLookup = Completer<ActiveOrganizationResolution>();
+    authRepository.currentSession = const AppAuthSession(
+      userId: 'user-1',
+      email: 'user@example.com',
+    );
+    final planningDatabase = PlanningLocalDatabase.inMemory();
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        activeOrganizationResolutionProvider.overrideWithValue(
+          () => membershipLookup.future,
+        ),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await planningDatabase.close();
+      await songDatabase.close();
+    });
 
-      container.read(appAuthListenableProvider);
-      await authController.restoreSession();
-      await Future<void>.delayed(Duration.zero);
+    container.read(appAuthListenableProvider);
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
 
-      await container
-          .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
-          .handleVerifiedEmptyMembership(userId: 'user-1');
-      membershipLookup.complete(
-        const ActiveOrganizationResolution.selected('org-selected'),
-      );
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
+    await container
+        .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+        .handleVerifiedEmptyMembership(userId: 'user-1');
+    membershipLookup.complete(
+      const ActiveOrganizationResolution.selected('org-selected'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
 
-      // Nothing was deleted -- the marker was recorded (a first
-      // confirmation), and the concurrent org-selected resolution wrote
-      // normally, unimpeded.
-      expect(identityStore.clearCount, 0);
-      expect(identityStore.writes, hasLength(1));
-      expect(identityStore.writes.single.organizationId, 'org-selected');
-      expect(authController.state.status, AppAuthStatus.signedIn);
-    },
-  );
+    // Nothing was deleted -- the marker was recorded (a first
+    // confirmation), and the concurrent org-selected resolution wrote
+    // normally, unimpeded.
+    expect(identityStore.clearCount, 0);
+    expect(identityStore.writes, hasLength(1));
+    expect(identityStore.writes.single.organizationId, 'org-selected');
+    expect(authController.state.status, AppAuthStatus.signedIn);
+  });
 
   test('a single verified-empty resolution does not clear the controller '
       'cache -- a later null session still maps to sessionExpired, exactly '
@@ -635,7 +632,10 @@ void main() {
       expect(await priorPlanningProjectionStillPresent(), isTrue);
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect((prompt.pending! as ReauthDifferentUserPrompt).email, 'user1@example.com');
+      expect(
+        (prompt.pending! as ReauthDifferentUserPrompt).email,
+        'user1@example.com',
+      );
 
       prompt.answer(false);
       await pump();
@@ -829,7 +829,10 @@ void main() {
 
       final prompt = container.read(reauthPromptControllerProvider);
       expect(prompt.pending, isNotNull);
-      expect((prompt.pending! as ReauthDifferentUserPrompt).email, 'user1@example.com');
+      expect(
+        (prompt.pending! as ReauthDifferentUserPrompt).email,
+        'user1@example.com',
+      );
       expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
       expect(seenUserId, 'user-1');
       // Nothing destroyed yet -- confirmation has not resolved.
@@ -1124,7 +1127,10 @@ void main() {
         // Uncertainty took the confirm path...
         expect(prompt.pending, isNotNull);
         // ...as an honest unknown, never a fabricated number...
-        expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, isNull);
+        expect(
+          (prompt.pending! as ReauthDifferentUserPrompt).pendingCount,
+          isNull,
+        );
         // ...never the silent-wipe path.
         expect(identityStore.clearCount, 0);
         expect(identityStore.writes, isEmpty);
@@ -1177,7 +1183,10 @@ void main() {
       await pump();
 
       expect(promptController.pending, isNotNull);
-      expect((promptController.pending! as ReauthDifferentUserPrompt).email, 'user0@example.com');
+      expect(
+        (promptController.pending! as ReauthDifferentUserPrompt).email,
+        'user0@example.com',
+      );
       final staleRequestId = promptController.pending!.requestId;
 
       authRepository.emit(
@@ -1203,7 +1212,10 @@ void main() {
         isTrue,
       );
       expect(promptController.pending?.requestId, isNot(staleRequestId));
-      expect((promptController.pending as ReauthDifferentUserPrompt?)?.email, 'user0@example.com');
+      expect(
+        (promptController.pending as ReauthDifferentUserPrompt?)?.email,
+        'user0@example.com',
+      );
     });
 
     test('supersession while the pending-work count is blocked prevents a '
@@ -1501,234 +1513,218 @@ void main() {
   // case, reached from the real signedIn edge, through the real coordinator
   // and the real reauthPromptControllerProvider, actually purges (or
   // correctly doesn't).
-  group(
-    'membership-revocation purge reached from the live signedIn edge '
-    '(D5.4/D5.5, ADR-035 Phase 4, Task 4.2)',
-    () {
-      Future<void> pump([int times = 8]) async {
-        for (var i = 0; i < times; i++) {
-          await Future<void>.delayed(Duration.zero);
-        }
+  group('membership-revocation purge reached from the live signedIn edge '
+      '(D5.4/D5.5, ADR-035 Phase 4, Task 4.2)', () {
+    Future<void> pump([int times = 8]) async {
+      for (var i = 0; i < times; i++) {
+        await Future<void>.delayed(Duration.zero);
       }
+    }
 
-      late SongCatalogDatabase songDatabase;
-      late DriftSongCatalogStore songStore;
-      late PlanningLocalDatabase planningDatabase;
-      late DriftPlanningLocalStore planningStore;
-      // D5.3's cooldown is measured on LocalDataLifecycle's injectable
-      // monotonic clock, never DateTime.now() -- this is that clock,
-      // overridden below alongside the store databases so the test can
-      // cross the 60s gap without a real wait.
-      late Duration monotonicElapsed;
+    late SongCatalogDatabase songDatabase;
+    late DriftSongCatalogStore songStore;
+    late PlanningLocalDatabase planningDatabase;
+    late DriftPlanningLocalStore planningStore;
+    // D5.3's cooldown is measured on LocalDataLifecycle's injectable
+    // monotonic clock, never DateTime.now() -- this is that clock,
+    // overridden below alongside the store databases so the test can
+    // cross the 60s gap without a real wait.
+    late Duration monotonicElapsed;
 
-      setUp(() {
-        songDatabase = SongCatalogDatabase.inMemory();
-        songStore = DriftSongCatalogStore(songDatabase);
-        planningDatabase = PlanningLocalDatabase.inMemory();
-        planningStore = DriftPlanningLocalStore(planningDatabase);
-        monotonicElapsed = Duration.zero;
-      });
+    setUp(() {
+      songDatabase = SongCatalogDatabase.inMemory();
+      songStore = DriftSongCatalogStore(songDatabase);
+      planningDatabase = PlanningLocalDatabase.inMemory();
+      planningStore = DriftPlanningLocalStore(planningDatabase);
+      monotonicElapsed = Duration.zero;
+    });
 
-      tearDown(() async {
-        await songDatabase.close();
-        await planningDatabase.close();
-      });
+    tearDown(() async {
+      await songDatabase.close();
+      await planningDatabase.close();
+    });
 
-      Future<void> seedUserData({
-        String userId = 'user-1',
-        String organizationId = 'org-1',
-      }) async {
-        await songStore.replaceActiveSnapshot(
-          userId: userId,
-          organizationId: organizationId,
-          summaries: const [SongSummary(id: 'song-1', title: 'A Song')],
-          sources: const [SongSource(id: 'song-1', source: '{title: A Song}')],
-          refreshedAt: DateTime.utc(2026, 7, 1),
+    Future<void> seedUserData({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) async {
+      await songStore.replaceActiveSnapshot(
+        userId: userId,
+        organizationId: organizationId,
+        summaries: const [SongSummary(id: 'song-1', title: 'A Song')],
+        sources: const [SongSource(id: 'song-1', source: '{title: A Song}')],
+        refreshedAt: DateTime.utc(2026, 7, 1),
+      );
+      await planningStore.replaceActiveProjection(
+        userId: userId,
+        organizationId: organizationId,
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'A Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 7, 1),
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 7, 1),
+      );
+    }
+
+    Future<bool> songsStillPresent({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) async {
+      final songs = await songStore.readActiveSummaries(
+        userId: userId,
+        organizationId: organizationId,
+      );
+      return songs.isNotEmpty;
+    }
+
+    Future<bool> planningStillPresent({
+      String userId = 'user-1',
+      String organizationId = 'org-1',
+    }) {
+      return planningStore.hasProjection(
+        userId: userId,
+        organizationId: organizationId,
+      );
+    }
+
+    List<Override> baseOverrides(PendingLocalWorkCounter counter) => [
+      appAuthControllerProvider.overrideWith((_) => authController),
+      lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+      songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+      planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+      pendingLocalWorkCounterProvider.overrideWithValue(counter),
+      activeOrganizationResolutionProvider.overrideWithValue(
+        () async => const ActiveOrganizationResolution.verifiedEmpty(),
+      ),
+      // Same shape as the real localDataLifecycleProvider
+      // (auth_providers.dart), plus the controllable monotonic clock the
+      // D5.3 cooldown needs.
+      localDataLifecycleProvider.overrideWith((ref) {
+        return LocalDataLifecycle(
+          songCatalogStore: ref.watch(songCatalogStoreProvider),
+          planningLocalStore: ref.watch(planningLocalStoreProvider),
+          identityStore: ref.watch(lastKnownIdentityStoreProvider),
+          noteLastKnownIdentity: (identity) => ref
+              .read(appAuthControllerProvider)
+              .noteLastKnownIdentity(identity),
+          eventsRecorder: ref.watch(localDataEventsRecorderProvider),
+          monotonicNow: () => monotonicElapsed,
         );
-        await planningStore.replaceActiveProjection(
-          userId: userId,
-          organizationId: organizationId,
-          plans: [
-            CachedPlanRecord(
-              id: 'plan-1',
-              name: 'A Plan',
-              description: null,
-              scheduledFor: null,
-              updatedAt: DateTime.utc(2026, 7, 1),
-            ),
-          ],
-          sessions: const [],
-          items: const [],
-          refreshedAt: DateTime.utc(2026, 7, 1),
-        );
-      }
+      }),
+    ];
 
-      Future<bool> songsStillPresent({
-        String userId = 'user-1',
-        String organizationId = 'org-1',
-      }) async {
-        final songs = await songStore.readActiveSummaries(
-          userId: userId,
-          organizationId: organizationId,
-        );
-        return songs.isNotEmpty;
-      }
-
-      Future<bool> planningStillPresent({
-        String userId = 'user-1',
-        String organizationId = 'org-1',
-      }) {
-        return planningStore.hasProjection(
-          userId: userId,
-          organizationId: organizationId,
-        );
-      }
-
-      List<Override> baseOverrides(PendingLocalWorkCounter counter) => [
-        appAuthControllerProvider.overrideWith((_) => authController),
-        lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
-        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
-        pendingLocalWorkCounterProvider.overrideWithValue(counter),
-        activeOrganizationResolutionProvider.overrideWithValue(
-          () async => const ActiveOrganizationResolution.verifiedEmpty(),
-        ),
-        // Same shape as the real localDataLifecycleProvider
-        // (auth_providers.dart), plus the controllable monotonic clock the
-        // D5.3 cooldown needs.
-        localDataLifecycleProvider.overrideWith((ref) {
-          return LocalDataLifecycle(
-            songCatalogStore: ref.watch(songCatalogStoreProvider),
-            planningLocalStore: ref.watch(planningLocalStoreProvider),
-            identityStore: ref.watch(lastKnownIdentityStoreProvider),
-            noteLastKnownIdentity: (identity) => ref
-                .read(appAuthControllerProvider)
-                .noteLastKnownIdentity(identity),
-            eventsRecorder: ref.watch(localDataEventsRecorderProvider),
-            monotonicNow: () => monotonicElapsed,
-          );
-        }),
-      ];
-
-      test(
-        'two cooldown-separated confirmations with pending work: the dialog '
+    test('two cooldown-separated confirmations with pending work: the dialog '
         'is required and names the count, and confirming it purges the '
-        'catalog, planning data and identity row',
-        () async {
-          await seedUserData();
-          identityStore.seed(
-            const LastKnownIdentity(
-              userId: 'user-1',
-              email: 'user1@example.com',
-              organizationId: 'org-1',
-            ),
-          );
-          authController = AppAuthController(
-            authRepository,
-            lastKnownIdentityStore: identityStore,
-          );
-          authRepository.currentSession = const AppAuthSession(
-            userId: 'user-1',
-            email: 'user1@example.com',
-          );
-          final counter = PendingLocalWorkCounter(
-            readPlanningPendingWorkCount: ({required userId}) async => 1,
-            readSongPendingWorkCount: ({required userId}) async => 0,
-          );
-          final container = ProviderContainer(
-            overrides: baseOverrides(counter),
-          );
-          addTearDown(container.dispose);
-
-          container.read(appAuthListenableProvider);
-          await authController.restoreSession();
-          await pump();
-
-          // First, fresh, online, authenticated confirmation: the marker is
-          // recorded. Nothing deleted, no dialog.
-          expect(identityStore.clearCount, 0);
-          expect(container.read(reauthPromptControllerProvider).pending, isNull);
-          expect(await songsStillPresent(), isTrue);
-          expect(await planningStillPresent(), isTrue);
-
-          // A second, independent signedIn edge, cooldown-separated on the
-          // monotonic clock. Routed through an intervening sessionExpired
-          // (a null-session tick) so AppAuthController's own state-equality
-          // guard does not collapse it into a no-op notification -- this
-          // models a real second RPC round trip, e.g. a foreground resume,
-          // not a re-delivery of the same edge.
-          authRepository.emit(null);
-          await pump();
-          monotonicElapsed = const Duration(seconds: 60);
-          authRepository.emit(
-            const AppAuthSession(
-              userId: 'user-1',
-              email: 'user1@example.com',
-            ),
-          );
-          await pump();
-
-          final prompt = container.read(reauthPromptControllerProvider);
-          expect(prompt.pending, isA<MembershipRevocationPurgePrompt>());
-          expect(
-            (prompt.pending! as MembershipRevocationPurgePrompt).pendingCount,
-            1,
-          );
-          // The dialog is open; nothing is deleted until it is answered.
-          expect(identityStore.clearCount, 0);
-          expect(await songsStillPresent(), isTrue);
-          expect(await planningStillPresent(), isTrue);
-
-          prompt.answer(true);
-          await pump();
-
-          expect(identityStore.clearCount, 1);
-          expect(await songsStillPresent(), isFalse);
-          expect(await planningStillPresent(), isFalse);
-        },
+        'catalog, planning data and identity row', () async {
+      await seedUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
       );
-
-      test(
-        'a single verified-empty resolution at the signed-in edge deletes '
-        'nothing -- reading and editing stay unchanged (ADR-020)',
-        () async {
-          identityStore.seed(
-            const LastKnownIdentity(
-              userId: 'user-1',
-              email: 'user1@example.com',
-              organizationId: 'org-1',
-            ),
-          );
-          await seedUserData();
-          authController = AppAuthController(
-            authRepository,
-            lastKnownIdentityStore: identityStore,
-          );
-          authRepository.currentSession = const AppAuthSession(
-            userId: 'user-1',
-            email: 'user1@example.com',
-          );
-          final counter = PendingLocalWorkCounter(
-            readPlanningPendingWorkCount: ({required userId}) async => 0,
-            readSongPendingWorkCount: ({required userId}) async => 0,
-          );
-          final container = ProviderContainer(
-            overrides: baseOverrides(counter),
-          );
-          addTearDown(container.dispose);
-
-          container.read(appAuthListenableProvider);
-          await authController.restoreSession();
-          await pump();
-
-          expect(identityStore.clearCount, 0);
-          expect(container.read(reauthPromptControllerProvider).pending, isNull);
-          expect(await songsStillPresent(), isTrue);
-          expect(await planningStillPresent(), isTrue);
-        },
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
       );
-    },
-  );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user1@example.com',
+      );
+      final counter = PendingLocalWorkCounter(
+        readPlanningPendingWorkCount: ({required userId}) async => 1,
+        readSongPendingWorkCount: ({required userId}) async => 0,
+      );
+      final container = ProviderContainer(overrides: baseOverrides(counter));
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      // First, fresh, online, authenticated confirmation: the marker is
+      // recorded. Nothing deleted, no dialog.
+      expect(identityStore.clearCount, 0);
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+      expect(await songsStillPresent(), isTrue);
+      expect(await planningStillPresent(), isTrue);
+
+      // A second, independent signedIn edge, cooldown-separated on the
+      // monotonic clock. Routed through an intervening sessionExpired
+      // (a null-session tick) so AppAuthController's own state-equality
+      // guard does not collapse it into a no-op notification -- this
+      // models a real second RPC round trip, e.g. a foreground resume,
+      // not a re-delivery of the same edge.
+      authRepository.emit(null);
+      await pump();
+      monotonicElapsed = const Duration(seconds: 60);
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-1', email: 'user1@example.com'),
+      );
+      await pump();
+
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect(prompt.pending, isA<MembershipRevocationPurgePrompt>());
+      expect(
+        (prompt.pending! as MembershipRevocationPurgePrompt).pendingCount,
+        1,
+      );
+      // The dialog is open; nothing is deleted until it is answered.
+      expect(identityStore.clearCount, 0);
+      expect(await songsStillPresent(), isTrue);
+      expect(await planningStillPresent(), isTrue);
+
+      prompt.answer(true);
+      await pump();
+
+      expect(identityStore.clearCount, 1);
+      expect(await songsStillPresent(), isFalse);
+      expect(await planningStillPresent(), isFalse);
+    });
+
+    test('a single verified-empty resolution at the signed-in edge deletes '
+        'nothing -- reading and editing stay unchanged (ADR-020)', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      await seedUserData();
+      authController = AppAuthController(
+        authRepository,
+        lastKnownIdentityStore: identityStore,
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user1@example.com',
+      );
+      final counter = PendingLocalWorkCounter(
+        readPlanningPendingWorkCount: ({required userId}) async => 0,
+        readSongPendingWorkCount: ({required userId}) async => 0,
+      );
+      final container = ProviderContainer(overrides: baseOverrides(counter));
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+
+      expect(identityStore.clearCount, 0);
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+      expect(await songsStillPresent(), isTrue);
+      expect(await planningStillPresent(), isTrue);
+    });
+  });
 }
 
 class _RecordingLastKnownIdentityStore implements LastKnownIdentityStore {

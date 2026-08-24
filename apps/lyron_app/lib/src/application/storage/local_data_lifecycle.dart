@@ -333,11 +333,10 @@ class LocalDataLifecycle {
   /// the clear. That race is now closed a different way: this whole method
   /// runs as one link of [_runOnChain], so no other identity mutation can
   /// interleave between this read and this clear regardless.
-  Future<void> clearIdentity({
-    required PurgeReason reason,
-    String? userId,
-  }) {
-    return _runOnChain(() => _clearIdentityLocked(reason: reason, userId: userId));
+  Future<void> clearIdentity({required PurgeReason reason, String? userId}) {
+    return _runOnChain(
+      () => _clearIdentityLocked(reason: reason, userId: userId),
+    );
   }
 
   /// The body [clearIdentity] runs as one link of [_runOnChain]. Extracted
@@ -450,8 +449,7 @@ class LocalDataLifecycle {
             // by construction, so no cooldown check applies at all.
             return MembershipRevocationPurgeAuthorized(markedAt: markedAt);
           }
-          final elapsed =
-              _monotonicNow() - _markerRecordedAtMonotonic!;
+          final elapsed = _monotonicNow() - _markerRecordedAtMonotonic!;
           if (elapsed >= membershipConfirmationCooldown) {
             return MembershipRevocationPurgeAuthorized(markedAt: markedAt);
           }
@@ -668,9 +666,7 @@ class LocalDataLifecycle {
     String userId,
   ) async {
     try {
-      await _eventsRecorder.recordMembershipRevocationCleared(
-        userId: userId,
-      );
+      await _eventsRecorder.recordMembershipRevocationCleared(userId: userId);
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(

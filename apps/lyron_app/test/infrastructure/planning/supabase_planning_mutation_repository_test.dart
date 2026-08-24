@@ -398,7 +398,6 @@ void main() {
     );
   });
 
-
   // The `permission denied` match is narrowed to the full PostgreSQL phrase
   // so an unrelated error that merely quotes those two words is not
   // misclassified as permanently unauthorized.
@@ -442,42 +441,39 @@ void main() {
     },
   );
 
-  test(
-    'maps a "permission denied" message with no structured code to '
-    'authorizationDenied',
-    () async {
-      final repository = SupabasePlanningMutationRepository.testing(
-        rpc: (name, {params}) async {
-          throw const PostgrestException(
-            message: 'permission denied for table plans',
-          );
-        },
-      );
+  test('maps a "permission denied" message with no structured code to '
+      'authorizationDenied', () async {
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async {
+        throw const PostgrestException(
+          message: 'permission denied for table plans',
+        );
+      },
+    );
 
-      await expectLater(
-        () => repository.syncMutation(
+    await expectLater(
+      () => repository.syncMutation(
+        organizationId: 'org-1',
+        record: PlanningMutationRecord(
+          aggregateId: 'plan-1',
           organizationId: 'org-1',
-          record: PlanningMutationRecord(
-            aggregateId: 'plan-1',
-            organizationId: 'org-1',
-            name: 'Weekend Service',
-            baseVersion: 1,
-            kind: PlanningMutationKind.planEdit,
-            syncStatus: PlanningMutationSyncStatus.pending,
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026),
-          ),
+          name: 'Weekend Service',
+          baseVersion: 1,
+          kind: PlanningMutationKind.planEdit,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
         ),
-        throwsA(
-          isA<PlanningMutationSyncException>().having(
-            (error) => error.code,
-            'code',
-            PlanningMutationSyncErrorCode.authorizationDenied,
-          ),
+      ),
+      throwsA(
+        isA<PlanningMutationSyncException>().having(
+          (error) => error.code,
+          'code',
+          PlanningMutationSyncErrorCode.authorizationDenied,
         ),
-      );
-    },
-  );
+      ),
+    );
+  });
 
   // Regression guard for spec D5.6 / ADR-035: `401` means the token is
   // missing, malformed, or expired -- re-authentication can make the very

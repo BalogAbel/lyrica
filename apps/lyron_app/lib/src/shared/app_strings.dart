@@ -28,9 +28,7 @@ class AppStrings {
   static const reauthCancelAction = 'Mégse';
   static const membershipRevocationPurgeTitle =
       'A szervezeti tagságod megszűnt.';
-  static String membershipRevocationPurgePendingMessage({
-    required int count,
-  }) =>
+  static String membershipRevocationPurgePendingMessage({required int count}) =>
       'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet, beleértve $count mentetlen változtatást is.';
   static const membershipRevocationPurgeUnknownPendingMessage =
       'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet. A mentetlen változtatások pontos száma nem állapítható meg, de a folytatás ezeket is törli.';

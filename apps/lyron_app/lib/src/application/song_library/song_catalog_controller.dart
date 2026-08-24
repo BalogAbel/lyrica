@@ -270,7 +270,9 @@ class SongCatalogController extends ChangeNotifier {
       // construction), there is nothing to gate the purge, so this branch
       // conservatively does nothing rather than purging unconditionally --
       // the single-confirmation purge this replaces was exactly F4.
-      final purged = handler == null ? false : await handler(userId: session.userId);
+      final purged = handler == null
+          ? false
+          : await handler(userId: session.userId);
       if (_isStale(generation)) {
         return;
       }

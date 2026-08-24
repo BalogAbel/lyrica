@@ -192,7 +192,8 @@ void main() {
       expect(
         find.text(AppStrings.reauthDifferentUserTitle),
         findsOneWidget,
-        reason: 'the dialog itself lives on the root navigator and survives '
+        reason:
+            'the dialog itself lives on the root navigator and survives '
             'the host being swapped out beneath it',
       );
 
