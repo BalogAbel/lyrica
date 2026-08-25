@@ -14,6 +14,8 @@ import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -124,6 +126,89 @@ void main() {
       await planningDatabase.close();
       await songDatabase.close();
     });
+
+    test(
+      // Pins a deliberate NON-behaviour, and is the only thing that pins it.
+      //
+      // spec D5.0: the read-only membership quarantine was specified once,
+      // implemented once, reviewed, and dropped permanently. Backend RLS is
+      // what stops a revoked member from writing; blocking local edits only
+      // ever prevented edits that could never have synced, while a false
+      // marker locked a member in good standing out of editing with no
+      // offline way to clear it.
+      //
+      // The `membershipRevokedAt` column survives that decision, so the next
+      // reader who finds it will reasonably ask "shouldn't writes be blocked
+      // while this is set?". The answer is no, and this test is what says so
+      // -- without it, adding that branch breaks nothing. If you are here
+      // because this test failed after you added such a block: that block is
+      // the bug. Read D5.0 before changing this test.
+      'a set membership-revocation marker does not block local editing (D5.0)',
+      () async {
+        final identityDatabase = LastKnownIdentityDatabase.inMemory();
+        addTearDown(identityDatabase.close);
+        final identityStore = DriftLastKnownIdentityStore(identityDatabase);
+        await identityStore.write(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'demo@lyron.local',
+            organizationId: 'org-1',
+          ),
+        );
+
+        // Set the marker the way production does -- through the real
+        // resolution path -- rather than writing the column by hand.
+        final outcome = await identityStore.resolveEmptyMembership(
+          userId: 'user-1',
+        );
+        expect(
+          outcome,
+          isA<EmptyMembershipResolutionMarkerRecorded>(),
+          reason:
+              'the marker must actually be set for this test to mean '
+              'anything',
+        );
+
+        final created = await service.createSong(
+          context: context,
+          title: 'Written While Marked',
+          chordproSource: '{title: Written While Marked}',
+        );
+        expect(created.syncStatus, SongSyncStatus.pendingCreate);
+
+        final updated = await service.updateSong(
+          context: context,
+          songId: created.id,
+          title: 'Edited While Marked',
+          chordproSource: '{title: Edited While Marked}',
+        );
+        expect(
+          updated.syncStatus,
+          SongSyncStatus.pendingCreate,
+          reason: 'an edit to a still-unsynced create stays a pending create',
+        );
+
+        final pending = await mutationStore.readPendingSongs(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(
+          pending.map((record) => record.title),
+          contains('Edited While Marked'),
+          reason: 'the edit must be queued for sync, not silently dropped',
+        );
+
+        // The marker is untouched by editing -- editing neither clears it
+        // nor is gated on it.
+        final stillMarked = await identityStore.resolveEmptyMembership(
+          userId: 'user-1',
+        );
+        expect(
+          stillMarked,
+          isA<EmptyMembershipResolutionSecondConfirmationAvailable>(),
+        );
+      },
+    );
 
     test(
       'offline create syncs and reconciles the canonical server slug',

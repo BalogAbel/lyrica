@@ -784,6 +784,18 @@ kind that come back:
 - Two code comments justified a load-bearing guard with control flow that does
   not hold, which would have led a future reader to delete the guard.
 
+A late review point, worth recording because the reasoning generalises: the
+structural argument for "editing is unchanged" — zero `MembershipQuarantined`
+or read-only hits anywhere in `lib/` and `test/` — is sound *evidence* and
+worthless as a *guard*. You cannot block editing with code that does not
+exist, but nothing fails when someone adds it. And the `membershipRevokedAt`
+column now sitting in the schema is a standing invitation to ask "shouldn't
+writes be blocked while this is set?". Acceptance 5's editing half is
+therefore pinned by two real tests that set the marker and assert the edit
+still queues, named `a set membership-revocation marker does not block local
+editing (D5.0)`. This is the same failure mode as ADR-020 being correct on
+paper and wrong in code, which is what the whole slice exists to close.
+
 The lesson the first attempt already recorded held again: every round of this
 work produced at least one defect in the "value read before an await, written
 after it" or "fire-and-forget a call that can fail" family.

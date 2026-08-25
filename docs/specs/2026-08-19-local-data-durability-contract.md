@@ -534,6 +534,16 @@ device must not be representable.
    unchanged. A second counted `verifiedEmpty` after the cooldown, with no
    pending work → purge executes with a `membershipRevokedConfirmed` audit row.
    With pending work → the purge waits for the user's confirmation.
+
+   The "editing unchanged" half is a deliberate *non*-behaviour, so it is
+   pinned by its own tests rather than left to the absence of blocking code:
+   `a set membership-revocation marker does not block local editing (D5.0)`,
+   in `test/integration/local_first_song_crud_flow_test.dart` and
+   `test/application/planning/planning_write_service_test.dart`. Each sets the
+   marker through the real resolution path and asserts the edit still queues.
+   Without them, a future "marker set → block writes" branch — the natural
+   thing to reach for on finding the `membershipRevokedAt` column — would
+   break nothing.
 6. A guarded write throws `SqliteException(BUSY)` → no eviction.
 7. Simulated multi-day offline span with an advanced clock → songs remain
    visible on every cold start.
