@@ -1,10 +1,13 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -110,6 +113,68 @@ void main() {
     tearDown(() async {
       await database.close();
     });
+
+    test(
+      // The planning half of the same deliberate NON-behaviour the song-side
+      // test in test/integration/local_first_song_crud_flow_test.dart pins.
+      //
+      // spec D5.0: the read-only membership quarantine was specified,
+      // implemented, reviewed and dropped permanently -- backend RLS is what
+      // stops a revoked member from writing, so blocking local edits only
+      // ever prevented edits that could never have synced, while a false
+      // marker locked a member in good standing out of editing. The
+      // `membershipRevokedAt` column outlives that decision, so this test is
+      // what answers the next reader who asks whether writes should be gated
+      // on it. They should not. If this failed after you added such a gate,
+      // the gate is the bug -- read D5.0 first.
+      'a set membership-revocation marker does not block local editing (D5.0)',
+      () async {
+        final identityDatabase = LastKnownIdentityDatabase.inMemory();
+        addTearDown(identityDatabase.close);
+        final identityStore = DriftLastKnownIdentityStore(identityDatabase);
+        await identityStore.write(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'demo@lyron.local',
+            organizationId: 'org-1',
+          ),
+        );
+
+        // Set the marker through the real resolution path, not by writing
+        // the column by hand.
+        expect(
+          await identityStore.resolveEmptyMembership(userId: 'user-1'),
+          isA<EmptyMembershipResolutionMarkerRecorded>(),
+          reason:
+              'the marker must actually be set for this test to mean anything',
+        );
+
+        await service.createPlan(
+          context: context,
+          draft: const PlanCreateDraft(name: 'Written While Marked'),
+        );
+
+        final pending = await mutationStore.readPendingMutations(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        expect(
+          pending
+              .singleWhere(
+                (record) => record.kind == PlanningMutationKind.planCreate,
+              )
+              .name,
+          'Written While Marked',
+          reason: 'the plan create must be queued for sync, not rejected',
+        );
+
+        // Editing neither clears the marker nor is gated on it.
+        expect(
+          await identityStore.resolveEmptyMembership(userId: 'user-1'),
+          isA<EmptyMembershipResolutionSecondConfirmationAvailable>(),
+        );
+      },
+    );
 
     test('pending plan create appears immediately in listPlans', () async {
       await service.createPlan(

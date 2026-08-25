@@ -105,4 +105,162 @@ void main() {
       expect(result.syncStatus, SongSyncStatus.synced);
     },
   );
+
+  // spec D5.6 / ADR-035: `403` and a bare `permission denied` message must
+  // classify identically to the existing `42501` branch -- PostgREST does
+  // not always return a structured PostgreSQL error code.
+  test('maps a bare 403 code to authorizationDenied', () async {
+    final repository = SupabaseSongMutationRemoteRepository.testing(
+      rpc: (name, {params}) async {
+        throw const PostgrestException(message: 'Forbidden', code: '403');
+      },
+      fetchSongRow: (organizationId, songId) async => null,
+    );
+
+    await expectLater(
+      () => repository.syncSong(
+        organizationId: 'org-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 2,
+          baseVersion: 2,
+          syncStatus: SongSyncStatus.pendingUpdate,
+        ),
+      ),
+      throwsA(
+        isA<SongMutationSyncException>().having(
+          (error) => error.code,
+          'code',
+          SongMutationSyncErrorCode.authorizationDenied,
+        ),
+      ),
+    );
+  });
+
+  // The `permission denied` match is narrowed to the full PostgreSQL phrase
+  // so an unrelated error that merely quotes those two words is not
+  // misclassified as permanently unauthorized -- that would tell the user
+  // their edit can never sync when it still can.
+  test(
+    'does NOT map an unrelated message merely quoting "permission denied" to '
+    'authorizationDenied -- it stays retryable',
+    () async {
+      final repository = SupabaseSongMutationRemoteRepository.testing(
+        rpc: (name, {params}) async {
+          throw const PostgrestException(
+            message:
+                'song_import_failed: the uploaded file said "permission '
+                'denied" in its header',
+            code: 'P0001',
+          );
+        },
+        fetchSongRow: (organizationId, songId) async => null,
+      );
+
+      await expectLater(
+        () => repository.syncSong(
+          organizationId: 'org-1',
+          record: const SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 2,
+            baseVersion: 2,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ),
+        throwsA(
+          isA<SongMutationSyncException>().having(
+            (error) => error.code,
+            'code',
+            isNot(SongMutationSyncErrorCode.authorizationDenied),
+          ),
+        ),
+      );
+    },
+  );
+
+  test('maps a "permission denied" message with no structured code to '
+      'authorizationDenied', () async {
+    final repository = SupabaseSongMutationRemoteRepository.testing(
+      rpc: (name, {params}) async {
+        throw const PostgrestException(
+          message: 'permission denied for table songs',
+        );
+      },
+      fetchSongRow: (organizationId, songId) async => null,
+    );
+
+    await expectLater(
+      () => repository.syncSong(
+        organizationId: 'org-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 2,
+          baseVersion: 2,
+          syncStatus: SongSyncStatus.pendingUpdate,
+        ),
+      ),
+      throwsA(
+        isA<SongMutationSyncException>().having(
+          (error) => error.code,
+          'code',
+          SongMutationSyncErrorCode.authorizationDenied,
+        ),
+      ),
+    );
+  });
+
+  // Regression guard for spec D5.6 / ADR-035: `401` means the token is
+  // missing, malformed, or expired -- re-authentication can make the very
+  // same mutation succeed, so it must stay `unknown` (retryable), never
+  // `authorizationDenied` (terminal). This protects ordinary token expiry
+  // from having its queued work discarded.
+  test('does NOT classify a bare 401 as authorizationDenied', () async {
+    final repository = SupabaseSongMutationRemoteRepository.testing(
+      rpc: (name, {params}) async {
+        throw const PostgrestException(message: 'Unauthorized', code: '401');
+      },
+      fetchSongRow: (organizationId, songId) async => null,
+    );
+
+    await expectLater(
+      () => repository.syncSong(
+        organizationId: 'org-1',
+        record: const SongMutationRecord(
+          id: 'song-1',
+          organizationId: 'org-1',
+          slug: 'alpha',
+          title: 'Alpha',
+          chordproSource: '{title: Alpha}',
+          version: 2,
+          baseVersion: 2,
+          syncStatus: SongSyncStatus.pendingUpdate,
+        ),
+      ),
+      throwsA(
+        isA<SongMutationSyncException>()
+            .having(
+              (error) => error.code,
+              'code',
+              isNot(SongMutationSyncErrorCode.authorizationDenied),
+            )
+            .having(
+              (error) => error.code,
+              'code',
+              SongMutationSyncErrorCode.unknown,
+            ),
+      ),
+    );
+  });
 }

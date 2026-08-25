@@ -143,6 +143,73 @@ class DriftLocalDataEventsStore
         );
   }
 
+  /// D5.2 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  /// Phase 4): the marker-set edge. Not a purge -- no [PurgeReason] applies
+  /// -- so this uses its own audit `kind`, following the `reason: Value`
+  /// precedent `recordRejectedEmptySnapshot` set for a non-purge event that
+  /// still carries no reason.
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'membership-revocation-marked',
+            target: 'identity',
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
+  /// D5.2: the marker-clear edge -- the diagnostic proving a device
+  /// recovered from one confirmation without a second ever arriving.
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'membership-revocation-cleared',
+            target: 'identity',
+            reason: const Value(null),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
+  /// YELLOW 3 (final whole-branch review, D5.4): records that an authorized
+  /// purge did not run -- the diagnostic explaining why. `reason` carries
+  /// [MembershipRevocationPurgeDeclineReason.name], following the same
+  /// generic-`reason`-column reuse `recordRejectedEmptySnapshot` set for a
+  /// non-`PurgeReason` event.
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {
+    await _database
+        .into(_database.localDataEvents)
+        .insert(
+          LocalDataEventsCompanion.insert(
+            occurredAt: DateTime.now().toUtc(),
+            kind: 'membership-revocation-purge-declined',
+            target: 'identity',
+            reason: Value(reason.name),
+            userId: Value(userId),
+            rowsAffected: const Value(null),
+          ),
+        );
+  }
+
   @override
   Future<List<LocalDataEventRecord>> readRecent({int limit = 200}) async {
     // Ordered by the autoincrement primary key alone, not `occurredAt`: `id`

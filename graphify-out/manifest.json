@@ -5,7 +5,7 @@
     "semantic_hash": "1c8a034db9cab0e5568a7c7f888bc8af"
   },
   "apps/lyron_app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java": {
-    "mtime": 1787067105.8150206,
+    "mtime": 1787403170.2972474,
     "ast_hash": "01c8db7b5b0e6e43b0ee20f9ca7a7563",
     "semantic_hash": ""
   },
@@ -95,8 +95,8 @@
     "semantic_hash": "f584f15faa1d543b0abed1f48e003661"
   },
   "apps/lyron_app/lib/src/application/auth/app_auth_controller.dart": {
-    "mtime": 1786207189.7367477,
-    "ast_hash": "2b6d373b513cd91f77d760bbd04ab7e0",
+    "mtime": 1787507734.9920847,
+    "ast_hash": "29ce8236bdd026608bbedcb2daddb664",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/app_auth_state.dart": {
@@ -140,8 +140,8 @@
     "semantic_hash": "0a339424046c03e6671d0990f2007078"
   },
   "apps/lyron_app/lib/src/application/planning/active_planning_context_controller.dart": {
-    "mtime": 1786207189.7388382,
-    "ast_hash": "ab45f1a7f7cbc7785c907a4453daa61e",
+    "mtime": 1787527823.9511654,
+    "ast_hash": "db46f6a3af5aab5862dc6ae8f60e1b07",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart": {
-    "mtime": 1786207189.7409244,
-    "ast_hash": "d986b377ba3cc18497eb60151c0107ba",
+    "mtime": 1787524955.8879275,
+    "ast_hash": "d180ff523d7994573ba9261b47ed9ba8",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
@@ -175,8 +175,8 @@
     "semantic_hash": "578bdd72d5623f7f2ff41dae75e73b83"
   },
   "apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart": {
-    "mtime": 1786207189.7411938,
-    "ast_hash": "e471e96cfc99c1e7c5165a0d647ae5f9",
+    "mtime": 1787512173.9940703,
+    "ast_hash": "4b48bb0516b554c4fb3fa4e3a031c729",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_sync_payload.dart": {
@@ -190,7 +190,7 @@
     "semantic_hash": "519288b21423618c87c95434293efb74"
   },
   "apps/lyron_app/lib/src/application/planning/planning_write_service.dart": {
-    "mtime": 1786207189.7414489,
+    "mtime": 1787507734.99421,
     "ast_hash": "a98ba04245d3c8c1c64bcc425ba499d4",
     "semantic_hash": ""
   },
@@ -215,9 +215,9 @@
     "semantic_hash": "94515432931e826ce41c1fad43aec391"
   },
   "apps/lyron_app/lib/src/application/song_library/catalog_refresh_status.dart": {
-    "mtime": 1775160199.4940624,
-    "ast_hash": "aed54f7a632728303e14d5e7ca4277c9",
-    "semantic_hash": "aed54f7a632728303e14d5e7ca4277c9"
+    "mtime": 1787432015.914443,
+    "ast_hash": "c3a5b59b3db4b123d4a280c55fd0cde9",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/catalog_session_status.dart": {
     "mtime": 1775160199.494197,
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart": {
-    "mtime": 1786207189.7436347,
-    "ast_hash": "ed3aef8b02a0704ce51c2cf63ef03192",
+    "mtime": 1787527814.009654,
+    "ast_hash": "b6462916339f52774d34ab380bd3a3e0",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_catalog_read_repository.dart": {
@@ -255,13 +255,13 @@
     "semantic_hash": "79eb3a37ae117568cdd55b488984b210"
   },
   "apps/lyron_app/lib/src/application/song_library/song_library_service.dart": {
-    "mtime": 1786130453.2123997,
+    "mtime": 1787507734.9956675,
     "ast_hash": "3b2ca1245ab4b92a506a6397b14f5858",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_mutation_sync_controller.dart": {
-    "mtime": 1786207189.7439928,
-    "ast_hash": "733bfda03f11d8d83b354264346a12f6",
+    "mtime": 1787527186.0370226,
+    "ast_hash": "0845fba3dd2789f8259054f55dfc092d",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_library/song_mutation_sync_types.dart": {
@@ -440,8 +440,8 @@
     "semantic_hash": "6f8f4ecda3e1fab6f3a519e31419b6f0"
   },
   "apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_mutation_repository.dart": {
-    "mtime": 1786207189.7465792,
-    "ast_hash": "4773ca4453dce36946c7ad2ce904f857",
+    "mtime": 1787525407.6773884,
+    "ast_hash": "fe939bebb8ca9ef0750f6bb4c42d0440",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_repository.dart": {
@@ -480,8 +480,8 @@
     "semantic_hash": "41fe4aed995331dab04d45e8bc9e3afe"
   },
   "apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_mutation_repository.dart": {
-    "mtime": 1786207189.7470844,
-    "ast_hash": "3f4130a550f135e09b57d6777b834290",
+    "mtime": 1787525407.6771913,
+    "ast_hash": "aa152ec65fd38452585ef9ecb70a1366",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart": {
@@ -535,13 +535,13 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart": {
-    "mtime": 1786130453.2198389,
-    "ast_hash": "6f197d4687987e518f810eca71f0e71a",
+    "mtime": 1787432015.9180834,
+    "ast_hash": "6984a42807f506e84a7edd2323b5e53e",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.g.dart": {
-    "mtime": 1786130453.220231,
-    "ast_hash": "cfa81d8d23dcc9b780841af918d733bd",
+    "mtime": 1787432015.9184952,
+    "ast_hash": "7bf6613d525aa309a4e462f0a6f744bf",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database_connection.dart": {
@@ -565,13 +565,13 @@
     "semantic_hash": "0a9d651987de4b6ecca3f5eb16c5bd7b"
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_store.dart": {
-    "mtime": 1786207189.7482088,
-    "ast_hash": "990b18b467854d9e2aa79ba0885b16b4",
+    "mtime": 1787432015.9191728,
+    "ast_hash": "2f6b59ef0938df746d1f0c4c4969265f",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_tables.dart": {
-    "mtime": 1786130453.221052,
-    "ast_hash": "6785af4b1bdbbe8c715f257e5a7d50e8",
+    "mtime": 1787432015.9195206,
+    "ast_hash": "a49351b7bcd312835dcf5d85ce4df7a5",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/sync_policy.dart": {
@@ -580,9 +580,9 @@
     "semantic_hash": "ee275aba1d6c9df78509f286bcb6e3fa"
   },
   "apps/lyron_app/lib/src/presentation/account/account_screen.dart": {
-    "mtime": 1779695501.9111166,
-    "ast_hash": "6bcd0bbec62b04390286696bdd9ab747",
-    "semantic_hash": "6bcd0bbec62b04390286696bdd9ab747"
+    "mtime": 1787380607.2443006,
+    "ast_hash": "b70c6b207ae34ee8cdeb7f305441ef74",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/auth/invite_required_screen.dart": {
     "mtime": 1779695501.9114249,
@@ -725,12 +725,12 @@
     "semantic_hash": "1e5790883af251d31c2aadb1117c4282"
   },
   "apps/lyron_app/lib/src/presentation/song_library/song_library_providers.dart": {
-    "mtime": 1786207189.750485,
+    "mtime": 1787507734.9979186,
     "ast_hash": "ce8c752bf4ef0a1d8b7070dda862c722",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart": {
-    "mtime": 1786207189.7509072,
+    "mtime": 1787507734.998125,
     "ast_hash": "8ef8281b8e5ffe6907bda8ea13c8c8e9",
     "semantic_hash": ""
   },
@@ -745,7 +745,7 @@
     "semantic_hash": "56c9648c03daffe0a2598feec2702d8b"
   },
   "apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context.dart": {
-    "mtime": 1787051781.564055,
+    "mtime": 1787142672.4570415,
     "ast_hash": "69a02ecefb56b3ebf40539b779ea0959",
     "semantic_hash": ""
   },
@@ -755,7 +755,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/session_scoped_reader_context_resolver.dart": {
-    "mtime": 1787051786.6188674,
+    "mtime": 1787142672.4572434,
     "ast_hash": "170ee1f310a3b1a0ad3e117056a0e4b1",
     "semantic_hash": ""
   },
@@ -795,7 +795,7 @@
     "semantic_hash": "250e8cbe1a1927ee103f352b9f588426"
   },
   "apps/lyron_app/lib/src/presentation/song_reader/song_reader_screen.dart": {
-    "mtime": 1787067106.5400562,
+    "mtime": 1787142672.4580507,
     "ast_hash": "a6dfab0a237dafbe548326d836243c0e",
     "semantic_hash": ""
   },
@@ -820,8 +820,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_compact_surface.dart": {
-    "mtime": 1787066284.1220372,
-    "ast_hash": "435e300ec6e511859c7b91fbcc21831f",
+    "mtime": 1787142672.4586391,
+    "ast_hash": "0ffac66e2aa0890b7df60aceddf04bbb",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart": {
@@ -865,7 +865,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart": {
-    "mtime": 1780865848.27588,
+    "mtime": 1787134233.7372665,
     "ast_hash": "8cd832579094c0ca24b71fd16daa3074",
     "semantic_hash": "8cd832579094c0ca24b71fd16daa3074"
   },
@@ -880,19 +880,19 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/sync/unified_sync_status_popup.dart": {
-    "mtime": 1786130453.2225277,
-    "ast_hash": "cebf63bbe446d6ebf8ce8f2091058d5d",
+    "mtime": 1787527841.0222626,
+    "ast_hash": "545eebc2df837fca99114530c172b1c7",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/router/app_router.dart": {
-    "mtime": 1782669890.4248846,
-    "ast_hash": "f1f56d37c24884d40e892f313dce1ed7",
-    "semantic_hash": "f1f56d37c24884d40e892f313dce1ed7"
+    "mtime": 1787380607.2447999,
+    "ast_hash": "5336a20811dbf2fa0b58a45cf81b2714",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/router/app_routes.dart": {
-    "mtime": 1779695501.9130397,
-    "ast_hash": "4f5f1494aac3ddeee0835626227445f7",
-    "semantic_hash": "4f5f1494aac3ddeee0835626227445f7"
+    "mtime": 1787380607.2456431,
+    "ast_hash": "1403eb349304ddd8478734cb13827a24",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/router/auth_router_refresh_notifier.dart": {
     "mtime": 1775160199.5089188,
@@ -905,8 +905,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/shared/app_strings.dart": {
-    "mtime": 1786372325.0657506,
-    "ast_hash": "72266efade49368bb36ff9f5538deaf2",
+    "mtime": 1787524960.2885385,
+    "ast_hash": "e1bcc9b031e7fe94454473be5328aeaf",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/shared/connectivity_failure.dart": {
@@ -915,9 +915,9 @@
     "semantic_hash": "0331a2a3e625539209ad663c85c214a1"
   },
   "apps/lyron_app/test/app/lyron_app_test.dart": {
-    "mtime": 1780764683.5112412,
-    "ast_hash": "5a16e0f29015243065b571c1c1c571af",
-    "semantic_hash": "5a16e0f29015243065b571c1c1c571af"
+    "mtime": 1787526702.177576,
+    "ast_hash": "c7d9296c4e0264949ac6a0fecf37dfc8",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/active_organization_resolution_test.dart": {
     "mtime": 1777704136.2135193,
@@ -925,8 +925,8 @@
     "semantic_hash": "78a9e5fc3421961bb5c5fa3e3208ecbb"
   },
   "apps/lyron_app/test/application/auth/app_auth_controller_test.dart": {
-    "mtime": 1786130453.2237601,
-    "ast_hash": "838c28069665f81a29291e4c44f84fcd",
+    "mtime": 1787512173.9960396,
+    "ast_hash": "a809ea86e7c96669c0ec3a2e32b5ac21",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/capability_resolver_test.dart": {
@@ -955,9 +955,9 @@
     "semantic_hash": "d38335bbc3d4bfc1149c4b9c86ac2242"
   },
   "apps/lyron_app/test/application/planning/active_planning_context_controller_test.dart": {
-    "mtime": 1777704136.2148535,
-    "ast_hash": "8bbdb4999eaac13140f8085f55170df0",
-    "semantic_hash": "8bbdb4999eaac13140f8085f55170df0"
+    "mtime": 1787526702.1837053,
+    "ast_hash": "3eb776dc1866d88283f965180e2a2afe",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_local_read_repository_test.dart": {
     "mtime": 1786207189.7532766,
@@ -965,23 +965,23 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_mutation_sync_controller_test.dart": {
-    "mtime": 1786130453.2264047,
-    "ast_hash": "e419a39d9bc91656cee147f030a5da08",
+    "mtime": 1787525074.149144,
+    "ast_hash": "91e3b621b9d9910afd5e750d84526d37",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_sync_controller_test.dart": {
-    "mtime": 1782669890.4276187,
-    "ast_hash": "77d97654d1643fc8cfea8ca4becfee67",
-    "semantic_hash": "77d97654d1643fc8cfea8ca4becfee67"
+    "mtime": 1787526682.2976725,
+    "ast_hash": "a0d8a2d61ae760da61d461f8339c1e4b",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_write_service_test.dart": {
-    "mtime": 1782669890.428065,
+    "mtime": 1787507734.9995086,
     "ast_hash": "dea2391e3f9d798f2b5668dd6a50c37b",
     "semantic_hash": "dea2391e3f9d798f2b5668dd6a50c37b"
   },
   "apps/lyron_app/test/application/providers_test.dart": {
-    "mtime": 1786207189.7537694,
-    "ast_hash": "42a2376e23ae1cee86fa820d0015ed1d",
+    "mtime": 1787512173.9970675,
+    "ast_hash": "80d195588a6c4a7eb26e830b3da0f17c",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/chordpro_import_service_test.dart": {
@@ -990,18 +990,18 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/song_catalog_controller_test.dart": {
-    "mtime": 1786207189.754107,
-    "ast_hash": "df83b2e1076e191ac93f2b8d2c72654b",
+    "mtime": 1787527961.7319558,
+    "ast_hash": "1f80be7a400e4efd6129d53e7803a085",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/song_library_service_test.dart": {
-    "mtime": 1786130453.2274969,
+    "mtime": 1787507735.0002685,
     "ast_hash": "e19194ae1cb66dc5a0a3d9b972d87d51",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/song_mutation_sync_controller_test.dart": {
-    "mtime": 1786207189.754413,
-    "ast_hash": "e74444f584b1d130185a3060479f8c65",
+    "mtime": 1787527173.1906989,
+    "ast_hash": "6b730bbde28728ba1515342eec623d48",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/song_reader_result_test.dart": {
@@ -1045,9 +1045,9 @@
     "semantic_hash": "86ed41af52a57f239e8836d4283be808"
   },
   "apps/lyron_app/test/application/sync/unified_sync_overview_test.dart": {
-    "mtime": 1778826887.9523191,
-    "ast_hash": "15c252e3bfbc131c9fc220304956d1c8",
-    "semantic_hash": "15c252e3bfbc131c9fc220304956d1c8"
+    "mtime": 1787525031.8067162,
+    "ast_hash": "af114f9a5fc3abf60f6c9b7d9f63a447",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/sync/unified_sync_providers_test.dart": {
     "mtime": 1786130453.2307138,
@@ -1085,8 +1085,8 @@
     "semantic_hash": "619a6f8385b87e49f92dcde94498fe5b"
   },
   "apps/lyron_app/test/infrastructure/planning/supabase_planning_mutation_repository_test.dart": {
-    "mtime": 1785300464.1172035,
-    "ast_hash": "fca45e520fb4a1a17bf62fcde7e54254",
+    "mtime": 1787525434.4016016,
+    "ast_hash": "832ea2520c794bc048803a72a6d7f5ff",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart": {
@@ -1125,14 +1125,14 @@
     "semantic_hash": "1e090d61c47fcb69eae8c9efded5b0c4"
   },
   "apps/lyron_app/test/infrastructure/song_library/local_first_song_repository_test.dart": {
-    "mtime": 1775160199.5178401,
-    "ast_hash": "803c5b79da3b59131aa7ec7298e550d8",
-    "semantic_hash": "803c5b79da3b59131aa7ec7298e550d8"
+    "mtime": 1787432015.9246142,
+    "ast_hash": "1ce756e9f4a62958b03370b852424a66",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/infrastructure/song_library/supabase_song_mutation_repository_test.dart": {
-    "mtime": 1776604819.0464575,
-    "ast_hash": "eed24a86f3e11c91dc25ee68e93fbd4b",
-    "semantic_hash": "eed24a86f3e11c91dc25ee68e93fbd4b"
+    "mtime": 1787525434.4013777,
+    "ast_hash": "97f62aac132dd93aceaacab701021231",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/infrastructure/song_library/supabase_song_repository_test.dart": {
     "mtime": 1775160199.5180666,
@@ -1140,9 +1140,9 @@
     "semantic_hash": "c6d0b8c17958a1c2591f5b48ca3589da"
   },
   "apps/lyron_app/test/integration/authenticated_song_reader_flow_test.dart": {
-    "mtime": 1776358236.4629638,
-    "ast_hash": "ce7aa503c1bedb94aed2ce6509691c3d",
-    "semantic_hash": "ce7aa503c1bedb94aed2ce6509691c3d"
+    "mtime": 1787526682.2683558,
+    "ast_hash": "428fdcb2088cc3e740656861868889c9",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/invite_redeem_flow_test.dart": {
     "mtime": 1779695501.916741,
@@ -1150,24 +1150,24 @@
     "semantic_hash": "d5ffa0582ef6bda852d5d55514ca5fbe"
   },
   "apps/lyron_app/test/integration/local_first_authenticated_song_reader_flow_test.dart": {
-    "mtime": 1776368492.4856343,
-    "ast_hash": "ffbadc8935e3c191c95144c866371092",
-    "semantic_hash": "ffbadc8935e3c191c95144c866371092"
+    "mtime": 1787526682.2866561,
+    "ast_hash": "1ed3fa2e89ab4f6e31f31eeaf43952a4",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/local_first_planning_read_flow_test.dart": {
-    "mtime": 1776368492.4858904,
-    "ast_hash": "6f49e659c6f1547c852aeae42f605e89",
-    "semantic_hash": "6f49e659c6f1547c852aeae42f605e89"
+    "mtime": 1787526682.2783372,
+    "ast_hash": "63e057a868ab3c7a1b37dc56a5193241",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/local_first_planning_write_flow_test.dart": {
-    "mtime": 1776368492.486215,
-    "ast_hash": "3253efc8ab75cf10f1b0f7defd606010",
-    "semantic_hash": "3253efc8ab75cf10f1b0f7defd606010"
+    "mtime": 1787526682.2629085,
+    "ast_hash": "be3ec6d561ddd080cc2773b15dad14ba",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/local_first_song_crud_flow_test.dart": {
-    "mtime": 1776604819.0467377,
-    "ast_hash": "98c230f3636d4263dfc9abd7aaf56a9e",
-    "semantic_hash": "98c230f3636d4263dfc9abd7aaf56a9e"
+    "mtime": 1787526682.2900949,
+    "ast_hash": "6ba344984dc3babc618139ecf5deb8c8",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/plan_and_session_flow_test.dart": {
     "mtime": 1776358236.4636474,
@@ -1175,7 +1175,7 @@
     "semantic_hash": "470e1ee5ef8117b52c518a8554383ec2"
   },
   "apps/lyron_app/test/integration/plan_session_reader_flow_test.dart": {
-    "mtime": 1787067727.8017201,
+    "mtime": 1787142672.4610384,
     "ast_hash": "90b2efb803315072d29562563e9749b4",
     "semantic_hash": ""
   },
@@ -1185,7 +1185,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/song_reader_flow_test.dart": {
-    "mtime": 1782669890.4293475,
+    "mtime": 1787315862.222219,
     "ast_hash": "920703f28e50544bf5ca691d6abebdef",
     "semantic_hash": "920703f28e50544bf5ca691d6abebdef"
   },
@@ -1195,8 +1195,8 @@
     "semantic_hash": "81231325371d1b9468b04c13a02a9554"
   },
   "apps/lyron_app/test/offline/planning/planning_local_store_test.dart": {
-    "mtime": 1786130453.2365906,
-    "ast_hash": "4870019d2976dc4d8250fb221feefab2",
+    "mtime": 1787432015.9299233,
+    "ast_hash": "9b8a056ec502030acef495b0b281841e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart": {
@@ -1205,8 +1205,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart": {
-    "mtime": 1786130453.2374303,
-    "ast_hash": "094e8b1b8c0db874851ddce0caee8284",
+    "mtime": 1787526702.1992657,
+    "ast_hash": "9c050ce334bc3d6669efe111e499bf64",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/account/account_screen_test.dart": {
@@ -1225,7 +1225,7 @@
     "semantic_hash": "ef4fd41d59b84cca7bf8ed156a80e10c"
   },
   "apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart": {
-    "mtime": 1787067678.7813065,
+    "mtime": 1787142672.4616296,
     "ast_hash": "3785bec192410ca0e4f3f0c8ba7c7fea",
     "semantic_hash": ""
   },
@@ -1275,8 +1275,8 @@
     "semantic_hash": "df91520a1b1c29e621bd96aea5306734"
   },
   "apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart": {
-    "mtime": 1786207189.7569613,
-    "ast_hash": "65f3e839c18cdd2063a5ad7727624018",
+    "mtime": 1787526702.1939142,
+    "ast_hash": "55b5fb8d46254277cccfa743f2eef603",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart": {
@@ -1285,7 +1285,7 @@
     "semantic_hash": "66c57fc3b67c85f525e0922b6bfba8ca"
   },
   "apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_resolver_test.dart": {
-    "mtime": 1787067106.9826446,
+    "mtime": 1787142672.462091,
     "ast_hash": "9053424bc043f41673e4d40d0d7c44e9",
     "semantic_hash": ""
   },
@@ -1305,8 +1305,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_fit_to_screen_test.dart": {
-    "mtime": 1785300464.122438,
-    "ast_hash": "9456eb8bf0a8060c0ef32d91fe422c48",
+    "mtime": 1787142672.4632204,
+    "ast_hash": "710903e8d912ff450ce038a19bc8d018",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_layout_test.dart": {
@@ -1315,9 +1315,9 @@
     "semantic_hash": "2e0cce6914ed863a2a8d9e58cde1dc3e"
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_pinch_test.dart": {
-    "mtime": 1781512327.173983,
-    "ast_hash": "85b571a0a954b8850d407caadb7bcabd",
-    "semantic_hash": "85b571a0a954b8850d407caadb7bcabd"
+    "mtime": 1787142672.4636688,
+    "ast_hash": "be3767e350ef4c21e22daa895c493da4",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_preferences_store_test.dart": {
     "mtime": 1780865848.280837,
@@ -1330,14 +1330,14 @@
     "semantic_hash": "6b78d04cc5569999e251b2aa533a533f"
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_screen_test.dart": {
-    "mtime": 1787067107.0446498,
+    "mtime": 1787142672.4641976,
     "ast_hash": "14b6d4f820a91f28bea4e2cfc221db79",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_scrollbar_test.dart": {
-    "mtime": 1781512327.1800303,
-    "ast_hash": "0dd6484dbfa1005e6672773206c6ce8e",
-    "semantic_hash": "0dd6484dbfa1005e6672773206c6ce8e"
+    "mtime": 1787142672.46446,
+    "ast_hash": "e3eefaebf0d72a8479ec989e826f1282",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_state_test.dart": {
     "mtime": 1780865848.2814238,
@@ -1345,13 +1345,13 @@
     "semantic_hash": "96c3581f777df9dc0a86ca16be168c68"
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_line_view_test.dart": {
-    "mtime": 1787057746.454686,
+    "mtime": 1787142672.4650714,
     "ast_hash": "d881bcd2e60ac47c7403d1a936d499bd",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_compact_surface_test.dart": {
-    "mtime": 1787068637.960945,
-    "ast_hash": "0ac93a8d4467f10840870a7ea00a73bd",
+    "mtime": 1787142672.4664626,
+    "ast_hash": "ec1224766a973fea774344903d1391d6",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_expanded_tools_panel_test.dart": {
@@ -1375,13 +1375,13 @@
     "semantic_hash": "7c5e266985e5ad213073d1f19c0704ba"
   },
   "apps/lyron_app/test/presentation/sync/unified_sync_status_popup_test.dart": {
-    "mtime": 1786130453.239759,
-    "ast_hash": "4059bf37b921bb6f44f0e1a0561d9a47",
+    "mtime": 1787527897.4317935,
+    "ast_hash": "bd007b750dd55d039ca6d17e79053e8b",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/router/app_router_test.dart": {
-    "mtime": 1786207189.7576747,
-    "ast_hash": "a4486bccbd8259245cdf39e3c66dee58",
+    "mtime": 1787512173.9983275,
+    "ast_hash": "8f6502e14117e209df2cf77e6f4a0cca",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/router/resolve_session_item_by_song_slug_test.dart": {
@@ -1770,7 +1770,7 @@
     "semantic_hash": "e175e436acacf76c814d83532d0b662c"
   },
   "apps/lyron_app/pubspec.yaml": {
-    "mtime": 1787048823.3337243,
+    "mtime": 1787380605.323234,
     "ast_hash": "3944b2a632c832b83cfa90d9b3cac1f9",
     "semantic_hash": ""
   },
@@ -1785,8 +1785,8 @@
     "semantic_hash": "29af3e2b7fc6997d0dbadf9db3fb9c45"
   },
   "docs/architecture/architecture.md": {
-    "mtime": 1786207189.7589703,
-    "ast_hash": "d417652c93fa08e04347dcba2c948341",
+    "mtime": 1787334527.5420678,
+    "ast_hash": "9a7447f72c319916930c8a0333c0e0e2",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md": {
@@ -2605,9 +2605,9 @@
     "semantic_hash": "301a7604d45b3e739efc881eb04896ea"
   },
   "apps/lyron_app/lib/src/application/auth/last_known_identity.dart": {
-    "mtime": 1782669890.4196,
-    "ast_hash": "1962ead0111d2720face580e80a4155c",
-    "semantic_hash": "1962ead0111d2720face580e80a4155c"
+    "mtime": 1787512173.9931855,
+    "ast_hash": "3f9381c5bf01b55b832963b885a3457d",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/reauth_resolution.dart": {
     "mtime": 1786130453.2079732,
@@ -2620,19 +2620,19 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/auth/drift_last_known_identity_store.dart": {
-    "mtime": 1782669890.4222996,
-    "ast_hash": "03ba6987b553ce55107c11bbccd42031",
-    "semantic_hash": "03ba6987b553ce55107c11bbccd42031"
+    "mtime": 1787512173.9949079,
+    "ast_hash": "39ead066b8ec87f18404594463ec4745",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/auth/last_known_identity_database.dart": {
-    "mtime": 1782669890.4224794,
-    "ast_hash": "51dd3d31eec2595bf062793822dc0246",
-    "semantic_hash": "51dd3d31eec2595bf062793822dc0246"
+    "mtime": 1787509607.7311485,
+    "ast_hash": "23aecd167d5ac7c528c224e23f1e623f",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/auth/last_known_identity_database.g.dart": {
-    "mtime": 1782669890.4226835,
-    "ast_hash": "df92197a8fb8cc69f65ccc8664d60efc",
-    "semantic_hash": "df92197a8fb8cc69f65ccc8664d60efc"
+    "mtime": 1787509649.3449545,
+    "ast_hash": "2893ded50f6d99378d32a0e0a93a5e80",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/auth/last_known_identity_database_connection.dart": {
     "mtime": 1782669890.4229517,
@@ -2655,9 +2655,9 @@
     "semantic_hash": "f7bcda3d4ac840781ae4caf6e537ee40"
   },
   "apps/lyron_app/lib/src/offline/auth/last_known_identity_tables.dart": {
-    "mtime": 1782669890.4235723,
-    "ast_hash": "a31284c74514d2bb0e56802bc2e38553",
-    "semantic_hash": "a31284c74514d2bb0e56802bc2e38553"
+    "mtime": 1787509600.9273357,
+    "ast_hash": "444aa143fbba51e9f976405ae24ce4c4",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/auth/reauth_banner.dart": {
     "mtime": 1782669890.4238362,
@@ -2675,14 +2675,14 @@
     "semantic_hash": "99427a24f5e748ad430cf640a2ca9f43"
   },
   "apps/lyron_app/test/application/auth/identity_persistence_wiring_test.dart": {
-    "mtime": 1786130453.2241464,
-    "ast_hash": "b155571f7ef0b1faccefaf9be1db8872",
+    "mtime": 1787527026.7899098,
+    "ast_hash": "798fb79ac6fe52a553b3529ff28cd73e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/last_known_identity_store_test.dart": {
-    "mtime": 1782669890.425904,
-    "ast_hash": "12263eb755ba3ecdfe58754ff1fbccbf",
-    "semantic_hash": "12263eb755ba3ecdfe58754ff1fbccbf"
+    "mtime": 1787509885.4529111,
+    "ast_hash": "c9aa8c08eb6919036bb5d04484cf236e",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/reauth_resolution_test.dart": {
     "mtime": 1786130453.2250457,
@@ -2700,14 +2700,14 @@
     "semantic_hash": "f4ad6e7e8de18333b8ba494ab94dfdfe"
   },
   "apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart": {
-    "mtime": 1782718654.4555907,
-    "ast_hash": "5a278eeadf5193b6a34dc91da85aaf92",
-    "semantic_hash": "5a278eeadf5193b6a34dc91da85aaf92"
+    "mtime": 1787526682.2939365,
+    "ast_hash": "0ab54dadaec320d067366376afe2a2f8",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart": {
-    "mtime": 1782760538.568877,
-    "ast_hash": "0c1baa75cba890ef6f5c955589ea88c3",
-    "semantic_hash": "0c1baa75cba890ef6f5c955589ea88c3"
+    "mtime": 1787526682.2730086,
+    "ast_hash": "6563e0d9dd05642b8bed66d0f1cea57c",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/clock_skew_probe_test.dart": {
     "mtime": 1782718654.4563866,
@@ -2740,8 +2740,8 @@
     "semantic_hash": "b77af20d18032497dc903d7773e9606b"
   },
   "apps/lyron_app/test/offline/adversarial/song_catalog_migration_test.dart": {
-    "mtime": 1786130453.233839,
-    "ast_hash": "f17a1081b815e2c6b83c618f83627abb",
+    "mtime": 1787432015.928258,
+    "ast_hash": "cb60dc7e5b38a1281f00ac259c7b4dc2",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/song_single_flight_test.dart": {
@@ -2750,8 +2750,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/auth/reauth_banner_test.dart": {
-    "mtime": 1786207189.7557778,
-    "ast_hash": "61ecb33284e920d37b1d7251cd8ccf76",
+    "mtime": 1787512173.998067,
+    "ast_hash": "92813837217cdc89b70e94376b5819cb",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/auth/reauth_different_user_dialog_test.dart": {
@@ -2790,7 +2790,7 @@
     "semantic_hash": "37db21ec3db8327858beaec17f48e9a1"
   },
   "docs/architecture/repository-review-2026-06-22.md": {
-    "mtime": 1787066685.8699765,
+    "mtime": 1787142672.4682448,
     "ast_hash": "6aa380dcf8699601218bc6ade7bc2a36",
     "semantic_hash": ""
   },
@@ -2845,33 +2845,33 @@
     "semantic_hash": "af9d097922bd0ee5592a664c9ea49c30"
   },
   "apps/lyron_app/lib/src/application/active_organization_resolver.dart": {
-    "mtime": 1786207189.7350235,
-    "ast_hash": "cf0fb2d5c549c2685f83933d85595bc9",
+    "mtime": 1787527040.273615,
+    "ast_hash": "012772ce76ee191b76a62677e499b428",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth_providers.dart": {
-    "mtime": 1786207189.7381718,
-    "ast_hash": "1cb5da626c1faa6ef89efb6cf6d01bc4",
+    "mtime": 1787527057.7477577,
+    "ast_hash": "76c84b7a44719584fafc2e79212a769f",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/core_providers.dart": {
-    "mtime": 1786207189.738488,
-    "ast_hash": "cdf43a2826d9d9fde807987f1b8e2b08",
+    "mtime": 1787432015.9135861,
+    "ast_hash": "5d195d98467da93870a143c1dc984d30",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning_providers.dart": {
-    "mtime": 1786207189.7418008,
-    "ast_hash": "ef0c4b302f639fc4d7553b58a2435963",
+    "mtime": 1787527137.4802277,
+    "ast_hash": "0fd11ee0801f9819f4b7d1140f39ddf7",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/song_catalog_providers.dart": {
-    "mtime": 1786207189.7423534,
-    "ast_hash": "1e8515a0cd7f9ac8e12f65316ebba822",
+    "mtime": 1787526367.9113522,
+    "ast_hash": "d04020978f6d0bc63845fe724be1c75e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/active_organization_resolver_test.dart": {
-    "mtime": 1785165457.68272,
-    "ast_hash": "7cee79161b5b2d9c0aed25660aea7795",
+    "mtime": 1787527081.552478,
+    "ast_hash": "59010739dd6a08b06f8d3f26d1061a77",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_invalidation_scope_test.dart": {
@@ -3080,8 +3080,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_shell.dart": {
-    "mtime": 1787068061.4116096,
-    "ast_hash": "f64b1b4485445e11c4374e4d7b3f24c7",
+    "mtime": 1787142672.4592545,
+    "ast_hash": "d39a0b7a581fbbf8d1e6078de9d535b0",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_status_views.dart": {
@@ -3140,8 +3140,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_estimate_render_consistency_test.dart": {
-    "mtime": 1786972953.1547096,
-    "ast_hash": "0782a1ed030255260d11830cf711c50b",
+    "mtime": 1787142672.4627929,
+    "ast_hash": "82ce690a6386e79778679e066c7157eb",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_immersive_mode_test.dart": {
@@ -3150,7 +3150,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_titles_test.dart": {
-    "mtime": 1787051792.5577383,
+    "mtime": 1787142672.4646587,
     "ast_hash": "c707417dc6a7580520699e06e37c9229",
     "semantic_hash": ""
   },
@@ -3315,8 +3315,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/auth/reauth_prompt_controller.dart": {
-    "mtime": 1786130453.2075377,
-    "ast_hash": "a9569aa95651131a544b394aca42fd4c",
+    "mtime": 1787512173.9934185,
+    "ast_hash": "cd456d08f673f5cacae06363e94f2dbc",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
@@ -3325,8 +3325,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart": {
-    "mtime": 1786130453.2135756,
-    "ast_hash": "71e6cf252c7972cf431bfff71301905f",
+    "mtime": 1787432015.915261,
+    "ast_hash": "98fb6caf661af883a2f3f819a1de66bb",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/local_storage_budget.dart": {
@@ -3355,8 +3355,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/song_catalog_evictor.dart": {
-    "mtime": 1786207189.7446966,
-    "ast_hash": "da5af16df760d0837b3ebf797ffdcfa6",
+    "mtime": 1787432015.9171758,
+    "ast_hash": "069e33c0b969ea2493223d6f901b439b",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/sync/unified_row_recovery_controller.dart": {
@@ -3365,8 +3365,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/auth/reauth_prompt_host.dart": {
-    "mtime": 1786130453.221758,
-    "ast_hash": "48b4041082c020659124b70554376991",
+    "mtime": 1787527393.6920896,
+    "ast_hash": "838e5bb846e633b990dc79a27eceb4d5",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/pending_local_work_counter_test.dart": {
@@ -3375,13 +3375,13 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/auth/reauth_prompt_controller_test.dart": {
-    "mtime": 1786130453.2247005,
-    "ast_hash": "071744b5ffcce96e70185505c47e46a1",
+    "mtime": 1787512173.9965339,
+    "ast_hash": "92f847f2a1e6bb2533761deb05dae207",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1786130453.225302,
-    "ast_hash": "48165d777b113e5664bd0bd85990e8bc",
+    "mtime": 1787432015.921403,
+    "ast_hash": "6c854e6b5e3a695784a81169e682ed37",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
@@ -3400,8 +3400,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/song_catalog_evictor_test.dart": {
-    "mtime": 1786130453.2295532,
-    "ast_hash": "86bd9965216809d1c3e4ae3658c898fc",
+    "mtime": 1787526706.734446,
+    "ast_hash": "53f575f750199f717177619247206aa0",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/sync/unified_row_recovery_controller_test.dart": {
@@ -3415,13 +3415,13 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/storage_pressure_contract_test.dart": {
-    "mtime": 1786207189.7555315,
-    "ast_hash": "5d49d669fad77475ac4a1641df0845d7",
+    "mtime": 1787432015.9290323,
+    "ast_hash": "e2552cbcf949c57dd7ba0325a7a97a09",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/auth/reauth_prompt_host_test.dart": {
-    "mtime": 1786130453.2380514,
-    "ast_hash": "a123cc0ab8a4d009148599197ecffc11",
+    "mtime": 1787527378.875173,
+    "ast_hash": "2b59f240a4a7c96ded47d1220b8cc8f5",
     "semantic_hash": ""
   },
   "scripts/tests/pg-cron-orphan-cleanup-contract-test.sh": {
@@ -3430,8 +3430,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-028-local-storage-budget-and-eviction-policy.md": {
-    "mtime": 1786130453.2412598,
-    "ast_hash": "c176196aea1a9e4e5f7f77e052fbcd06",
+    "mtime": 1787432015.9323251,
+    "ast_hash": "8db060af041b9a752aa75ce34d1b7ce1",
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md": {
@@ -3445,8 +3445,8 @@
     "semantic_hash": ""
   },
   "docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md": {
-    "mtime": 1786130453.2432969,
-    "ast_hash": "52e51376194605e254c1335f6cd0863c",
+    "mtime": 1787334527.5429816,
+    "ast_hash": "39b68f5503cab14784899aa91448344f",
     "semantic_hash": ""
   },
   "docs/plans/2026-07-30-lf7-offline-discard-and-lf9-slug-read.md": {
@@ -3490,8 +3490,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/footprint_production_wiring_test.dart": {
-    "mtime": 1786207189.754677,
-    "ast_hash": "2ab6d313c692c8bee04b2367bd5099ea",
+    "mtime": 1787432015.9225738,
+    "ast_hash": "b4d161160cfbf6939ed9670b0d7a742e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/auth/drift_pending_local_work_reader_test.dart": {
@@ -3695,18 +3695,18 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/local_storage_write_recovery.dart": {
-    "mtime": 1786207189.7444813,
-    "ast_hash": "68dfa4683f37d36f037369b690cf9a9b",
+    "mtime": 1787432015.9165306,
+    "ast_hash": "9b4f7ba4f2f89c726387ed3138fe3d55",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_write_recovery_test.dart": {
-    "mtime": 1786130453.2289171,
-    "ast_hash": "3e76f9368efbcc0ce036ec8ab078674d",
+    "mtime": 1787526702.1892304,
+    "ast_hash": "db084187a3e26077f14881d9bf56a8db",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/support/insert_failing_executor.dart": {
-    "mtime": 1786207189.7586143,
-    "ast_hash": "2fc35c506210403bc724e2ed85114f92",
+    "mtime": 1787432015.9313624,
+    "ast_hash": "7c971244dcd9616924a9e93395ada3bc",
     "semantic_hash": ""
   },
   "docs/specs/2026-08-04-storage-recovery-boundary-and-budget-admission.md": {
@@ -3765,8 +3765,8 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/song_tombstone_resolution_atomicity_test.dart": {
-    "mtime": 1786130453.2349558,
-    "ast_hash": "d1577dd50f84e86a9d45833fe98da01e",
+    "mtime": 1787432015.9287198,
+    "ast_hash": "5445a31e889c50807a22ed295ef3a083",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/song_keep_mine_failure_gating_test.dart": {
@@ -3825,7 +3825,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/app/reader_theme.dart": {
-    "mtime": 1787057376.5716658,
+    "mtime": 1787142672.456698,
     "ast_hash": "428947325f885685e7cae826d563b19f",
     "semantic_hash": ""
   },
@@ -3835,23 +3835,23 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/song_reader_chrome_metrics.dart": {
-    "mtime": 1787068711.1530344,
+    "mtime": 1787142672.457623,
     "ast_hash": "8ac38bb4aaac5e22248603aa68c07fd3",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart": {
-    "mtime": 1787068746.3583946,
+    "mtime": 1787142672.4583678,
     "ast_hash": "b8c4a316357718724fc0ff3fe6bb5030",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_control_rail.dart": {
-    "mtime": 1787057713.4587197,
+    "mtime": 1787142672.4589136,
     "ast_hash": "5fbf61fa3c247bf8dc35bafb36e63bcf",
     "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_top_bar.dart": {
-    "mtime": 1787068616.4494636,
-    "ast_hash": "b7039703ff5fd7c9519261f4672b6f37",
+    "mtime": 1787142672.4595082,
+    "ast_hash": "985f20eb04c82e5bf51e539119a0271c",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/app/app_theme_test.dart": {
@@ -3880,7 +3880,7 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/song_reader_chrome_metrics_test.dart": {
-    "mtime": 1787068856.2727642,
+    "mtime": 1787142672.4623668,
     "ast_hash": "45406ff634681c030e5ac02db1b27147",
     "semantic_hash": ""
   },
@@ -3895,33 +3895,33 @@
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_bottom_bar_test.dart": {
-    "mtime": 1787068281.720787,
+    "mtime": 1787142672.4653354,
     "ast_hash": "7bd98596c60c4ecbf46292efb829db7e",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_chrome_geometry_test.dart": {
-    "mtime": 1787051719.128589,
-    "ast_hash": "ddcfb380eee48569e52f002eaf47ced9",
+    "mtime": 1787142672.46551,
+    "ast_hash": "2f6bd90d8a99577945f182ab755ae2c7",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_chrome_safe_area_test.dart": {
-    "mtime": 1787068653.1723254,
-    "ast_hash": "fd724b0192a3941bf56f2f08ede9a6ef",
+    "mtime": 1787142672.4659138,
+    "ast_hash": "3775e83fe47b9bd810dd78d03ebc37d4",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_control_rail_test.dart": {
-    "mtime": 1787067107.0633943,
-    "ast_hash": "bcf2b188340c98fe3fd41a17417cc174",
+    "mtime": 1787142672.466691,
+    "ast_hash": "85610b334107dbaf1a9a5b056880a1e8",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_shell_expanded_safe_area_test.dart": {
-    "mtime": 1787068653.1853395,
+    "mtime": 1787142672.4669716,
     "ast_hash": "48a22429493faf47d7655118a537441a",
     "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_top_bar_test.dart": {
-    "mtime": 1787057850.8721223,
-    "ast_hash": "01d45cc00f67125ed24316971485dc81",
+    "mtime": 1787142672.4671648,
+    "ast_hash": "04920cec3c4e326e3ea33780f23f143d",
     "semantic_hash": ""
   },
   "scripts/tests/create-invitation-service-role-gate-contract-test.sh": {
@@ -3940,8 +3940,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/decisions/ADR-034-reader-chrome-model.md": {
-    "mtime": 1787066614.3917744,
-    "ast_hash": "eff1eb6e41ebfe27afab7257e5c3857c",
+    "mtime": 1787142672.467376,
+    "ast_hash": "264e8f14c5de296d44d0acab6792cb1d",
     "semantic_hash": ""
   },
   "docs/plans/2026-08-09-reader-token-layer-and-dark-theme.md": {
@@ -3960,7 +3960,7 @@
     "semantic_hash": ""
   },
   "docs/plans/2026-08-18-reader-chrome-restructure.md": {
-    "mtime": 1787051633.2541022,
+    "mtime": 1787142672.4690156,
     "ast_hash": "2483bdd588a40a4e66274161292faf2f",
     "semantic_hash": ""
   },
@@ -3972,6 +3972,131 @@
   "docs/specs/2026-08-09-song-presentation.md": {
     "mtime": 1786972953.1699493,
     "ast_hash": "0fb7f36048238aa22c7279b3275ba4ea",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/application/storage/local_data_lifecycle.dart": {
+    "mtime": 1787526925.8064237,
+    "ast_hash": "2627aae641e8c875a9683ccc3855e077",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/application/storage/local_storage_exhaustion_signal.dart": {
+    "mtime": 1787432015.9159577,
+    "ast_hash": "2a067fc985bf00eab989e89386fcc9fd",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/drift_local_data_events_store.dart": {
+    "mtime": 1787526925.8067944,
+    "ast_hash": "4abb6124ce445c1393a61a3833defd34",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database.dart": {
+    "mtime": 1787380607.242015,
+    "ast_hash": "ed188eaae21b9efd1e6b25a2b888e730",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database.g.dart": {
+    "mtime": 1787380607.2422864,
+    "ast_hash": "ef5b958d071f210ca6837b7068dc78e1",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database_connection.dart": {
+    "mtime": 1787380607.2424762,
+    "ast_hash": "b8443c10930e3595a1915ac56803ed05",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database_connection_io.dart": {
+    "mtime": 1787380607.242718,
+    "ast_hash": "899d960e8c155bada524f33068665a34",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database_connection_stub.dart": {
+    "mtime": 1787380607.2429485,
+    "ast_hash": "b1919461dfa617ead0390ab1fe832861",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_database_connection_web.dart": {
+    "mtime": 1787380607.2431662,
+    "ast_hash": "b28a0460bc1783e0f62c14121e12da07",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/offline/local_data_events/local_data_events_tables.dart": {
+    "mtime": 1787380607.2439406,
+    "ast_hash": "86113fc8dad921f84fcec29066e9ec05",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/presentation/account/local_data_events_screen.dart": {
+    "mtime": 1787380607.244432,
+    "ast_hash": "046b421b2e9b19a0d8afba776bf9c761",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/lib/src/presentation/auth/membership_revocation_purge_dialog.dart": {
+    "mtime": 1787512174.0124583,
+    "ast_hash": "3f27e004d91fb05478b2e93d9817b261",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/application/planning_providers_test.dart": {
+    "mtime": 1787527128.186789,
+    "ast_hash": "6d7550df10db0725b89b180381ee14a9",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/application/storage/local_data_lifecycle_test.dart": {
+    "mtime": 1787526909.2105734,
+    "ast_hash": "6e27d79235d33e6c18af73e039863362",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/architecture/local_data_lifecycle_gate_test.dart": {
+    "mtime": 1787510216.7951553,
+    "ast_hash": "a7ae1cbede6187198fbc9c5d724e336e",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/architecture/web_safe_imports_test.dart": {
+    "mtime": 1787432015.924279,
+    "ast_hash": "29a09b5ce89a84df7e19f0d5df84c1bf",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/integration/offline_authenticated_cold_start_test.dart": {
+    "mtime": 1787526682.2829483,
+    "ast_hash": "6ab2dc9cdc221ad5ef99356e1efb1d70",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/offline/adversarial/last_known_identity_migration_test.dart": {
+    "mtime": 1787510362.8705976,
+    "ast_hash": "26f23d42b2945597b1d917cf4e8b96a5",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/offline/local_data_events/drift_local_data_events_store_test.dart": {
+    "mtime": 1787526732.567882,
+    "ast_hash": "cac8c33cc72b0dfafab60aef21920c3c",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/presentation/account/local_data_events_screen_test.dart": {
+    "mtime": 1787380607.2515063,
+    "ast_hash": "5f3bb93d09bcbfd214a0a5f1d1f6e6eb",
+    "semantic_hash": ""
+  },
+  "apps/lyron_app/test/presentation/song_reader/widgets/song_reader_compact_surface_double_tap_test.dart": {
+    "mtime": 1787142672.466157,
+    "ast_hash": "0fd0fb182e64ce3bec080768b5c81589",
+    "semantic_hash": ""
+  },
+  "docs/architecture/decisions/ADR-035-local-data-purge-contract.md": {
+    "mtime": 1787509336.0577903,
+    "ast_hash": "b0362bc0f680139700cd546e3b02b22f",
+    "semantic_hash": ""
+  },
+  "docs/plans/2026-08-19-local-data-durability-contract.md": {
+    "mtime": 1787509355.2128205,
+    "ast_hash": "173d5e6e0bbfaad5e64e49a54f7ff833",
+    "semantic_hash": ""
+  },
+  "docs/release-notes/2026-08-21-offline-authenticated-cold-start.md": {
+    "mtime": 1787334527.5436256,
+    "ast_hash": "7a8af7c08860e78c1e5c36bfdeb68587",
+    "semantic_hash": ""
+  },
+  "docs/specs/2026-08-19-local-data-durability-contract.md": {
+    "mtime": 1787509313.6842334,
+    "ast_hash": "e5dfa78a8a4632f9ab08b27e94e24fc9",
     "semantic_hash": ""
   }
 }

@@ -396,6 +396,63 @@ void main() {
     );
   });
 
+  testWidgets(
+    // YELLOW 9 (final whole-branch review, spec D5.6): keepMine re-sends
+    // via overwriteSong, and discard is a no-op retry affordance too --
+    // neither can help a permanently unauthorized row, so both must be
+    // suppressed. The row itself, and its reason, must still be visible
+    // (the user is told retrying cannot help, not left with no row at
+    // all).
+    'authorizationDenied song row hides Keep mine but keeps Discard mine, '
+    'and still shows the row and its reason',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                songs: const [
+                  UnifiedSyncSongRow(
+                    songId: 's1',
+                    title: 'Hymn',
+                    entityState: SongSyncStatus.conflict,
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.authorizationDenied,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+
+      expect(find.text('Hymn'), findsOneWidget);
+      expect(
+        find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
+        findsOneWidget,
+      );
+      // Keep mine re-sends the local version, which a permanent
+      // authorization rejection can never accept -- offering it would be a
+      // retry that provably cannot succeed (spec D5.6).
+      expect(
+        find.byKey(const ValueKey('unified-sync-song-keep-s1')),
+        findsNothing,
+      );
+      // Discard mine is purely local and needs no authorization. It is the
+      // user's only way to clear a permanently unauthorized row out of the
+      // sync queue, so it must stay -- without it the row sits in the list
+      // forever with no affordance at all.
+      expect(
+        find.byKey(const ValueKey('unified-sync-song-discard-s1')),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('conflict song row Discard mine calls controller', (
     tester,
   ) async {
@@ -552,6 +609,61 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    // Mirrors the song-row authorizationDenied test: retryMutation now
+    // throws for a failedAuthorization row, so Keep mine on a plan row
+    // must be suppressed the same way it is on a song row -- offering a
+    // retry that provably cannot succeed just produces a generic partial
+    // failure snackbar. Discard mine stays: it is purely local, needs no
+    // authorization, and is the user's only way to clear the row.
+    'authorizationDenied plan row hides Keep mine but keeps Discard mine, '
+    'and still shows the row and its reason',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(
+              _overview(
+                status: UnifiedSyncHeaderStatus.conflict,
+                plans: const [
+                  UnifiedSyncPlanRow(
+                    planId: 'p1',
+                    title: 'Closed Plan',
+                    severity: UnifiedSyncRowSeverity.conflict,
+                    reasonCode: UnifiedSyncReasonCode.authorizationDenied,
+                    nestedSummaries: ['plan edited'],
+                    mutationRefs: [
+                      UnifiedSyncPlanMutationRef(
+                        aggregateType: 'plan',
+                        aggregateId: 'p1',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      expect(find.text('Closed Plan'), findsOneWidget);
+      expect(
+        find.text(AppStrings.unifiedSyncReasonAuthorizationDenied),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-plan-keep-p1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-plan-discard-p1')),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('conflict plan row Discard mine discards all grouped mutations', (
     tester,

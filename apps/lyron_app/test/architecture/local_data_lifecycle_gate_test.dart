@@ -92,6 +92,36 @@ void main() {
           'src/application/auth/last_known_identity.dart',
         },
       ),
+      // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+      // Phase 4): the two new membership-revocation-marker store primitives.
+      // Neither is a purge, but both must still be reached only through
+      // LocalDataLifecycle -- it owns the single global serialization chain
+      // (D5.5) these calls are required to run on, and a direct caller would
+      // bypass that entirely.
+      _GatedPattern(
+        name: 'LastKnownIdentityStore.resolveEmptyMembership()',
+        regex: RegExp(
+          r'identityStore\.resolveEmptyMembership\(',
+          caseSensitive: false,
+        ),
+        allowedFiles: {
+          'src/application/storage/local_data_lifecycle.dart',
+          'src/offline/auth/drift_last_known_identity_store.dart',
+          'src/application/auth/last_known_identity.dart',
+        },
+      ),
+      _GatedPattern(
+        name: 'LastKnownIdentityStore.clearMembershipRevocation()',
+        regex: RegExp(
+          r'identityStore\.clearMembershipRevocation\(',
+          caseSensitive: false,
+        ),
+        allowedFiles: {
+          'src/application/storage/local_data_lifecycle.dart',
+          'src/offline/auth/drift_last_known_identity_store.dart',
+          'src/application/auth/last_known_identity.dart',
+        },
+      ),
     ];
 
     final violations = <String>[];

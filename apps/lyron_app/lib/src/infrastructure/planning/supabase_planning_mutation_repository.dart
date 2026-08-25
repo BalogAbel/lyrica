@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/shared/connectivity_failure.dart';
+import 'package:lyron_app/src/shared/permanent_authorization_denial.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabasePlanningMutationRepository
@@ -140,7 +141,13 @@ class SupabasePlanningMutationRepository
     }
     if (error is PostgrestException) {
       final message = error.message.toLowerCase();
-      if (error.code == '42501' || message.contains('not_authorized')) {
+      // spec D5.6 / ADR-035: permanent, terminal -- see
+      // isPermanentAuthorizationDenial's doc comment for the full
+      // rationale (shared with supabase_song_mutation_repository.dart).
+      // `not_authorized` is this repository's own domain-specific signal
+      // on top of that shared predicate.
+      if (isPermanentAuthorizationDenial(error) ||
+          message.contains('not_authorized')) {
         return PlanningMutationSyncException(
           PlanningMutationSyncErrorCode.authorizationDenied,
           message: error.message,

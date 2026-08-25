@@ -5,6 +5,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
@@ -16,6 +17,8 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
@@ -251,7 +254,20 @@ void main() {
     );
 
     test(
-      'verified empty membership clears cached song data and prevents cached fallback from reopening later',
+      // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+      // ADR-035 Phase 4): a verified-empty resolution no longer purges by
+      // itself -- SongCatalogController now defers entirely to the injected
+      // handler's reported outcome (in production,
+      // VerifiedEmptyMembershipCleanupCoordinator, gated on two confirmations
+      // through LocalDataLifecycle). This test simulates a handler that has
+      // already run a genuine purge (returns true) to pin the controller's
+      // OWN responsibility on that outcome: reset _state to empty and let the
+      // cached-fallback short-circuit stay closed. The single-confirmation
+      // behaviour this test used to pin (no handler at all) was exactly the
+      // F4 bug D5 exists to close, and is now covered separately by "a
+      // verified empty membership resolution with no purge handler leaves
+      // cached song data untouched" below.
+      'verified empty membership clears cached song data and prevents cached fallback from reopening later once the handler reports a genuine purge',
       () async {
         await store.replaceActiveSnapshot(
           userId: 'user-1',
@@ -287,6 +303,18 @@ void main() {
               const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
           organizationReader: () => organizationReader(),
           sessionVerifier: () async => CatalogSessionStatus.verified,
+          // Stands in for VerifiedEmptyMembershipCleanupCoordinator having
+          // already run a genuine two-confirmation purge through
+          // LocalDataLifecycle -- this test is only pinning what the
+          // CONTROLLER does once told a purge happened, not the gate itself
+          // (covered by local_data_lifecycle_test.dart).
+          onVerifiedEmptyMembership: ({required userId}) async {
+            await lifecycle.purgeSongCatalog(
+              userId: userId,
+              reason: PurgeReason.membershipRevokedConfirmed,
+            );
+            return true;
+          },
         );
 
         await controller.refreshCatalog();
@@ -323,6 +351,320 @@ void main() {
         );
         expect(controller.state.hasCachedCatalog, isFalse);
         expect(remoteRepository.listSongsCalls, 0);
+      },
+    );
+
+    test(
+      // Required test 9 (D5.4/D5.5, ADR-035 Phase 4): reads stay served
+      // during and after a first (non-purging) confirmation -- the catalog
+      // context must NOT be reset when the coordinator reports nothing was
+      // purged (a single verified-empty resolution, or a second one still
+      // short of a confirmed purge). ADR-020's read access is unchanged
+      // until data is genuinely gone.
+      'a verified empty membership resolution that does not purge (handler '
+      'reports false) leaves cached song data and context fully intact',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => null,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          // Only the marker was recorded / re-confirmed -- no purge ran.
+          onVerifiedEmptyMembership: ({required userId}) async => false,
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          hasLength(1),
+        );
+      },
+    );
+
+    test(
+      // RED 1 (final whole-branch review): empty -> fresh non-empty -> empty
+      // must be TWO independent first confirmations, not one confirmation
+      // plus a second. The middle, genuine non-empty resolution must clear
+      // the D5.1 marker; a bug that skips the clear lets the trailing empty
+      // count as the "second" confirmation and purge on a false premise.
+      'a genuine fresh non-empty resolution between two empties clears the '
+      'membership-revocation marker so the trailing empty is a first '
+      'confirmation again, not a purge',
+      () async {
+        final identityDatabase = LastKnownIdentityDatabase.inMemory();
+        addTearDown(identityDatabase.close);
+        final identityStore = DriftLastKnownIdentityStore(identityDatabase);
+        final gatedLifecycle = LocalDataLifecycle(
+          songCatalogStore: store,
+          planningLocalStore: _NoopPlanningLocalStore(),
+          identityStore: identityStore,
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorder(),
+          // Cooldown is irrelevant to this repro (it is about which
+          // resolution counts as first vs. second, not timing), so zero it
+          // out to keep the test deterministic without a fake clock.
+          membershipConfirmationCooldown: Duration.zero,
+        );
+        await identityStore.write(
+          const LastKnownIdentity(
+            userId: 'user-1',
+            email: 'demo@lyron.local',
+            organizationId: 'org-1',
+          ),
+        );
+
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        Future<bool> handleVerifiedEmptyMembership({
+          required String userId,
+        }) async {
+          final decision = await gatedLifecycle.resolveVerifiedEmptyMembership(
+            userId: userId,
+          );
+          if (decision is! MembershipRevocationPurgeAuthorized) {
+            return false;
+          }
+          return gatedLifecycle.maybePurgeForMembershipRevocation(
+            userId: userId,
+            markedAt: decision.markedAt,
+            countPendingWork: () async => 0,
+            requestConfirmation: ({required pendingCount}) async =>
+                ReauthPromptResult.confirmed,
+          );
+        }
+
+        final organizationIds = <String?>[null, 'org-1', null];
+        var callIndex = 0;
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: gatedLifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => organizationIds[callIndex++],
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedEmptyMembership: handleVerifiedEmptyMembership,
+          onVerifiedNonEmptyMembership: ({required userId}) =>
+              gatedLifecycle.clearMembershipRevocation(userId: userId),
+        );
+
+        // T0: live RPC -> VerifiedEmpty (transient) -> marker set.
+        await controller.refreshCatalog();
+
+        // T0+30s: live RPC -> Selected('org-1') -- a genuine, fresh,
+        // online, authenticated non-empty resolution. Must clear the
+        // marker.
+        await controller.refreshCatalog();
+
+        // T0+90s: live RPC -> VerifiedEmpty again. If the marker was
+        // correctly cleared above, this is a FIRST confirmation again, not
+        // a second -- nothing may be deleted.
+        await controller.refreshCatalog();
+
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isNotEmpty,
+          reason:
+              'the genuine non-empty resolution between the two empties '
+              'must have cleared the marker, so the second empty is a '
+              'first confirmation again -- nothing should have been '
+              'purged',
+        );
+      },
+    );
+
+    test(
+      // The marker clear is awaited, not fire-and-forget: a dropped store
+      // failure would leave the marker set with no audit record and no
+      // retry, silently reinstating the empty/non-empty/empty purge
+      // sequence the clear exists to break. It must still not break the
+      // read path (ADR-020) -- the failure is reported, not rethrown.
+      'a failing membership-revocation marker clear is reported and does '
+      'not break the refresh or hide the cached catalog',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final reported = <FlutterErrorDetails>[];
+        final previousOnError = FlutterError.onError;
+        FlutterError.onError = reported.add;
+        addTearDown(() => FlutterError.onError = previousOnError);
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedNonEmptyMembership: ({required userId}) async {
+            throw StateError('simulated identity store failure');
+          },
+        );
+        addTearDown(controller.dispose);
+
+        await controller.refreshCatalog();
+
+        expect(
+          reported,
+          hasLength(1),
+          reason:
+              'the clear failure must be reported, not swallowed -- it '
+              'leaves the marker set',
+        );
+        expect(controller.state.context, isNotNull);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isNotEmpty,
+        );
+      },
+    );
+
+    test(
+      // YELLOW 7 (final whole-branch review, D5.5 rule 4): `session` is
+      // captured at the top of _refreshCatalog and used, unrevalidated, to
+      // enter the purge gate. Re-read and compare identity immediately
+      // before the handler call, so a resolution captured under one user
+      // cannot purge a different user's data after that user signs in
+      // during the awaited organization lookup.
+      'does not enter the purge gate when a different user signed in while '
+      'the organization lookup was in flight',
+      () async {
+        var handlerCalls = 0;
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: () async {
+            // Simulate a different user signing in during this await --
+            // exactly the race the currentness re-check must catch.
+            currentSession = const AppAuthSession(
+              userId: 'user-2',
+              email: 'other@lyron.local',
+            );
+            return null;
+          },
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedEmptyMembership: ({required userId}) async {
+            handlerCalls++;
+            return false;
+          },
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          handlerCalls,
+          0,
+          reason:
+              'the purge gate must not run for a resolution captured under '
+              'a user who is no longer the current session by the time the '
+              'gate is entered',
+        );
+      },
+    );
+
+    test(
+      // FIX 2 (re-review, D5.5 rule 4): the non-empty branch used to enter
+      // the marker-clear gate with only `_isStale(generation)` guarding it,
+      // which does not assert session identity. Re-read and compare
+      // immediately before the clear call, mirroring the verified-empty
+      // branch's YELLOW 7 fix above.
+      'does not enter the marker-clear gate when a different user signed '
+      'in while the organization lookup was in flight',
+      () async {
+        var handlerCalls = 0;
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: () async {
+            // Simulate a different user signing in during this await --
+            // exactly the race the currentness re-check must catch.
+            currentSession = const AppAuthSession(
+              userId: 'user-2',
+              email: 'other@lyron.local',
+            );
+            return 'org-1';
+          },
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onVerifiedNonEmptyMembership: ({required userId}) async {
+            handlerCalls++;
+          },
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          handlerCalls,
+          0,
+          reason:
+              'the marker-clear gate must not run for a resolution '
+              'captured under a user who is no longer the current session '
+              'by the time the gate is entered',
+        );
       },
     );
 
@@ -1512,6 +1854,22 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }
 
 class _TestAppForegroundState implements AppForegroundState {

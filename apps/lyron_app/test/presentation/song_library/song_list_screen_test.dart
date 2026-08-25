@@ -1179,6 +1179,22 @@ class _NoopLocalDataEventsRecorderForLifecycle
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }
 
 class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {

@@ -256,6 +256,15 @@ class PlanningSyncController extends ChangeNotifier {
     }
   }
 
+  // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035 Phase 4): registered as a VerifiedEmptyMembershipCleanupHandler
+  // on the coordinator (planning_providers.dart), which only invokes
+  // registered handlers once a purge has genuinely run through
+  // LocalDataLifecycle.maybePurgeForMembershipRevocation -- this method's
+  // own job is purely to reset THIS controller's in-memory state to match
+  // data that is now genuinely gone, not to purge anything itself (that
+  // used to happen here directly, on a single unconfirmed resolution --
+  // exactly the F4 bug D5 exists to close).
   Future<void> handleVerifiedEmptyMembership({required String userId}) async {
     _advanceBoundaryGeneration();
     _invalidateRefreshGeneration();
@@ -263,10 +272,6 @@ class PlanningSyncController extends ChangeNotifier {
       const PlanningSyncState.initial().copyWith(
         accessStatus: PlanningAccessStatus.signedIn,
       ),
-    );
-    await _localDataLifecycle.purgePlanningData(
-      userId: userId,
-      reason: PurgeReason.membershipRevokedConfirmed,
     );
   }
 

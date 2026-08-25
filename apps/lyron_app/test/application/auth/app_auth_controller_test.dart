@@ -101,6 +101,21 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<void> clear() async {
     value = null;
   }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async => false;
 }
 
 void main() {

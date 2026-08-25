@@ -2,19 +2,45 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-/// A pending different-user reauth prompt: the prior user's email and how
-/// much local work a wipe would destroy. `null` means the count could not
-/// be determined -- an honest "unknown", not a guess (see D4 in
+/// A pending confirmation of a destructive local-data operation, published
+/// by [ReauthPromptController] and presented by `ReauthPromptHost`.
+///
+/// Two variants share one host and one at-most-one-pending guard rather than
+/// each owning a separate controller (ADR-029; D5.4/ADR-035 Phase 4 reuses
+/// this host rather than introducing a second one): [ReauthDifferentUserPrompt]
+/// for a different-user sign-in wipe, and [MembershipRevocationPurgePrompt]
+/// for the two-confirmation membership-revocation purge.
+sealed class ReauthPrompt {
+  const ReauthPrompt({required this.requestId});
+
+  final int requestId;
+}
+
+/// The prior user's email and how much local work a different-user
+/// sign-in wipe would destroy. `pendingCount` of `null` means the count
+/// could not be determined -- an honest "unknown", not a guess (see D4 in
 /// `docs/specs/2026-07-30-recovery-actions-that-outlive-their-widget.md`).
-class ReauthPrompt {
-  const ReauthPrompt({
-    required this.requestId,
+final class ReauthDifferentUserPrompt extends ReauthPrompt {
+  const ReauthDifferentUserPrompt({
+    required super.requestId,
     required this.email,
     required this.pendingCount,
   });
 
-  final int requestId;
   final String email;
+  final int? pendingCount;
+}
+
+/// How much local work a membership-revocation purge would destroy (D5.4,
+/// docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035 Phase
+/// 4). `pendingCount` of `null` means the count could not be determined --
+/// treated as nonzero, never as zero, mirroring [ReauthDifferentUserPrompt].
+final class MembershipRevocationPurgePrompt extends ReauthPrompt {
+  const MembershipRevocationPurgePrompt({
+    required super.requestId,
+    required this.pendingCount,
+  });
+
   final int? pendingCount;
 }
 
@@ -47,13 +73,42 @@ class ReauthPromptController extends ChangeNotifier {
 
   ReauthPrompt? get pending => _pending;
 
-  /// Publishes [email]/[pendingCount] as the pending prompt and returns a
-  /// future that completes with the answer once [answer] is called.
-  /// [pendingCount] of `null` means the count could not be determined.
+  /// Publishes [email]/[pendingCount] as the pending different-user prompt
+  /// and returns a future that completes with the answer once [answer] is
+  /// called. [pendingCount] of `null` means the count could not be
+  /// determined.
   Future<ReauthPromptResult> requestConfirmation({
     required String email,
     required int? pendingCount,
   }) {
+    return _publish(
+      (requestId) => ReauthDifferentUserPrompt(
+        requestId: requestId,
+        email: email,
+        pendingCount: pendingCount,
+      ),
+    );
+  }
+
+  /// Publishes [pendingCount] as the pending membership-revocation-purge
+  /// prompt (D5.4) and returns a future that completes with the answer once
+  /// [answer] is called. Shares this controller's single-pending guard with
+  /// [requestConfirmation] -- the two prompt kinds are mutually exclusive at
+  /// any one time, same as two different-user requests would be.
+  Future<ReauthPromptResult> requestMembershipRevocationConfirmation({
+    required int? pendingCount,
+  }) {
+    return _publish(
+      (requestId) => MembershipRevocationPurgePrompt(
+        requestId: requestId,
+        pendingCount: pendingCount,
+      ),
+    );
+  }
+
+  Future<ReauthPromptResult> _publish(
+    ReauthPrompt Function(int requestId) build,
+  ) {
     if (_pending != null) {
       throw StateError(
         'A reauth prompt is already pending; cannot request a second one '
@@ -62,11 +117,7 @@ class ReauthPromptController extends ChangeNotifier {
     }
     final completer = Completer<ReauthPromptResult>();
     _completer = completer;
-    _pending = ReauthPrompt(
-      requestId: _nextRequestId++,
-      email: email,
-      pendingCount: pendingCount,
-    );
+    _pending = build(_nextRequestId++);
     notifyListeners();
     return completer.future;
   }

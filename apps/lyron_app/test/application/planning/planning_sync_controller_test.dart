@@ -289,7 +289,20 @@ void main() {
     );
 
     test(
-      'verified empty membership clears the planning boundary and deletes authenticated planning data for the user',
+      // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+      // ADR-035 Phase 4): this method is now registered as a
+      // VerifiedEmptyMembershipCleanupHandler on
+      // VerifiedEmptyMembershipCleanupCoordinator (planning_providers.dart),
+      // which invokes registered handlers ONLY after
+      // LocalDataLifecycle.maybePurgeForMembershipRevocation has already
+      // genuinely purged the data -- so this method's own job, called in
+      // isolation here, is purely to reset the boundary/state; it must NOT
+      // delete anything itself (that would be the single-confirmation purge
+      // F4 describes). Data deletion under the real two-confirmation gate is
+      // covered by local_data_lifecycle_test.dart.
+      'verified empty membership clears the planning boundary without '
+      'deleting planning data itself (deletion is the caller\'s job, gated '
+      'on a genuine two-confirmation purge)',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -324,7 +337,7 @@ void main() {
             userId: 'user-1',
             organizationId: 'org-1',
           ),
-          isEmpty,
+          hasLength(1),
         );
       },
     );
@@ -817,6 +830,22 @@ class _NoopLocalDataEventsRecorder implements LocalDataEventsRecorder {
 
   @override
   Future<void> recordStorageWriteFailure({String? userId}) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }
 
 class _BlockingPlanningLocalStore implements PlanningLocalStore {

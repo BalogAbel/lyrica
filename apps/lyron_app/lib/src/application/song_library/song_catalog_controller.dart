@@ -38,6 +38,7 @@ class SongCatalogController extends ChangeNotifier {
     required this._sessionVerifier,
     required this._onImplausibleEmptySnapshot,
     this._onVerifiedEmptyMembership,
+    this._onVerifiedNonEmptyMembership,
     this._lastKnownIdentityReader,
     AppForegroundState? foregroundState,
     this._refreshInterval = _defaultRefreshInterval,
@@ -66,8 +67,27 @@ class SongCatalogController extends ChangeNotifier {
     required String organizationId,
   })
   _onImplausibleEmptySnapshot;
-  final Future<void> Function({required String userId})?
+  // D5.4/D5.5 (docs/specs/2026-08-19-local-data-durability-contract.md,
+  // ADR-035 Phase 4): returns whether a purge actually ran. A verified-empty
+  // resolution that only recorded/re-confirmed the marker without reaching
+  // the second, confirmed purge must NOT reset _state -- ADR-020's read
+  // access is unchanged until data is genuinely gone (see the caller below).
+  final Future<bool> Function({required String userId})?
   _onVerifiedEmptyMembership;
+  // RED 1 (final whole-branch review, docs/specs/2026-08-19-local-data
+  // -durability-contract.md D5.2): a genuine, fresh, online, authenticated
+  // non-empty resolution is the only event that clears an outstanding
+  // membership-revocation marker. Without this, empty -> fresh non-empty ->
+  // empty is wrongly counted as two confirmations of the SAME revocation
+  // instead of two independent first confirmations -- see the non-empty
+  // branch of _refreshCatalog below, which only calls this when the
+  // organization id came from a fresh live RPC (never from the cached-
+  // fallback path organizationLookupWasConnectivityFailure guards).
+  // Best-effort/no-op-safe by contract (LocalDataLifecycle
+  // .clearMembershipRevocation itself no-ops when there is no marker to
+  // clear), so an ordinary sign-in never writes a spurious audit row.
+  final Future<void> Function({required String userId})?
+  _onVerifiedNonEmptyMembership;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
   final Duration _refreshInterval;
@@ -231,16 +251,39 @@ class SongCatalogController extends ChangeNotifier {
         return;
       }
       _verifiedEmptyMembershipSeen = true;
-      final handler = _onVerifiedEmptyMembership;
-      if (handler != null) {
-        await handler(userId: session.userId);
-      } else {
-        await _localDataLifecycle.purgeSongCatalog(
-          userId: session.userId,
-          reason: PurgeReason.membershipRevokedConfirmed,
-        );
+      // YELLOW 7 fix (final whole-branch review, D5.5 rule 4): `session`
+      // was captured at the top of this method, before the awaited
+      // organization lookup above. _isStale(generation) does not assert
+      // session identity -- re-read and compare immediately before
+      // entering the purge gate, so a resolution captured under one user
+      // can never purge a different user's data after that user signed in
+      // during the await.
+      final currentSession = _authSessionReader();
+      if (currentSession == null || currentSession.userId != session.userId) {
+        return;
       }
+      final handler = _onVerifiedEmptyMembership;
+      // D5.4/D5.5 -- Step 2: a single verified-empty resolution must never
+      // reset a still-intact catalog to empty (ADR-020: reads are
+      // unchanged until data is genuinely purged). `handler` reports
+      // whether a purge actually ran; with no handler injected (test-only
+      // construction), there is nothing to gate the purge, so this branch
+      // conservatively does nothing rather than purging unconditionally --
+      // the single-confirmation purge this replaces was exactly F4.
+      final purged = handler == null
+          ? false
+          : await handler(userId: session.userId);
       if (_isStale(generation)) {
+        return;
+      }
+      if (!purged) {
+        // Nothing was deleted -- leave context/hasCachedCatalog exactly as
+        // found (ADR-020) and only note that the resolution came back
+        // verified.
+        _setStateIfCurrent(
+          generation,
+          _state.copyWith(sessionStatus: CatalogSessionStatus.verified),
+        );
         return;
       }
       _setStateIfCurrent(
@@ -257,6 +300,67 @@ class SongCatalogController extends ChangeNotifier {
       organizationId: organizationId,
     );
     _verifiedEmptyMembershipSeen = false;
+    // D5.2: a genuinely fresh non-empty resolution is the only event
+    // permitted to clear the revocation marker.
+    //
+    // The `organizationLookupWasConnectivityFailure` guard is load-bearing,
+    // not a belt-and-braces check: the connectivity-fallback branch above
+    // reaches this line with an organizationId that came from
+    // readLatestCachedOrganizationId and the flag set. Deleting the guard
+    // would let an offline cached fallback clear the marker, which D5.2
+    // forbids in both directions.
+    //
+    // Awaited, not fire-and-forget. `clearMembershipRevocation` propagates a
+    // store failure to its caller, and a dropped failure here would leave
+    // the marker set with no audit record and no retry -- silently
+    // reinstating the very sequence this clear exists to break (one empty,
+    // a genuine non-empty, another empty, purge). The failure is reported
+    // rather than rethrown so a transient identity-store error can never
+    // break the read path (ADR-020); the next refresh tick with a non-empty
+    // resolution clears the marker again.
+    if (!organizationLookupWasConnectivityFailure) {
+      // D5.5 rule 4: `session` was captured at the top of this method,
+      // before the awaited organization lookup, and _isStale(generation)
+      // does not assert session identity. Re-read and compare before
+      // clearing the marker, so a resolution captured under one user can
+      // never clear a marker after a different user signed in during the
+      // await. The store's ownership check bounds the damage today, but
+      // the rule requires the value to be re-read here, not merely
+      // neutralised downstream.
+      //
+      // This SKIPS the clear rather than returning from _refreshCatalog.
+      // Unlike the verified-empty branch above -- which ends the method
+      // anyway -- the rest of this branch is the ordinary refresh: it
+      // establishes the read context and loads the snapshot. Returning
+      // here would abandon all of that whenever the session changed
+      // mid-lookup, including on the explicit sign-out path, which is
+      // governed by the existing generation/staleness guards below.
+      final currentSession = _authSessionReader();
+      final sessionUnchanged =
+          currentSession != null && currentSession.userId == session.userId;
+      if (sessionUnchanged) {
+        try {
+          await _onVerifiedNonEmptyMembership?.call(userId: session.userId);
+        } catch (error, stackTrace) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stackTrace,
+              library: 'SongCatalogController',
+              context: ErrorDescription(
+                'failed to clear the membership-revocation marker after a '
+                'freshly verified non-empty membership resolution -- the '
+                'marker is still set and will be cleared by the next '
+                'successful non-empty refresh',
+              ),
+            ),
+          );
+        }
+        if (_isStale(generation)) {
+          return;
+        }
+      }
+    }
     final hasCachedCatalog = await _hasCachedCatalog(context);
     if (_isStale(generation)) {
       return;

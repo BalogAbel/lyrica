@@ -15,8 +15,11 @@ void main() {
       ),
     );
 
-    expect(controller.pending?.email, 'prior@example.com');
-    expect(controller.pending?.pendingCount, 4);
+    expect(
+      (controller.pending as ReauthDifferentUserPrompt?)?.email,
+      'prior@example.com',
+    );
+    expect((controller.pending as ReauthDifferentUserPrompt?)?.pendingCount, 4);
     expect(controller.pending?.requestId, isNotNull);
   });
 
@@ -31,8 +34,14 @@ void main() {
       ),
     );
 
-    expect(controller.pending?.email, 'prior@example.com');
-    expect(controller.pending?.pendingCount, isNull);
+    expect(
+      (controller.pending as ReauthDifferentUserPrompt?)?.email,
+      'prior@example.com',
+    );
+    expect(
+      (controller.pending as ReauthDifferentUserPrompt?)?.pendingCount,
+      isNull,
+    );
   });
 
   test('answer completes the returned future and clears the prompt', () async {
@@ -159,8 +168,14 @@ void main() {
         throwsStateError,
       );
 
-      expect(controller.pending?.email, 'prior@example.com');
-      expect(controller.pending?.pendingCount, 3);
+      expect(
+        (controller.pending as ReauthDifferentUserPrompt?)?.email,
+        'prior@example.com',
+      );
+      expect(
+        (controller.pending as ReauthDifferentUserPrompt?)?.pendingCount,
+        3,
+      );
 
       controller.answer(true, requestId: controller.pending!.requestId);
       expect(await first, ReauthPromptResult.confirmed);

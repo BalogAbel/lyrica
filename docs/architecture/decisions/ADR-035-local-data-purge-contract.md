@@ -11,9 +11,9 @@
   `PlanningSyncController`, `LocalDataLifecycle`
   (`apps/lyron_app/lib/src/application/storage/local_data_lifecycle.dart`),
   the `local_data_events` audit store
-  (`apps/lyron_app/lib/src/offline/local_data_events/`), and — for the
-  decisions this ADR records but Phases 3–4 have not yet built — the
-  snapshot-write path and membership-revocation quarantine.
+  (`apps/lyron_app/lib/src/offline/local_data_events/`), the snapshot-write
+  and eviction paths (Phase 3), and the membership-revocation purge gate
+  (Phase 4).
 
 ## Context
 
@@ -57,10 +57,12 @@ Storage eviction is a separate mechanism with its own trigger and its own
 proportionality rule — it is not a purge reason, and it may never remove
 anything a purge reason would not.
 
-The full contract spans eight decisions, D1–D8. As of this ADR, three are
-implemented; five are decided and scheduled, not yet built. This ADR records
-all eight so the decision is durable, and is explicit below about which half
-is which.
+The full contract spans eight decisions, D1–D8, delivered across four phases.
+This ADR records all eight so the decision is durable, and names the phase each
+one landed in. D5 is recorded twice over: once as the read-only quarantine that
+was attempted and discarded, and once as the purge gate that replaced it — the
+discarded half is kept because it is the reason the surviving half is shaped
+the way it is.
 
 ### Implemented in Phase 1 (this slice)
 
@@ -189,7 +191,7 @@ actually knew at the time, not a reason it could not tell.
 branch inside `auth_providers.dart`'s sign-in resolution (`persistNewIdentity`)
 clears the identity on a single fresh empty-membership resolution — the same
 `current_organization_ids()` signal D5/Phase 4's "two consecutive
-confirmations, then quarantine" design governs, reached here by a second,
+confirmations before any purge" gate governs, reached here by a second,
 independent code path the spec's F4 section did not name. This phase does not
 change when that clear fires (no behaviour change); it labels it
 `PurgeReason.membershipRevokedConfirmed` as the closest fit of the four
@@ -278,26 +280,20 @@ own robustness next gets attention:
   local variable. Still an accepted gap, now with a concrete repro shape on
   record.
 
-### Decided, not yet implemented
+### Implemented in Phase 3 (this slice)
 
-The remaining decisions are settled — confirmed with the product owner where
-noted in the spec — and scheduled in
-`docs/plans/2026-08-19-local-data-durability-contract.md`. None of them are
-built as of this ADR revision (D4/D6, Phase 3's snapshot-replacement and
-eviction decisions, landed with PR #75 and are documented in the "Phase 3
-mechanism decisions" section below; this ADR's own "not yet implemented"
-framing for them was not updated at that time — flagged here rather than
-fixed, since correcting it is outside this revision's scope):
+**D4 — conditional, organization-scoped snapshot replacement** and **D6 —
+storage-pressure-triggered, proportionate eviction** landed with PR #75. The
+mechanism decisions they turned on are recorded in the "Phase 3 mechanism
+decisions" section below.
 
-- **D5 — `verifiedEmpty` quarantines before it purges** (Phase 4). Scoped and
-  attempted; a final whole-branch review found the concurrency design
-  underneath the attempt does not actually satisfy this decision's
-  two-confirmation guarantee. Not implemented as of this ADR revision; being
-  re-scoped from the spec in a fresh session. See
-  `docs/plans/2026-08-19-local-data-durability-contract.md`'s Phase 4
-  closeout section for the full finding set and the re-scope decision.
+A previous revision of this ADR carried a "Decided, not yet implemented"
+section listing them, which was already stale when Phase 3 merged. It has been
+removed rather than corrected in place: with Phase 4 complete, every one of
+D1–D8 is implemented, and a section for undelivered decisions no longer has
+any members.
 
-### Implemented in Phase 4 (this slice — Task 4.4 only)
+### Implemented in Phase 4 (this slice — D8 first, then D5)
 
 **D8 — Android backup: `allowBackup="false"` chosen over data-extraction
 rules.** `AndroidManifest.xml`'s `<application>` tag set neither attribute
@@ -435,6 +431,185 @@ more likely to be genuinely cold than the active snapshot. Real LRU read
 tracking remains available as a future upgrade if the proxy is ever shown to
 evict something still in active use; nothing in this decision forecloses it.
 
+## Phase 4 decisions — membership revocation (D5)
+
+D5 was scoped, attempted, reviewed, and re-scoped. Both halves are recorded
+here, because the discarded half is the reason the surviving half is shaped the
+way it is.
+
+### The read-only quarantine is dropped
+
+The first attempt implemented D5 as a read-only quarantine: the first empty
+membership resolution set a `membershipRevokedAt` marker, six mutation entry
+points threw `MembershipQuarantinedException` while it was set, and a banner
+explained the state. A final whole-branch review found six genuine paths to a
+purge with fewer than two real confirmations (recorded in full in the plan's
+Phase 4 closeout section). The implementation was discarded.
+
+**Decision: the quarantine UX is dropped permanently, not re-attempted.** The
+purge gate — two consecutive fresh, online, authenticated empty resolutions,
+with no pending work or an explicit confirmation — survives unchanged.
+
+**Rationale.** Backend RLS is already what stops a revoked member from writing:
+the `songs` policies require `has_capability(organization_id, 'canEditSongs')`,
+which requires an active membership row, so a revoked member's queued mutation
+is rejected server-side whatever the client permits. Authorization belongs in
+the backend (AGENTS.md rule 5), and it is already there. The quarantine was
+therefore never a security boundary; it only stopped a revoked member from
+making local edits that could never have synced.
+
+The cost on the other side is concrete. A *false* quarantine entry — one
+transient empty resolution, or two independent listeners racing on a single
+sign-in edge — locks a member in good standing out of editing, and clearing it
+requires a second *online* resolution that a stage or rehearsal device may be
+unable to obtain. That device is precisely what this contract exists to protect.
+Trading a total editing lockout for a narrow window of edits that RLS would have
+rejected anyway is a bad trade, and no amount of additional concurrency care
+changes the trade itself.
+
+**Consequence:** there is no read-only mode, no banner, and no
+`MembershipQuarantinedException` anywhere in the app. ADR-020's
+offline-authenticated read *and* edit access is untouched by Phase 4. The only
+user-visible artefact of D5 is the confirmation dialog, and only immediately
+before a purge.
+
+### The marker generalises Phase 3's mechanism
+
+`LastKnownIdentityRows` gains a nullable `membershipRevokedAt` column
+(`LastKnownIdentityDatabase` v1 → v2, this database's first `onUpgrade` delta;
+`onCreate` unaffected).
+
+This reuses the property that made Phase 3's `pendingEmptyConfirmationAt`
+correct rather than merely its column shape: **the marker is read and set inside
+a single atomic store operation that returns the decision**, never as a read in
+application code followed by a later write. Phase 3's `resolveEmptySnapshot`
+established that shape; `LastKnownIdentityStore.resolveEmptyMembership` repeats
+it.
+
+The storage location cannot be reused. Phase 3's marker lives on a
+`(userId, organizationId)` `CachedCatalogSnapshots` row. An empty *membership*
+resolution has no organization to key by — "empty" means there is no
+organization — and must be recordable on a device that holds no catalog snapshot
+at all. Sharing the column would also couple two independent clearing rules:
+Phase 3's marker is cleared implicitly by any accepted snapshot replace, while
+D5's must be cleared only by a freshly verified non-empty *membership*
+resolution.
+
+### Only fresh, online, authenticated resolutions count
+
+A resolution counts only when it is a live `current_organization_ids()` round
+trip under a valid session, returning `ActiveOrganizationVerifiedEmpty`.
+Connectivity failures, non-connectivity failures, caught exceptions, cached or
+fallback organization resolutions (ADR-016), and every offline-authenticated or
+expired-session path neither set nor clear the marker — they leave it exactly as
+they found it. A freshly verified `ActiveOrganizationSelected` clears it;
+nothing else clears it.
+
+**Both marker edges write a `local_data_events` record — setting it as well as
+clearing it.** The set record is the diagnostic proving a purge nearly happened;
+it is the first thing anyone will look for if a data-loss report arrives, and
+without it a device that reached one confirmation and then recovered leaves no
+trace at all. Neither edge is a purge, so neither carries a `PurgeReason`; both
+use their own audit `kind`, following the precedent D4 set with
+`empty-snapshot-rejected`.
+
+### A 60-second cooldown separates the two confirmations
+
+Two independent listeners already react to a single sign-in edge and can each
+issue their own RPC. Two empty answers to those two calls are two server round
+trips but only one underlying event; counting them as two confirmations would
+collapse the gate to a single confirmation in ordinary operation. The previous
+attempt tried to close this with per-`userId` in-flight coalescing, which is
+both weaker (it only dedups concurrent calls) and unsound on a single-row store.
+
+**Decision: the second confirmation counts only if it arrives at least 60
+seconds after the marker was set, measured on a monotonic clock.** An empty
+resolution inside that window is a no-op — it neither purges nor moves the
+marker.
+
+**The clock choice is the load-bearing part of this decision, not a detail.**
+Within one process the gap is measured with an injectable `Stopwatch` started
+when the marker was set. Across a process restart there is no cooldown check at
+all: two resolutions from two separate launches under two separate auth cycles
+are independent events by construction, so there is nothing left for a duration
+comparison to establish. The persisted `membershipRevokedAt` column records
+*that* the marker is set and *when*, for the audit trail and for a human reading
+the row — it is never an operand in a duration comparison.
+
+This repository already treats the device clock as unanchored; that is why
+`localRevision` exists instead of an `updatedAt` comparison (ADR-030, LF-T6). An
+NTP correction at boot can jump the wall clock forward past 60 seconds, and the
+resulting error falls in the *unsafe* direction: the cooldown appears elapsed
+when no time has passed, and the gate collapses to a single confirmation exactly
+on the devices whose clocks were wrong. `DateTime.now()` differences are
+therefore forbidden here. This is recorded explicitly because it is the kind of
+thing a future reader simplifies back into a wall-clock subtraction without
+noticing what it costs.
+
+Delay is free here: during the cooldown the data stays fully readable and
+editable and the revoked member's writes are already rejected by RLS. The
+alternative failure mode is a total, unrecoverable local purge.
+
+### The concurrency model is part of the decision
+
+The previous attempt failed because its concurrency model was derived
+task-by-task. It is fixed here as a normative record; see spec D5.5 for the
+same six rules stated as requirements.
+
+1. **One global serialization chain**, never keyed by `userId`.
+   `LastKnownIdentity` is a single global row (`rowId = 1`) and D1 excludes
+   multi-account use of a device, so per-user keys would serialize two writers
+   of the same row against nothing. `LocalDataLifecycle` owns the chain, and
+   every identity and marker mutation runs on it.
+2. **No user interaction inside the chain.** The confirmation dialog is awaited
+   strictly outside it. The chain is entered to read the decision inputs, exited
+   for the dialog, and re-entered to apply the decision. This is also what
+   removes the previous attempt's deadlock risk: an unanswered dialog can no
+   longer block every subsequent identity mutation.
+3. **Premises are re-validated on re-entry**, following ADR-029's D3/Hazard-3
+   currentness discipline — which the previous attempt reused the *host* of but
+   not the *discipline* of. The purge proceeds only if the identity row still
+   exists, still belongs to the acting `userId`, still carries the same
+   `membershipRevokedAt` value the decision was made against, and the pending
+   work count is still no greater than the count the user confirmed. Any
+   mismatch aborts without deleting anything, so a concurrent non-empty
+   resolution can cancel a pending purge.
+4. **No value read before an await is written after it.** This bug class
+   appeared three times in this slice (Phase 1's identity cache, Phase 2's audit
+   write, Phase 4's pre-RPC `priorIdentity` snapshot). Anything captured before
+   an await is re-read or re-validated before it is used to write.
+5. **No caller may act on another user's row.** Every marker and identity
+   mutation verifies ownership first and is otherwise a no-op. In particular, a
+   caller may never *create* an identity row for a user that does not own the
+   stored one — the previous attempt's finding 5, which let a post-purge refresh
+   recreate a row and reach a second silent purge on every refresh interval.
+6. **No unbounded wait inside the chain.** Only local store operations run
+   under it.
+
+### Permanent authorization rejection stops and tells the user
+
+Dropping the quarantine means a revoked member can still queue local edits.
+Those edits must not be silently lost, so a queued mutation that receives a
+**permanent** authorization rejection stops being retried and is surfaced to the
+user rather than retried indefinitely or failed silently. This is scoped to any
+permanent authorization rejection a queued mutation can receive, not to
+membership revocation specifically.
+
+**In the mutation queue, `401` and `403` are different decisions.** `403`,
+PostgreSQL `42501`, and a `permission denied` message all mean the server knows
+the caller and the caller lacks the right: permanent, terminal,
+`authorizationDenied`, never retried again. `401` means the token is missing,
+malformed, or expired: re-authentication can make the very same mutation
+succeed, so it stays retryable.
+
+`SongCatalogController._isAuthorizationFailure` deliberately collapses all four
+into one branch, and is right to — the decision it feeds (fall back to the
+cached organization id) is the same either way. Copying that collapse into the
+mutation queue would discard the user's queued work on an ordinary token expiry,
+which is the same class of harm this whole contract exists to prevent. The
+`permission denied` message pattern is matched alongside the codes because
+PostgREST does not always return a structured PostgreSQL error code.
+
 ## Why Acceptance-1 and Acceptance-2 are not redundant
 
 Both acceptance tests defend against "the catalog going empty while offline,"
@@ -490,4 +665,5 @@ refresh-token TTL or any hosted Supabase Auth setting (D2 makes it irrelevant
 to data durability, not to sync); no rework of
 `SongCatalogController`'s refresh state machine beyond its entry conditions
 and snapshot-write decision; no multi-account support; no server-side soft
-delete or undo (quarantine, D5, is local only).
+delete or undo (D5's confirmation gate is local only, and defers a purge
+rather than making one reversible).

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/shared/connectivity_failure.dart';
+import 'package:lyron_app/src/shared/permanent_authorization_denial.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseSongMutationRemoteRepository
@@ -177,7 +178,12 @@ class SupabaseSongMutationRemoteRepository
     }
     if (error is PostgrestException) {
       final message = error.message.toLowerCase();
-      if (error.code == '42501' ||
+      // spec D5.6 / ADR-035: permanent, terminal -- see
+      // isPermanentAuthorizationDenial's doc comment for the full
+      // rationale (shared with supabase_planning_mutation_repository.dart).
+      // `song_write_not_authorized` is this repository's own
+      // domain-specific signal on top of that shared predicate.
+      if (isPermanentAuthorizationDenial(error) ||
           message.contains('song_write_not_authorized')) {
         return SongMutationSyncException(
           SongMutationSyncErrorCode.authorizationDenied,

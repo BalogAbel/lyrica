@@ -218,4 +218,25 @@ void main() {
     expect(evictionRecord.userId, isNull);
     expect(evictionRecord.rowsAffected, isNull);
   });
+
+  // YELLOW 3 (final whole-branch review, D5.4): a purge that was authorized
+  // but did not run must still be audited -- this is the diagnostic that
+  // explains why.
+  test('recordMembershipRevocationPurgeDeclined inserts a row naming the '
+      'decline reason', () async {
+    await store.recordMembershipRevocationPurgeDeclined(
+      userId: 'u1',
+      reason: MembershipRevocationPurgeDeclineReason.pendingWorkIncreased,
+    );
+
+    final rows = await database.select(database.localDataEvents).get();
+
+    expect(rows, hasLength(1));
+    final row = rows.single;
+    expect(row.kind, 'membership-revocation-purge-declined');
+    expect(row.target, 'identity');
+    expect(row.reason, 'pendingWorkIncreased');
+    expect(row.userId, 'u1');
+    expect(row.rowsAffected, isNull);
+  });
 }

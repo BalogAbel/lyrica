@@ -26,6 +26,14 @@ class AppStrings {
       'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
   static const reauthConfirmWipeAction = 'Folytatás';
   static const reauthCancelAction = 'Mégse';
+  static const membershipRevocationPurgeTitle =
+      'A szervezeti tagságod megszűnt.';
+  static String membershipRevocationPurgePendingMessage({required int count}) =>
+      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet, beleértve $count mentetlen változtatást is.';
+  static const membershipRevocationPurgeUnknownPendingMessage =
+      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet. A mentetlen változtatások pontos száma nem állapítható meg, de a folytatás ezeket is törli.';
+  static const membershipRevocationPurgeConfirmAction = 'Törlés';
+  static const membershipRevocationPurgeCancelAction = 'Mégse';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';
@@ -219,7 +227,12 @@ class AppStrings {
   static const unifiedSyncReasonPendingLocal = 'pending_local';
   static const unifiedSyncReasonSyncFailed = 'sync_failed';
   static const unifiedSyncReasonConflict = 'conflict';
-  static const unifiedSyncReasonAuthorizationDenied = 'authorization_denied';
+  // spec D5.6 / ADR-035: unlike its sibling reason labels above (short,
+  // code-shaped chip text), this one must let the user tell "you no longer
+  // have permission and retrying will not help" apart from an ordinary
+  // retryable failure -- so it is a short phrase rather than a code.
+  static const unifiedSyncReasonAuthorizationDenied =
+      'Not permitted — retrying will not help';
   static const unifiedSyncReasonDependencyBlocked = 'dependency_blocked';
   static const unifiedSyncReasonRemoteMissing = 'remote_missing';
   static const unifiedSyncReasonUnknown = 'unknown';

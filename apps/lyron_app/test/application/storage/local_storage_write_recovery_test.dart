@@ -423,4 +423,20 @@ class _FakeEventsRecorder implements LocalDataEventsRecorder {
     required String userId,
     required String organizationId,
   }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationMarked({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationCleared({
+    required String userId,
+  }) async {}
+
+  @override
+  Future<void> recordMembershipRevocationPurgeDeclined({
+    required String userId,
+    required MembershipRevocationPurgeDeclineReason reason,
+  }) async {}
 }

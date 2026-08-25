@@ -204,8 +204,19 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         if (!isCurrent(generation, AppAuthStatus.signedIn, session)) return;
 
         ActiveOrganizationResolution? resolution;
+        // YELLOW 4: wasCachedFallback is true only when this resolution
+        // substituted a cached organization id for a genuine connectivity
+        // failure (ActiveOrganizationResolver.resolveWithCachedFallbackDetailed).
+        // D5.2 forbids a connectivity failure from moving the
+        // membership-revocation marker in either direction, so this must
+        // gate the clearMembershipRevocation call below.
+        var resolutionWasCachedFallback = false;
         try {
-          resolution = await ref.read(membershipResolutionProvider)();
+          final detailed = await ref.read(
+            membershipResolutionDetailedProvider,
+          )();
+          resolution = detailed.resolution;
+          resolutionWasCachedFallback = detailed.wasCachedFallback;
         } catch (_) {
           // Membership resolution unavailable (offline, a non-connectivity
           // error, or an uninitialized backend). Persist the identity with an
@@ -236,21 +247,44 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
                 organizationId: organizationId,
               );
               await lifecycle.writeIdentity(identity);
+              // D5.2 (docs/specs/2026-08-19-local-data-durability-contract
+              // .md, ADR-035 Phase 4): a fresh, online, authenticated
+              // ActiveOrganizationSelected is a genuinely non-empty
+              // resolution -- the only thing that clears an outstanding
+              // membership-revocation marker. A no-op (no audit record) when
+              // there was no marker to clear, so an ordinary sign-in never
+              // writes a spurious audit row. YELLOW 4: a Selected that came
+              // from the connectivity-gated cached fallback (ADR-016) is NOT
+              // a fresh resolution -- D5.2 forbids a connectivity failure
+              // from moving the marker in either direction, so it must be
+              // excluded here.
+              if (!resolutionWasCachedFallback) {
+                await lifecycle.clearMembershipRevocation(
+                  userId: session.userId,
+                );
+              }
             case ActiveOrganizationVerifiedEmpty():
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
-              // This is a single fresh verifiedEmpty membership resolution
-              // at sign-in time -- the closest of the 4 documented
-              // PurgeReasons, though D5's "two consecutive confirmations
-              // before purge" quarantine gate is not yet built (that's
-              // Phase 4) -- this call only ever clears the identity row,
-              // never the song catalog or planning data, so its blast
-              // radius stays small even before Phase 4 lands.
-              await lifecycle.clearIdentity(
-                reason: PurgeReason.membershipRevokedConfirmed,
-                userId: session.userId,
-              );
+              // D5 (docs/specs/2026-08-19-local-data-durability-contract
+              // .md, ADR-035 Phase 4, Task 4.2 -- Step 2 of 2): a fresh,
+              // online, authenticated verifiedEmpty resolution on THIS edge
+              // is reconciled onto the same
+              // VerifiedEmptyMembershipCleanupCoordinator path
+              // (planning_providers.dart) that ActivePlanningContextController
+              // and PlanningSyncController already use -- the one, certain,
+              // unambiguous membershipRevokedConfirmed handler (ADR-035's
+              // Phase 2 "reason-mapping judgment call" note). It owns the
+              // full two-confirmation gate: reading LocalDataLifecycle's
+              // decision, the pending-work check, the confirmation dialog
+              // (outside any chain lock), premise re-validation on
+              // re-entry, and -- only once a purge has genuinely run --
+              // invalidating this listener's own epoch and firing the
+              // registered planning cleanup handlers.
+              await ref
+                  .read(verifiedEmptyMembershipCleanupCoordinatorProvider)
+                  .handleVerifiedEmptyMembership(userId: session.userId);
             case ActiveOrganizationUnknownConnectivityFailure():
             case ActiveOrganizationUnknownNonConnectivityFailure():
             case null:
@@ -693,6 +727,26 @@ final membershipResolutionProvider =
       return ref
           .watch(activeOrganizationResolverProvider)
           .resolveWithCachedFallback;
+    });
+
+// YELLOW 4 (final whole-branch review, D5.2): the detailed variant of
+// membershipResolutionProvider, exposing whether a Selected resolution came
+// from the connectivity-gated cached fallback rather than a fresh, live
+// round trip. Used by lastKnownIdentityPersistenceProvider below to decide
+// whether a resolution may clear the membership-revocation marker --
+// membershipResolutionProvider itself stays unchanged for its other callers
+// (membershipRefreshEffectProvider, the membership gate), which do not act
+// on the marker.
+final membershipResolutionDetailedProvider =
+    Provider<
+      Future<
+        ({ActiveOrganizationResolution resolution, bool wasCachedFallback})
+      >
+      Function()
+    >((ref) {
+      return ref
+          .watch(activeOrganizationResolverProvider)
+          .resolveWithCachedFallbackDetailed;
     });
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {

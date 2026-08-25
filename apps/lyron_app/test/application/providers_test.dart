@@ -141,198 +141,206 @@ void main() {
     );
   });
 
-  test(
-    'verified empty membership on the planning boundary clears song caches too',
-    () async {
-      final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
-      final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.restoreSession();
-      final planningDatabase = PlanningLocalDatabase.inMemory();
-      final songDatabase = SongCatalogDatabase.inMemory();
-      final planningStore = DriftPlanningLocalStore(planningDatabase);
-      final songStore = DriftSongCatalogStore(songDatabase);
-      final foregroundState = _TestAppForegroundState();
+  // D5 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
+  // Phase 4, Task 4.1 -- Step 1 of 2): these two tests used to prove that a
+  // SINGLE verified-empty membership resolution purged the planning
+  // projection, the song catalog, and its pending mutations end to end --
+  // exactly the single-confirmation purge D5 exists to prevent. They now
+  // prove the opposite invariant Step 1 requires through the same full
+  // provider graph: a single resolution deletes nothing at all, and
+  // everything stays readable.
+  test('verified empty membership on the planning boundary leaves planning and '
+      'song data intact after one resolution', () async {
+    final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
+    final authController = AppAuthController(_SignedInAuthRepository());
+    await authController.restoreSession();
+    final planningDatabase = PlanningLocalDatabase.inMemory();
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final planningStore = DriftPlanningLocalStore(planningDatabase);
+    final songStore = DriftSongCatalogStore(songDatabase);
+    final foregroundState = _TestAppForegroundState();
 
-      await planningStore.replaceActiveProjection(
+    await planningStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Draft',
+          scheduledFor: null,
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      ],
+      sessions: const [],
+      items: const [],
+      refreshedAt: DateTime.utc(2026, 5, 1, 12),
+    );
+    await songStore.replaceActiveSnapshot(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+      sources: const [SongSource(id: 'song-1', source: '{title: Cached Song}')],
+      refreshedAt: DateTime.utc(2026, 5, 1, 12),
+    );
+    await songStore.saveSongMutation(
+      const SongCatalogMutationDraft(
         userId: 'user-1',
         organizationId: 'org-1',
-        plans: [
-          CachedPlanRecord(
-            id: 'plan-1',
-            name: 'Weekend Service',
-            description: 'Draft',
-            scheduledFor: null,
-            updatedAt: DateTime.utc(2026, 5, 1),
-          ),
-        ],
-        sessions: const [],
-        items: const [],
-        refreshedAt: DateTime.utc(2026, 5, 1, 12),
-      );
-      await songStore.replaceActiveSnapshot(
+        songId: 'song-2',
+        slug: 'draft-song',
+        title: 'Draft Song',
+        source: '{title: Draft Song}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(client),
+        appAuthControllerProvider.overrideWith((_) => authController),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        appForegroundStateProvider.overrideWithValue(foregroundState),
+        activeOrganizationReaderProvider.overrideWithValue(() async => null),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await planningDatabase.close();
+      await songDatabase.close();
+    });
+
+    final controller = container.read(activePlanningContextControllerProvider);
+    await controller.refresh();
+
+    // The active planning context clears (no organization resolved), but
+    // nothing was deleted -- one verified-empty resolution only records
+    // the membership-revocation marker (D5.1/D5.2).
+    expect(controller.state, isNull);
+    expect(
+      await planningStore.hasProjection(
         userId: 'user-1',
         organizationId: 'org-1',
-        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
-        sources: const [
-          SongSource(id: 'song-1', source: '{title: Cached Song}'),
-        ],
-        refreshedAt: DateTime.utc(2026, 5, 1, 12),
-      );
-      await songStore.saveSongMutation(
-        const SongCatalogMutationDraft(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          songId: 'song-2',
-          slug: 'draft-song',
-          title: 'Draft Song',
-          source: '{title: Draft Song}',
-          syncStatus: SongSyncStatus.pendingCreate,
-        ),
-      );
-
-      final container = ProviderContainer(
-        overrides: [
-          supabaseClientProvider.overrideWithValue(client),
-          appAuthControllerProvider.overrideWith((_) => authController),
-          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
-          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
-          appForegroundStateProvider.overrideWithValue(foregroundState),
-          activeOrganizationReaderProvider.overrideWithValue(() async => null),
-        ],
-      );
-      addTearDown(() async {
-        container.dispose();
-        await planningDatabase.close();
-        await songDatabase.close();
-      });
-
-      final controller = container.read(
-        activePlanningContextControllerProvider,
-      );
-      await controller.refresh();
-
-      expect(controller.state, isNull);
-      expect(
-        await planningStore.hasProjection(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isFalse,
-      );
-      expect(
-        await songStore.readActiveSummaries(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isEmpty,
-      );
-      expect(
-        await songStore.readSongMutations(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isEmpty,
-      );
-    },
-  );
-
-  test(
-    'verified empty membership on the song catalog path invalidates planning sync before clearing song caches',
-    () async {
-      final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
-      final authController = AppAuthController(_SignedInAuthRepository());
-      await authController.restoreSession();
-      final planningDatabase = PlanningLocalDatabase.inMemory();
-      final songDatabase = SongCatalogDatabase.inMemory();
-      final planningStore = DriftPlanningLocalStore(planningDatabase);
-      final songStore = DriftSongCatalogStore(songDatabase);
-      final foregroundState = _TestAppForegroundState();
-
-      await planningStore.replaceActiveProjection(
+      ),
+      isTrue,
+    );
+    expect(
+      await songStore.readActiveSummaries(
         userId: 'user-1',
         organizationId: 'org-1',
-        plans: [
-          CachedPlanRecord(
-            id: 'plan-1',
-            name: 'Weekend Service',
-            description: 'Draft',
-            scheduledFor: null,
-            updatedAt: DateTime.utc(2026, 5, 1),
-          ),
-        ],
-        sessions: const [],
-        items: const [],
-        refreshedAt: DateTime.utc(2026, 5, 1, 12),
-      );
-      await songStore.replaceActiveSnapshot(
+      ),
+      isNotEmpty,
+    );
+    expect(
+      await songStore.readSongMutations(
         userId: 'user-1',
         organizationId: 'org-1',
-        summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
-        sources: const [
-          SongSource(id: 'song-1', source: '{title: Cached Song}'),
-        ],
-        refreshedAt: DateTime.utc(2026, 5, 1, 12),
-      );
-      await songStore.saveSongMutation(
-        const SongCatalogMutationDraft(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          songId: 'song-2',
-          slug: 'draft-song',
-          title: 'Draft Song',
-          source: '{title: Draft Song}',
-          syncStatus: SongSyncStatus.pendingCreate,
-        ),
-      );
+      ),
+      isNotEmpty,
+    );
+  });
 
-      final container = ProviderContainer(
-        overrides: [
-          supabaseClientProvider.overrideWithValue(client),
-          appAuthControllerProvider.overrideWith((_) => authController),
-          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
-          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
-          appForegroundStateProvider.overrideWithValue(foregroundState),
-          activeOrganizationReaderProvider.overrideWithValue(() async => null),
-        ],
-      );
-      addTearDown(() async {
-        container.dispose();
-        await planningDatabase.close();
-        await songDatabase.close();
-      });
+  test('verified empty membership on the song catalog path leaves planning and '
+      'song data intact after one resolution', () async {
+    final client = SupabaseClient('http://127.0.0.1:54321', 'anon-key');
+    final authController = AppAuthController(_SignedInAuthRepository());
+    await authController.restoreSession();
+    final planningDatabase = PlanningLocalDatabase.inMemory();
+    final songDatabase = SongCatalogDatabase.inMemory();
+    final planningStore = DriftPlanningLocalStore(planningDatabase);
+    final songStore = DriftSongCatalogStore(songDatabase);
+    final foregroundState = _TestAppForegroundState();
 
-      container.read(planningSyncControllerProvider);
-      final controller = container.read(songCatalogControllerProvider);
-      await controller.refreshCatalog();
+    await planningStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          name: 'Weekend Service',
+          description: 'Draft',
+          scheduledFor: null,
+          updatedAt: DateTime.utc(2026, 5, 1),
+        ),
+      ],
+      sessions: const [],
+      items: const [],
+      refreshedAt: DateTime.utc(2026, 5, 1, 12),
+    );
+    await songStore.replaceActiveSnapshot(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+      sources: const [SongSource(id: 'song-1', source: '{title: Cached Song}')],
+      refreshedAt: DateTime.utc(2026, 5, 1, 12),
+    );
+    await songStore.saveSongMutation(
+      const SongCatalogMutationDraft(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-2',
+        slug: 'draft-song',
+        title: 'Draft Song',
+        source: '{title: Draft Song}',
+        syncStatus: SongSyncStatus.pendingCreate,
+      ),
+    );
 
-      expect(controller.state.context, isNull);
-      expect(
-        container.read(planningSyncStateProvider).accessStatus,
-        PlanningAccessStatus.signedIn,
-      );
-      expect(
-        await planningStore.hasProjection(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isFalse,
-      );
-      expect(
-        await songStore.readActiveSummaries(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isEmpty,
-      );
-      expect(
-        await songStore.readSongMutations(
-          userId: 'user-1',
-          organizationId: 'org-1',
-        ),
-        isEmpty,
-      );
-    },
-  );
+    final container = ProviderContainer(
+      overrides: [
+        supabaseClientProvider.overrideWithValue(client),
+        appAuthControllerProvider.overrideWith((_) => authController),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        appForegroundStateProvider.overrideWithValue(foregroundState),
+        activeOrganizationReaderProvider.overrideWithValue(() async => null),
+      ],
+    );
+    addTearDown(() async {
+      container.dispose();
+      await planningDatabase.close();
+      await songDatabase.close();
+    });
+
+    container.read(planningSyncControllerProvider);
+    final controller = container.read(songCatalogControllerProvider);
+    await controller.refreshCatalog();
+
+    // The catalog context clears (no organization resolved), but nothing
+    // was deleted. planningSyncStateProvider's accessStatus is left
+    // exactly as it was before this resolution -- Step 1 no longer runs
+    // PlanningSyncController.handleVerifiedEmptyMembership's state reset
+    // on a first resolution (that reset only belongs to an actual purge,
+    // which does not happen here); with no organization ever resolved in
+    // this test, that status never left its signedOut default.
+    expect(controller.state.context, isNull);
+    expect(
+      container.read(planningSyncStateProvider).accessStatus,
+      PlanningAccessStatus.signedOut,
+    );
+    expect(
+      await planningStore.hasProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+      isTrue,
+    );
+    expect(
+      await songStore.readActiveSummaries(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+      isNotEmpty,
+    );
+    expect(
+      await songStore.readSongMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      ),
+      isNotEmpty,
+    );
+  });
 
   test(
     'session expired keeps the cached catalog and active song context readable',
@@ -1566,6 +1574,21 @@ class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
   Future<void> clear() async {
     value = null;
   }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async => false;
 }
 
 class _MutablePlanningRepository implements PlanningRepository {

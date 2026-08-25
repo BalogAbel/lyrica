@@ -136,6 +136,84 @@ void main() {
   );
 
   testWidgets(
+    // YELLOW 10 (final whole-branch review): an unmounted host used to
+    // leave the completer this prompt is backing unanswered forever --
+    // D5 newly routes some of these callers through code holding outer
+    // locks (SongCatalogController._refreshFuture,
+    // lastKnownIdentityPersistenceProvider's resolution chain), so an
+    // unanswered completer here can wedge those, not just this dialog.
+    'unmounting the host while a dialog is open answers the pending '
+    'request as not confirmed, instead of leaving it unanswered forever',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      // The dialog is pushed on the ROOT navigator (showDialog's default
+      // useRootNavigator: true), an ancestor of ReauthPromptHost -- so
+      // swapping out just the host, below a MaterialApp/Navigator that
+      // stays mounted, reproduces "the host is gone but the dialog route
+      // it pushed is still live" without tearing down the whole tree (which
+      // would dispose the route without ever resolving its future at all,
+      // testing nothing about this fix).
+      var showHost = true;
+      late StateSetter setState;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: StatefulBuilder(
+              builder: (context, setter) {
+                setState = setter;
+                return showHost
+                    ? const ReauthPromptHost(child: Text('CHILD CONTENT'))
+                    : const Text('HOST REPLACED');
+              },
+            ),
+          ),
+        ),
+      );
+
+      final controller = container.read(reauthPromptControllerProvider);
+      ReauthPromptResult? result;
+      unawaited(
+        controller
+            .requestConfirmation(email: 'prior@example.com', pendingCount: 3)
+            .then((value) => result = value),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text(AppStrings.reauthDifferentUserTitle), findsOneWidget);
+
+      // Unmount ReauthPromptHost's State while its dialog is still open on
+      // the (still-mounted) root navigator.
+      setState(() => showHost = false);
+      await tester.pump();
+      expect(find.text('HOST REPLACED'), findsOneWidget);
+      expect(
+        find.text(AppStrings.reauthDifferentUserTitle),
+        findsOneWidget,
+        reason:
+            'the dialog itself lives on the root navigator and survives '
+            'the host being swapped out beneath it',
+      );
+
+      // Now let the dialog's own future resolve, exactly as a barrier
+      // dismissal would -- _showPrompt's await returns with the host
+      // already unmounted.
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(
+        result,
+        ReauthPromptResult.cancelled,
+        reason:
+            'the completer must be answered (as not-confirmed) rather '
+            'than left pending forever once the host is gone',
+      );
+    },
+  );
+
+  testWidgets(
     'a prompt published before host attachment appears exactly once across rebuilds',
     (tester) async {
       final container = ProviderContainer();

@@ -4,7 +4,76 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 
 void main() {
   group('SongMutationSyncController', () {
-    test('marks authorization failures as non-retryable sync errors', () async {
+    test(
+      'marks authorization failures as terminal (spec D5.6): conflict '
+      'status, not left pending, and never resent on the next sync pass',
+      () async {
+        // Pre-fix, this test asserted `store.lastSavedStatus ==
+        // SongSyncStatus.pendingUpdate` under the title "non-retryable" --
+        // that assertion was actually pinning the D5.6 bug: a status left
+        // pending IS retried again, because readPendingSongs' candidate
+        // filter includes every pending* status and excludes only
+        // `conflict`. Updated per docs/specs/2026-08-19-local-data-
+        // durability-contract.md D5.6 / ADR-035: an authorizationDenied
+        // failure must write `conflict` (terminal, excluded from
+        // readPendingSongs) exactly like an ordinary version conflict or a
+        // remote delete already do.
+        final store = _FakeSongMutationStore(
+          pendingSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository(
+          syncHandler: (record) async => throw const SongMutationSyncException(
+            SongMutationSyncErrorCode.authorizationDenied,
+          ),
+        );
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+        final context = const SongMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await controller.syncPendingSongs(context);
+
+        expect(
+          store.lastSavedErrorCode,
+          SongMutationSyncErrorCode.authorizationDenied,
+        );
+        expect(store.lastSavedStatus, SongSyncStatus.conflict);
+        expect(
+          store.lastUpsertedRecord?.conflictSourceSyncStatus,
+          SongSyncStatus.pendingUpdate,
+        );
+        expect(repository.overwriteCalls, 0);
+
+        // A second sync pass must not resend it: readPendingSongs excludes
+        // `conflict`, so the row is gone from the candidate list this time.
+        await controller.syncPendingSongs(context);
+        expect(repository.syncedSongIds, ['song-1']);
+      },
+    );
+
+    test('a 401 (unknown, not authorizationDenied) stays retryable and is '
+        'resent on the next sync pass -- regression guard for ordinary token '
+        'expiry (spec D5.6 / ADR-035)', () async {
+      // The repository layer maps a bare `401` to `unknown`, never to
+      // `authorizationDenied` (SupabaseSongMutationRemoteRepository._mapError).
+      // This test pins what the controller does with that: `unknown`
+      // must NOT be folded into the terminal `conflict` write path above,
+      // so the row stays pending and readPendingSongs keeps offering it.
       final store = _FakeSongMutationStore(
         pendingSongs: const [
           SongMutationRecord(
@@ -21,24 +90,27 @@ void main() {
       );
       final repository = _FakeSongMutationRemoteRepository(
         syncHandler: (record) async => throw const SongMutationSyncException(
-          SongMutationSyncErrorCode.authorizationDenied,
+          SongMutationSyncErrorCode.unknown,
         ),
       );
       final controller = SongMutationSyncController(
         store: store,
         remoteRepository: repository,
       );
-
-      await controller.syncPendingSongs(
-        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      final context = const SongMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
       );
 
-      expect(
-        store.lastSavedErrorCode,
-        SongMutationSyncErrorCode.authorizationDenied,
-      );
+      await controller.syncPendingSongs(context);
+
+      expect(store.lastSavedErrorCode, SongMutationSyncErrorCode.unknown);
       expect(store.lastSavedStatus, SongSyncStatus.pendingUpdate);
-      expect(repository.overwriteCalls, 0);
+
+      // A second sync pass DOES resend it: unlike the terminal case
+      // above, the row is still in readPendingSongs' candidate set.
+      await controller.syncPendingSongs(context);
+      expect(repository.syncedSongIds, ['song-1', 'song-1']);
     });
 
     test('reclassifies stale ordinary writes as conflict', () async {
@@ -288,6 +360,59 @@ void main() {
 
         expect(store.deletedSongId, 'song-1');
         expect(repository.fetchCalls, 0);
+      },
+    );
+
+    test(
+      // YELLOW 9 (final whole-branch review, spec D5.6): a row terminally
+      // rejected as authorizationDenied lands in the same `conflict`
+      // bucket as an ordinary version conflict, whose UI action is
+      // keepMine -- so keepMine must refuse to re-send it, the same way
+      // PlanningMutationSyncController.retryMutation already refuses.
+      // Without this, D5.6's "stop being retried" guarantee is terminal
+      // for the bulk sync pass but not for this user-facing retry.
+      'keep mine refuses to re-send a permanently unauthorized row',
+      () async {
+        final store = _FakeSongMutationStore(
+          conflictSongs: const [
+            SongMutationRecord(
+              id: 'song-1',
+              organizationId: 'org-1',
+              slug: 'alpha',
+              title: 'Alpha',
+              chordproSource: '{title: Alpha}',
+              version: 3,
+              baseVersion: 3,
+              syncStatus: SongSyncStatus.conflict,
+              errorCode: SongMutationSyncErrorCode.authorizationDenied,
+              conflictSourceSyncStatus: SongSyncStatus.pendingUpdate,
+            ),
+          ],
+        );
+        final repository = _FakeSongMutationRemoteRepository();
+        final controller = SongMutationSyncController(
+          store: store,
+          remoteRepository: repository,
+        );
+
+        await expectLater(
+          () => controller.keepMine(
+            const SongMutationContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            songId: 'song-1',
+          ),
+          throwsA(
+            isA<SongMutationSyncException>().having(
+              (error) => error.code,
+              'code',
+              SongMutationSyncErrorCode.authorizationDenied,
+            ),
+          ),
+        );
+
+        expect(repository.overwriteCalls, 0);
       },
     );
 
