@@ -30,9 +30,14 @@ with the corresponding Supabase Cloud request/log entry.
 - A Sentry trace's `trace_id` is correlatable with the corresponding
   Supabase Cloud log entry via a W3C `traceparent` header on every
   Supabase request (native platforms; see the web caveat below).
-- No PII, tokens, request/response bodies, RPC parameter values, lyrics, or
-  ChordPro content ever reach Sentry. `user_id`/`organization_id` may be
-  attached as pseudonymized context.
+- No tokens/credentials or personal identifiers (email, display name,
+  etc.) ever reach Sentry. `user_id`/`organization_id` may be attached as
+  pseudonymized context. ChordPro content, lyrics, plan/session text, and
+  other business/domain content — including RPC parameter values that
+  carry it — are **not** treated as sensitive: they may appear in
+  span/breadcrumb data or exception context when it helps debugging (per
+  explicit product direction — this is a narrower policy than PII
+  scrubbing convention elsewhere might suggest, and deliberately so).
 - Application code depends only on a thin first-party `Observability`
   abstraction, never directly on the Sentry API, so a future swap to
   OpenTelemetry does not require touching call sites.
@@ -365,8 +370,10 @@ Layered, not relying on a single control:
    before it reaches the Sentry SDK:
    - Walks nested `Map`s and `List`s, not just the top level.
    - Drops any entry whose **key** (case-insensitive) matches a denylist:
-     `authorization`, `apikey`, `access_token`, `refresh_token`,
-     `chordpro_source`, `lyrics`, `token`.
+     `authorization`, `apikey`, `access_token`, `refresh_token`, `token`.
+     ChordPro content, lyrics, and other business/domain content are
+     deliberately **not** on this list — per explicit product direction,
+     that content is not treated as sensitive and may aid debugging.
    - For any `String` value that looks like a URL (`Uri.tryParse`
      succeeds and has a scheme), strips its query string entirely before
      storing it — PostgREST encodes filter values directly in query
@@ -377,9 +384,11 @@ Layered, not relying on a single control:
      as defense-in-depth against a token ending up in a value under an
      unlisted key.
    - This is defense-in-depth, not a substitute for discipline at call
-     sites: **no call site may pass ChordPro source, lyrics, request/
-     response bodies, tokens, or RPC parameter values as span/breadcrumb
-     data in the first place.**
+     sites: **no call site may pass tokens/credentials or personal
+     identifiers (email, display name, etc.) as span/breadcrumb data in
+     the first place.** ChordPro source, lyrics, and other business
+     content are explicitly exempt from this rule — see the Goals section
+     above.
    - The **free-text fields** (`runInSpan`'s `name`, a span's
      `description`, a breadcrumb's `message`) are not run through the
      scrub — they are supplied by our own instrumentation code, not by

@@ -158,11 +158,13 @@ The header is only sent on non-web platforms until Supabase's CORS
 configuration is verified to allow it, since `traceparent` is not a
 CORS-safelisted header.
 
-PII, tokens, request/response bodies, RPC parameter values, lyrics, and
-ChordPro content must never reach Sentry; `user_id`/`organization_id` may
-be attached only as pseudonymized context. Only one vertical slice (song
-catalog refresh and sign-in) is instrumented so far — remaining use cases
-are tracked in
+Tokens/credentials and personal identifiers (email, display name) must
+never reach Sentry; `user_id`/`organization_id` may be attached only as
+pseudonymized context. ChordPro content, lyrics, and other business/
+domain content are explicitly not treated as sensitive and may appear in
+span/breadcrumb data when it aids debugging. Only one root trace (song
+catalog refresh, plus sign-in's user-context tagging) is instrumented so
+far — remaining use cases are tracked in
 [docs/deferred/2026-08-28-observability-remaining-use-cases.md](../deferred/2026-08-28-observability-remaining-use-cases.md).
 
 ## Multi-Tenancy

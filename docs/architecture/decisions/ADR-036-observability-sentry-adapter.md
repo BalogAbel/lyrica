@@ -104,26 +104,32 @@ later, independent of this decision.
    without first confirming Supabase's CORS configuration allows it would
    break web requests outright rather than merely losing correlation.
 
-7. **PII/secret redaction is layered, not single-point:**
-   `sendDefaultPii = false` (matching the SDK's actual default — stated
-   explicitly as a hedge against a future default change, not because the
-   default is dangerous), `captureFailedRequests = false` (so Sentry's
+7. **Redaction is scoped to credentials and personal identifiers, not
+   business content — per explicit product direction, ChordPro source,
+   lyrics, plan/session text, and other domain content (including RPC
+   parameter values that carry it) are not treated as sensitive and may
+   appear in span/breadcrumb/exception data when it aids debugging.**
+   Only two categories stay hard-restricted: (a) tokens/credentials —
+   `sendDefaultPii = false`, `captureFailedRequests = false` (so Sentry's
    automatic native-HTTP failed-request reporting cannot auto-report an
    already-classified `ConnectivityFailure` as a bug), a **recursive**
    scrub on span/breadcrumb/exception-extra data that walks nested
    maps/lists, drops denylisted keys (`authorization`, `apikey`,
-   `access_token`, `refresh_token`, `chordpro_source`, `lyrics`, `token`),
-   strips query strings from any URL-shaped value (PostgREST encodes
-   filter values in query parameters), and redacts JWT-shaped string
-   values regardless of key, plus `setUserContext` accepting only
-   pseudonymized `userId`/`organizationId` (Supabase UUIDs) — never email
-   or display name. **No span, breadcrumb, or exception `extra` may ever
-   carry ChordPro source, lyrics, request/response bodies, tokens, or RPC
-   parameter values.** This is a hard rule for every future call site, not
-   just the ones added in this slice. Free-text fields (span name/
-   description, breadcrumb message) are not scrubbed — they must only
-   ever be static strings written by our own instrumentation code, never
-   interpolated from request content.
+   `access_token`, `refresh_token`, `token`), strips query strings from
+   any URL-shaped value, and redacts JWT-shaped string values regardless
+   of key; and (b) personal identifiers — `setUserContext` accepts only
+   pseudonymized `userId`/`organizationId` (Supabase UUIDs), never email
+   or display name, with no code path that could attach either. **No
+   span, breadcrumb, or exception `extra` may ever carry a raw
+   token/credential or a personal identifier (email, display name).**
+   This is a hard rule for every future call site, not just the ones
+   added in this slice — but it does not extend to ChordPro/lyrics/domain
+   content, which this slice deliberately treats as debuggable, not
+   secret. Free-text fields (span name/description, breadcrumb message)
+   are not scrubbed — they must only ever be static strings written by
+   our own instrumentation code, never interpolated from request content
+   (a discipline rule about *what kind* of string goes there, unrelated
+   to the content-sensitivity question above).
 
 8. **Sign-in is not a root trace.** It is OAuth-redirect/magic-link based:
    the initiating call returns immediately, and the session arrives later
