@@ -57,7 +57,7 @@ String _scrubString(String value) {
     return Uri(
       scheme: uri.scheme,
       userInfo: uri.userInfo.isEmpty ? null : uri.userInfo,
-      host: uri.host,
+      host: uri.host.isEmpty ? null : uri.host,
       port: uri.hasPort ? uri.port : null,
       path: uri.path,
       fragment: uri.fragment.isEmpty ? null : uri.fragment,

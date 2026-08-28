@@ -69,6 +69,15 @@ void main() {
     expect(result, {'url': 'https://x.com/path#frag'});
   });
 
+  test(
+    'strips the query string from host-less URLs without adding a stray //',
+    () {
+      final result = scrubPii({'url': 'mailto:foo@bar.com?subject=hi'});
+
+      expect(result, {'url': 'mailto:foo@bar.com'});
+    },
+  );
+
   test('redacts JWT-shaped string values regardless of key', () {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
     final result = scrubPii({'unlisted_key': jwt});
