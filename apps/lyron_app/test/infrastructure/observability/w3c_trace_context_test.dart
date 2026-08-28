@@ -9,10 +9,7 @@ void main() {
         spanId: '0123456789abcdef',
       );
 
-      expect(
-        header,
-        matches(RegExp(r'^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$')),
-      );
+      expect(header, matches(RegExp(r'^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$')));
       expect(header, '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01');
     });
 
