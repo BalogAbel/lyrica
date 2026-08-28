@@ -199,9 +199,9 @@ void main() {
       expect(() => observability.clearUserContext(), returnsNormally);
     });
 
-    test('runInSpan propagates a thrown error from body', () {
-      expect(
-        () => observability.runInSpan('n', 'o', (span) async => throw Exception('boom')),
+    test('runInSpan propagates a thrown error from body', () async {
+      await expectLater(
+        observability.runInSpan('n', 'o', (span) async => throw Exception('boom')),
         throwsException,
       );
     });
@@ -381,7 +381,7 @@ class NoopObservabilitySpan implements ObservabilitySpan {
 flutter test test/application/observability/observability_test.dart
 ```
 
-Expected: PASS (9 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -582,7 +582,11 @@ test code should prefer the `overrideWithValue` path from the second test.
 
 - [ ] **Step 5: Export from the providers barrel**
 
-In `lib/src/application/providers.dart`, add one line (matches the existing style of that file):
+In `lib/src/application/providers.dart`, this project's lint rules include
+`directives_ordering`, and the file's existing exports are alphabetical
+(`auth_providers.dart`, `core_providers.dart`, `planning_providers.dart`,
+`song_catalog_providers.dart`). Insert the new line alphabetically between
+`core_providers.dart`'s export block and `planning_providers.dart`'s:
 
 ```dart
 export 'observability/observability_providers.dart';
@@ -640,18 +644,27 @@ class _FakeObservability extends NoopObservability {
   String? get currentTraceParent => _traceParent;
 }
 
+const _sampleTraceParent =
+    '00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01';
+
 void main() {
   test('injects the traceparent header when a span is active', () async {
     final inner = _RecordingInnerClient();
+    // `_FakeObservability` is instantiated non-const here: `'a' * 32` (String
+    // repetition) is not a const-evaluable expression in Dart, so `const
+    // _FakeObservability('00-${'a' * 32}-...')` would fail to compile. Use
+    // the plain literal `_sampleTraceParent` above instead of repetition —
+    // it is defined as a `const` top-level string precisely so it can be
+    // reused across the two tests below without re-typing 48 hex characters.
     final client = TracingHttpClient(
       inner,
-      const _FakeObservability('00-${'a' * 32}-${'b' * 16}-01'),
+      _FakeObservability(_sampleTraceParent),
       isWeb: false,
     );
 
     await client.get(Uri.parse('https://example.supabase.co/rest/v1/songs'));
 
-    expect(inner.lastRequest!.headers['traceparent'], '00-${'a' * 32}-${'b' * 16}-01');
+    expect(inner.lastRequest!.headers['traceparent'], _sampleTraceParent);
   });
 
   test('omits the header when there is no active span', () async {
@@ -667,7 +680,7 @@ void main() {
     final inner = _RecordingInnerClient();
     final client = TracingHttpClient(
       inner,
-      const _FakeObservability('00-${'a' * 32}-${'b' * 16}-01'),
+      _FakeObservability(_sampleTraceParent),
       isWeb: true,
     );
 
@@ -949,7 +962,14 @@ void main() {
     await Sentry.init((options) {
       options.dsn = 'https://public@o0.ingest.sentry.io/0';
       options.tracesSampleRate = 1.0;
-      options.automatedTestMode = true;
+      // Deliberately NOT setting `options.automatedTestMode = true` here:
+      // it is annotated `@internal` in the SDK source and would trip
+      // `invalid_use_of_internal_member` under `flutter analyze`. It is
+      // also unnecessary -- `SentryOptions.transport` already defaults to
+      // `NoOpTransport()` (confirmed in the installed SDK source), so no
+      // real network call happens regardless of whether the DSN above
+      // points at a real project. The DSN only needs to be
+      // *syntactically* valid for `Sentry.init` to complete successfully.
     });
   });
 
@@ -1124,8 +1144,19 @@ class SentryObservability implements Observability {
     return runZoned<Future<T>>(() async {
       try {
         final result = await body(handle);
+        // Explicit, not relying on finish()'s default: a root Transaction
+        // defaults an unset status to `ok` on finish, but a plain child
+        // span (from `startChild`) does not reliably do the same --
+        // setting it explicitly here covers both cases identically.
+        sentrySpan.status = const SpanStatus.ok();
         return result;
       } catch (error, stackTrace) {
+        // `internalError` here is a span-status marker ("this span did
+        // not complete normally"), not a Sentry issue -- captureException
+        // is never called here, so classified/expected failures (e.g. a
+        // ConnectivityFailure during an offline refresh) never file an
+        // issue just because they passed through a span. See ADR-036
+        // point 4.
         sentrySpan.throwable = error;
         sentrySpan.status = const SpanStatus.internalError();
         rethrow;
@@ -1143,10 +1174,16 @@ class SentryObservability implements Observability {
   String? get currentTraceParent {
     final span = _current?.sentrySpan;
     if (span == null) return null;
+    // `toSentryTrace()` is the public API for reading a span's trace/span
+    // id and sampling decision. `ISentrySpan.context`/`.samplingDecision`
+    // also exist but are annotated `@internal` in the SDK source -- using
+    // them directly would trip `invalid_use_of_internal_member` under
+    // `flutter analyze`.
+    final trace = span.toSentryTrace();
     return buildTraceParent(
-      traceId: span.context.traceId.toString(),
-      spanId: span.context.spanId.toString(),
-      sampled: span.samplingDecision?.sampled ?? true,
+      traceId: trace.traceId.toString(),
+      spanId: trace.spanId.toString(),
+      sampled: trace.sampled ?? true,
     );
   }
 
@@ -1205,6 +1242,10 @@ class SentryObservability implements Observability {
   void clearUserContext() {
     Sentry.configureScope((scope) {
       scope.setUser(null);
+      // Must also clear the 'organization' context setUserContext sets --
+      // clearing only the user would leave a stale organization id
+      // attached to events fired after sign-out.
+      scope.removeContexts('organization');
     });
   }
 
@@ -1274,25 +1315,16 @@ class _SentrySpanHandle implements ObservabilitySpan {
 }
 ```
 
-Note on `runInSpan`'s success path: the SDK's `ISentrySpan.finish()`
-defaults an unset `status` to `ok` on its own (standard Sentry SDK
-behavior across languages) — there is deliberately no explicit
-`sentrySpan.status = const SpanStatus.ok()` on the success path above; if
-`flutter test` for this task shows a finished span's status is not `ok`
-when no error occurred, add that explicit line rather than assuming the
-default and moving on.
-
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
 flutter test test/infrastructure/observability/sentry_observability_test.dart
 ```
 
-Expected: PASS (10 tests). If the "matches the real active span's ids"
-or nested-span tests fail on an API shape mismatch (e.g.
-`samplingDecision` not accessible, or `context` not exposing `traceId`/
-`spanId` the way this plan assumes), re-check against the installed
-package: `grep -n "class SentrySpanContext" $(dart pub cache dir 2>/dev/null || echo ~/.pub-cache)/hosted/pub.dev/sentry-*/lib/src/sentry_span_context.dart` and adjust the adapter, not the test's intent.
+Expected: PASS (9 tests). If the "matches the real active span's ids" or
+nested-span tests fail on an API shape mismatch (e.g. `toSentryTrace()`
+not returning the fields this plan assumes), re-check against the
+installed package: `grep -n "class SentryTraceHeader" -A 15 $(dart pub cache dir 2>/dev/null || echo ~/.pub-cache)/hosted/pub.dev/sentry-*/lib/src/protocol/sentry_trace_header.dart` and adjust the adapter, not the test's intent.
 
 - [ ] **Step 5: Commit**
 
@@ -1311,7 +1343,9 @@ git commit -m "feat(observability): add SentryObservability adapter"
 
 - [ ] **Step 1: Read the current file**
 
-Current content (already read earlier in this session, reproduced here so this step is self-contained):
+Current content (re-read at plan-writing time so this step is
+byte-accurate — do not trust memory or an earlier partial read; re-read
+the real file yourself before editing if any doubt remains):
 
 ```dart
 import 'dart:async';
@@ -1326,6 +1360,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = SupabaseConfig.fromEnvironment();
+  // supabase_flutter 2.16 deprecated anonKey in favour of publishableKey; both
+  // feed the same effective key, so the legacy anon JWT keeps working. The
+  // SUPABASE_ANON_KEY dart-define keeps its name — that is an environment
+  // contract shared with the scripts and CI, not something to rename inside a
+  // dependency bump.
   await Supabase.initialize(url: config.url, publishableKey: config.anonKey);
   runApp(const _BootstrapScope(child: LyronApp()));
 }
@@ -1397,6 +1436,11 @@ Future<void> bootstrap() async {
   final supabaseConfig = SupabaseConfig.fromEnvironment();
 
   Future<void> initSupabaseAndRun() async {
+    // supabase_flutter 2.16 deprecated anonKey in favour of publishableKey;
+    // both feed the same effective key, so the legacy anon JWT keeps
+    // working. The SUPABASE_ANON_KEY dart-define keeps its name — that is
+    // an environment contract shared with the scripts and CI, not
+    // something to rename inside a dependency bump.
     await Supabase.initialize(
       url: supabaseConfig.url,
       publishableKey: supabaseConfig.anonKey,
@@ -1411,7 +1455,6 @@ Future<void> bootstrap() async {
       options.environment = sentryConfig.environment;
       options.tracesSampleRate = 1.0;
       options.sendDefaultPii = false;
-      options.captureFailedRequests = false;
     }, appRunner: initSupabaseAndRun);
   } else {
     await initSupabaseAndRun();
@@ -1551,7 +1594,7 @@ Change to:
     try {
       organizationId = await _observability.runInSpan(
         'membership.resolve',
-        'business.refresh',
+        'http.client',
         (_) => _resolveOrganizationId(),
       );
     } catch (error) {
@@ -1575,7 +1618,7 @@ Change the first line to:
 ```dart
     final sessionStatus = await _observability.runInSpan(
       'auth.verify_session',
-      'business.refresh',
+      'http.client',
       (_) => _sessionVerifier(),
     );
     if (_isStale(generation)) {
@@ -1600,7 +1643,7 @@ Change to:
 ```dart
     try {
       final summaries = await _observability.runInSpan(
-        'http.client',
+        'song_catalog.list_songs',
         'http.client',
         (_) => _remoteRepository.listSongs(),
       );
@@ -1622,7 +1665,7 @@ Change to:
 
 ```dart
       final sources = await _observability.runInSpan(
-        'http.client',
+        'song_catalog.fetch_sources',
         'http.client',
         (_) => Future.wait(
           summaries.map((summary) => _remoteRepository.getSongSource(summary.id)),
@@ -1664,7 +1707,7 @@ Change to:
 
 ```dart
       await _observability.runInSpan(
-        'db.write',
+        'song_catalog.write_snapshot',
         'db.write',
         (_) => _store.replaceActiveSnapshot(
           userId: context.userId,
@@ -1736,16 +1779,31 @@ path always returns/rethrows exactly what `body` returned/threw.
 
 - [ ] **Step 10: Add new tests for the instrumentation itself**
 
-Add this test group to the end of
-`test/application/song_library/song_catalog_controller_test.dart` (inside
-the existing `void main() { ... }`, as a sibling `group` to what's already
-there):
+The existing top-level `group('SongCatalogController', () { ... })` in
+this file (read it — its `setUp` already builds an in-memory `database`,
+`store`, `remoteRepository` (a `_FakeSongRepository`, which already has a
+settable `listSongsError` field for exactly this purpose — do not
+introduce a second failing-repository class), and `lifecycle`, with a
+`tearDown` that closes `database`) is the group to nest the new tests
+inside, as a **nested** `group('observability instrumentation', () {
+... })` — not a sibling at the top level, which would get none of that
+`setUp`/`tearDown`. Add it as the last member of the outer group, right
+before that group's own closing `});`:
 
 ```dart
 group('observability instrumentation', () {
-  test('a successful refresh records start and success breadcrumbs', () async {
+  test('a successful refresh records the start and success breadcrumbs', () async {
     final recorder = _RecordingObservability();
-    final controller = _buildControllerForObservabilityTest(
+    final controller = SongCatalogController(
+      onImplausibleEmptySnapshot:
+          ({required userId, required organizationId}) async {},
+      store: store,
+      localDataLifecycle: lifecycle,
+      remoteRepository: remoteRepository,
+      authSessionReader: () =>
+          const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+      organizationReader: () async => 'org-1',
+      sessionVerifier: () async => CatalogSessionStatus.verified,
       observability: recorder,
     );
 
@@ -1753,30 +1811,49 @@ group('observability instrumentation', () {
 
     expect(
       recorder.breadcrumbMessages,
-      containsAllInOrder([
-        'song_catalog.refresh started',
-        'song_catalog.refresh succeeded',
-      ]),
+      ['song_catalog.refresh started', 'song_catalog.refresh succeeded'],
     );
+    expect(recorder.spanNames.first, 'song_catalog.refresh');
   });
 
-  test('a failed refresh records the root span and the failure breadcrumb', () async {
+  test('a failed refresh records the failure breadcrumb, not the success one', () async {
     final recorder = _RecordingObservability();
-    final controller = _buildControllerForObservabilityTest(
+    remoteRepository.listSongsError = Exception('boom');
+    final controller = SongCatalogController(
+      onImplausibleEmptySnapshot:
+          ({required userId, required organizationId}) async {},
+      store: store,
+      localDataLifecycle: lifecycle,
+      remoteRepository: remoteRepository,
+      authSessionReader: () =>
+          const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+      organizationReader: () async => 'org-1',
+      sessionVerifier: () async => CatalogSessionStatus.verified,
       observability: recorder,
-      repository: _FailingSongRepository(),
     );
 
     await controller.refreshCatalog();
 
     expect(recorder.spanNames, contains('song_catalog.refresh'));
-    expect(recorder.breadcrumbMessages, contains('song_catalog.refresh failed'));
+    expect(
+      recorder.breadcrumbMessages,
+      ['song_catalog.refresh started', 'song_catalog.refresh failed'],
+    );
   });
 });
 ```
 
-Add the supporting test doubles near the file's other private test-double
-classes (e.g. next to `_FakeSongRepository`):
+Note why the first test's assertion is a full list-equality
+(`breadcrumbMessages, [...]`) rather than `contains(...)`: a `contains`
+check on the success path would pass even if the code accidentally
+recorded a `'song_catalog.refresh failed'` breadcrumb too, which is
+exactly the kind of near-vacuous assertion to avoid — pin the exact
+sequence instead.
+
+Add the one supporting test double near the file's other private
+test-double classes (e.g. right after `_FakeSongRepository`'s class body,
+around line 1723 as of this writing — line numbers drift, find it by the
+class name, not the number):
 
 ```dart
 class _RecordingObservability extends NoopObservability {
@@ -1804,46 +1881,40 @@ class _RecordingObservability extends NoopObservability {
     breadcrumbMessages.add(message);
   }
 }
-
-class _FailingSongRepository implements SongRepository {
-  @override
-  Future<List<SongSummary>> listSongs() => Future.error(Exception('boom'));
-
-  @override
-  Future<SongSource> getSongSource(String id) =>
-      Future.error(Exception('unreached'));
-
-  @override
-  Future<SongSummary?> getSongSummaryBySlug(String slug) =>
-      Future.error(Exception('unreached'));
-}
 ```
 
-You will need to build `_buildControllerForObservabilityTest` (or inline
-the equivalent `SongCatalogController(...)` construction directly in each
-test) by copying the pattern the existing tests in this file already use
-to construct a controller with a signed-in session, a resolvable
-organization id, and a verified session status — read the top of the
-existing test file's `setUp`/helper functions first and reuse whatever
-helper already exists there rather than duplicating a new one; the exact
-existing helper name and shape were not re-transcribed into this plan to
-avoid drifting out of sync with the real file, since it will have
-changed by the time you run this step. If no reusable helper exists,
-construct the controller directly, mirroring the constructor call
-pattern already visible in "the failing session" or "the happy path"
-tests elsewhere in the same file, and pass `observability: recorder` as
-the new parameter added in Step 1.
+This needs two new imports at the top of the test file:
 
-- [ ] **Step 11: Run test to verify the new tests fail first, then pass**
+```dart
+import 'package:lyron_app/src/application/observability/observability.dart';
+```
+
+(`AppAuthSession`, `CatalogSessionStatus`, and `SongCatalogController`
+are already imported by this file per its existing top-of-file import
+list — do not add a second import for any of those.)
+
+- [ ] **Step 11: Run the new tests, confirm they fail first, then pass**
 
 ```bash
 flutter test test/application/song_library/song_catalog_controller_test.dart
 ```
 
-Run this once before Step 10's test bodies are correct (expect FAIL,
-confirming the test actually exercises new code and isn't vacuously
-true), then again after fixing any construction issues (expect PASS, all
-tests in the file, old and new).
+Run this immediately after adding Step 10's test bodies but *before*
+Steps 1–7's production-code edits exist (i.e. if you are working through
+this task strictly in order, temporarily comment out Steps 1–7 or run
+this check right after Step 10 lands, before assuming production code is
+already in place) — expect FAIL, specifically on the `observability:
+recorder` named parameter not existing yet (confirms the test exercises
+real code, not a vacuous pass). Once Steps 1–7 are applied, run again —
+expect PASS, every test in the file, old and new.
+
+If you are executing this plan task-by-task in the written order (Steps
+1–7 already applied before reaching Step 10), the "fails first" run above
+is not meaningful — the constructor parameter already exists. In that
+case it is enough to run once after Step 10 and confirm PASS; the
+regression check in Step 9 already proved the wrapping doesn't change
+existing behavior, and Step 10's job is only to prove the new
+instrumentation calls happen at all.
 
 - [ ] **Step 12: Commit**
 
@@ -1906,7 +1977,16 @@ git commit -m "feat(observability): inject observabilityProvider into songCatalo
 **Files:**
 - Modify: `lib/src/application/auth_providers.dart`
 - Modify: `lib/src/app/lyron_app.dart`
-- Test: `test/application/auth_providers_test.dart` (add to existing file)
+- Create: `test/application/auth/observability_user_context_effect_test.dart`
+
+There is no `test/application/auth_providers_test.dart` — auth tests live
+in `test/application/auth/`, one file per concern (see
+`test/application/auth/identity_persistence_wiring_test.dart` for the
+closest existing analog: it tests another `ref.listen`-based effect
+provider, `lastKnownIdentityPersistenceProvider`, driven through a real
+`AppAuthController` plus a fake `AuthRepository` inside a
+`ProviderContainer`). This task creates a new file in that directory
+rather than appending to a file that doesn't exist.
 
 - [ ] **Step 1: Add the effect provider**
 
@@ -1932,6 +2012,13 @@ final observabilityUserContextEffectProvider = Provider<void>((ref) {
         case AppAuthStatus.signedIn:
           final session = next.session;
           if (session != null) {
+            // organizationId is best-effort: `lastKnownIdentity` may not
+            // be populated yet at this exact instant (it is written by a
+            // separate persistence effect reacting to the same signedIn
+            // transition, with no ordering guarantee relative to this
+            // listener) -- this is not re-synced later in this slice. See
+            // docs/specs/2026-08-28-observability-foundation.md, "Sign-in
+            // is not a root trace in this slice".
             observability.setUserContext(
               userId: session.userId,
               organizationId: authController.lastKnownIdentity?.organizationId,
@@ -1942,7 +2029,13 @@ final observabilityUserContextEffectProvider = Provider<void>((ref) {
           observability.clearUserContext();
           return;
         case AppAuthStatus.initializing:
+          return;
         case AppAuthStatus.sessionExpired:
+          // Deliberate no-op, not an oversight: sessionExpired is
+          // offline-authenticated access, not sign-out (ADR-020) -- the
+          // same user is still using the app without a live session, so
+          // clearing their identity here would misrepresent telemetry for
+          // that entire offline-authenticated window as anonymous.
           return;
       }
     },
@@ -1951,14 +2044,24 @@ final observabilityUserContextEffectProvider = Provider<void>((ref) {
 });
 ```
 
-Make sure `lyron_app/src/application/observability/observability_providers.dart`'s
-`observabilityProvider` is importable here — it already is, via the
-`providers.dart` barrel this file is part of (Task 5 added the export);
-no new import line should be needed since `auth_providers.dart` is
-exported from the same barrel it's consumed through elsewhere in the app.
-If the analyzer disagrees, add
-`import 'package:lyron_app/src/application/observability/observability_providers.dart';`
-directly.
+This provider is defined in the same file (`auth_providers.dart`) that
+already needs `observabilityProvider`, but that provider lives in a
+different file (`observability_providers.dart`) that `auth_providers.dart`
+does not otherwise import — the `providers.dart` barrel *exports*
+`auth_providers.dart`'s own symbols outward for other files to consume,
+it does not inject symbols *into* `auth_providers.dart`. Add the import
+directly:
+
+```dart
+import 'package:lyron_app/src/application/observability/observability.dart';
+import 'package:lyron_app/src/application/observability/observability_providers.dart';
+```
+
+(`observability.dart` supplies the `AppAuthState`-independent
+`Observability` type used in the provider body's static analysis of
+`observability.setUserContext(...)`/`.clearUserContext()`;
+`observability_providers.dart` supplies `observabilityProvider` itself.
+Both are new imports for this file.)
 
 - [ ] **Step 2: Activate the effect provider**
 
@@ -1987,35 +2090,79 @@ flutter analyze lib/src/application/auth_providers.dart lib/src/app/lyron_app.da
 
 Expected: no errors.
 
-- [ ] **Step 4: Add a test**
+- [ ] **Step 4: Write the failing test**
 
-Add to `test/application/auth_providers_test.dart` (find the existing
-`ProviderContainer` construction pattern used by other tests in this file
-and reuse it — do not duplicate a second container-building helper):
+Create `test/application/auth/observability_user_context_effect_test.dart`:
 
 ```dart
-test('observabilityUserContextEffectProvider sets and clears user context on auth transitions', () {
-  final recorder = _RecordingObservability();
-  // Build the container the same way the surrounding tests in this file
-  // already do, adding this one override:
-  //   observabilityProvider.overrideWithValue(recorder),
-  // alongside whatever auth-controller override those tests already use
-  // to drive `appAuthControllerProvider` into signedIn/signedOut states.
-  // ... construct container, drive state to signedIn with a session ...
+import 'dart:async';
 
-  container.read(observabilityUserContextEffectProvider);
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/observability/observability.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 
-  // after driving to signedIn:
-  expect(recorder.lastUserId, isNotNull);
+void main() {
+  late _FakeAuthRepository authRepository;
+  late AppAuthController authController;
 
-  // after driving to signedOut:
-  expect(recorder.userContextCleared, isTrue);
-});
-```
+  setUp(() {
+    authRepository = _FakeAuthRepository();
+    addTearDown(authRepository.dispose);
+    authController = AppAuthController(authRepository);
+  });
 
-with the recorder:
+  test('signedIn attaches the pseudonymized user id', () async {
+    final recorder = _RecordingObservability();
+    authRepository.currentSession = const AppAuthSession(
+      userId: 'user-1',
+      email: 'user@example.com',
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        observabilityProvider.overrideWithValue(recorder),
+      ],
+    );
+    addTearDown(container.dispose);
 
-```dart
+    container.read(observabilityUserContextEffectProvider);
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(recorder.lastUserId, 'user-1');
+  });
+
+  test('signedOut clears the user context', () async {
+    final recorder = _RecordingObservability();
+    authRepository.currentSession = const AppAuthSession(
+      userId: 'user-1',
+      email: 'user@example.com',
+    );
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        observabilityProvider.overrideWithValue(recorder),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(observabilityUserContextEffectProvider);
+    await authController.restoreSession();
+    await Future<void>.delayed(Duration.zero);
+    expect(recorder.lastUserId, 'user-1');
+
+    await authController.signOut();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(recorder.userContextCleared, isTrue);
+  });
+}
+
 class _RecordingObservability extends NoopObservability {
   String? lastUserId;
   bool userContextCleared = false;
@@ -2030,29 +2177,83 @@ class _RecordingObservability extends NoopObservability {
     userContextCleared = true;
   }
 }
+
+// Minimal fake covering every method on the real AuthRepository interface,
+// copied in shape from the equivalent fake in
+// test/application/auth/identity_persistence_wiring_test.dart -- kept
+// local (not shared) per this codebase's existing convention of one
+// private test-double class per test file rather than a shared fakes
+// module.
+class _FakeAuthRepository implements AuthRepository {
+  final _controller = StreamController<AppAuthSession?>.broadcast();
+  AppAuthSession? currentSession;
+
+  void dispose() {
+    _controller.close();
+  }
+
+  @override
+  Future<AppAuthSession?> restoreSession() async => currentSession;
+
+  @override
+  Stream<AppAuthSession?> watchSession() => _controller.stream;
+
+  @override
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> signOut() async {
+    currentSession = null;
+    _controller.add(null);
+  }
+
+  @override
+  Future<void> deleteAccount() async {}
+}
 ```
 
-This step is deliberately less prescriptive than earlier tasks about the
-exact container/override wiring: `auth_providers_test.dart`'s existing
-setup for driving `appAuthControllerProvider` through signed-in/signed-out
-transitions is nontrivial (see the ADR-029 reauth machinery referenced in
-`architecture.md`) and already has an established test pattern in that
-file — read it first and match it, rather than inventing a second way to
-drive the same state machine.
-
-- [ ] **Step 5: Run the test**
+- [ ] **Step 5: Run test to verify it fails**
 
 ```bash
-flutter test test/application/auth_providers_test.dart
+flutter test test/application/auth/observability_user_context_effect_test.dart
 ```
 
-Expected: PASS, including the new test and every pre-existing one in the
-file unchanged.
+Expected: FAIL — `observabilityUserContextEffectProvider` does not exist
+yet (Step 1 hasn't been applied) or, if run after Step 1, verify it was
+genuinely failing before Step 1 by checking out the file at its
+pre-Step-1 state — do not skip this check just because Steps 1-2 are
+already in place by the time you reach this step in a strict top-to-bottom
+run.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Run test to verify it passes**
 
 ```bash
-git add lib/src/application/auth_providers.dart lib/src/app/lyron_app.dart test/application/auth_providers_test.dart
+flutter test test/application/auth/observability_user_context_effect_test.dart
+```
+
+Expected: PASS (2 tests).
+
+- [ ] **Step 7: Run analyzer on the modified files**
+
+```bash
+flutter analyze lib/src/application/auth_providers.dart lib/src/app/lyron_app.dart test/application/auth/observability_user_context_effect_test.dart
+```
+
+Expected: no errors.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/src/application/auth_providers.dart lib/src/app/lyron_app.dart test/application/auth/observability_user_context_effect_test.dart
 git commit -m "feat(observability): attach pseudonymized user context on sign-in/out"
 ```
 

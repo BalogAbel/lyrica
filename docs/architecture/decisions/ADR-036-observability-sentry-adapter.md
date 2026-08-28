@@ -69,15 +69,22 @@ later, independent of this decision.
    never need to branch on whether tracing is active.
 
 4. **"Handled" error capture is opt-in per call site, not automatic per
-   span.** `runInSpan`'s catch block sets span status and rethrows; it
-   does not call `captureException`. The codebase already uses typed
-   exceptions as control flow (`SongNotFoundException`,
-   `SongAccessDeniedException`, `ConnectivityFailure` classification).
-   Auto-capturing every exception that passes through a span would report
-   expected outcomes as if they were bugs. "Unhandled" errors are captured
-   by `sentry_flutter`'s bundled `FlutterError.onError` /
-   `PlatformDispatcher.onError` hooks with no code change required (see
-   the trace-linkage caveat in point 2).
+   span — and this is a distinct thing from span *status*.** `runInSpan`'s
+   catch block sets `ObservabilitySpanStatus.internalError` on the span
+   and rethrows for *every* exception, including expected, classified
+   ones like a `ConnectivityFailure` during an offline refresh — this is
+   fine: a span status is a trace attribute (this span didn't complete
+   normally), not a Sentry issue. It does not call `captureException`, so
+   it never files an issue. The codebase already uses typed exceptions as
+   control flow (`SongNotFoundException`, `SongAccessDeniedException`,
+   `ConnectivityFailure` classification); what `runInSpan` deliberately
+   avoids is auto-*reporting* (issue creation) for those, which would
+   flood Sentry with "bugs" that are actually expected outcomes — it does
+   not avoid marking the span itself as failed, which is accurate and
+   useful trace data regardless of why the exception was thrown.
+   "Unhandled" errors are captured by `sentry_flutter`'s bundled
+   `FlutterError.onError`/`PlatformDispatcher.onError` hooks with no code
+   change required (see the trace-linkage caveat in point 2).
 
 5. **A missing Sentry DSN disables telemetry rather than failing startup.**
    `SentryConfig.fromEnvironment()` mirrors `SupabaseConfig`'s dart-define
@@ -110,16 +117,26 @@ later, independent of this decision.
    parameter values that carry it) are not treated as sensitive and may
    appear in span/breadcrumb/exception data when it aids debugging.**
    Only two categories stay hard-restricted: (a) tokens/credentials —
-   `sendDefaultPii = false`, `captureFailedRequests = false` (so Sentry's
-   automatic native-HTTP failed-request reporting cannot auto-report an
-   already-classified `ConnectivityFailure` as a bug), a **recursive**
-   scrub on span/breadcrumb/exception-extra data that walks nested
-   maps/lists, drops denylisted keys (`authorization`, `apikey`,
-   `access_token`, `refresh_token`, `token`), strips query strings from
-   any URL-shaped value, and redacts JWT-shaped string values regardless
-   of key; and (b) personal identifiers — `setUserContext` accepts only
-   pseudonymized `userId`/`organizationId` (Supabase UUIDs), never email
-   or display name, with no code path that could attach either. **No
+   `sendDefaultPii = false`, a **recursive** scrub on
+   span/breadcrumb/exception-extra data that walks nested maps/lists,
+   drops denylisted keys (`authorization`, `apikey`, `access_token`,
+   `refresh_token`, `token`), and redacts JWT-shaped string values
+   regardless of key (query strings are deliberately left unscrubbed —
+   an earlier draft stripped them on the assumption that PostgREST filter
+   values in query parameters were sensitive business content, which this
+   point's own PII narrowing no longer treats as true); and (b) personal
+   identifiers — `setUserContext` accepts only pseudonymized
+   `userId`/`organizationId` (Supabase UUIDs), never email or display
+   name, with no code path that could attach either, and
+   `clearUserContext` removes both the user *and* the `organization`
+   scope context `setUserContext` set — clearing only the user would
+   leave a stale organization id attached to events fired after sign-out.
+   `captureFailedRequests` is left at its SDK default: it only governs
+   `SentryHttpClient`/native HTTP-instrumentation integrations, neither of
+   which this design installs, so setting it would have been a no-op with
+   a misleading rationale attached (an earlier draft set it `false`
+   believing it would suppress double-reporting of classified connectivity
+   failures through `TracingHttpClient`, which it never would have). **No
    span, breadcrumb, or exception `extra` may ever carry a raw
    token/credential or a personal identifier (email, display name).**
    This is a hard rule for every future call site, not just the ones

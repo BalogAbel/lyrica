@@ -87,7 +87,7 @@ lib/src/application/observability/
 
 lib/src/infrastructure/observability/
   sentry_observability.dart     # SentryObservability adapter
-  w3c_trace_context.dart        # pure traceparent builder/parser
+  w3c_trace_context.dart        # pure traceparent builder
   tracing_http_client.dart      # http.Client wrapper injecting traceparent
 
 lib/src/infrastructure/config/
@@ -265,21 +265,32 @@ Sentry transaction (root trace). The one root trace in this slice:
   root trace for every caller that gets coalesced onto an in-flight
   refresh instead of triggering a new one.
 
-Nested inside that root trace's body, each wrapped in its own
-`runInSpan` call (ambient, so each becomes `currentSpan` for the duration
-of its own body — this matters for the two Supabase calls, so
-`TracingHttpClient` picks up the *specific* network-call span as the
-current span, not the root):
+Nested inside that root trace's body, five separate `runInSpan` calls,
+each with a distinct name so they're distinguishable in the Sentry UI
+(ambient, so each becomes `currentSpan` for the duration of its own body
+— this matters for the two Supabase calls, so `TracingHttpClient` picks
+up the *specific* network-call span as the current span, not the root):
 
-- `runInSpan('membership.resolve', 'business.refresh', ...)` around the
+- `runInSpan('membership.resolve', 'http.client', ...)` around the
   organization-id RPC lookup (`_resolveOrganizationId()`).
-- `runInSpan('auth.verify_session', 'business.refresh', ...)` around the
+- `runInSpan('auth.verify_session', 'http.client', ...)` around the
   session-verifier's `auth.getUser()` call.
-- `runInSpan('http.client', 'http.client', ...)` around
-  `_remoteRepository.listSongs()` and, separately, around the
-  `Future.wait` over `_remoteRepository.getSongSource(...)` calls.
-- `runInSpan('db.write', 'db.write', ...)` around
+- `runInSpan('song_catalog.list_songs', 'http.client', ...)` around
+  `_remoteRepository.listSongs()`.
+- `runInSpan('song_catalog.fetch_sources', 'http.client', ...)` around the
+  `Future.wait` over `_remoteRepository.getSongSource(...)` calls. This
+  span covers the whole fan-out as one unit — if N songs need sources, all
+  N Supabase requests share this span's single `parent-id`, so per-request
+  correlation granularity is limited to "which refresh", not "which
+  specific song fetch", within that batch.
+- `runInSpan('song_catalog.write_snapshot', 'db.write', ...)` around
   `_store.replaceActiveSnapshot(...)`.
+
+(Operation strings use Sentry's own convention — `http.client`/`db.write`
+— rather than a business-specific string like `business.refresh`, which
+was this draft's earlier, since-corrected choice; the root trace itself
+keeps `business.refresh` as its operation, since it genuinely is the
+top-level business operation.)
 
 None of `SupabaseSongRepository` or `DriftSongCatalogStore` need any
 `Observability` dependency injected — the controller already owns every
@@ -291,10 +302,19 @@ instead of touching the repository/store constructors (and their
 depend on.
 
 A breadcrumb is recorded at the start of `_refreshCatalog()`'s body
-(`'song_catalog.refresh started'`, category `song_catalog`) and at its
-terminal outcome (`'song_catalog.refresh succeeded'` /
-`'song_catalog.refresh failed'`), so a Sentry event fired anywhere during
-a refresh has recent breadcrumb context even without an active trace.
+(`'song_catalog.refresh started'`, category `song_catalog`) and at the
+terminal outcome of the one try/catch block that performs the actual
+network refresh and write (`'song_catalog.refresh succeeded'` /
+`'song_catalog.refresh failed'`). **Coverage caveat:** `_refreshCatalog`
+has roughly a dozen other early-return branches ahead of that try/catch
+(session expired, verified-empty-membership resolution, connectivity
+fallback with no cached organization, staleness checks) that leave a
+`started` breadcrumb with no matching terminal one. These represent "there
+was nothing to refresh" or "the session/membership state itself changed"
+outcomes, not a failed refresh attempt, and instrumenting each of them
+individually was judged out of scope for this slice — the two breadcrumbs
+that exist cover the actual network-refresh attempt, which is the
+error-prone leg this instrumentation exists to illuminate.
 
 **Sign-in is not a root trace in this slice.** Sign-in in this app is
 OAuth-redirect/magic-link based: the call that starts it
@@ -374,12 +394,13 @@ Layered, not relying on a single control:
      ChordPro content, lyrics, and other business/domain content are
      deliberately **not** on this list — per explicit product direction,
      that content is not treated as sensitive and may aid debugging.
-   - For any `String` value that looks like a URL (`Uri.tryParse`
-     succeeds and has a scheme), strips its query string entirely before
-     storing it — PostgREST encodes filter values directly in query
-     parameters (e.g. `?slug=eq.<value>`, `?id=eq.<uuid>`), so the query
-     string itself is the leak, not just specific keys.
-   - For any remaining `String` value, redacts it if it matches a
+   - (An earlier draft of this policy also stripped query strings from
+     any URL-shaped value, reasoning that PostgREST filter values in query
+     parameters — e.g. `?slug=eq.<value>` — were a leak. That reasoning
+     assumed business content was sensitive; it no longer is, per the PII
+     policy narrowing above, so this draft drops that rule entirely —
+     query strings pass through unscrubbed.)
+   - For any `String` value, redacts it if it matches a
      JWT-shaped pattern (`^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
      as defense-in-depth against a token ending up in a value under an
      unlisted key.
@@ -398,18 +419,23 @@ Layered, not relying on a single control:
 3. `setUserContext` only ever accepts `userId`/`organizationId` — both are
    Supabase UUIDs already opaque/pseudonymous, never email or display
    name. There is no code path to attach email or name to Sentry scope.
-4. `maxRequestBodySize` is left at Sentry's default `never` behavior —
-   request/response bodies are never attached.
-5. `options.captureFailedRequests = false` — explicit, not left at the
-   SDK default. `TracingHttpClient` is a plain `http.BaseClient`
-   subclass, not `SentryHttpClient`, so Sentry's automatic
-   failed-HTTP-request reporting integration would otherwise apply to
-   native-platform HTTP instrumentation independently of our own tracing
-   and could auto-report a `ConnectivityFailure`-classified request as if
-   it were a bug — the same reasoning that keeps `runInSpan` from
-   auto-capturing typed control-flow exceptions.
-6. Documented explicitly in ADR-036: what must never be passed as
+   `clearUserContext` removes both the user and the `organization` scope
+   context it set (`Scope.setUser(null)` and `Scope.removeContexts
+   ('organization')`) — clearing only the user and leaving a stale
+   organization id attached to later events would be its own small leak
+   of pre-sign-out tenant identity.
+4. Documented explicitly in ADR-036: what must never be passed as
    span/breadcrumb `data` values (the same list as point 2's rationale).
+
+(An earlier draft of this section also set `options.captureFailedRequests
+= false`, reasoning that it would stop Sentry's automatic failed-request
+reporting from double-reporting an already-classified connectivity
+failure. That integration only applies to `SentryHttpClient`/the native
+HTTP-instrumentation integrations, neither of which this design installs
+— `TracingHttpClient` is a plain `http.BaseClient` subclass Sentry's
+failed-request integration never sees. The option is harmless either way,
+but setting it implied a protection this design doesn't actually need;
+dropped rather than kept as a no-op with a misleading rationale attached.)
 
 ### Sentry configuration
 
@@ -477,7 +503,6 @@ Future<void> bootstrap() async {
       options.environment = sentryConfig.environment;
       options.tracesSampleRate = 1.0;
       options.sendDefaultPii = false;
-      options.captureFailedRequests = false;
     }, appRunner: initSupabaseAndRun);
   } else {
     await initSupabaseAndRun();
@@ -516,10 +541,14 @@ currently active span.
   producing `00-<trace_id>-<span_id>-<01|00>`. No Sentry dependency; unit
   testable in isolation with synthetic ids.
 - `Observability.currentTraceParent` reads the active span's *actual*
-  Sentry sampling decision (`ISentrySpan.samplingDecision?.sampled`, not a
-  hardcoded `true`) and passes it through to `buildTraceParent`'s
-  `sampled` parameter — relevant once/if `tracesSampleRate` is ever
-  lowered below 1.0.
+  trace id/span id/sampling decision via `ISentrySpan.toSentryTrace()`
+  (public API, returning a `SentryTraceHeader{traceId, spanId, sampled}`)
+  rather than `ISentrySpan.context`/`.samplingDecision` directly — those
+  are marked `@internal` in the SDK source and would trip
+  `invalid_use_of_internal_member` under analysis. `toSentryTrace()`'s
+  `sampled` is passed through to `buildTraceParent`'s `sampled`
+  parameter — relevant once/if `tracesSampleRate` is ever lowered below
+  1.0 — rather than a hardcoded `true`.
 - `TracingHttpClient` wraps `package:http`'s `Client`, injects the
   `traceparent` header (when non-null) into every outgoing request, and is
   passed to `Supabase.initialize(httpClient: TracingHttpClient(...))`.
@@ -548,22 +577,24 @@ Validation of this mechanism is a separate spike document — see
 TDD, mirroring existing test layout:
 
 - `test/infrastructure/observability/w3c_trace_context_test.dart` — pure
-  builder/parser round-trip and format validation using synthetic
-  trace/span ids (no Sentry dependency).
+  builder round-trip and format validation using synthetic trace/span ids
+  (no Sentry dependency; there is no parser, only a builder — a real
+  `traceparent` header is never parsed back by this app).
 - `test/infrastructure/observability/tracing_http_client_test.dart` —
   header injection present when a span is active, absent when not, and
   absent on a simulated web platform regardless of an active span.
+- `test/infrastructure/observability/sentry_pii_scrub_test.dart` — the
+  recursive PII scrub strips denylisted keys and list/nested-map entries,
+  redacts JWT-shaped values, and leaves ChordPro content/lyrics/ordinary
+  URLs untouched.
 - `test/infrastructure/observability/sentry_observability_test.dart` —
   zone-based propagation: nested `runInSpan` calls produce parent/child
   relationships; concurrent sibling `runInSpan` calls (started without a
   shared enclosing zone) do not cross-attach; `currentTraceParent` against
   a real (test-mode) Sentry span produces a trace-id/span-id pair that
-  matches that span's actual `context.traceId`/`context.spanId`; the
-  recursive PII scrub strips denylisted keys, list/nested-map entries,
-  URL query strings, and JWT-shaped values from span/breadcrumb data;
-  `captureException` attaches the correct span via `withScope` without
-  mutating the global scope (verified by asserting a concurrently-running
-  second span is unaffected).
+  matches that span's actual `toSentryTrace()` output; `captureException`
+  attaches the correct span via `withScope` without mutating the global
+  scope.
 - `test/infrastructure/config/sentry_config_test.dart` — empty DSN →
   `isEnabled == false`; non-empty DSN → `isEnabled == true`; environment
   default.
@@ -571,10 +602,12 @@ TDD, mirroring existing test layout:
   provider resolves to `NoopObservability` when nothing overrides it;
   `ProviderContainer` override with a fake `Observability` works.
 - `SongCatalogController` tests gain assertions (via a test-double
-  `Observability` implementation) that a successful refresh produces the
-  root span plus the four nested spans in the right names/order, that a
-  failure sets `internalError` status, and that both breadcrumbs are
-  recorded. `auth_providers.dart` tests gain a case for
+  `Observability` implementation) that a refresh records the
+  `song_catalog.refresh` root span name and the start/success or
+  start/failure breadcrumb pair on the one instrumented try/catch path
+  (see the breadcrumb-coverage caveat under "Business ops = root traces"
+  — the dozen other early-return branches in `_refreshCatalog` are not
+  individually asserted). `auth_providers.dart` tests gain a case for
   `observabilityUserContextEffectProvider` covering `signedIn` →
   `setUserContext` and `signedOut` → `clearUserContext`.
 
