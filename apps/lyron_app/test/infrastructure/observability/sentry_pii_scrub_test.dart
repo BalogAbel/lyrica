@@ -63,6 +63,12 @@ void main() {
     expect(result, {'url': 'https://example.supabase.co/rest/v1/songs'});
   });
 
+  test('strips the query string but keeps the fragment on URLs with both', () {
+    final result = scrubPii({'url': 'https://x.com/path?a=1#frag'});
+
+    expect(result, {'url': 'https://x.com/path#frag'});
+  });
+
   test('redacts JWT-shaped string values regardless of key', () {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
     final result = scrubPii({'unlisted_key': jwt});

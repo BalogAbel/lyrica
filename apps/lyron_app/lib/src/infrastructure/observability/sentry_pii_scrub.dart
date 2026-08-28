@@ -54,10 +54,14 @@ String _scrubString(String value) {
   }
   final uri = Uri.tryParse(value);
   if (uri != null && uri.hasScheme && uri.query.isNotEmpty) {
-    final stripped = uri.replace(query: '').toString();
-    return stripped.endsWith('?')
-        ? stripped.substring(0, stripped.length - 1)
-        : stripped;
+    return Uri(
+      scheme: uri.scheme,
+      userInfo: uri.userInfo.isEmpty ? null : uri.userInfo,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+      fragment: uri.fragment.isEmpty ? null : uri.fragment,
+    ).toString();
   }
   return value;
 }
