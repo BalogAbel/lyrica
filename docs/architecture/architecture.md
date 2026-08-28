@@ -118,6 +118,41 @@ For the slug-routing slice, route entry points resolve public slugs against the 
 The repository currently documents the broader local-first flow and already ships the first executable read-side subset.
 For the current song-reader slice, UI reads song summaries and raw ChordPro source from the active local snapshot and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS because Supabase remains the session-verification and refresh boundary.
 
+## Observability
+
+Application code depends on a first-party `Observability` interface
+(`lib/src/application/observability/`), never on the Sentry API directly.
+`SentryObservability` (`lib/src/infrastructure/observability/`) is the sole
+adapter today; `NoopObservability` is the default when no `SENTRY_DSN` is
+configured, so telemetry is opt-in infrastructure rather than a
+correctness-critical dependency. A future OpenTelemetry adapter can
+implement the same interface without touching call sites. See
+[ADR-036](decisions/ADR-036-observability-sentry-adapter.md).
+
+Business operations are root traces; Drift and Supabase operations are
+child spans under them. Span propagation runs through a dedicated Dart
+`Zone` value rather than Sentry's own ambient scope, because concurrent
+independent root operations (e.g. the unified sync overview running song
+and planning sync at once) would otherwise misattribute spans through a
+single mutable scope. Unhandled errors, native crashes, Android ANR, and
+iOS app hangs are captured automatically by `sentry_flutter`'s bundled
+hooks; handled errors are reported only at explicit `captureException`
+call sites, since the app already uses typed exceptions
+(`SongNotFoundException`, `ConnectivityFailure` classification) as
+expected control flow rather than bugs.
+
+A Sentry trace's `trace_id` is correlated with Supabase Cloud logs through
+a manually constructed W3C `traceparent` header — Sentry's SDK does not
+emit this header natively — injected into every Supabase request via a
+custom `http.Client` passed to `Supabase.initialize(httpClient: ...)`.
+
+PII, tokens, request/response bodies, RPC parameter values, lyrics, and
+ChordPro content must never reach Sentry; `user_id`/`organization_id` may
+be attached only as pseudonymized context. Only one vertical slice (song
+catalog refresh and sign-in) is instrumented so far — remaining use cases
+are tracked in
+[docs/deferred/2026-08-28-observability-remaining-use-cases.md](../deferred/2026-08-28-observability-remaining-use-cases.md).
+
 ## Multi-Tenancy
 
 - Organization is the top-level tenant boundary.
