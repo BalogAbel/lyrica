@@ -2,7 +2,13 @@
 
 ## Status
 
-Approved for implementation.
+Approved for implementation. Revised after an adversarial opus review
+found several blocking design defects in the first draft (broken
+interface signature, error-to-trace linkage silently defeated by
+`bindToScope: false`, a web CORS hazard, unsound root-trace placement,
+and a bootstrap dependency-injection ordering gap). This revision fixes
+all of them — see "Revision notes" at the end for the full list and
+rationale.
 
 ## Problem
 
@@ -23,7 +29,7 @@ with the corresponding Supabase Cloud request/log entry.
 - 100% error and trace sampling (justified by current low traffic).
 - A Sentry trace's `trace_id` is correlatable with the corresponding
   Supabase Cloud log entry via a W3C `traceparent` header on every
-  Supabase request.
+  Supabase request (native platforms; see the web caveat below).
 - No PII, tokens, request/response bodies, RPC parameter values, lyrics, or
   ChordPro content ever reach Sentry. `user_id`/`organization_id` may be
   attached as pseudonymized context.
@@ -37,15 +43,21 @@ with the corresponding Supabase Cloud request/log entry.
   Grafana/Loki/Tempo. These may arrive in a later slice; Sentry is the only
   telemetry backend introduced here.
 - Native crash symbol upload wiring (Sentry Android Gradle plugin, iOS
-  dSYM upload in CI). This modifies the CI/CD pipeline and belongs to the
-  roadmap's Phase 9 (production readiness / release pipeline), not this
-  slice. Dart-side native crash *capture* (via `sentry_flutter`'s bundled
-  native SDKs) ships now; *readable* (symbolicated) native stack traces is
+  dSYM upload in CI) **and** Dart-level obfuscation/`--split-debug-info`
+  symbolication (`sentry_dart_plugin`). Both modify the CI/CD pipeline and
+  belong to the roadmap's Phase 9 (production readiness / release
+  pipeline), not this slice. Dart-side native crash *capture* (via
+  `sentry_flutter`'s bundled native SDKs) ships now; *readable*
+  (symbolicated) stack traces — native and Dart-obfuscated alike — are
   deferred until that pipeline work lands.
 - Instrumenting every use case in the app. This slice instruments one
-  complete vertical slice end-to-end (song catalog refresh + sign-in) to
-  prove the pattern. Remaining use cases (planning mutation sync, discard,
-  storage eviction, unified sync overview) are explicitly deferred — see
+  root trace end-to-end (song catalog refresh, with the Supabase
+  network call, the membership/session RPCs, and the Drift write each as
+  a child span) to prove the pattern. Sign-in contributes only
+  pseudonymized user-context tagging, not a root trace of its own — see
+  "Business ops = root traces" below for why. Remaining use cases
+  (planning mutation sync, discard, storage eviction, unified sync
+  overview) are explicitly deferred — see
   `docs/deferred/2026-08-28-observability-remaining-use-cases.md`.
 - Live verification of the Sentry↔Supabase trace correlation against a
   real Supabase Cloud project. The Supabase MCP connector is not
@@ -65,7 +77,8 @@ lib/src/application/observability/
   observability.dart            # Observability, ObservabilitySpan,
                                  # ObservabilitySpanStatus, BreadcrumbLevel,
                                  # NoopObservability, NoopObservabilitySpan
-  observability_providers.dart  # observabilityProvider (Riverpod)
+  observability_providers.dart  # observabilityProvider + the bootstrap-time
+                                 # singleton holder (see "Sentry configuration")
 
 lib/src/infrastructure/observability/
   sentry_observability.dart     # SentryObservability adapter
@@ -80,20 +93,51 @@ lib/src/infrastructure/config/
 
 ```dart
 abstract class Observability {
-  ObservabilitySpan runInSpan<T>(
+  /// Runs [body] as a span named [name] with operation [operation]. If
+  /// there is already an active span in the current Dart Zone, the new
+  /// span is its child; otherwise it is a new root trace (Sentry
+  /// transaction). The span is finished automatically when [body]
+  /// completes or throws; on throw, [ObservabilitySpanStatus.internalError]
+  /// is set before the exception is rethrown unmodified.
+  ///
+  /// [body] is executed inside a new Zone in which this span is the
+  /// ambient "current span" ([currentSpan], [currentTraceParent]) for the
+  /// duration of [body] — including for code called deep inside [body]'s
+  /// call stack that has no explicit reference to the span (e.g.
+  /// `TracingHttpClient`, invoked from inside Supabase's own internals).
+  ///
+  /// Caveat for future call sites: `unawaited(observability.runInSpan(...))`
+  /// fired from inside another `runInSpan`'s [body] inherits that Zone and
+  /// becomes its child, not a new root — this is correct when the
+  /// fired-and-forgotten operation is genuinely a sub-step of the
+  /// enclosing business operation, and wrong if it is meant to be an
+  /// independent root trace. This slice has no call site where that
+  /// ambiguity arises (see "Business ops = root traces" for why sign-in
+  /// was deliberately kept out of the root-trace set for this reason); a
+  /// future instrumentation pass that adds one must make the call
+  /// explicitly outside any enclosing `runInSpan` body.
+  Future<T> runInSpan<T>(
     String name,
     String operation,
     Future<T> Function(ObservabilitySpan span) body, {
     Map<String, Object?>? data,
   });
 
-  ObservabilitySpan? get currentSpan;
+  /// The active span in the current Zone. Never null — returns a
+  /// [NoopObservabilitySpan] when there is no active span (no enclosing
+  /// `runInSpan`, or telemetry disabled), so callers never need to branch
+  /// on whether tracing is active.
+  ObservabilitySpan get currentSpan;
 
   /// W3C `traceparent` header value for the current span, or null if there
   /// is no active span. Backend-agnostic name (W3C term, not a Sentry term)
   /// so an OpenTelemetry adapter can implement it the same way.
   String? get currentTraceParent;
 
+  /// Reports a handled error, explicitly linked to the current span (see
+  /// "Error reporting semantics" for why this must be explicit rather than
+  /// automatic, and why SDK-auto-captured unhandled errors do not get this
+  /// linkage).
   void captureException(
     Object error,
     StackTrace stackTrace, {
@@ -107,12 +151,24 @@ abstract class Observability {
     Map<String, Object?>? data,
   });
 
-  void setUserContext({required String userId, required String organizationId});
+  /// [organizationId] is optional because it is not always resolved at the
+  /// point a session becomes available (see the sign-in wiring in
+  /// "Business ops = root traces"). Both values are pseudonymized Supabase
+  /// UUIDs; this method must never be passed an email or display name.
+  void setUserContext({required String userId, String? organizationId});
 
   void clearUserContext();
 }
 
 abstract class ObservabilitySpan {
+  /// Non-ambient nested span: useful when the caller already holds a span
+  /// reference and needs one more level of nesting under it without
+  /// wanting that nested span to become the Zone-ambient "current span"
+  /// for further code. Most call sites in this slice use
+  /// [Observability.runInSpan] instead, specifically because they need the
+  /// ambient behavior (e.g. so `TracingHttpClient` sees the network-call
+  /// span as current). Prefer `runInSpan` unless you have a concrete
+  /// reason not to propagate ambiently.
   ObservabilitySpan startChild(
     String operation, {
     String? description,
@@ -134,55 +190,151 @@ unit tests. This mirrors the project's existing fail-soft pattern for
 optional infrastructure rather than the fail-fast `SupabaseConfig` pattern,
 because a missing telemetry DSN must never crash the app.
 
-### Span propagation: Dart `Zone`, not Sentry's ambient scope
+### Span propagation: Dart `Zone`, not Sentry's ambient `Scope`
 
 Sentry's Dart SDK exposes an ambient "current span" via a mutable `Scope`
-object (`Sentry.getSpan()`). This app has concurrent independent root
-operations by design (the unified sync overview can run song-catalog sync
-and planning sync at the same time). A single mutable ambient scope would
-let one root trace's child spans attach to the other's transaction.
+object (`Sentry.getSpan()`, backed by `Scope.span`). This app has
+concurrent independent root operations by design (the unified sync
+overview can run song-catalog sync and planning sync at the same time,
+though that is not yet instrumented — see the deferred doc). A single
+mutable ambient scope would let one root trace's child spans attach to
+the other's transaction once that instrumentation lands; getting the
+propagation primitive right now, even though this slice's own code paths
+never actually exercise two concurrent roots, avoids re-architecting it
+later.
 
-Instead, `SentryObservability.runInSpan` propagates the active span through
-a dedicated `Zone` value (`Zone.current[_spanKey]`), scoped per async call
-tree. Concurrent `runInSpan` calls each fork their own zone and cannot
-clobber each other. `startChild` on an `ObservabilitySpan` looks up its
-parent through this zone key, not through Sentry's scope stack. The
-underlying Sentry transaction/span is still created via
-`Sentry.startTransaction`/`span.startChild`, but with `bindToScope: false`
-— the app's zone-based propagation is authoritative, and Sentry's own scope
-stack is left untouched. This detail is internal to the Sentry adapter and
-does not appear in the `Observability` interface; a future OpenTelemetry
-adapter would use its own `Context`-based propagation (which is likewise
-`Zone`-based in `package:opentelemetry`) behind the same interface.
+`SentryObservability.runInSpan` propagates the active span through a
+dedicated `Zone` value, scoped per async call tree. Concurrent
+`runInSpan` calls each fork their own zone and cannot clobber each
+other's *parent-resolution* (which span is the parent of a new child
+span). The underlying Sentry transaction/span is created via
+`Sentry.startTransaction`/`ISentrySpan.startChild`, with
+`bindToScope: false` — the app's zone-based propagation is authoritative
+for parent/child resolution, and Sentry's own scope stack (`Scope.span`)
+is deliberately left untouched by `runInSpan`.
+
+This has one real, accepted consequence, spelled out fully in "Error
+reporting semantics" below: Sentry's own automatic unhandled-error
+capture reads `Scope.span`, not our Zone key, so an error caught by
+Sentry's global `FlutterError.onError`/`PlatformDispatcher.onError` hooks
+is **not** linked to whichever business trace was running when it fired.
+Only explicit `captureException` calls get correct linkage. We chose this
+over the alternative (setting `Scope.span` globally) because the
+alternative reintroduces exactly the cross-attachment bug this whole
+design exists to avoid: two concurrent `runInSpan` trees mutating the one
+global `Scope.span` would let a later-starting root silently steal the
+earlier one's "current span" out from under it, which is strictly worse
+than the accepted gap (an unlinked unhandled error is still fully
+reported — it just doesn't carry a `trace_id`).
+
+An alternative considered and rejected for *this* propagation problem
+(not for the wider SDK): `sentry` 9.28.0 ships a newer "v2" tracing API
+(`Sentry.startSpan`/`SentrySpanV2`) with built-in Zone-based ambient
+propagation that also avoids scope clobbering. It has no public API to
+read "whatever span is currently active" from arbitrary code that isn't
+inside its own callback (only `hub.getActiveSpan()`, marked `@internal`),
+which is exactly what `TracingHttpClient` needs (it runs deep inside
+Supabase's call stack, with no reference to any span). v1 plus our own
+Zone key gives us that read. Revisit v2 once/if it grows a public ambient
+accessor.
+
+`startChild` on an `ObservabilitySpan` does **not** enter a new Zone — it
+creates a Sentry child span but does not make it the Zone-ambient
+"current span". Use `runInSpan` for anything that must be visible to
+`currentSpan`/`currentTraceParent` from code with no direct span
+reference (this is why every child span in this slice, including the one
+around each Supabase call, is created via `runInSpan`, not `startChild` —
+see "Business ops = root traces" for the concrete call sites).
 
 ### Business ops = root traces, Drift/Supabase = child spans
 
 `runInSpan` starting with no parent in the current zone creates a new
-Sentry transaction (root trace). Call sites for this slice:
+Sentry transaction (root trace). The one root trace in this slice:
 
-- `SongCatalogController`'s guarded refresh path — root trace
-  `song_catalog.refresh` / operation `business.refresh`.
-- Sign-in completion in `auth_providers.dart` — root trace
-  `auth.sign_in` / operation `business.auth`.
+- `SongCatalogController._refreshCatalog()` — root trace
+  `song_catalog.refresh` / operation `business.refresh`. Pinned
+  specifically to the private `_refreshCatalog()` method (the one actually
+  gated by the generation/staleness machinery and invoked at most once per
+  real refresh attempt), **not** the public `refreshCatalog()` coalescing
+  wrapper — wrapping the public method would produce an empty duplicate
+  root trace for every caller that gets coalesced onto an in-flight
+  refresh instead of triggering a new one.
 
-Child spans, created via `observability.currentSpan?.startChild(...)`
-inside the already-running root trace:
+Nested inside that root trace's body, each wrapped in its own
+`runInSpan` call (ambient, so each becomes `currentSpan` for the duration
+of its own body — this matters for the two Supabase calls, so
+`TracingHttpClient` picks up the *specific* network-call span as the
+current span, not the root):
 
-- `SupabaseSongRepository` network calls — operation `http.client`.
-- The Drift write in the song catalog store that persists the refreshed
-  snapshot — operation `db.write`.
+- `runInSpan('membership.resolve', 'business.refresh', ...)` around the
+  organization-id RPC lookup (`_resolveOrganizationId()`).
+- `runInSpan('auth.verify_session', 'business.refresh', ...)` around the
+  session-verifier's `auth.getUser()` call.
+- `runInSpan('http.client', 'http.client', ...)` around
+  `_remoteRepository.listSongs()` and, separately, around the
+  `Future.wait` over `_remoteRepository.getSongSource(...)` calls.
+- `runInSpan('db.write', 'db.write', ...)` around
+  `_store.replaceActiveSnapshot(...)`.
 
-If `currentSpan` is null (no root trace in progress — e.g. a call outside
-the instrumented paths, or Sentry disabled), `startChild` is a no-op on
-`NoopObservabilitySpan` and callers do not need to branch on this.
+None of `SupabaseSongRepository` or `DriftSongCatalogStore` need any
+`Observability` dependency injected — the controller already owns every
+one of these call sites directly, so wrapping happens at the call site,
+not inside the leaf classes. This keeps the blast radius to one file
+(`song_catalog_controller.dart`) plus its two provider-wiring call sites,
+instead of touching the repository/store constructors (and their
+`.testing()` factories) that many other, uninstrumented call sites also
+depend on.
+
+A breadcrumb is recorded at the start of `_refreshCatalog()`'s body
+(`'song_catalog.refresh started'`, category `song_catalog`) and at its
+terminal outcome (`'song_catalog.refresh succeeded'` /
+`'song_catalog.refresh failed'`), so a Sentry event fired anywhere during
+a refresh has recent breadcrumb context even without an active trace.
+
+**Sign-in is not a root trace in this slice.** Sign-in in this app is
+OAuth-redirect/magic-link based: the call that starts it
+(`signInWithOAuth`) returns immediately, and the actual session arrives
+later via a stream/deep-link callback that runs in a different async
+context entirely — there is no single in-process call tree to wrap in
+`runInSpan` the way there is for a refresh. Forcing a root trace around
+it would either wrap nothing useful or, worse, wrap the auth-state
+listener in `song_catalog_providers.dart` that fires
+`unawaited(controller.refreshCatalog())` on the `signedIn` transition —
+which would make every post-sign-in refresh an accidental *child* of the
+sign-in trace instead of its own root (see the Zone caveat on
+`runInSpan` above). Sign-in still gets the pseudonymized identity
+attached to every subsequent event: `observabilityUserContextEffectProvider`
+(new, in `auth_providers.dart`) is a `ref.listen`-based side-effect
+provider — structurally identical to the existing
+`membershipRefreshEffectProvider` — that calls
+`observability.setUserContext(userId: ..., organizationId: ...)` on the
+`signedIn` transition and `observability.clearUserContext()` on
+`signedOut`, using the session's `userId` and (best-effort, may be null
+at that instant) `authController.lastKnownIdentity?.organizationId`. It
+does not touch `AppAuthController`'s own state machine at all.
+
+If `currentSpan` has no active span underneath it (Sentry disabled, or a
+call outside any `runInSpan`), it resolves to `NoopObservabilitySpan` —
+see the interface note above; nothing in the call sites above needs a
+null check.
 
 ### Error reporting semantics
 
 - **Unhandled**: `SentryFlutter.init`'s bundled `FlutterError.onError` and
   `PlatformDispatcher.onError` hooks capture these automatically. No
-  application code changes this behavior.
+  application code changes this behavior. **These events are not linked
+  to an active trace** — see the propagation section above for why
+  (`bindToScope: false` means Sentry's own hooks, which read `Scope.span`,
+  see nothing there). This is an accepted, documented gap, not an
+  oversight: the alternative (mutating `Scope.span` globally) reintroduces
+  cross-trace attribution bugs under concurrent root operations.
 - **Handled**: explicit `observability.captureException(error, stackTrace)`
-  calls at true-bug boundaries. `runInSpan`'s internal catch block sets
+  calls at true-bug boundaries. Internally, `SentryObservability` calls
+  `Sentry.captureException(error, stackTrace: stackTrace, withScope: (scope) => scope.span = <the Zone's current ISentrySpan, if any>)`
+  — this explicitly links the reported error to the correct span *without*
+  touching the global ambient scope for anyone else, sidestepping the
+  cross-trace risk that ruled out doing this globally in `runInSpan`.
+  `runInSpan`'s internal catch block sets
   `ObservabilitySpanStatus.internalError` on the span and rethrows — it
   does **not** call `captureException` itself. Typed control-flow
   exceptions already used throughout the app (`SongNotFoundException`,
@@ -192,28 +344,63 @@ the instrumented paths, or Sentry disabled), `startChild` is a no-op on
   existing error-classification boundary, whether a caught error is
   reportable.
 - `bootstrap.dart`'s `closeSharedDatabases().catchError` continues to call
-  `FlutterError.reportError` (already auto-captured by Sentry's hook) — no
-  change needed there.
+  `FlutterError.reportError` (already auto-captured by Sentry's hook, with
+  the same "not trace-linked" caveat as any other unhandled path — this
+  call site runs during widget disposal, well outside any refresh trace
+  anyway) — no change needed there.
 
 ### PII and secret redaction
 
 Layered, not relying on a single control:
 
-1. `options.sendDefaultPii = false` (explicit; Sentry's own default is
-   `true`).
-2. A `beforeSend`/span-attribute scrub in `SentryObservability` that
-   strips any breadcrumb/span data entry whose **key** matches a denylist:
-   `authorization`, `apikey`, `access_token`, `refresh_token`,
-   `chordpro_source`, `lyrics`, `token`. This is defense-in-depth, not a
-   substitute for discipline at call sites.
+1. `options.sendDefaultPii = false`. (Sentry's actual default is already
+   `false` as of this SDK version — verified against the installed
+   `sentry_options.dart` source, correcting an earlier draft of this spec
+   that claimed the opposite. Setting it explicitly here is still
+   worthwhile: it is a security-relevant flag, and stating it inline
+   means a future SDK upgrade that changes the default cannot silently
+   flip our behavior.)
+2. A recursive scrub in `SentryObservability`, applied to every span
+   `data` map, breadcrumb `data` map, and `captureException` `extra` map
+   before it reaches the Sentry SDK:
+   - Walks nested `Map`s and `List`s, not just the top level.
+   - Drops any entry whose **key** (case-insensitive) matches a denylist:
+     `authorization`, `apikey`, `access_token`, `refresh_token`,
+     `chordpro_source`, `lyrics`, `token`.
+   - For any `String` value that looks like a URL (`Uri.tryParse`
+     succeeds and has a scheme), strips its query string entirely before
+     storing it — PostgREST encodes filter values directly in query
+     parameters (e.g. `?slug=eq.<value>`, `?id=eq.<uuid>`), so the query
+     string itself is the leak, not just specific keys.
+   - For any remaining `String` value, redacts it if it matches a
+     JWT-shaped pattern (`^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
+     as defense-in-depth against a token ending up in a value under an
+     unlisted key.
+   - This is defense-in-depth, not a substitute for discipline at call
+     sites: **no call site may pass ChordPro source, lyrics, request/
+     response bodies, tokens, or RPC parameter values as span/breadcrumb
+     data in the first place.**
+   - The **free-text fields** (`runInSpan`'s `name`, a span's
+     `description`, a breadcrumb's `message`) are not run through the
+     scrub — they are supplied by our own instrumentation code, not by
+     arbitrary caller data, so they are reviewed at the call site instead
+     (every span name/description added by this slice is a static
+     string, never interpolated from request content).
 3. `setUserContext` only ever accepts `userId`/`organizationId` — both are
    Supabase UUIDs already opaque/pseudonymous, never email or display
    name. There is no code path to attach email or name to Sentry scope.
-4. `maxRequestBodySize` is left at Sentry's default `never` behavior for
-   this SDK version's HTTP breadcrumb capture (not raised) — request/
-   response bodies are never attached.
-5. Documented explicitly in ADR-036: what must never be passed as
-   span/breadcrumb `data` values.
+4. `maxRequestBodySize` is left at Sentry's default `never` behavior —
+   request/response bodies are never attached.
+5. `options.captureFailedRequests = false` — explicit, not left at the
+   SDK default. `TracingHttpClient` is a plain `http.BaseClient`
+   subclass, not `SentryHttpClient`, so Sentry's automatic
+   failed-HTTP-request reporting integration would otherwise apply to
+   native-platform HTTP instrumentation independently of our own tracing
+   and could auto-report a `ConnectivityFailure`-classified request as if
+   it were a bug — the same reasoning that keeps `runInSpan` from
+   auto-capturing typed control-flow exceptions.
+6. Documented explicitly in ADR-036: what must never be passed as
+   span/breadcrumb `data` values (the same list as point 2's rationale).
 
 ### Sentry configuration
 
@@ -232,16 +419,76 @@ factory SentryConfig.fromEnvironment({
 bool get isEnabled => dsn.isNotEmpty;
 ```
 
-`bootstrap.dart` calls `SentryFlutter.init` only when `isEnabled`; when
-disabled, `observabilityProvider` resolves to `NoopObservability` and the
-app runs exactly as it does today. Release version is read from the
-platform package-info (Sentry's default behavior) which already reflects
-`pubspec.yaml`'s `version: 0.1.0+8`; no separate release wiring is added.
+**Bootstrap ordering.** `TracingHttpClient` must exist *before*
+`Supabase.initialize` runs, and `Supabase.initialize` must run *before*
+`ProviderScope` exists (it runs in `bootstrap()`, ahead of `runApp`) — so
+the `Observability` instance cannot be resolved through a Riverpod
+provider at the point it is first needed. `observability_providers.dart`
+instead holds a plain package-level singleton, set once during
+`bootstrap()`, exactly mirroring how `supabaseClientProvider` already
+reads the static `Supabase.instance.client` rather than constructing it:
 
-`options.tracesSampleRate = 1.0`. Native crash handling, ANR detection,
-and iOS app hang tracking are left at `sentry_flutter`'s defaults (all
-`true`) — no explicit override needed, this is already the documented
-default.
+```dart
+Observability _currentObservability = const NoopObservability();
+
+void setCurrentObservability(Observability observability) {
+  _currentObservability = observability;
+}
+
+final observabilityProvider = Provider<Observability>((ref) {
+  return _currentObservability;
+});
+```
+
+`bootstrap()` becomes:
+
+```dart
+Future<void> bootstrap() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final sentryConfig = SentryConfig.fromEnvironment();
+  final observability = sentryConfig.isEnabled
+      ? SentryObservability()
+      : const NoopObservability();
+  setCurrentObservability(observability);
+
+  final supabaseConfig = SupabaseConfig.fromEnvironment();
+
+  Future<void> initSupabaseAndRun() async {
+    await Supabase.initialize(
+      url: supabaseConfig.url,
+      publishableKey: supabaseConfig.anonKey,
+      httpClient: TracingHttpClient(http.Client(), observability),
+    );
+    runApp(const _BootstrapScope(child: LyronApp()));
+  }
+
+  if (sentryConfig.isEnabled) {
+    await SentryFlutter.init((options) {
+      options.dsn = sentryConfig.dsn;
+      options.environment = sentryConfig.environment;
+      options.tracesSampleRate = 1.0;
+      options.sendDefaultPii = false;
+      options.captureFailedRequests = false;
+    }, appRunner: initSupabaseAndRun);
+  } else {
+    await initSupabaseAndRun();
+  }
+}
+```
+
+Tests that need a specific `Observability` (real or fake) use standard
+Riverpod `ProviderContainer(overrides: [observabilityProvider.overrideWithValue(fake)])`
+rather than the global setter — the setter exists only for the one place
+(`bootstrap()`) that runs before any `ProviderScope` exists.
+
+Release version is read from the platform package-info (Sentry's default
+behavior) which already reflects `pubspec.yaml`'s `version: 0.1.0+8`; no
+separate release wiring is added. `sampleRate` (error-event sampling) is
+left unset, which defaults to `1.0` — satisfying "100% error sampling"
+without an explicit line, but this fact is called out here so it isn't
+mistaken for an oversight. Native crash handling, ANR detection, and iOS
+app hang tracking are left at `sentry_flutter`'s defaults (all `true`) —
+no explicit override needed, this is already the documented default.
 
 ### W3C `traceparent` propagation to Supabase
 
@@ -250,15 +497,20 @@ its own `sentry-trace` and `baggage` headers (confirmed via context7
 against `getsentry/sentry-dart` docs and the `SentryHttpClient`/
 `tracing_client` behavior). Sentry's trace ID (32 hex chars) and span ID
 (16 hex chars) are format-compatible with the W3C spec's `trace-id` and
-`parent-id`, so a compliant `traceparent` header can be constructed
-manually from the currently active span.
+`parent-id` — confirmed against the installed SDK's `SentryId`/`SpanId`
+source, both `toString()` to exactly that shape, lowercase, no dashes —
+so a compliant `traceparent` header can be constructed manually from the
+currently active span.
 
 - `w3c_trace_context.dart` — pure function
   `String buildTraceParent({required String traceId, required String spanId, bool sampled = true})`
   producing `00-<trace_id>-<span_id>-<01|00>`. No Sentry dependency; unit
-  testable in isolation.
-- `Observability.currentTraceParent` (see interface above) returns this
-  string for the active span, or null.
+  testable in isolation with synthetic ids.
+- `Observability.currentTraceParent` reads the active span's *actual*
+  Sentry sampling decision (`ISentrySpan.samplingDecision?.sampled`, not a
+  hardcoded `true`) and passes it through to `buildTraceParent`'s
+  `sampled` parameter — relevant once/if `tracesSampleRate` is ever
+  lowered below 1.0.
 - `TracingHttpClient` wraps `package:http`'s `Client`, injects the
   `traceparent` header (when non-null) into every outgoing request, and is
   passed to `Supabase.initialize(httpClient: TracingHttpClient(...))`.
@@ -266,6 +518,18 @@ manually from the currently active span.
   (confirmed by reading the installed `supabase` package source,
   `supabase_client.dart`), so no monkey-patching of the Postgrest/GoTrue
   internals is required.
+
+**Web caveat.** `traceparent` is not a CORS-safelisted request header. On
+Flutter Web, adding it to every Supabase request forces a CORS preflight
+on requests that might not otherwise need one, and if Supabase's
+`Access-Control-Allow-Headers` response does not list `traceparent`, the
+browser blocks the request outright — a correctness-breaking regression
+on web, not just a missed-correlation gap. `TracingHttpClient` therefore
+only injects the header when `!kIsWeb`; on web, no `traceparent` header is
+sent at all, and web-originated requests are not correlatable via this
+mechanism until the CORS behavior is verified against the real Supabase
+project (added as an explicit step to the spike runbook) and this gate is
+deliberately lifted.
 
 Validation of this mechanism is a separate spike document — see
 `docs/specs/2026-08-28-w3c-traceparent-correlation-spike.md`.
@@ -275,32 +539,101 @@ Validation of this mechanism is a separate spike document — see
 TDD, mirroring existing test layout:
 
 - `test/infrastructure/observability/w3c_trace_context_test.dart` — pure
-  builder/parser round-trip and format validation.
+  builder/parser round-trip and format validation using synthetic
+  trace/span ids (no Sentry dependency).
 - `test/infrastructure/observability/tracing_http_client_test.dart` —
-  header injection present when a span is active, absent when not.
+  header injection present when a span is active, absent when not, and
+  absent on a simulated web platform regardless of an active span.
 - `test/infrastructure/observability/sentry_observability_test.dart` —
   zone-based propagation: nested `runInSpan` calls produce parent/child
-  relationships; concurrent sibling `runInSpan` calls do not cross-attach;
-  PII denylist scrub strips denylisted keys from span/breadcrumb data.
+  relationships; concurrent sibling `runInSpan` calls (started without a
+  shared enclosing zone) do not cross-attach; `currentTraceParent` against
+  a real (test-mode) Sentry span produces a trace-id/span-id pair that
+  matches that span's actual `context.traceId`/`context.spanId`; the
+  recursive PII scrub strips denylisted keys, list/nested-map entries,
+  URL query strings, and JWT-shaped values from span/breadcrumb data;
+  `captureException` attaches the correct span via `withScope` without
+  mutating the global scope (verified by asserting a concurrently-running
+  second span is unaffected).
 - `test/infrastructure/config/sentry_config_test.dart` — empty DSN →
   `isEnabled == false`; non-empty DSN → `isEnabled == true`; environment
   default.
 - `test/application/observability/observability_providers_test.dart` —
-  provider resolves to `NoopObservability` when config disabled.
-- Existing `SongCatalogController`/`SupabaseSongRepository`/auth provider
-  tests gain assertions that the injected `Observability` records the
-  expected root trace / child span calls (via a test double implementing
-  the interface — no real Sentry network calls in tests).
+  provider resolves to `NoopObservability` when nothing overrides it;
+  `ProviderContainer` override with a fake `Observability` works.
+- `SongCatalogController` tests gain assertions (via a test-double
+  `Observability` implementation) that a successful refresh produces the
+  root span plus the four nested spans in the right names/order, that a
+  failure sets `internalError` status, and that both breadcrumbs are
+  recorded. `auth_providers.dart` tests gain a case for
+  `observabilityUserContextEffectProvider` covering `signedIn` →
+  `setUserContext` and `signedOut` → `clearUserContext`.
 
 ## Documentation impact
 
-- `docs/architecture/architecture.md` — new "Observability" section.
+- `docs/architecture/architecture.md` — "Observability" section (kept in
+  sync with this revision).
 - `docs/architecture/decisions/ADR-036-observability-sentry-adapter.md`.
 - `docs/deferred/2026-08-28-observability-remaining-use-cases.md`.
 - `docs/specs/2026-08-28-w3c-traceparent-correlation-spike.md`.
 
 ## Open questions
 
-None outstanding — DSN is a placeholder (`SENTRY_DSN` dart-define, empty
+None outstanding. DSN is a placeholder (`SENTRY_DSN` dart-define, empty
 by default) until the user provisions a real Sentry project; the runbook
-in the spike doc tells them exactly what to do at that point.
+in the spike doc tells them exactly what to do at that point, including
+the web-CORS check called out above.
+
+## Revision notes
+
+An adversarial opus review of the first draft found the following, all
+addressed in this revision:
+
+- **Broken interface signature**: `runInSpan<T>` returned
+  `ObservabilitySpan` instead of `Future<T>`, making the generic
+  parameter unusable and leaving span ownership/finishing ambiguous.
+  Fixed — see the interface block above.
+- **Error-to-trace linkage silently defeated**: `bindToScope: false` means
+  neither Sentry's auto-captured unhandled errors nor a naive
+  `Sentry.captureException` call would carry a `trace_id` — undermining
+  the stated goal of correlating errors with traces. Fixed for the
+  handled-error path via explicit `withScope` linkage; the unhandled-error
+  gap is now a documented, deliberate trade-off rather than a silent
+  defect.
+- **Web CORS hazard**: unmitigated `traceparent` injection would have
+  broken (or silently no-op'd, depending on Supabase's CORS config) every
+  web request. Fixed via the `!kIsWeb` gate.
+- **Root-trace placement unsound**: sign-in has no single in-process call
+  tree to wrap, and wrapping it risked turning the very next refresh into
+  an accidental child span via Zone inheritance through an `unawaited()`
+  call. Fixed by dropping sign-in as a root trace and keeping only
+  user-context tagging there.
+- **Ambient child-span bug**: the original design created child spans via
+  `startChild`, which does not enter a Zone, so `TracingHttpClient` would
+  have seen the *root* span as current instead of the actual HTTP-call
+  span. Fixed by using `runInSpan` (Zone-entering) for every nested span
+  that needs to be ambient, and narrowing `startChild`'s documented use
+  to non-ambient nesting.
+- **Understated blast radius**: injecting `Observability` into
+  `SupabaseSongRepository`/`DriftSongCatalogStore` would have touched
+  shared infrastructure classes with many other, uninstrumented call
+  sites. Fixed by moving every span-creation call site into
+  `SongCatalogController`, which already owns the calls being wrapped —
+  the leaf classes need no changes at all.
+- **Bootstrap DI ordering gap**: `Observability` needed to exist before
+  `Supabase.initialize`, which runs before any `ProviderScope`. Fixed via
+  a package-level singleton set in `bootstrap()`, read by
+  `observabilityProvider` — mirroring the existing
+  `supabaseClientProvider`/`Supabase.instance.client` pattern.
+- **`sendDefaultPii` default claim was backwards**: corrected; the SDK's
+  actual default is already `false`. The explicit line stays for defense
+  against a future default change.
+- **PII scrub gaps**: denylist was key-only, top-level-only, and missed
+  URL query strings (where PostgREST embeds filter values). Fixed via the
+  recursive, URL-aware, JWT-pattern-aware scrub described above.
+- **Missing breadcrumb call site**: the original draft named the
+  capability but instrumented none. Fixed — two breadcrumbs added to the
+  refresh flow.
+- **Ambiguous instrumentation target**: "the guarded refresh path" could
+  have meant the public coalescing `refreshCatalog()` or the private
+  `_refreshCatalog()`. Fixed by pinning explicitly to the latter.

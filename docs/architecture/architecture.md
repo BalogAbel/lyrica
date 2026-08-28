@@ -130,21 +130,33 @@ implement the same interface without touching call sites. See
 [ADR-036](decisions/ADR-036-observability-sentry-adapter.md).
 
 Business operations are root traces; Drift and Supabase operations are
-child spans under them. Span propagation runs through a dedicated Dart
-`Zone` value rather than Sentry's own ambient scope, because concurrent
-independent root operations (e.g. the unified sync overview running song
-and planning sync at once) would otherwise misattribute spans through a
-single mutable scope. Unhandled errors, native crashes, Android ANR, and
-iOS app hangs are captured automatically by `sentry_flutter`'s bundled
-hooks; handled errors are reported only at explicit `captureException`
-call sites, since the app already uses typed exceptions
+child spans under them, each created via `Observability.runInSpan` so it
+becomes the Zone-ambient current span for its own duration. Span
+propagation runs through a dedicated Dart `Zone` value rather than
+Sentry's own ambient `Scope`, because independent root operations
+(e.g. the unified sync overview running song and planning sync at once,
+once instrumented) would otherwise misattribute spans through a single
+mutable scope. One accepted consequence: Sentry's own automatic
+unhandled-error hooks read `Scope.span`, not this Zone key, so SDK-
+auto-captured unhandled errors are reported but never trace-linked;
+explicit `captureException` calls are linked via a per-call `withScope`,
+never by mutating the global scope. Native crashes, Android ANR, and iOS
+app hangs are captured automatically by `sentry_flutter`'s bundled hooks;
+handled errors are reported only at explicit `captureException` call
+sites, since the app already uses typed exceptions
 (`SongNotFoundException`, `ConnectivityFailure` classification) as
-expected control flow rather than bugs.
+expected control flow rather than bugs. Sign-in has no root trace of its
+own (it has no single in-process call tree to wrap) — it contributes only
+pseudonymized `setUserContext`/`clearUserContext` tagging via a
+side-effect provider.
 
 A Sentry trace's `trace_id` is correlated with Supabase Cloud logs through
 a manually constructed W3C `traceparent` header — Sentry's SDK does not
 emit this header natively — injected into every Supabase request via a
 custom `http.Client` passed to `Supabase.initialize(httpClient: ...)`.
+The header is only sent on non-web platforms until Supabase's CORS
+configuration is verified to allow it, since `traceparent` is not a
+CORS-safelisted header.
 
 PII, tokens, request/response bodies, RPC parameter values, lyrics, and
 ChordPro content must never reach Sentry; `user_id`/`organization_id` may
