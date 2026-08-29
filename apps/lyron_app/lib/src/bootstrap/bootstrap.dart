@@ -24,7 +24,10 @@ Future<void> bootstrap() async {
 
   final supabaseConfig = SupabaseConfig.fromEnvironment();
 
+  var appStarted = false;
+
   Future<void> initSupabaseAndRun() async {
+    appStarted = true;
     // supabase_flutter 2.16 deprecated anonKey in favour of publishableKey;
     // both feed the same effective key, so the legacy anon JWT keeps
     // working. The SUPABASE_ANON_KEY dart-define keeps its name — that is
@@ -39,12 +42,35 @@ Future<void> bootstrap() async {
   }
 
   if (sentryConfig.isEnabled) {
-    await SentryFlutter.init((options) {
-      options.dsn = sentryConfig.dsn;
-      options.environment = sentryConfig.environment;
-      options.tracesSampleRate = 1.0;
-      options.sendDefaultPii = false;
-    }, appRunner: initSupabaseAndRun);
+    try {
+      await SentryFlutter.init((options) {
+        options.dsn = sentryConfig.dsn;
+        options.environment = sentryConfig.environment;
+        options.tracesSampleRate = 1.0;
+        options.sendDefaultPii = false;
+      }, appRunner: initSupabaseAndRun);
+    } catch (error, stackTrace) {
+      // Telemetry must fail soft (see SentryConfig's doc comment and
+      // ADR-036 point 5): a bad SENTRY_DSN throws out of
+      // SentryFlutter.init's internal setup, before appRunner ever runs.
+      // Sentry's own static API (Sentry.captureException et al.) already
+      // no-ops safely when the SDK never finished initializing -- no need
+      // to repoint `observability` at NoopObservability here. We only need
+      // to make sure the app still starts.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'bootstrap',
+          context: ErrorDescription(
+            'while initializing Sentry; continuing without telemetry',
+          ),
+        ),
+      );
+      if (!appStarted) {
+        await initSupabaseAndRun();
+      }
+    }
   } else {
     await initSupabaseAndRun();
   }
