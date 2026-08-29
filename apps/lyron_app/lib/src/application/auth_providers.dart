@@ -21,6 +21,7 @@ import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
+import 'package:lyron_app/src/application/observability/observability_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
 import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/song_catalog_providers.dart';
@@ -776,6 +777,54 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
       unawaited(refreshMembership());
     }
   });
+});
+
+/// Attaches/clears pseudonymized identity on the Observability scope as
+/// the auth state transitions. Deliberately not a root trace -- sign-in
+/// is OAuth-redirect/magic-link based (the initiating call returns
+/// immediately; the session arrives later via a stream/deep-link callback
+/// in an unrelated async context), so there is no single call tree to
+/// wrap. See docs/architecture/decisions/ADR-036-observability-sentry
+/// -adapter.md point 8.
+final observabilityUserContextEffectProvider = Provider<void>((ref) {
+  final observability = ref.watch(observabilityProvider);
+  final authController = ref.read(appAuthControllerProvider);
+
+  ref.listen<AppAuthState>(appAuthControllerProvider.select((c) => c.state), (
+    prev,
+    next,
+  ) {
+    switch (next.status) {
+      case AppAuthStatus.signedIn:
+        final session = next.session;
+        if (session != null) {
+          // organizationId is best-effort: `lastKnownIdentity` may not
+          // be populated yet at this exact instant (it is written by a
+          // separate persistence effect reacting to the same signedIn
+          // transition, with no ordering guarantee relative to this
+          // listener) -- this is not re-synced later in this slice. See
+          // docs/specs/2026-08-28-observability-foundation.md, "Sign-in
+          // is not a root trace in this slice".
+          observability.setUserContext(
+            userId: session.userId,
+            organizationId: authController.lastKnownIdentity?.organizationId,
+          );
+        }
+        return;
+      case AppAuthStatus.signedOut:
+        observability.clearUserContext();
+        return;
+      case AppAuthStatus.initializing:
+        return;
+      case AppAuthStatus.sessionExpired:
+        // Deliberate no-op, not an oversight: sessionExpired is
+        // offline-authenticated access, not sign-out (ADR-020) -- the
+        // same user is still using the app without a live session, so
+        // clearing their identity here would misrepresent telemetry for
+        // that entire offline-authenticated window as anonymous.
+        return;
+    }
+  }, fireImmediately: true);
 });
 
 final appAuthListenableProvider = Provider<Listenable>((ref) {
