@@ -334,9 +334,23 @@ provider — structurally identical to the existing
 `membershipRefreshEffectProvider` — that calls
 `observability.setUserContext(userId: ..., organizationId: ...)` on the
 `signedIn` transition and `observability.clearUserContext()` on
-`signedOut`, using the session's `userId` and (best-effort, may be null
-at that instant) `authController.lastKnownIdentity?.organizationId`. It
-does not touch `AppAuthController`'s own state machine at all.
+`signedOut`, using the session's `userId` and (best-effort)
+`authController.lastKnownIdentity?.organizationId`. It does not touch
+`AppAuthController`'s own state machine at all.
+
+**Known gap (found in Task 12 code review, deliberately deferred, not
+fixed in this slice):** "best-effort" understates the actual risk —
+`lastKnownIdentity` can hold a *different, prior* user's identity (cold
+start reloading yesterday's session, or a different-user reauth
+mid-session), not merely be null, and the correction written later by
+`lastKnownIdentityPersistenceProvider` never re-fires this listener (no
+`notifyListeners()` on that write path). The wrong `organizationId` can
+therefore stay attached to Sentry's `organization` context for the rest
+of the session — a telemetry-only, silent, cross-tenant identifier leak,
+not a backend-authorization issue (AGENTS.md rule 5 keeps authorization
+backend-enforced regardless of this tag). See
+`docs/deferred/2026-08-28-observability-remaining-use-cases.md` for the
+full analysis and the suggested userId-match-guard fix.
 
 If `currentSpan` has no active span underneath it (Sentry disabled, or a
 call outside any `runInSpan`), it resolves to `NoopObservabilitySpan` —
