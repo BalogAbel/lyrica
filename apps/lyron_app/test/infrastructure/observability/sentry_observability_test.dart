@@ -95,6 +95,47 @@ void main() {
     });
   });
 
+  test('span.startChild returns a non-noop child span', () async {
+    const observability = SentryObservability();
+
+    await observability.runInSpan('root', 'business.refresh', (span) async {
+      final child = span.startChild('db.query', description: 'child op');
+      expect(child, isNot(isA<NoopObservabilitySpan>()));
+      await child.finish();
+    });
+  });
+
+  test('span.setData does not throw', () async {
+    const observability = SentryObservability();
+
+    await observability.runInSpan('root', 'business.refresh', (span) async {
+      expect(() => span.setData('song_count', 42), returnsNormally);
+    });
+  });
+
+  test('span.setStatus does not throw for ok and cancelled', () async {
+    const observability = SentryObservability();
+
+    await observability.runInSpan('root', 'business.refresh', (span) async {
+      expect(() => span.setStatus(ObservabilitySpanStatus.ok), returnsNormally);
+      expect(
+        () => span.setStatus(ObservabilitySpanStatus.cancelled),
+        returnsNormally,
+      );
+    });
+  });
+
+  test(
+    'runInSpan accepts span-creation data and still behaves normally',
+    () async {
+      const observability = SentryObservability();
+
+      await observability.runInSpan('root', 'business.refresh', (span) async {
+        expect(observability.currentTraceParent, isNotNull);
+      }, data: {'song_id': 'abc123'});
+    },
+  );
+
   test('runInSpan sets internalError status and rethrows on failure', () async {
     const observability = SentryObservability();
 

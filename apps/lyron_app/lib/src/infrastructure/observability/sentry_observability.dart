@@ -74,10 +74,9 @@ class SentryObservability implements Observability {
     final span = _current?.sentrySpan;
     if (span == null) return null;
     // `toSentryTrace()` is the public API for reading a span's trace/span
-    // id and sampling decision. `ISentrySpan.context`/`.samplingDecision`
-    // also exist but are annotated `@internal` in the SDK source -- using
-    // them directly would trip `invalid_use_of_internal_member` under
-    // `flutter analyze`.
+    // id and sampling decision. `ISentrySpan.samplingDecision` also exists
+    // but is annotated `@internal` in the SDK source -- using it directly
+    // would trip `invalid_use_of_internal_member` under `flutter analyze`.
     final trace = span.toSentryTrace();
     return buildTraceParent(
       traceId: trace.traceId.toString(),
