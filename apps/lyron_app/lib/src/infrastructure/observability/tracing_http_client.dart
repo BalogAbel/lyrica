@@ -13,7 +13,8 @@ import 'package:lyron_app/src/application/observability/observability.dart';
 /// docs/specs/2026-08-28-w3c-traceparent-correlation-spike.md for the web
 /// verification runbook required before this gate can be lifted.
 class TracingHttpClient extends http.BaseClient {
-  TracingHttpClient(this._inner, this._observability, {this._isWeb = kIsWeb});
+  TracingHttpClient(this._inner, this._observability, {bool isWeb = kIsWeb})
+    : _isWeb = isWeb;
 
   final http.Client _inner;
   final Observability _observability;
