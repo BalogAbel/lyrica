@@ -118,6 +118,55 @@ For the slug-routing slice, route entry points resolve public slugs against the 
 The repository currently documents the broader local-first flow and already ships the first executable read-side subset.
 For the current song-reader slice, UI reads song summaries and raw ChordPro source from the active local snapshot and projects them into reader state locally. Authorization stays fully backend-enforced through Supabase Auth identity and Postgres RLS because Supabase remains the session-verification and refresh boundary.
 
+## Observability
+
+Application code depends on a first-party `Observability` interface
+(`lib/src/application/observability/`), never on the Sentry API directly.
+`SentryObservability` (`lib/src/infrastructure/observability/`) is the sole
+adapter today; `NoopObservability` is the default when no `SENTRY_DSN` is
+configured, so telemetry is opt-in infrastructure rather than a
+correctness-critical dependency. A future OpenTelemetry adapter can
+implement the same interface without touching call sites. See
+[ADR-036](decisions/ADR-036-observability-sentry-adapter.md).
+
+Business operations are root traces; Drift and Supabase operations are
+child spans under them, each created via `Observability.runInSpan` so it
+becomes the Zone-ambient current span for its own duration. Span
+propagation runs through a dedicated Dart `Zone` value rather than
+Sentry's own ambient `Scope`, because independent root operations
+(e.g. the unified sync overview running song and planning sync at once,
+once instrumented) would otherwise misattribute spans through a single
+mutable scope. One accepted consequence: Sentry's own automatic
+unhandled-error hooks read `Scope.span`, not this Zone key, so SDK-
+auto-captured unhandled errors are reported but never trace-linked;
+explicit `captureException` calls are linked via a per-call `withScope`,
+never by mutating the global scope. Native crashes, Android ANR, and iOS
+app hangs are captured automatically by `sentry_flutter`'s bundled hooks;
+handled errors are reported only at explicit `captureException` call
+sites, since the app already uses typed exceptions
+(`SongNotFoundException`, `ConnectivityFailure` classification) as
+expected control flow rather than bugs. Sign-in has no root trace of its
+own (it has no single in-process call tree to wrap) — it contributes only
+pseudonymized `setUserContext`/`clearUserContext` tagging via a
+side-effect provider.
+
+A Sentry trace's `trace_id` is correlated with Supabase Cloud logs through
+a manually constructed W3C `traceparent` header — Sentry's SDK does not
+emit this header natively — injected into every Supabase request via a
+custom `http.Client` passed to `Supabase.initialize(httpClient: ...)`.
+The header is only sent on non-web platforms until Supabase's CORS
+configuration is verified to allow it, since `traceparent` is not a
+CORS-safelisted header.
+
+Tokens/credentials and personal identifiers (email, display name) must
+never reach Sentry; `user_id`/`organization_id` may be attached only as
+pseudonymized context. ChordPro content, lyrics, and other business/
+domain content are explicitly not treated as sensitive and may appear in
+span/breadcrumb data when it aids debugging. Only one root trace (song
+catalog refresh, plus sign-in's user-context tagging) is instrumented so
+far — remaining use cases are tracked in
+[docs/deferred/2026-08-28-observability-remaining-use-cases.md](../deferred/2026-08-28-observability-remaining-use-cases.md).
+
 ## Multi-Tenancy
 
 - Organization is the top-level tenant boundary.

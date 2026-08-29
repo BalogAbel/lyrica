@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
+import 'package:lyron_app/src/application/observability/observability_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
@@ -77,6 +78,7 @@ final songCatalogControllerProvider =
       final authController = ref.read(appAuthControllerProvider);
       final controller = SongCatalogController(
         store: ref.watch(songCatalogStoreProvider),
+        observability: ref.watch(observabilityProvider),
         localDataLifecycle: ref.watch(localDataLifecycleProvider),
         remoteRepository: ref.watch(supabaseSongRepositoryProvider),
         authSessionReader: () => authController.state.session,

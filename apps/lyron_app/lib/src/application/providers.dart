@@ -5,5 +5,6 @@ export 'core_providers.dart'
     hide
         LastKnownIdentityPersistenceEpoch,
         lastKnownIdentityPersistenceEpochProvider;
+export 'observability/observability_providers.dart';
 export 'planning_providers.dart';
 export 'song_catalog_providers.dart';
