@@ -32,6 +32,7 @@ Cover:
 - Slug-routing boundary behavior for scoped reader song resolution within a session, including the assumption that a song appears at most once per session
 - Slug-routing boundary behavior for route generation, including canonical slug URLs and no id-based fallback when the canonical song slug is unavailable at the presentation edge
 - Parser diagnostics and warning policy for the supported ChordPro subset
+- Observability foundation (ADR-036): zone-based span propagation, the PII scrub policy, `traceparent` injection, `initObservability`/`runBootstrapGuarded`, and the instrumented catalog refresh, as listed in `docs/specs/2026-08-28-observability-foundation.md` ("Testing strategy"). **Tests that initialise the Sentry SDK must be offline:** the SDK swaps `NoOpTransport` for a real `HttpTransport` as soon as a DSN is set, so such tests install a recording `options.transport` and a global `HttpOverrides` guard that fails on any HTTP attempt.
 
 Current foundation baseline:
 

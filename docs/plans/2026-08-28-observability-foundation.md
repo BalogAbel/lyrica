@@ -6,7 +6,7 @@
 
 **Architecture:** Application code depends only on `Observability`/`ObservabilitySpan` (interface + `Noop` implementations in `lib/src/application/observability/`); `SentryObservability` (`lib/src/infrastructure/observability/`) is the sole adapter. Span parent/child resolution runs through a dedicated Dart `Zone` value, not Sentry's ambient `Scope`. Repository/store classes (`SupabaseSongRepository`, `DriftSongCatalogStore`) receive zero changes — every span-creation call site lives inside `SongCatalogController`, which already owns the calls being wrapped.
 
-**Tech Stack:** Flutter, Riverpod, `sentry_flutter` (resolves to `sentry`/`sentry_flutter` 9.28.0), `package:http` (^1.6.0), Drift, Supabase.
+**Tech Stack:** Flutter, Riverpod, `sentry_flutter` (the plan assumed `sentry`/`sentry_flutter` 9.28.0; installed: 8.14.2, see "Execution notes / deviations from this plan" at the end), `package:http` (^1.6.0), Drift, Supabase.
 
 **Source spec:** `docs/specs/2026-08-28-observability-foundation.md` (ADR-036, deferred doc, spike doc all committed alongside it on this branch). Read that spec's "Architecture" section before starting — every design decision below traces back to it, including the revision notes explaining what an adversarial review found and fixed in the first draft.
 
@@ -25,7 +25,7 @@
 flutter pub add sentry_flutter http
 ```
 
-Expected: resolves `sentry`/`sentry_flutter` to `9.28.0` and `http` to `^1.6.0` (already a transitive dependency via `supabase`, now promoted to direct since `tracing_http_client.dart` will import `package:http/http.dart` directly). If your resolution picks a different version, that is fine — the API surface used by this plan (`Sentry.startTransaction`, `ISentrySpan`, `SentrySpanContext`, `SpanStatus`, `Sentry.captureException(withScope:)`, `Sentry.configureScope`, `Scope.setUser`/`.span`, `Breadcrumb`, `SentryLevel`, `http.BaseClient`) has been stable across recent majors; if `flutter analyze` (Task 7+) surfaces a signature mismatch, fix it there rather than re-running this step.
+Expected (as written; installed: 8.14.2, see "Execution notes / deviations from this plan" at the end): resolves `sentry`/`sentry_flutter` to `9.28.0` and `http` to `^1.6.0` (already a transitive dependency via `supabase`, now promoted to direct since `tracing_http_client.dart` will import `package:http/http.dart` directly). If your resolution picks a different version, that is fine — the API surface used by this plan (`Sentry.startTransaction`, `ISentrySpan`, `SentrySpanContext`, `SpanStatus`, `Sentry.captureException(withScope:)`, `Sentry.configureScope`, `Scope.setUser`/`.span`, `Breadcrumb`, `SentryLevel`, `http.BaseClient`) has been stable across recent majors; if `flutter analyze` (Task 7+) surfaces a signature mismatch, fix it there rather than re-running this step.
 
 - [ ] **Step 2: Verify it builds**
 
@@ -2335,3 +2335,108 @@ above) or, if Step 6 required a doc fix, one final commit for it.
 ## After this plan
 
 Per AGENTS.md workflow: open a pull request from `feat/observability-sentry-foundation` once this plan's tasks are all committed and Task 13 passes, rather than merging directly to `main`. Do not merge without green CI. The next slice (remaining use cases from `docs/deferred/2026-08-28-observability-remaining-use-cases.md`) is intentionally not part of this plan.
+
+
+---
+
+## Execution notes / deviations from this plan
+
+The task code blocks above are the plan as it was written and were not
+rewritten after execution. Where the as-built code differs from them, the
+differences and their reasons are listed here, task by task. The as-built
+behavior is documented in `docs/specs/2026-08-28-observability-foundation.md`
+(especially its "Revision 2" notes) and
+`docs/architecture/decisions/ADR-036-observability-sentry-adapter.md`;
+where this plan and those documents disagree, they win.
+
+- **Task 1 (SDK version).** `flutter pub add` resolved `sentry` and
+  `sentry_flutter` 8.14.2 (`pubspec.yaml`: `sentry_flutter: ^8.14.2`), not
+  9.28.0. A dry run of `sentry_flutter:^9.28.0` (resolving to 9.30.1)
+  succeeds only by downgrading the transitive packages `jni` and
+  `path_provider_android`, so 9.x was not adopted. Every SDK API this plan
+  uses exists in 8.14.2 (checked against the SDK source); the "v2" tracing
+  API (`Sentry.startSpan`/`SentrySpanV2`) that the spec and ADR mention
+  belongs to 9.x and is not present in 8.14.2. Moving to 9.x is a
+  follow-up (`docs/deferred/2026-08-28-observability-remaining-use-cases.md`).
+- **Task 2 (`w3c_trace_context_test.dart`).** The first test ("produces a
+  spec-shaped header for a sampled span", whose expectation was written
+  through a convoluted `replaceFirst`) was dropped: the second test asserts
+  the exact string for a sampled span and the full regex, so it was
+  redundant. The file has two tests, not three, and was `dart format`ted.
+- **Task 6 (`TracingHttpClient`).** The constructor uses the initializing
+  formal `{this._isWeb = kIsWeb}` (Dart 3.12 private named parameters; the
+  public parameter name stays `isWeb`) instead of
+  `{bool isWeb = kIsWeb}) : _isWeb = isWeb`. The change went in, was
+  reverted and was re-applied (`2687035`, `19479d2`, `c7440ab`).
+- **Task 7 (`sentry_pii_scrub.dart`).** The plan's scrub (five-key
+  denylist, anchored JWT regex, `Uri.replace(query: '')`) was superseded.
+  It first needed fixes for a query string with a trailing fragment
+  (`699010e`) and for host-less URLs (`7b571ac`), then PR review found
+  credential leaks and it was rewritten (`a70fc65`, `7ca9a8a`): normalized
+  key matching with exact and suffix rules, dropped URL userinfo, schemeless
+  URLs, string-based per-whitespace-token scrubbing instead of
+  `Uri.replace`, a linear-time JWT scan (both the anchored form and a plain
+  unanchored regex were wrong: the first missed embedded JWTs, the second is
+  quadratic on hostile input), `Map`/`Iterable`/`Uri` traversal,
+  `sb_secret_` keys, `key=value` fragments, and emails as a documented
+  non-goal. The policy is in the spec's "PII and secret redaction" and
+  ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The
+  test file grew accordingly (the plan expected 7 tests).
+- **Task 8 (`SentryObservability`).** The catch clause is
+  `catch (error)` (the plan's `catch (error, stackTrace)` left the stack
+  trace unused). Commit `3c059a9` then changed behavior the plan does not
+  describe: a finished ambient span is ignored (`runInSpan` starts a new
+  root, `currentSpan` is a no-op span, `captureException` attaches no
+  span); `currentTraceParent` returns null for all-zero trace or span ids;
+  and `runInSpan` no longer awaits span finish (status and `throwable` are
+  set first, then `unawaited(_finishQuietly(...))` swallows transport
+  errors), so telemetry delivery cannot stall the caller, at the price of
+  silent delivery failures and possible loss of an in-flight transaction on
+  process exit. The `Observability` interface dartdoc was updated to match.
+  The tests run offline: the SDK swaps `NoOpTransport` for `HttpTransport`
+  once a DSN is set, so they install a recording `options.transport` and a
+  global `HttpOverrides` guard.
+- **Task 9 (`bootstrap.dart`).** Restructured over several commits
+  (`fa6bb4d`, `e4720cb`, `a70fc65`, `d10883a`): Sentry is initialised
+  without `appRunner` (with it, a `Supabase.initialize` failure would be
+  swallowed on web and `runApp` never reached); init lives in
+  `initObservability`, which falls back to `NoopObservability` when
+  `SentryFlutter.init` throws and publishes the result through
+  `setCurrentObservability`; `runBootstrapGuarded` and
+  `reportUncaughtZoneError` supply web error capture (the SDK installs no
+  `OnErrorIntegration` and, without `appRunner`, no zone on web) and
+  `main()` calls `runBootstrapGuarded(bootstrap)`; `anrEnabled = true` is
+  set explicitly (it defaults to `false` in 8.14.2); the plan's import of
+  `observability_providers.dart` was dropped because `providers.dart`
+  re-exports it. The plan said bootstrap needed manual verification only;
+  `test/bootstrap/init_observability_test.dart` and
+  `test/bootstrap/bootstrap_guarded_zone_test.dart` now cover it.
+- **Task 10 (`SongCatalogController`).** Implemented as planned, with the
+  new tests in a nested `group('observability instrumentation')` inside the
+  existing `SongCatalogController` group. Commit `6bda5d1` complements the
+  recording-double tests with
+  `test/application/song_library/song_catalog_controller_sentry_instrumentation_test.dart`,
+  which drives the real `SentryObservability` offline and asserts the
+  `business.refresh` root and its five child spans.
+- **Task 11 (`song_catalog_providers.dart`).** The plan showed only the new
+  constructor argument; the file also needed
+  `import '.../observability/observability_providers.dart'`.
+- **Task 12 (sign-in user-context tagging).** `auth_providers.dart`
+  imports only `observability_providers.dart`; the plan's second import,
+  `observability.dart`, was unused and dropped. The known gap that the
+  cached `lastKnownIdentity` can hold a different, prior user's
+  `organizationId` (a telemetry-only cross-tenant identifier leak) was found
+  in review and deliberately not fixed here; it is documented (`54808ae`)
+  in the "Known gap" section of
+  `docs/deferred/2026-08-28-observability-remaining-use-cases.md`. The
+  effect-provider tests were extended (`6bda5d1`): `fireImmediately` when
+  already signed in, no calls while initializing, `sessionExpired` as a
+  no-op, `signedIn(A)` to `signedIn(B)`, and `signedIn` to `signedOut` to
+  `signedIn` with call order; the `organizationId` value is intentionally
+  not asserted.
+- **Task 13 (verification).** Reported as done against a real local
+  Supabase stack: the app boots to the sign-in screen both without a DSN
+  and with a placeholder DSN (no committed evidence; a manual check). Live
+  Sentry-to-Supabase trace correlation is still not verified; it remains
+  the job of the spike runbook
+  (`docs/specs/2026-08-28-w3c-traceparent-correlation-spike.md`).

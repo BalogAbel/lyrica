@@ -136,12 +136,24 @@ propagation runs through a dedicated Dart `Zone` value rather than
 Sentry's own ambient `Scope`, because independent root operations
 (e.g. the unified sync overview running song and planning sync at once,
 once instrumented) would otherwise misattribute spans through a single
-mutable scope. One accepted consequence: Sentry's own automatic
-unhandled-error hooks read `Scope.span`, not this Zone key, so SDK-
-auto-captured unhandled errors are reported but never trace-linked;
-explicit `captureException` calls are linked via a per-call `withScope`,
-never by mutating the global scope. Native crashes, Android ANR, and iOS
-app hangs are captured automatically by `sentry_flutter`'s bundled hooks;
+mutable scope. One accepted consequence: Sentry's scope-based trace
+linkage reads `Scope.span`, not this Zone key, so it never links an event
+to a trace here; explicit `captureException` calls are linked via a
+per-call `withScope`, never by mutating the global scope, and
+SDK-auto-captured unhandled errors are linked only through the SDK's
+throwable-to-span association, i.e. when the error propagated through a
+`runInSpan` (an error thrown outside any span carries no `trace_id`). A
+finished ambient span is ignored, so deferred work (a `Timer` scheduled
+inside a span) never inherits a dead trace, and span finish is
+fire-and-forget: telemetry delivery failures are silent and an in-flight
+transaction can be lost on process exit. Sentry is initialised without
+`appRunner` (`initObservability`, failing soft to `NoopObservability` on a
+bad DSN), so a `Supabase.initialize` failure stays loud; on web
+`runBootstrapGuarded` supplies the error zone the SDK would otherwise
+have provided. Native crashes and iOS app hangs are captured
+automatically by `sentry_flutter`'s bundled hooks, and Android ANR
+detection is enabled explicitly (it is off by default in the installed
+`sentry_flutter` 8.14.2);
 handled errors are reported only at explicit `captureException` call
 sites, since the app already uses typed exceptions
 (`SongNotFoundException`, `ConnectivityFailure` classification) as
