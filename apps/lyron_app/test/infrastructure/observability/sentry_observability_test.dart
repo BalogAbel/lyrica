@@ -205,6 +205,44 @@ void main() {
     });
   });
 
+  test('span.setData forwards the value for a kept key and for a key the '
+      'scrub rewrites (revision 4)', () async {
+    const observability = SentryObservability();
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
+    final hugeKey = 'k' * 9000;
+
+    await observability.runInSpan('root', 'business.refresh', (span) async {
+      span.setData('song_count', 42);
+      span.setData('a.b?x=1', 'query-key-value');
+      span.setData(jwt, 'jwt-key-value');
+      span.setData(hugeKey, 'huge-key-value');
+      span.setData('token', 'dropped');
+      final child = span.startChild('db.query');
+      child.setData('rows', 3);
+      child.setData('a.b?x=1', 'child-query-key-value');
+      await child.finish();
+    });
+    await pumpUntil(() => transactions.isNotEmpty);
+
+    final tx = transactions.single;
+    final rootData = tx.contexts.trace!.data!;
+    expect(rootData, containsPair('song_count', 42));
+    expect(rootData, containsPair('a.b', 'query-key-value'));
+    expect(rootData, containsPair('[redacted]', 'jwt-key-value'));
+    expect(
+      rootData.entries
+          .singleWhere((e) => e.value == 'huge-key-value')
+          .key
+          .length,
+      lessThan(9000),
+    );
+    expect(rootData.containsKey('token'), isFalse);
+    expect(rootData.containsKey('a.b?x=1'), isFalse);
+    final childData = tx.spans.single.data;
+    expect(childData, containsPair('rows', 3));
+    expect(childData, containsPair('a.b', 'child-query-key-value'));
+  });
+
   test('span.setStatus does not throw for ok and cancelled', () async {
     const observability = SentryObservability();
 

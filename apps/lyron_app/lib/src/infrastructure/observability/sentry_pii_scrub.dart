@@ -4,10 +4,12 @@
 /// compounds) are exact only, never a suffix: `max_tokens`, `prompt_tokens`
 /// and `total_tokens` are ordinary metrics. The singular forms are covered by
 /// the `token` suffix. Short, generic names (`otp`, `sig`, `auth`, `nonce`,
-/// `signature`, ...) are exact only too, so `time_signature`, `author` or
-/// `nonces_seen` are kept; bare `code` is deliberately absent (HTTP status
-/// codes are ordinary data), only the credential-specific `authcode`,
-/// `mfacode`, ... forms are dropped.
+/// `signature`, `pin`, `passcode`, `bearer`, ...) are exact only too, so
+/// `time_signature`, `author`, `pinned` or `nonces_seen` are kept. Bare
+/// `code` (HTTP status codes are ordinary data) and `session_id` /
+/// `sessionid` (generic correlation ids, not credentials in this app) are
+/// deliberately absent; only the credential-specific `authcode`, `mfacode`,
+/// `otpcode`, `verificationcode`, ... forms are dropped.
 const _piiExactKeys = {
   'jwts',
   'codeverifier',
@@ -29,6 +31,9 @@ const _piiExactKeys = {
   'creds',
   'nonce',
   'pwd',
+  'pin',
+  'passcode',
+  'bearer',
 };
 
 /// Normalized keys ending in one of these are dropped (`refresh_token`,
@@ -63,6 +68,8 @@ const _piiKeySuffixes = [
   'authcode',
   'authorizationcode',
   'mfacode',
+  'otpcode',
+  'verificationcode',
   'recoverycode',
   'recoverycodes',
 ];
@@ -153,373 +160,144 @@ String _redactJwtsInRun(String run) {
   return out.toString();
 }
 
+/// Credential names whose `KEY=VALUE`, `KEY: VALUE`, `"KEY":"VALUE"` and
+/// `'KEY':'VALUE'` text has its value redacted (rule C, see [scrubPii]).
+const _credentialTextKeys =
+    'refresh_token|access_token|id_token|provider_token|'
+    'provider_refresh_token|token|apikey|api_key|x-api-key|password|passwd|'
+    'secret|client_secret';
+
+/// What ends a credential value: whitespace, a quote, or `& , ; } )`.
+const _credentialValue = '''[^\\s"'&,;})]+''';
+
+/// `KEY` + separator kept verbatim (`$1`), value replaced. Linear: the key is
+/// a literal alternation anchored at a word boundary (no leading wildcard,
+/// which would be quadratic), the value a single character-class run.
+final _credentialPairPattern = RegExp(
+  '''\\b((?:$_credentialTextKeys)["']?\\s*[:=]\\s*["']?)$_credentialValue''',
+  caseSensitive: false,
+);
+
+/// `authorization` additionally consumes a `Bearer `/`Basic ` scheme word,
+/// which stays visible (`Authorization: Bearer [redacted]`).
+final _authorizationPairPattern = RegExp(
+  '''\\b(authorization["']?\\s*[:=]\\s*["']?(?:(?:bearer|basic)\\s+)?)'''
+  '$_credentialValue',
+  caseSensitive: false,
+);
+
+String _redactCredentialPairs(String value) => value
+    .replaceAllMapped(_authorizationPairPattern, (m) => '${m[1]}$_redacted')
+    .replaceAllMapped(_credentialPairPattern, (m) => '${m[1]}$_redacted');
+
 final _whitespaceDelimitedTokenPattern = RegExp(r'\S+');
 
 /// A bare host (`abc.supabase.co`, `x.co:8080`, and also `v1.2`).
 final _hostShapePattern = RegExp(r'^[\w-]+(\.[\w-]+)+(:\d+)?$');
 
-const _quote = 0x22; // "
-const _apostrophe = 0x27; // '
-const _lessThan = 0x3C; // <
-const _greaterThan = 0x3E; // >
-const _openParen = 0x28;
-const _closeParen = 0x29;
-const _openBracket = 0x5B;
-const _closeBracket = 0x5D;
-const _openBrace = 0x7B;
-const _closeBrace = 0x7D;
-const _hash = 0x23;
-const _question = 0x3F;
-const _at = 0x40;
-const _slash = 0x2F;
-const _colon = 0x3A;
-const _equals = 0x3D;
-const _comma = 0x2C;
-const _semicolon = 0x3B;
-
-bool _isDigit(int c) => c >= 0x30 && c <= 0x39;
+/// URLs handled in one whitespace-free token; the rest of it is dropped.
+const _maxUrlsPerToken = 8;
 
 bool _isAlpha(int c) => (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A);
 
-/// `[A-Za-z0-9+.-]`, the characters allowed after the first letter of a URI
-/// scheme.
+/// `[A-Za-z0-9+.-]`, the characters allowed in a URI scheme.
 bool _isSchemeChar(int c) =>
-    _isAlpha(c) || _isDigit(c) || c == 0x2B || c == 0x2E || c == 0x2D;
-
-/// Characters a host (optionally with `:port` or an IPv6 literal) is made of.
-/// Deliberately excludes `& = , ; @` and quotes, so text such as
-/// `b.c&token=S` (the tail of an `@` inside a query) is not host-shaped.
-bool _isHostChar(int c) =>
     _isAlpha(c) ||
-    _isDigit(c) ||
-    c == 0x2E || // .
-    c == 0x2D || // -
-    c == 0x5F || // _
-    c == 0x7E || // ~
-    c == 0x25 || // %
-    c == _colon ||
-    c == _openBracket ||
-    c == _closeBracket;
+    (c >= 0x30 && c <= 0x39) ||
+    c == 0x2B ||
+    c == 0x2E ||
+    c == 0x2D;
 
-bool _isUrlTerminator(int c) =>
-    c == _slash ||
-    c == _question ||
-    c == _hash ||
-    c == _quote ||
-    c == _apostrophe ||
-    c == _lessThan ||
-    c == _greaterThan;
-
-/// True when `[from, to)` up to the first URL terminator is empty or made of
-/// host characters only (see [_isHostChar]).
-bool _isHostShapedAuthority(String token, int from, int to) {
-  for (var i = from; i < to; i++) {
-    final c = token.codeUnitAt(i);
-    if (_isUrlTerminator(c)) return true;
-    if (!_isHostChar(c)) return false;
-  }
-  return true;
-}
-
-/// True when the authority of `[from, to)` (up to its first `/`) is a
-/// plausible `host[:port]` (numeric port): a non-empty run of host
-/// characters with at most digits after the first `:`, or an empty one that
-/// is followed by a `/` (`file:///x`).
-bool _isPlainHostAuthority(String token, int from, int to) {
-  var end = from;
-  var colon = -1;
-  while (end < to && token.codeUnitAt(end) != _slash) {
-    final c = token.codeUnitAt(end);
-    if (!_isHostChar(c)) return false;
-    if (c == _colon && colon < 0) {
-      colon = end;
-    } else if (colon >= 0 && !_isDigit(c)) {
-      return false;
+/// Index of the `:` of the first `://` in [s] that is preceded by a URI
+/// scheme (a letter, then at least one more scheme character), or -1. A
+/// one-character prefix (`a://`, a Windows drive) is not a scheme.
+int _schemeUrlColon(String s) {
+  var from = 0;
+  while (true) {
+    final colon = s.indexOf('://', from);
+    if (colon < 0) return -1;
+    var start = colon;
+    while (start > 0 && _isSchemeChar(s.codeUnitAt(start - 1))) {
+      start--;
     }
-    end++;
-  }
-  if (end == from) return end < to;
-  return true;
-}
-
-/// Where the userinfo of the URL whose host starts at [hostStart] ends, as
-/// the index of its terminating `@`; `-1` when there is no userinfo to drop
-/// and `-2` when the URL must be cut to its scheme. See [_dropUserInfo].
-int _userInfoEnd(String token, int hostStart, int regionEnd) {
-  var at = -1;
-  for (var i = regionEnd - 1; i >= hostStart; i--) {
-    if (token.codeUnitAt(i) == _at) {
-      at = i;
-      break;
+    while (start < colon && !_isAlpha(s.codeUnitAt(start))) {
+      start++;
     }
-  }
-  if (at < 0) return -1;
-  var delimiter = -1;
-  for (var i = hostStart; i < at; i++) {
-    final c = token.codeUnitAt(i);
-    if (c == _question || c == _hash) {
-      delimiter = i;
-      break;
-    }
-  }
-  var cut = at;
-  if (delimiter >= 0) {
-    // The query/fragment starts before the last `@`. Either that `@` is
-    // query content (`?email=a@b.c`) or the userinfo itself holds a raw
-    // `?`/`#` (`u:p?ss@host`).
-    var before = -1;
-    for (var i = delimiter - 1; i >= hostStart; i--) {
-      if (token.codeUnitAt(i) == _at) {
-        before = i;
-        break;
-      }
-    }
-    if (before >= 0) {
-      cut = before; // a real userinfo ended before the query
-    } else if (_isPlainHostAuthority(token, hostStart, delimiter)) {
-      return -1; // host[:port] + query; the `@` is query content
-    }
-  }
-  return _isHostShapedAuthority(token, cut + 1, regionEnd) ? cut : -2;
-}
-
-/// Drops `user:password@` from every `://` URL of the token.
-///
-/// A URL's region runs from its `://` to the next `://` (or the token end).
-/// Within a region the userinfo ends at the LAST `@` that precedes the first
-/// `?`/`#`, so a raw `/` in the password (`https://u:p/ss@h/x`) or an `@` in
-/// the password (`https://u:p@ss@h/x`) cannot leak the tail. When the only
-/// `@`s come after the first `?`/`#`:
-///
-/// * the text before it is a plain `host[:port]` (`https://h/p?email=a@b.c`)
-///   => the `@` is query content, nothing is dropped here and the query
-///   strip removes it (`https://h/p`);
-/// * anything else (`https://u:p?ss@host/x`) => the `?`/`#` is part of the
-///   userinfo, which is dropped up to the last `@`.
-///
-/// If what remains after a drop does not start with a host-shaped authority
-/// (`b.c&token=S`), the whole region is cut to `scheme://` (fail-safe).
-///
-/// Trade-offs (deliberate): an `@` in a path before any `?`
-/// (`https://host/a@b`) over-redacts to `https://b`; a userinfo that is a
-/// single host-shaped word holding a raw `?`/`#` and no `:`
-/// (`https://secret?x@host`) is read as host + query, so that word is kept
-/// (a real password after a `:` never is). A token without `://`
-/// (`mailto:a@b`) keeps its `@`. Manual scans, not a backtracking regex, so
-/// hostile input stays linear.
-String _dropUserInfo(String token) {
-  var scheme = token.indexOf('://');
-  if (scheme < 0) return token;
-  final out = StringBuffer();
-  var copyFrom = 0;
-  while (scheme >= 0) {
-    final hostStart = scheme + 3;
-    final next = token.indexOf('://', hostStart);
-    final regionEnd = next < 0 ? token.length : next;
-    final end = _userInfoEnd(token, hostStart, regionEnd);
-    if (end != -1) {
-      out.write(token.substring(copyFrom, hostStart));
-      copyFrom = end == -2 ? regionEnd : end + 1;
-    }
-    scheme = next;
-  }
-  if (copyFrom == 0) return token;
-  out.write(token.substring(copyFrom));
-  return out.toString();
-}
-
-/// The character that closes a URL opened by [opener], or -1 when the URL is
-/// not wrapped.
-int _closerFor(int opener) {
-  switch (opener) {
-    case _quote:
-      return _quote;
-    case _apostrophe:
-      return _apostrophe;
-    case _lessThan:
-      return _greaterThan;
-    case _openParen:
-      return _closeParen;
-    case _openBracket:
-      return _closeBracket;
-    case _openBrace:
-      return _closeBrace;
-    default:
-      return -1;
+    if (colon - start >= 2) return colon;
+    from = colon + 3;
   }
 }
 
-/// End (exclusive) of the query/fragment region that starts at [from].
-///
-/// [opener] is the character immediately before the URL (`"`, `'`, `<`, `(`,
-/// `[` or `{`, or -1). A wrapped URL ends at the matching closer (for
-/// brackets, the first UNBALANCED one, so `?f(a)=1` stays inside); an
-/// unwrapped URL runs to the end of the token, so a quote, angle bracket or
-/// unbalanced closer INSIDE a query value (`?title=eq.Don't&apikey=S`,
-/// `?k=a)b`) cannot end it early and leak the rest. For a query
-/// ([stopAtHash]) a `#` always ends the region (the fragment is handled on
-/// its own). `,` `;` and `.` never end it: they are legal in query values.
-int _regionEnd(
-  String token,
-  int from, {
-  required bool stopAtHash,
-  required int opener,
-}) {
-  final closer = _closerFor(opener);
-  final nests =
-      opener == _openParen || opener == _openBracket || opener == _openBrace;
-  var depth = 0;
-  for (var i = from; i < token.length; i++) {
-    final c = token.codeUnitAt(i);
-    if (c == _hash && stopAtHash) return i;
-    if (closer < 0) continue;
-    if (c == closer) {
-      if (depth == 0) return i;
-      depth--;
-    } else if (nests && c == opener) {
-      depth++;
-    }
-  }
-  return token.length;
-}
-
-bool _regionHasEquals(String token, int from, int to) {
-  for (var i = from; i < to; i++) {
-    if (token.codeUnitAt(i) == _equals) return true;
-  }
-  return false;
-}
-
-/// True when a URI scheme (a letter, then at least one of `[A-Za-z0-9+.-]`,
-/// then `:`) starts at [pos]; with [needSlashes] it must be followed by `//`.
-/// The two-character minimum keeps a Windows drive letter (`C:\`) from
-/// counting. Linear: it only walks scheme characters, which never include
-/// the boundary characters the caller advances over.
-bool _schemeAt(String token, int pos, {required bool needSlashes}) {
-  if (pos >= token.length || !_isAlpha(token.codeUnitAt(pos))) return false;
-  var i = pos + 1;
-  while (i < token.length && _isSchemeChar(token.codeUnitAt(i))) {
+/// True when [s] starts with a URI scheme of two or more characters followed
+/// by `:` (`mailto:`, `tel:`), so not a Windows drive (`C:\`).
+bool _startsWithScheme(String s) {
+  var i = 0;
+  while (i < s.length && _isSchemeChar(s.codeUnitAt(i))) {
     i++;
   }
-  if (i - pos < 2 || i >= token.length || token.codeUnitAt(i) != _colon) {
-    return false;
-  }
-  return !needSlashes ||
-      (i + 2 < token.length &&
-          token.codeUnitAt(i + 1) == _slash &&
-          token.codeUnitAt(i + 2) == _slash);
+  return i >= 2 &&
+      i < s.length &&
+      s.codeUnitAt(i) == 0x3A &&
+      _isAlpha(s.codeUnitAt(0));
 }
 
-/// Drops the query string and any `key=value` fragment of every URL-shaped
-/// part of [token] in a single linear pass, keeping everything after the
-/// region verbatim (see [_regionEnd]).
-///
-/// Each `?`/`#` is classified on its own, from state tracked while scanning
-/// (so a URL that follows a non-URL `?` in the same token, `why?https://h/x?token=S`,
-/// is still stripped):
-///
-/// * scheme URL: a scheme of two or more characters (`https:`, `mailto:`)
-///   starts the token, follows one of `, ; = ( [ { " ' < >`, or (then only
-///   as `scheme://`) follows a `?`/`#`, and no quote, `<` or `>` came in
-///   between. A non-empty query is stripped;
-/// * slash URL: a `/` was seen since the last quote/`<`/`>`
-///   (`example.co/rest/v1/songs?apikey=S`, `/rest?a=1`, `rest/v1/x?a=1`);
-/// * bare host: the text since the last separator is a host
-///   (`abc.supabase.co?apikey=S`, also the ambiguous `v1.2?x=1`).
-///
-/// Slash URLs and bare hosts are only stripped when the query/fragment
-/// contains `=` (key=value shape), so ChordPro and prose such as
-/// `[C/G]Why?[Am]Because`, `a/b?x`, `[C]Hello?[G]World`, `a?b`, `e.g?` and
-/// `C:\dir\file?.txt` are never mangled. A fragment is only stripped when it
-/// contains `=` (implicit-flow `#access_token=...`); a plain fragment
-/// (`#frag`) and an empty query (`?` alone) are kept.
-String _stripQueryAndFragment(String token) {
-  final length = token.length;
-  final out = StringBuffer();
-  var copyFrom = 0;
-  var candidateStart = 0; // after the last `, ; = ( [ { " ' < >`
-  var delimiterInCandidate = false;
-  var schemeStart = -1;
-  var slashSeen = false;
-  // Slash/host-shaped `?` regions without any `=` need no re-scan for later
-  // `?` inside the same region (keeps hostile `x.co????...` linear).
-  var noEqualsUntil = 0;
-  if (_schemeAt(token, 0, needSlashes: false)) schemeStart = 0;
-  var i = 0;
-  while (i < length) {
-    final c = token.codeUnitAt(i);
-    if (c == _quote ||
-        c == _apostrophe ||
-        c == _lessThan ||
-        c == _greaterThan) {
-      schemeStart = -1;
-      slashSeen = false;
-      delimiterInCandidate = false;
-      candidateStart = i + 1;
-      if (_schemeAt(token, i + 1, needSlashes: false)) schemeStart = i + 1;
-      i++;
-      continue;
-    }
-    if (c == _openParen ||
-        c == _openBracket ||
-        c == _openBrace ||
-        c == _equals ||
-        c == _comma ||
-        c == _semicolon) {
-      candidateStart = i + 1;
-      delimiterInCandidate = false;
-      if (schemeStart < 0 && _schemeAt(token, i + 1, needSlashes: false)) {
-        schemeStart = i + 1;
-      }
-      i++;
-      continue;
-    }
-    if (c == _slash) {
-      slashSeen = true;
-      i++;
-      continue;
-    }
-    if (c != _question && c != _hash) {
-      i++;
-      continue;
-    }
+/// Where the query/fragment of [s] starts: the first `?`, or an earlier `#`
+/// whose fragment (everything after it) holds a `=` (`#access_token=...`).
+/// A plain fragment (`#frag`) is not cut. [s].length when there is none.
+int _queryStart(String s) {
+  final question = s.indexOf('?');
+  var cut = question < 0 ? s.length : question;
+  final hash = s.indexOf('#');
+  if (hash >= 0 && hash < cut && s.indexOf('=', hash) >= 0) cut = hash;
+  return cut;
+}
 
-    final isQuery = c == _question;
-    final firstInCandidate = !delimiterInCandidate;
-    delimiterInCandidate = true;
-    final schemeUrl = schemeStart >= 0;
-    final shaped =
-        schemeUrl ||
-        slashSeen ||
-        (firstInCandidate &&
-            _hostShapePattern.hasMatch(token.substring(candidateStart, i)));
-    if (!shaped || (isQuery && i < noEqualsUntil)) {
-      if (schemeStart < 0 && _schemeAt(token, i + 1, needSlashes: true)) {
-        schemeStart = i + 1;
-      }
-      i++;
-      continue;
-    }
-
-    final startPos = schemeUrl ? schemeStart : candidateStart;
-    final opener = startPos > 0 ? token.codeUnitAt(startPos - 1) : -1;
-    final end = _regionEnd(token, i + 1, stopAtHash: isQuery, opener: opener);
-    final nonEmpty = end > i + 1;
-    final hasEquals = _regionHasEquals(token, i + 1, end);
-    final strip = isQuery ? nonEmpty && (schemeUrl || hasEquals) : hasEquals;
-    if (strip) {
-      out.write(token.substring(copyFrom, i));
-      copyFrom = end;
-      i = end;
-    } else if (isQuery) {
-      if (!hasEquals) noEqualsUntil = end;
-      i++;
-    } else {
-      i = end;
-    }
+/// Rule A (see [scrubPii]) for a token whose first scheme URL has its `://`
+/// at [colon]. Everything before the scheme is kept verbatim. Linear: each
+/// level runs a few `indexOf` passes and there are at most
+/// [_maxUrlsPerToken] levels.
+String _scrubSchemeUrl(String token, int colon, int count) {
+  final head = token.substring(0, colon + 3);
+  if (count >= _maxUrlsPerToken) return '$head$_redacted';
+  final after = token.substring(colon + 3);
+  var delimiter = 0;
+  while (delimiter < after.length) {
+    final c = after.codeUnitAt(delimiter);
+    if (c == 0x2F || c == 0x3F || c == 0x23) break; // / ? #
+    delimiter++;
   }
-  out.write(token.substring(copyFrom));
-  return out.toString();
+  // An `@` after the first `/ ? #` is either a path/query character or
+  // userinfo holding one of those: not told apart, the rest goes.
+  if (delimiter < after.length && after.indexOf('@', delimiter) >= 0) {
+    return '$head$_redacted';
+  }
+  final userinfoEnd = delimiter > 0
+      ? after.lastIndexOf('@', delimiter - 1)
+      : -1;
+  final hostAndRest = userinfoEnd < 0
+      ? after
+      : after.substring(userinfoEnd + 1);
+  final kept = hostAndRest.substring(0, _queryStart(hostAndRest));
+  final next = _schemeUrlColon(kept);
+  return next < 0
+      ? '$head$kept'
+      : '$head${_scrubSchemeUrl(kept, next, count + 1)}';
+}
+
+/// Rule B (see [scrubPii]) for a token without a scheme URL.
+String _scrubSchemeless(String token) {
+  if (_startsWithScheme(token)) {
+    return token.substring(0, _queryStart(token));
+  }
+  var start = 0;
+  while (start < token.length) {
+    final c = token.codeUnitAt(start);
+    if (c == 0x3F || c == 0x23) break; // ? #
+    start++;
+  }
+  if (start == token.length || token.indexOf('=', start + 1) < 0) return token;
+  final head = token.substring(0, start);
+  return head.contains('/') || _hostShapePattern.hasMatch(head) ? head : token;
 }
 
 /// Recursively scrubs a data map before it reaches the Sentry SDK.
@@ -555,14 +333,18 @@ String _stripQueryAndFragment(String token) {
 ///   allowlisted. Kept keys are themselves run through the string scrub
 ///   below (a key holding a URL or JWT); keys that collide afterwards
 ///   overwrite each other, the later entry wins.
-/// * Values: maps (any key type, keys stringified), iterables (returned as
-///   fixed-length lists) and [Uri]s (stringified, then scrubbed as strings)
-///   are traversed recursively, bounded: containers nested 16 levels deep
-///   or beyond, and containers past a total budget of 2048 per call (a wide
-///   self-referencing structure), are replaced by the string `[truncated]`;
-///   each map/iterable keeps at most its first 256 elements (an infinite lazy
-///   iterable is cut, the rest is dropped silently), and all containers
-///   together at most 2048 elements per call.
+/// * Values: maps (any key type, keys stringified) and iterables (returned
+///   as fixed-length lists) are traversed recursively, bounded: containers
+///   nested 16 levels deep or beyond, and containers past a total budget of
+///   2048 per call (a wide self-referencing structure), are replaced by the
+///   string `[truncated]`; each map/iterable keeps at most its first 256
+///   elements (an infinite lazy iterable is cut, the rest is dropped
+///   silently), and all containers together at most 2048 elements per call.
+///   `null`, numbers and bools pass through. EVERYTHING else (a [String], a
+///   [Uri], an exception, an enum, any object) is scrubbed as its
+///   `toString()` -- the SDK's JSON serialization falls back to exactly that,
+///   so an object holding a URL or token must not bypass the string scrub. A
+///   `toString()` that throws yields `[unprintable]`.
 /// * Size caps (strings): only the first 64 KB of a string is scrubbed (an
 ///   input cut there is first trimmed back to its last whitespace, so a
 ///   token straddling the cut is never emitted half-redacted) and the RESULT
@@ -571,34 +353,58 @@ String _stripQueryAndFragment(String token) {
 ///   call applies; past it strings become `[truncated]` and remaining
 ///   entries are dropped. This bounds both time (a 10 MB string is
 ///   processed in ~15 ms) and the encoded size of what reaches Sentry.
-/// * Strings: JWTs and `sb_secret_...` Supabase secret keys are replaced
-///   with `[redacted]` anywhere in the string (JWT scanning is linear-time).
-///   The string is then scrubbed per whitespace-delimited token, preserving
-///   the original whitespace, so a URL inside an error message is handled
-///   while ordinary prose (`did it work? yes it did`) is untouched. Within a
-///   token, for each `://` URL: userinfo is dropped up to the last `@` that
-///   precedes the first `?`/`#`; when the only `@`s come after it, the `@`
-///   is read as query content (`https://h/p?email=a@b.c` becomes
-///   `https://h/p`) unless the text before the `?`/`#` is not a plain
-///   `host[:port]` (`https://u:p?ss@host/x`), in which case it is userinfo.
-///   Trade-offs: an `@` in a path (`https://host/a@b`) over-redacts to
-///   `https://b`; a single host-shaped word holding a raw `?`/`#` and no `:`
-///   before the `@` is read as host + query. The query string and a
-///   `key=value` fragment (implicit-flow `#access_token=...`) of a URL-shaped
-///   part are then dropped: for a wrapped URL (`"`, `'`, `<`, `(`, `[` or `{`
-///   immediately before it) up to its matching closer (kept verbatim from
-///   there, so JSON- or bracket-wrapped URLs keep their surroundings), for an
-///   unwrapped one to the end of the token, so a quote or closer inside a
-///   query value cannot end it early; `,` `;` `.` never end a region. The
-///   only remaining early end is a quote that is BOTH the wrapper and part of
-///   a query value (`'https://h/x?q=Don't&t=S'`). A plain fragment (`#frag`)
-///   and an empty query are kept. Each `?`/`#` is classified on its own
-///   (`why?https://h/x?token=S` strips the URL). A part is URL-shaped with a
-///   scheme of two or more characters, or -- only when its query/fragment
-///   contains `=` -- a `/` (`example.co/rest?apikey=S`, `rest/v1/x?a=1`) or a
-///   bare host (`abc.supabase.co?apikey=S`, also the ambiguous `v1.2?x=1`);
-///   `[C/G]Why?[Am]Because`, `a/b?x`, `[C]Hello?[G]World`, `a?b`, `e.g?` and
-///   `C:\dir\file?.txt` are never mangled.
+/// * Strings: a small, conservative rule set (ADR-036 point 7, "Revision 4").
+///   It errs towards dropping, never towards guessing. In order:
+///   * JWTs and `sb_secret_...` Supabase secret keys are replaced with
+///     `[redacted]` anywhere in the string (JWT scanning is linear-time).
+///   * The string is cut into whitespace-delimited tokens (whitespace is
+///     preserved), so ordinary prose (`did it work? yes it did`) is
+///     untouched. A token without `?`, `#` and `@` is left alone.
+///   * A. A token holding a scheme URL -- the first `://` preceded by a
+///     scheme of two or more characters (`https`, `postgres`, not `a://`) --
+///     is handled from that URL on; what precedes the scheme is kept
+///     verbatim. If an `@` follows the first `/`, `?` or `#` after `://` it
+///     is ambiguous (an `@` in a path/query, or userinfo holding one of
+///     those) and everything after `://` is replaced by `[redacted]`.
+///     Otherwise userinfo (up to the last `@` of the authority) is dropped,
+///     then everything from the first `?` -- or from an earlier `#` whose
+///     fragment holds a `=` (`#access_token=...`) -- to the END OF THE TOKEN
+///     is dropped, closers, wrappers and further URLs included. A plain
+///     fragment (`#frag`) with no query is kept. A kept remainder that
+///     itself holds a scheme URL is handled the same way, at most 8 URLs per
+///     token (the rest is `[redacted]`).
+///   * B. Tokens with no scheme URL: a token starting with a scheme of two or
+///     more characters and `:` (`mailto:a@b?subject=hi`; not a one-letter
+///     Windows drive) is cut at the first `?` (or `#` with a `=`); any other
+///     token is cut at its first `?` or `#` when the text before it is
+///     host-shaped (`abc.supabase.co`, `x.co:8080`) or contains a `/`, AND
+///     the text after it contains a `=` (`example.co/rest?apikey=S`,
+///     `/rest?a=1`). B also runs on what A kept. `[C/G]Why?[Am]Because`,
+///     `a/b?x`, `[C]Hello?[G]World`, `a?b` and `C:\dir\file?.txt` are left
+///     alone.
+///   * C. Credential key/value text: the value is replaced with `[redacted]`
+///     in `KEY=VALUE`, `KEY: VALUE`, `"KEY":"VALUE"` and `'KEY':'VALUE'` for
+///     `refresh_token`, `access_token`, `id_token`, `provider_token`,
+///     `provider_refresh_token`, `token`, `apikey`, `api_key`, `x-api-key`,
+///     `password`, `passwd`, `secret`, `client_secret` and `authorization`
+///     (case-insensitive, anchored at a word boundary; `authorization` also
+///     consumes a `Bearer `/`Basic ` word). A value runs to whitespace, a
+///     quote or one of `& , ; } )`. It runs on the whole string AFTER the URL
+///     rules (before, a `token=` inside userinfo could eat its `@`), and the
+///     URL rules run once more after it, because redacting a value can move
+///     a token's first `?` and change its classification.
+///   Accepted trade-offs: text after a URL in the same whitespace-free token
+///   (JSON, brackets, quotes) is dropped; an `@` in a path or query
+///   over-redacts the URL to `scheme://[redacted]`; look-alikes with a `=`
+///   after the `?` are cut (`foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`,
+///   `[G/B]Love?[C]=joy`, `v1.2?x=1`); `Note:Why?` reads as a URI scheme.
+///   Known residuals, not caught because they cannot be told from prose: a
+///   bare `?SECRET` without `=`; a schemeless URL after an earlier non-URL
+///   `?` in the same token (`why?/p?k=S`) or glued after a `=`/`,`
+///   (`url=abc.co?k=S`) unless its key is a credential name (rule C); the
+///   words after the first of a quoted credential value
+///   (`"password": "a b"` redacts `a`). Exception messages handed to
+///   `captureException` never go through this function at all.
 /// * Never throws: any failure while scrubbing (a throwing iterator, a
 ///   pathological structure) returns `{'scrub_error': true}` with no data.
 ///
@@ -671,13 +477,18 @@ Object? _scrubValue(Object? value, int depth, _Budget budget) {
     }
     return list.toList(growable: false);
   }
-  if (value is Uri) {
-    return _scrubString(value.toString(), budget);
+  if (value == null || value is num || value is bool) return value;
+  // Everything else (String, Uri, exceptions, enums, arbitrary objects) is
+  // scrubbed as its `toString()`: the SDK's JSON serialization falls back to
+  // exactly that, so an object holding a URL or token must not bypass the
+  // string scrub.
+  final String text;
+  try {
+    text = value.toString();
+  } catch (_) {
+    return '[unprintable]';
   }
-  if (value is String) {
-    return _scrubString(value, budget);
-  }
-  return value;
+  return _scrubString(text, budget);
 }
 
 bool _isWhitespaceUnit(int c) =>
@@ -737,17 +548,27 @@ String _scrubText(String value) {
   final redacted = _redactJwts(
     value,
   ).replaceAll(_supabaseSecretKeyPattern, _redacted);
-  return redacted.replaceAllMapped(
-    _whitespaceDelimitedTokenPattern,
-    (match) => _scrubToken(match[0]!),
-  );
+  // URLs first, credential key/value text second. The other way round, a
+  // `token=...` inside a URL's userinfo would be rewritten before the URL
+  // rules see it, and could consume the `@` that marks it as userinfo. The
+  // URL rules run once more afterwards: redacting a value can remove the
+  // first `?` of a token and so change how its remainder is classified; the
+  // second pass makes the whole scrub idempotent.
+  return _scrubTokens(_redactCredentialPairs(_scrubTokens(redacted)));
 }
+
+String _scrubTokens(String text) => text.replaceAllMapped(
+  _whitespaceDelimitedTokenPattern,
+  (match) => _scrubToken(match[0]!),
+);
 
 String _scrubToken(String token) {
   if (!token.contains('?') && !token.contains('#') && !token.contains('@')) {
     return token;
   }
-  // userInfo is dropped unconditionally, never preserved --
-  // `user:password@host` syntax is inherently a credential.
-  return _stripQueryAndFragment(_dropUserInfo(token));
+  final colon = _schemeUrlColon(token);
+  // Rule B also runs on what rule A keeps: the text before a scheme URL is
+  // kept verbatim by A and may itself be a schemeless URL with a query
+  // (`/rest/v1/x?k=S,https://h/y`).
+  return _scrubSchemeless(colon < 0 ? token : _scrubSchemeUrl(token, colon, 0));
 }

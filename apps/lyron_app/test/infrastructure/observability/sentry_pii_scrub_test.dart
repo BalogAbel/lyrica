@@ -66,10 +66,11 @@ void main() {
     expect(result, {'url': 'https://example.supabase.co/rest/v1/songs'});
   });
 
-  test('strips the query string but keeps the fragment on URLs with both', () {
+  test('a fragment after a query is dropped together with it (everything '
+      'after the first ? goes)', () {
     final result = scrubPii({'url': 'https://x.com/path?a=1#frag'});
 
-    expect(result, {'url': 'https://x.com/path#frag'});
+    expect(result, {'url': 'https://x.com/path'});
   });
 
   test(
@@ -283,12 +284,16 @@ void main() {
         'e': '(x.co?token=T)',
       });
 
+      // `d` and `e` are not host-shaped as a whole (`url=`, `(`), so only the
+      // credential key/value rule (C) fires: the value is redacted, the
+      // `key=value` shape stays. Documented residual: an unknown key in that
+      // position (`url=abc.co?foo=SECRET`) is not caught.
       expect(result, {
         'a': 'abc.supabase.co',
-        'b': 'x.co#y',
+        'b': 'x.co',
         'c': 'x.co:8080',
-        'd': 'url=abc.supabase.co',
-        'e': '(x.co)',
+        'd': 'url=abc.supabase.co?apikey=[redacted]',
+        'e': '(x.co?token=[redacted])',
       });
     });
 
@@ -313,8 +318,8 @@ void main() {
       expect(scrubPii(input), input);
     });
 
-    test('a version-like host with a key=value query is stripped (fail-safe, '
-        'deliberately ambiguous)', () {
+    test('a version-like host with a key=value query is stripped '
+        '(deliberately ambiguous)', () {
       expect(scrubPii({'v': 'v1.2?x=1'}), {'v': 'v1.2'});
     });
   });
@@ -327,11 +332,24 @@ void main() {
         'h': 'https://u:p#ss@host/x',
       });
 
+      // A `?`, `/` or `#` in the userinfo puts an `@` after the first
+      // delimiter: ambiguous, so the whole rest of the token is dropped.
       expect(result, {
-        'q': 'https://host/x',
-        's': 'https://host/x',
-        'h': 'https://host/x',
+        'q': 'https://[redacted]',
+        's': 'https://[redacted]',
+        'h': 'https://[redacted]',
       });
+    });
+
+    test('URL rules run before credential key/value text: a key=value inside '
+        'a userinfo cannot eat the @ that marks it', () {
+      expect(
+        scrubPii({
+          'a': 'https://u:token=abc,SECRET@host/x',
+          'b': 'https://SECRET{token=%40@',
+        }),
+        {'a': 'https://host/x', 'b': 'https://'},
+      );
     });
 
     test('an @ inside the password itself does not leak the tail', () {
@@ -356,23 +374,27 @@ void main() {
         'two': 'https://h/p?a=x@y@z&token=S',
       });
 
+      // Ambiguous `@` after the first delimiter: never guessed, the rest of
+      // the token is dropped (over-redacts an `@` in a query, by design).
       expect(result, {
-        'rest': 'https://abc.supabase.co/rest/v1/profiles',
-        'path': 'https://h/p',
-        'nopath': 'https://h',
-        'both': 'https://h/x',
-        'frag': 'https://h/p',
-        'two': 'https://h/p',
+        'rest': 'https://[redacted]',
+        'path': 'https://[redacted]',
+        'nopath': 'https://[redacted]',
+        'both': 'https://[redacted]',
+        'frag': 'https://[redacted]',
+        'two': 'https://[redacted]',
       });
     });
 
     test('an @ in the path (before any ?) over-redacts, documented '
         'trade-off', () {
-      expect(scrubPii({'path': 'https://host/a@b'}), {'path': 'https://b'});
+      expect(scrubPii({'path': 'https://host/a@b'}), {
+        'path': 'https://[redacted]',
+      });
     });
 
-    test('a userinfo that is not host-shaped and holds ?/# is dropped as '
-        'userinfo, not read as host + query', () {
+    test('a userinfo that is not host-shaped and holds ?/# is redacted '
+        'whole, not read as host + query', () {
       final result = scrubPii({
         'q': 'https://u:p?ss@host/x',
         'h': 'https://u:p#ss@host/x',
@@ -380,35 +402,47 @@ void main() {
       });
 
       expect(result, {
-        'q': 'https://host/x',
-        'h': 'https://host/x',
-        'sq': 'https://host/x',
+        'q': 'https://[redacted]',
+        'h': 'https://[redacted]',
+        'sq': 'https://[redacted]',
       });
     });
 
-    test('when what remains after a userinfo drop is not host-shaped the '
-        'URL is cut to its scheme (fail-safe)', () {
+    test('a URL with an @ after its first delimiter is redacted whatever '
+        'follows the host', () {
       expect(scrubPii({'x': 'https://localhost:abc?email=a@b&token=S'}), {
-        'x': 'https://',
+        'x': 'https://[redacted]',
       });
     });
 
-    test('userinfo is dropped for every URL in a token, not just the '
-        'first', () {
-      expect(scrubPii({'j': '{"a":"https://x/y?k=1","b":"https://u:p@h/z"}'}), {
-        'j': '{"a":"https://x/y","b":"https://h/z"}',
-      });
+    test('a later URL in the same token cannot smuggle userinfo or a query '
+        'past the first URL', () {
+      expect(
+        scrubPii({
+          'j': '{"a":"https://x/y?k=1","b":"https://u:p@h/z"}',
+          'k': 'https://a/x;https://u:p@b/y',
+          'l': 'https://a/x,https://b/y?token=S',
+        }),
+        {
+          // the second URL's `@` is after the first URL's first delimiter:
+          // ambiguous, so the rest of the token goes (accepted trade-off)
+          'j': '{"a":"https://[redacted]',
+          'k': 'https://[redacted]',
+          'l': 'https://a/x,https://b/y',
+        },
+      );
     });
   });
 
-  group('query/fragment region ends at a closing delimiter', () {
-    test('keeps the remainder of a JSON-embedded URL', () {
+  group('everything after the first ? of a URL goes, to the end of the '
+      'token', () {
+    test('drops the remainder of a JSON-embedded URL in the same token', () {
       expect(scrubPii({'j': '{"url":"https://x/y?a=1","code":401}'}), {
-        'j': '{"url":"https://x/y","code":401}',
+        'j': '{"url":"https://x/y',
       });
     });
 
-    test('keeps the closer and rest for parenthesized, angle-bracketed and '
+    test('drops the closer and rest for parenthesized, angle-bracketed and '
         'quoted URLs', () {
       final result = scrubPii({
         'p': '(https://x/y?apikey=S)',
@@ -421,19 +455,19 @@ void main() {
       });
 
       expect(result, {
-        'p': '(https://x/y)',
-        'a': '<https://x/y>',
-        'd': '"https://x/y"',
-        's': "'https://x/y'",
-        'b': '[https://x/y]',
-        'c': '{https://x/y}',
-        'f': '(https://x/y)',
+        'p': '(https://x/y',
+        'a': '<https://x/y',
+        'd': '"https://x/y',
+        's': "'https://x/y",
+        'b': '[https://x/y',
+        'c': '{https://x/y',
+        'f': '(https://x/y',
       });
     });
 
     test('handles several URLs in one token', () {
       expect(scrubPii({'j': '{"a":"https://x/y?k=1","b":"https://z/w#t=2"}'}), {
-        'j': '{"a":"https://x/y","b":"https://z/w"}',
+        'j': '{"a":"https://x/y',
       });
     });
 
@@ -454,12 +488,36 @@ void main() {
       },
     );
 
-    test('an empty query is left alone', () {
-      expect(scrubPii({'e': '(https://x/y?)'}), {'e': '(https://x/y?)'});
+    test(
+      'an empty query is cut too (simplest rule, nothing to tell apart)',
+      () {
+        expect(scrubPii({'e': '(https://x/y?)'}), {'e': '(https://x/y'});
+      },
+    );
+
+    test('a plain fragment without a query is kept, a key=value one goes', () {
+      expect(
+        scrubPii({
+          'plain': 'https://x/y#frag',
+          'kv': 'https://x/y#access_token=S',
+          'kvAfterPlain': 'https://x/y#frag,a=b',
+        }),
+        {
+          'plain': 'https://x/y#frag',
+          'kv': 'https://x/y',
+          'kvAfterPlain': 'https://x/y',
+        },
+      );
+    });
+
+    test('a key=value fragment is cut even when a ? follows it', () {
+      expect(scrubPii({'a': 'https://h/cb#access_token=SECRET?x'}), {
+        'a': 'https://h/cb',
+      });
     });
   });
 
-  group('an unwrapped URL is stripped to the end of its token', () {
+  group('quotes and closers inside a query never end the drop early', () {
     test('a quote, angle bracket or unbalanced closer inside a query value '
         'does not leak later params', () {
       final result = scrubPii({
@@ -483,7 +541,7 @@ void main() {
       });
     });
 
-    test('a wrapped URL still ends at its own closer only', () {
+    test('wrapped URLs lose their closer and tail too', () {
       final result = scrubPii({
         'p': '(https://h/x?f(a)=1&t=S)tail',
         'q': '"https://h/x?a=1"tail',
@@ -492,10 +550,10 @@ void main() {
       });
 
       expect(result, {
-        'p': '(https://h/x)tail',
-        'q': '"https://h/x"tail',
-        'a': '<https://h/x>tail',
-        'j': '{"url":"https://x/y","code":401}',
+        'p': '(https://h/x',
+        'q': '"https://h/x',
+        'a': '<https://h/x',
+        'j': '{"url":"https://x/y',
       });
     });
   });
@@ -669,13 +727,49 @@ void main() {
         'author': 'Anon',
         'authority': 'x',
         'authored_at': 't',
-        'pin': 3,
         'pinned': true,
+        'pinned_count': 3,
+        'session_id': 's-1',
+        'sessionid': 's-2',
         'signal': 1,
         'sigma': 2,
         'nonces_seen': 3,
         'total_tokens': 4,
         'max_tokens': 5,
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('drops pin, passcode, bearer and otp/verification code keys '
+        '(revision 4)', () {
+      final result = scrubPii({
+        'pin': '1234',
+        'PIN': '1234',
+        'passcode': '5678',
+        'bearer': 'abc',
+        'otp_code': '111',
+        'otpcode': '111',
+        'email_otp_code': '111',
+        'verification_code': '222',
+        'verificationcode': '222',
+        'sms_verification_code': '222',
+        'safe': 'kept',
+      });
+
+      expect(result, {'safe': 'kept'});
+    });
+
+    test('keeps near-miss names of the revision 4 keys', () {
+      final input = {
+        'pinned': 1,
+        'pin_count': 2,
+        'passcodes_seen': 3,
+        'bearer_count': 4,
+        'code': 401,
+        'session_id': 'abc',
+        'sessionid': 'abc',
+        'correlation_id': 'abc',
       };
 
       expect(scrubPii(input), input);
@@ -965,9 +1059,354 @@ void main() {
     });
   });
 
+  group('credential key/value text in strings (rule C)', () {
+    test('opaque refresh tokens do not pass through prose or JSON strings', () {
+      final result = scrubPii({
+        'a': 'refresh_token=abcdEFGHijkl',
+        'b': '{"refresh_token":"abcdEFGHijkl"}',
+        'c': "{'access_token':'abcdEFGHijkl'}",
+        'd': 'failed: refresh_token: abcdEFGHijkl and retry',
+        'e': 'grant failed, id_token=abcdEFGHijkl&next=1',
+        'f': 'x-api-key: K3Y, y',
+        'g': 'PASSWORD=hunter2;',
+        'h': '{"provider_refresh_token": "abcdEFGHijkl", "ok": 1}',
+        'i': '{"client_secret":"abcd","apikey":"k","passwd":"p","secret":"s"}',
+      });
+
+      expect(result, {
+        'a': 'refresh_token=[redacted]',
+        'b': '{"refresh_token":"[redacted]"}',
+        'c': "{'access_token':'[redacted]'}",
+        'd': 'failed: refresh_token: [redacted] and retry',
+        'e': 'grant failed, id_token=[redacted]&next=1',
+        'f': 'x-api-key: [redacted], y',
+        'g': 'PASSWORD=[redacted];',
+        'h': '{"provider_refresh_token": "[redacted]", "ok": 1}',
+        'i':
+            '{"client_secret":"[redacted]","apikey":"[redacted]",'
+            '"passwd":"[redacted]","secret":"[redacted]"}',
+      });
+    });
+
+    test('authorization also consumes a Bearer/Basic scheme word', () {
+      final result = scrubPii({
+        'a': 'Authorization: Bearer abc.def-ghi',
+        'b': 'authorization=Basic dXNlcjpwYXNz next',
+        'c': '{"authorization":"Bearer abc"}',
+        'd': 'authorization: abc',
+      });
+
+      expect(result, {
+        'a': 'Authorization: Bearer [redacted]',
+        'b': 'authorization=Basic [redacted] next',
+        'c': '{"authorization":"Bearer [redacted]"}',
+        'd': 'authorization: [redacted]',
+      });
+    });
+
+    test('is anchored at a word boundary and matches whole keys only', () {
+      final input = {
+        'a': 'mytoken=abc',
+        'b': 'token_count=3',
+        'c': 'tokens=3 max_tokens=5',
+        'd': 'the token was empty',
+        'e': 'token=',
+        'f': 'secretary: Ann',
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('is idempotent and leaves an already redacted value alone', () {
+      final once = scrubPii({'a': 'token=abc, refresh_token: xyz'})!;
+
+      expect(once, {'a': 'token=[redacted], refresh_token: [redacted]'});
+      expect(scrubPii(once), once);
+    });
+
+    test('is linear-time on adversarial 64 KB inputs', () {
+      final inputs = <String, String>{
+        'token_eq': 'token=' * 10000,
+        'token_json': '"token":"' * 5000,
+        'token_sp': 'token ' * 10000,
+        'token_colon_sp': 'token: ' * 8000,
+        'auth_bearer': 'authorization: bearer ' * 2900,
+        'underscores': '_' * 64000,
+        'letters': 'a' * 64000,
+        'token_run': 'token' * 12000,
+        'refresh_run': 'refresh_' * 8000,
+        'quotes': '"\'' * 30000,
+        'key_spaces': 'password${' ' * 60000}',
+      };
+
+      for (final entry in inputs.entries) {
+        final stopwatch = Stopwatch()..start();
+        final result = scrubPii({'v': entry.value});
+        stopwatch.stop();
+
+        expect(result!.containsKey('scrub_error'), isFalse, reason: entry.key);
+        expect(
+          stopwatch.elapsedMilliseconds,
+          lessThan(300),
+          reason: '${entry.key} took ${stopwatch.elapsedMilliseconds} ms',
+        );
+      }
+    });
+  });
+
+  group('non-String objects are stringified and scrubbed', () {
+    test('an exception object holding a URL query does not leak', () {
+      final result = scrubPii({
+        'e': const FormatException('bad https://h/x?token=S'),
+        'nested': [StateError('boom https://h/y?apikey=K')],
+      });
+
+      expect(result, {
+        'e': 'FormatException: bad https://h/x',
+        'nested': ['Bad state: boom https://h/y'],
+      });
+    });
+
+    test('an arbitrary object with a JWT in toString is redacted', () {
+      const jwt =
+          'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
+
+      expect(scrubPii({'o': _Stringy('bearer $jwt')}), {
+        'o': 'bearer [redacted]',
+      });
+    });
+
+    test('null, num and bool pass through untouched, enums become their '
+        'scrubbed name', () {
+      expect(
+        scrubPii({'n': null, 'i': 1, 'd': 2.5, 'b': true, 'e': _Color.red}),
+        {'n': null, 'i': 1, 'd': 2.5, 'b': true, 'e': '_Color.red'},
+      );
+    });
+
+    test('a toString that throws becomes [unprintable], never an error', () {
+      expect(scrubPii({'o': _ThrowingToString()}), {'o': '[unprintable]'});
+    });
+
+    test('an object with a huge toString is capped like any string', () {
+      final value = scrubPii({'o': _Stringy('x ' * 50000)})!['o'] as String;
+
+      expect(value.length, 8 * 1024 + '…[truncated]'.length);
+    });
+  });
+
+  group('URL rule set, verified probes', () {
+    Object? one(String input) => scrubPii({'v': input})!['v'];
+
+    test('scheme URL: @ after the first delimiter drops the rest', () {
+      expect(
+        one('https://h/u/a@b,c?next=https://app/x&token=S'),
+        'https://[redacted]',
+      );
+      expect(
+        one(
+          'https://h/files/me@x.com+1.png?redirect_to=https://app/cb&token=S',
+        ),
+        'https://[redacted]',
+      );
+      expect(
+        one('https://bücher.de/?email=a@b.c&redirect_to=https://app&token=S'),
+        'https://[redacted]',
+      );
+      expect(
+        one('https://h/a@b,c#r=https://z&access_token=S'),
+        'https://[redacted]',
+      );
+      expect(
+        one('https://admin:2024#x@db.host:5432/app'),
+        'https://[redacted]',
+      );
+      expect(one('https://user:1234?rest@host/x'), 'https://[redacted]');
+      expect(one('https://user:p@ss:1?x@host/'), 'https://[redacted]');
+      expect(one('https://host.com/a@b'), 'https://[redacted]');
+    });
+
+    test(
+      'scheme URL: userinfo in the authority is dropped up to the last @',
+      () {
+        expect(one('https://user:pass@host.com/path'), 'https://host.com/path');
+        expect(one('https://u:p@ss@host/x'), 'https://host/x');
+        expect(one('https://u%40x:p@host:5432/db'), 'https://host:5432/db');
+      },
+    );
+
+    test('scheme URL: everything from the first ? on is dropped', () {
+      expect(one('(https://h/x?q=a)&token=S)'), '(https://h/x');
+      expect(one('<https://h/x?q=a>&token=S>'), '<https://h/x');
+      expect(one('[https://h?id=a]b&token=S]'), '[https://h');
+      expect(one("https://h/it's?token=S"), "https://h/it's");
+      expect(
+        one("https://h/.../Don't%20Stop.pdf?token=S"),
+        "https://h/.../Don't%20Stop.pdf",
+      );
+      expect(one('a/b?x,https://h/y?SECRET'), 'a/b?x,https://h/y');
+      expect(one('`https://h/x?SECRET'), '`https://h/x');
+      expect(one('!https://h/x?SECRET'), '!https://h/x');
+      expect(
+        one('https://h/x#frag,https://h2/y?SECRET'),
+        'https://h/x#frag,https://h2/y',
+      );
+    });
+
+    test('more than 8 URLs in one token: the rest is dropped', () {
+      final token = '${List.filled(12, 'https://h/x').join(',')}?SECRET';
+
+      final result = one(token) as String;
+
+      expect(result, isNot(contains('SECRET')));
+      expect(result, endsWith('https://[redacted]'));
+      expect('https://'.allMatches(result).length, 9);
+    });
+
+    test('no scheme URL: schemeless URL-shaped tokens with = are cut', () {
+      expect(one('?apikey=S'), '?apikey=[redacted]');
+      expect(one('localhost?apikey=S'), 'localhost?apikey=[redacted]');
+      expect(
+        one('example.supabase.co/rest/v1/songs?apikey=SECRET'),
+        'example.supabase.co/rest/v1/songs',
+      );
+      expect(one('/rest/v1/songs?apikey=S'), '/rest/v1/songs');
+      expect(one('abc.supabase.co?apikey=S'), 'abc.supabase.co');
+      expect(one('abc.supabase.co?foo=S'), 'abc.supabase.co');
+      expect(one('/rest/v1/songs?foo=S'), '/rest/v1/songs');
+      expect(one('abc.supabase.co:8080#foo=S'), 'abc.supabase.co:8080');
+    });
+
+    test('no scheme URL: non-hierarchical scheme URIs are cut at the ?', () {
+      expect(one('mailto:foo@bar.com?subject=hi'), 'mailto:foo@bar.com');
+      expect(one('mailto:a@b?SECRET'), 'mailto:a@b');
+      expect(one('tel:+1555?x=1#y=2'), 'tel:+1555');
+      expect(one(r'C:\Users\john\file?.txt'), r'C:\Users\john\file?.txt');
+    });
+
+    test('benign text is untouched', () {
+      final input = {
+        'a': '[C/G]Why?[Am]Because',
+        'b': 'a?b',
+        'c': '[C]Hello?[G]World',
+        'd': 'a/b?x',
+        'e': 'and/or?',
+        'f': 'user@example.com wrote',
+        'g': '/usr/bin/x?y',
+        'h': '1/2?',
+        'i': 'C#m7 Am/G 10:30',
+        'j': '?SECRET',
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('documented residuals: not caught, cannot be told from prose', () {
+      // Only the FIRST ?/# of a scheme-less token is classified, so a
+      // schemeless URL after an earlier non-URL `?` slips through unless its
+      // key is a credential name (rule C).
+      expect(one('why?/p?k=SECRETVALUE'), 'why?/p?k=SECRETVALUE');
+      expect(one('why?/p?apikey=SECRETVALUE'), 'why?/p?apikey=[redacted]');
+      // An unknown key after a `=`/`,`-glued host, and a bare `?SECRET`.
+      expect(one('url=abc.co?foo=SECRETVALUE'), 'url=abc.co?foo=SECRETVALUE');
+      expect(one('?SECRETVALUE'), '?SECRETVALUE');
+      // A quoted value with spaces: only its first word is a credential run.
+      expect(
+        one('{"password": "hunter two"}'),
+        '{"password": "[redacted] two"}',
+      );
+    });
+
+    test('a one-character prefix is not a scheme (a://, a drive letter)', () {
+      // `a://` is not a scheme URL, so rule B judges the token: a key=value
+      // query after a `/` is cut, a bare `?SECRET` is the documented residual.
+      expect(one('a://h/x?k=SECRET'), 'a://h/x');
+      expect(one('a://h/x?SECRET'), 'a://h/x?SECRET');
+      expect(one(r'C:\x?y=1'), r'C:\x?y=1');
+    });
+
+    test('redacting a credential value can change how the rest of the token '
+        'is classified: the result is still a fixed point', () {
+      const inputs = [
+        'token=?{]">x[SECRETVALUE"xp/?=',
+        "(!token=SECRETVALUE?'/#!=.",
+        ">'token=SECRETVALUE#co&hk&a://#=https://",
+      ];
+      final outputs = [for (final input in inputs) one(input)];
+
+      expect(outputs, [
+        'token=[redacted]">x[SECRETVALUE"xp/',
+        "(!token=[redacted]'/",
+        ">'token=[redacted]&hk&a://",
+      ]);
+      expect([for (final output in outputs) one(output as String)], outputs);
+    });
+
+    test('a schemeless URL before a scheme URL in one token is cut too', () {
+      expect(one('/rest/v1/x?k=SECRETVALUE,https://h/y'), '/rest/v1/x');
+      expect(one('x.co#k=SECRETVALUE;https://h/y'), 'x.co');
+      expect(one('a/b?x,https://h/y'), 'a/b?x,https://h/y');
+    });
+
+    test('documented benign mangling of look-alikes', () {
+      expect(one('Dr.Who?name=x'), 'Dr.Who');
+      expect(one('1.5?x=2'), '1.5');
+      expect(one('[G/B]Love?[C]=joy'), '[G/B]Love');
+      expect(one('v1.2?x=1'), 'v1.2');
+      expect(one('foo.bar?baz=qux'), 'foo.bar');
+    });
+  });
+
+  group('exact size-cap boundaries', () {
+    test('output: 8192 characters are kept whole, 8193 are cut with the '
+        'marker', () {
+      expect(scrubPii({'v': 'x' * 8192})!['v'], 'x' * 8192);
+      expect(scrubPii({'v': 'x' * 8193})!['v'], '${'x' * 8192}…[truncated]');
+    });
+
+    // Each chunk is 512 chars and collapses to `[redacted] ` (11 chars), so
+    // the scrubbed prefix stays far below the 8 KB output cap and the
+    // input-cap boundary itself is visible in the result.
+    final chunk = 'sb_secret_${'a' * 501} ';
+
+    test('input: exactly 64 KB is scrubbed whole, no marker', () {
+      final input = chunk * 128;
+      expect(input.length, 65536);
+
+      final value = scrubPii({'v': input})!['v'] as String;
+
+      expect(value, '[redacted] ' * 128);
+    });
+
+    test('input: 64 KB + 1 is cut, the unscrubbed tail is never emitted', () {
+      final input = '${chunk * 128}x';
+      expect(input.length, 65537);
+
+      final value = scrubPii({'v': input})!['v'] as String;
+
+      expect(value, '${'[redacted] ' * 127}[redacted]…[truncated]');
+      expect(value, isNot(contains('x')));
+    });
+  });
+
   test('returns null for null input', () {
     expect(scrubPii(null), isNull);
   });
+}
+
+enum _Color { red }
+
+class _Stringy {
+  _Stringy(this.text);
+  final String text;
+
+  @override
+  String toString() => text;
+}
+
+class _ThrowingToString {
+  @override
+  String toString() => throw StateError('no string for you');
 }
 
 class _ThrowingMap extends MapBase<String, Object?> {

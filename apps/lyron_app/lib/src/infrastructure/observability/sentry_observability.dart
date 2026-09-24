@@ -234,9 +234,15 @@ class _SentrySpanHandle implements ObservabilitySpan {
 
   @override
   void setData(String key, Object? value) {
+    // Iterate the scrubbed entries, not `scrubbed[key]`: scrubbing may rewrite
+    // the key itself (a URL/JWT key, an oversized key), and a lookup by the
+    // original key would silently drop the value. A dropped (sensitive) key
+    // yields no entry at all.
     final scrubbed = scrubPii({key: value});
-    if (scrubbed != null && scrubbed.containsKey(key)) {
-      sentrySpan.setData(key, scrubbed[key]);
+    if (scrubbed != null) {
+      for (final entry in scrubbed.entries) {
+        sentrySpan.setData(entry.key, entry.value);
+      }
     }
   }
 
