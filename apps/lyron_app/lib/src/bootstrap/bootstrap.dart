@@ -70,6 +70,13 @@ void reportUncaughtZoneError(
 /// `internalError` when it has no status yet. A plain `captureException`
 /// would report it as handled, level error.
 ///
+/// The scope-span marking is SDK-parity code and a no-op in this app today:
+/// `SentryObservability.runInSpan` starts transactions with
+/// `bindToScope: false` and nothing in `lib/` binds a scope span (no
+/// navigator observer), so `scope.span` is null here. The error is still
+/// linked to its trace through `span.throwable` (ADR-036 point 2), which
+/// does not depend on the scope span.
+///
 /// The SDK downgrades the level to `error` when
 /// `options.markAutomaticallyCollectedErrorsAsFatal` is false. That option
 /// is not readable from here without the `@internal` `Sentry.currentHub`

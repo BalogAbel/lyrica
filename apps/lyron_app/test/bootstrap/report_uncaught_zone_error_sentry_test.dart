@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/bootstrap/bootstrap.dart';
+import 'package:lyron_app/src/infrastructure/observability/sentry_observability.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Offline: real Sentry hub, recording transport, `HttpClient` overridden to
@@ -81,6 +82,8 @@ void main() {
       expect(httpAttempts, isEmpty);
     });
 
+    // SDK-parity pin only: the app itself never binds a scope span
+    // (`runInSpan` uses `bindToScope: false`), so this test binds one by hand.
     test('marks the active scope span internalError, like the SDK', () async {
       await initSentry();
       final transaction = Sentry.startTransaction(
@@ -98,6 +101,49 @@ void main() {
 
       expect(transaction.status, const SpanStatus.internalError());
       await transaction.finish();
+    });
+
+    test('an error escaping a nested span into the guarded zone is reported '
+        'unhandled/fatal AND linked to that span\'s trace', () async {
+      await initSentry();
+      const observability = SentryObservability();
+      final error = StateError('escaped a span');
+      String? childTraceParent;
+
+      await runBootstrapGuarded(
+        () async {
+          await observability.runInSpan('root', 'business.refresh', (
+            root,
+          ) async {
+            // Not awaited: the error escapes into the zone's uncaught
+            // handler, like an unhandled error in real code.
+            unawaited(
+              observability.runInSpan('child', 'db.query', (child) async {
+                childTraceParent = observability.currentTraceParent;
+                throw error;
+              }),
+            );
+            await pumpEventQueue();
+          });
+          await pumpEventQueue();
+        },
+        useGuardedZone: true,
+        // The default capture path, only the local dump is silenced.
+        onError: (e, s) => reportUncaughtZoneError(e, s, dump: (_) {}),
+      );
+      await pumpEventQueue();
+
+      // The finished root transaction also passes `beforeSend`.
+      final errorEvents = events.where((e) => e is! SentryTransaction);
+      expect(errorEvents, hasLength(1));
+      final event = errorEvents.single;
+      final parts = childTraceParent!.split('-');
+      expect(event.contexts.trace!.traceId.toString(), parts[1]);
+      expect(event.contexts.trace!.spanId.toString(), parts[2]);
+      expect(event.level, SentryLevel.fatal);
+      expect(event.exceptions!.single.mechanism!.handled, isFalse);
+      expect(event.exceptions!.single.mechanism!.type, 'runZonedGuarded');
+      expect(httpAttempts, isEmpty);
     });
 
     test(
