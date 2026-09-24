@@ -21,9 +21,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// `FlutterError.dumpErrorToConsole`, which does NOT invoke
 /// `FlutterError.onError`), so nothing is ever swallowed silently -- even
 /// when Sentry is disabled or uninitialized. Then hands the error to
-/// [capture] (default `Sentry.captureException`, a no-op returning
-/// `SentryId.empty()` on the `NoOpHub` when Sentry is not initialized).
-/// A failing [capture] is contained: telemetry must never turn a reported
+/// [capture] (default [_captureUnhandledZoneError], a no-op on the `NoOpHub`
+/// when Sentry is not initialized). A failing [capture] is contained: telemetry must never turn a reported
 /// error into a second one.
 ///
 /// No double report: Sentry's `FlutterErrorIntegration` only sees errors
@@ -42,9 +41,7 @@ void reportUncaughtZoneError(
       dump ??
       (FlutterErrorDetails details) =>
           FlutterError.dumpErrorToConsole(details, forceReport: true);
-  final captureError =
-      capture ??
-      (Object e, StackTrace s) => Sentry.captureException(e, stackTrace: s);
+  final captureError = capture ?? _captureUnhandledZoneError;
 
   try {
     dumpError(
@@ -65,8 +62,41 @@ void reportUncaughtZoneError(
   );
 }
 
-/// Runs [body] (normally [bootstrap]) the way the Sentry SDK would, so that
-/// unhandled asynchronous errors are still captured on every platform.
+/// Captures [error] the way the Sentry SDK's own `runZonedGuarded` path does
+/// (`sentry/lib/src/sentry_run_zoned_guarded.dart:99-116`, `_captureError`):
+/// an event whose throwable carries `Mechanism(type: 'runZonedGuarded',
+/// handled: false)` (a zone-uncaught error is by definition not handled by
+/// the user), level `fatal`, and the scope span (if any) marked
+/// `internalError` when it has no status yet. A plain `captureException`
+/// would report it as handled, level error.
+///
+/// The SDK downgrades the level to `error` when
+/// `options.markAutomaticallyCollectedErrorsAsFatal` is false. That option
+/// is not readable from here without the `@internal` `Sentry.currentHub`
+/// (analyzer `invalid_use_of_internal_member`), and [initObservability]
+/// leaves it at its default (`true`, `sentry_options.dart:468`), so the level
+/// is hard-coded `fatal`. Revisit if that option is ever set.
+Future<void> _captureUnhandledZoneError(
+  Object error,
+  StackTrace stackTrace,
+) async {
+  final event = SentryEvent(
+    throwable: ThrowableMechanism(
+      Mechanism(type: 'runZonedGuarded', handled: false),
+      error,
+    ),
+    level: SentryLevel.fatal,
+  );
+  await Sentry.configureScope(
+    (scope) => scope.span?.status ??= const SpanStatus.internalError(),
+  );
+  await Sentry.captureEvent(event, stackTrace: stackTrace);
+}
+
+/// Runs [body] (normally [bootstrap]) in a zone that reports uncaught errors
+/// like the Sentry SDK's own zone does, so that unhandled asynchronous errors
+/// are still captured on every platform (see
+/// [_captureUnhandledZoneError] for the exact event shape).
 ///
 /// SDK facts (sentry_flutter 8.14.2), which this mirrors:
 /// - `sentry_flutter/lib/src/sentry_flutter.dart:76-77`:
@@ -120,11 +150,15 @@ Future<void> runBootstrapGuarded(
 /// [Observability] the rest of the app must use, also publishing it through
 /// [setCurrentObservability].
 ///
-/// Fail soft (ADR-036 point 5): if [init] throws (e.g. a malformed DSN), the
-/// error is reported and [NoopObservability] is used. `Sentry` stays on its
-/// `NoOpHub` in that case, so keeping [SentryObservability] would do
-/// pointless work (spans/trace context against a disabled hub); the caller
-/// must build `TracingHttpClient` from the returned value.
+/// Fail soft (ADR-036 point 5): if [init] throws, the error is reported and
+/// [NoopObservability] is used, so no spans are ever created against a
+/// half-initialized SDK; the caller must build `TracingHttpClient` from the
+/// returned value. Whether `Sentry` stays on its `NoOpHub` depends on where
+/// the failure happens: a malformed DSN makes `_setDefaultConfiguration`
+/// throw (`options.parsedDsn`, sentry.dart:305-314) before the hub is created (`sentry.dart:150-152`), leaving the
+/// `NoOpHub`; a later throw (e.g. from an integration) leaves a live hub
+/// behind the [NoopObservability] adapter. That is harmless: the app creates
+/// no spans, and the SDK's global error hooks still capture.
 Future<Observability> initObservability(
   SentryConfig config, {
   FutureOr<void> Function(FlutterOptionsConfiguration) init =

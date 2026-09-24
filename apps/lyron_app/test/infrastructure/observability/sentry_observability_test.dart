@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,14 @@ void main() {
   late List<SentryTransaction> transactions;
   late List<SentryEvent> events;
   late List<String> httpAttempts;
+
+  /// A public-API way to make a real span's `finish()` throw without a test
+  /// seam: `SentrySpan.finish` awaits every `PerformanceContinuousCollector`
+  /// BEFORE it sets the end timestamp (sentry_span.dart:72-80), so a
+  /// collector that throws makes `finish()` fail with `finished` still false.
+  /// Installed only by the one test that needs it (a continuous collector
+  /// makes every finish asynchronous, which changes unrelated tests).
+  final collector = _ThrowingCollector();
 
   setUp(() async {
     transport = _RecordingTransport();
@@ -418,7 +427,11 @@ void main() {
       expect(transport.gate!.isCompleted, isFalse);
     });
 
-    test('a failing transport surfaces no error from runInSpan', () async {
+    // SDK contract, not adapter logic: `Hub.captureTransaction` catches and
+    // logs transport errors (hub.dart:596-602), so a failing transport never
+    // reaches `_finishQuietly`. This pins that the caller never sees it.
+    test('a failing transport never surfaces an error to the caller '
+        '(SDK contract)', () async {
       const observability = SentryObservability();
       transport.failWith = StateError('transport down');
       final uncaught = <Object>[];
@@ -437,7 +450,10 @@ void main() {
       expect(uncaught, isEmpty);
     });
 
-    test('a throwing finish never becomes an uncaught error', () async {
+    // Same SDK contract as above, on the failure path: the body's own error
+    // is rethrown unmodified while the transport fails.
+    test('a failing transport does not change or add to a body failure '
+        '(SDK contract)', () async {
       const observability = SentryObservability();
       transport.failWith = StateError('transport down');
       final uncaught = <Object>[];
@@ -461,6 +477,43 @@ void main() {
       expect(uncaught, isEmpty);
     });
 
+    test('a finish() that throws is swallowed and the span stops being '
+        'ambient anyway', () async {
+      await Sentry.close();
+      await Sentry.init((options) {
+        options.dsn = 'https://public@o0.ingest.sentry.io/0';
+        options.tracesSampleRate = 1.0;
+        options.transport = transport;
+        options.addPerformanceCollector(collector);
+      });
+      const observability = SentryObservability();
+      final uncaught = <Object>[];
+      final later = Completer<ObservabilitySpan>();
+      Object? result;
+
+      await runZonedGuarded(() async {
+        result = await observability.runInSpan('root', 'business.refresh', (
+          span,
+        ) async {
+          Timer(Duration.zero, () => later.complete(observability.currentSpan));
+          // From here `finish()` throws and leaves the SDK span un-finished.
+          collector.throwOnFinish = true;
+          return 'value';
+        });
+        collector.throwOnFinish = false;
+        await pump();
+      }, (e, s) => uncaught.add(e));
+
+      expect(result, 'value');
+      // Kills removing the try/catch in `_finishQuietly`: the failed finish
+      // would surface as an uncaught async error.
+      expect(uncaught, isEmpty);
+      // Kills removing `handle.markEnded()`: the SDK span never got an end
+      // timestamp (`finished == false`), so only `markEnded` keeps it from
+      // being advertised as the ambient span.
+      expect(await later.future, isA<NoopObservabilitySpan>());
+    });
+
     test('async and sync body throws finish the span exactly once', () async {
       const observability = SentryObservability();
 
@@ -480,6 +533,126 @@ void main() {
       await pump();
 
       expect(transactions.map((t) => t.transaction), ['sync', 'async']);
+    });
+  });
+
+  group('a hostile data map never breaks the instrumented operation', () {
+    Map<String, Object?> cyclic() {
+      final map = <String, Object?>{'ok': 1};
+      map['self'] = map;
+      return map;
+    }
+
+    test('runInSpan with self-referencing data still runs the body and '
+        'finishes the transaction', () async {
+      const observability = SentryObservability();
+
+      final result = await observability.runInSpan(
+        'root',
+        'business.refresh',
+        (span) async => 'value',
+        data: cyclic(),
+      );
+      await pump();
+
+      expect(result, 'value');
+      expect(transactions, hasLength(1));
+      expect(transactions.single.contexts.trace!.data, containsPair('ok', 1));
+    });
+
+    test('runInSpan with data that throws while being read still runs the '
+        'body and finishes the transaction', () async {
+      const observability = SentryObservability();
+
+      final result = await observability.runInSpan(
+        'root',
+        'business.refresh',
+        (span) async => 'value',
+        data: {'bad': _ThrowingMap()},
+      );
+      await pump();
+
+      expect(result, 'value');
+      expect(transactions, hasLength(1));
+      expect(
+        transactions.single.contexts.trace!.data,
+        containsPair('scrub_error', true),
+      );
+    });
+
+    test('span.setData, startChild, addBreadcrumb and captureException '
+        'contain a self-referencing value', () async {
+      const observability = SentryObservability();
+
+      await observability.runInSpan('root', 'business.refresh', (span) async {
+        expect(() => span.setData('k', cyclic()), returnsNormally);
+        expect(
+          () => span.startChild('db.query', data: cyclic()).finish(),
+          returnsNormally,
+        );
+        expect(
+          () => observability.addBreadcrumb('b', data: cyclic()),
+          returnsNormally,
+        );
+        expect(
+          () => observability.captureException(
+            StateError('x'),
+            StackTrace.current,
+            extra: cyclic(),
+          ),
+          returnsNormally,
+        );
+      });
+      await pump();
+
+      expect(transactions, hasLength(1));
+      expect(events, hasLength(1));
+    });
+  });
+
+  group('error to trace linking (ADR-036 point 2)', () {
+    test('an error that crossed a finished child span is linked to that span '
+        'when captured after it', () async {
+      const observability = SentryObservability();
+      final error = StateError('crossed a span');
+      String? childTraceParent;
+
+      await runZonedGuarded(() async {
+        await observability.runInSpan('root', 'business.refresh', (root) async {
+          // Not awaited: the error escapes into the zone's uncaught handler,
+          // like an unhandled error in real code.
+          unawaited(
+            observability.runInSpan('child', 'db.query', (child) async {
+              childTraceParent = observability.currentTraceParent;
+              throw error;
+            }),
+          );
+          await pump();
+        });
+        await pump();
+      }, (e, s) => Sentry.captureException(e, stackTrace: s));
+      await pump();
+
+      final parts = childTraceParent!.split('-');
+      expect(events, hasLength(1));
+      final trace = events.single.contexts.trace!;
+      expect(trace.traceId.toString(), parts[1]);
+      expect(trace.spanId.toString(), parts[2]);
+      expect(events.single.transaction, 'root');
+    });
+
+    test('an error that never crossed a span is not linked to any', () async {
+      const observability = SentryObservability();
+      String? childTraceParent;
+
+      await observability.runInSpan('root', 'business.refresh', (root) async {
+        childTraceParent = observability.currentTraceParent;
+      });
+      await Sentry.captureException(StateError('free'));
+      await pump();
+
+      final trace = events.single.contexts.trace;
+      expect(trace?.traceId.toString(), isNot(childTraceParent!.split('-')[1]));
     });
   });
 
@@ -557,4 +730,36 @@ class _FailingHttpClient implements HttpClient {
     attempted.add(invocation.memberName.toString());
     throw StateError('network attempted in offline test');
   }
+}
+
+class _ThrowingMap extends MapBase<String, Object?> {
+  @override
+  Object? operator [](Object? key) => throw StateError('boom');
+
+  @override
+  void operator []=(String key, Object? value) {}
+
+  @override
+  void clear() {}
+
+  @override
+  Iterable<String> get keys => throw StateError('boom');
+
+  @override
+  Object? remove(Object? key) => null;
+}
+
+class _ThrowingCollector extends PerformanceContinuousCollector {
+  bool throwOnFinish = false;
+
+  @override
+  Future<void> onSpanStarted(ISentrySpan span) async {}
+
+  @override
+  Future<void> onSpanFinished(ISentrySpan span, DateTime endTimestamp) async {
+    if (throwOnFinish) throw StateError('collector broke');
+  }
+
+  @override
+  void clear() {}
 }

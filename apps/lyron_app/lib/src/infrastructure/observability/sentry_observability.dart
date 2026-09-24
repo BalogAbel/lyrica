@@ -11,8 +11,13 @@ const _spanZoneKey = #lyronCurrentObservabilitySpan;
 /// runs through a dedicated Dart Zone value ([_spanZoneKey]), not
 /// Sentry's own ambient `Scope` -- see
 /// docs/architecture/decisions/ADR-036-observability-sentry-adapter.md
-/// point 2 for why, including the accepted consequence that
-/// SDK-auto-captured unhandled errors are never trace-linked as a result.
+/// point 2 for why, including the accepted consequence for error linking:
+/// an error that crossed a span is trace-linked (`runInSpan` sets
+/// `span.throwable`, and `SentrySpan.finish` records the association via
+/// `Hub.setSpanContext` synchronously, before `_finishQuietly` yields, so it
+/// is in place before the error can be captured by a zone/global handler). An
+/// error thrown outside any span, or whose span never finished, is not
+/// linked, because the ambient Scope span is not used.
 class SentryObservability implements Observability {
   const SentryObservability();
 
@@ -83,9 +88,11 @@ class SentryObservability implements Observability {
     }, zoneValues: {_spanZoneKey: handle});
   }
 
-  /// Finishes [span], swallowing any error: telemetry delivery failure must
-  /// never surface as an unhandled zone error or change the outcome of the
-  /// instrumented operation.
+  /// Finishes [span], swallowing any error: telemetry must never surface as an
+  /// unhandled zone error or change the outcome of the instrumented
+  /// operation. Defensive: transport errors are already swallowed by
+  /// `Hub.captureTransaction` (hub.dart:596-602), so this only matters if the
+  /// SDK's finish itself throws (e.g. a throwing `options.clock`).
   static Future<void> _finishQuietly(ISentrySpan span) async {
     try {
       await span.finish();
