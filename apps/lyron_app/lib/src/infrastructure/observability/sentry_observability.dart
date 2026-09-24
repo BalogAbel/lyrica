@@ -16,8 +16,17 @@ const _spanZoneKey = #lyronCurrentObservabilitySpan;
 class SentryObservability implements Observability {
   const SentryObservability();
 
-  _SentrySpanHandle? get _current =>
-      Zone.current[_spanZoneKey] as _SentrySpanHandle?;
+  /// The ambient span handle, or null when there is none *or* the ambient
+  /// span already finished. Zone values outlive the span they name: a
+  /// `Timer`/microtask scheduled inside a span (e.g. Riverpod dependents
+  /// notified during a refresh) runs later in that span's zone. A finished
+  /// span must not be advertised as current: `SentryTracer.startChild` on a
+  /// finished tracer returns a `NoOpSentrySpan` (all-zero ids), and its real
+  /// ids would mis-correlate unrelated later requests with a finished trace.
+  _SentrySpanHandle? get _current {
+    final handle = Zone.current[_spanZoneKey] as _SentrySpanHandle?;
+    return (handle == null || handle.isEnded) ? null : handle;
+  }
 
   @override
   Future<T> runInSpan<T>(
@@ -27,6 +36,9 @@ class SentryObservability implements Observability {
     Map<String, Object?>? data,
   }) {
     final parent = _current;
+    // A finished ambient span is already filtered out by `_current`, so
+    // work scheduled from a dead span starts a NEW root instead of a child
+    // of a finished tracer (which the SDK silently turns into a NoOp).
     final sentrySpan = parent == null
         ? Sentry.startTransaction(name, operation, bindToScope: false)
         : parent.sentrySpan.startChild(operation, description: name);
@@ -60,9 +72,26 @@ class SentryObservability implements Observability {
         sentrySpan.status = const SpanStatus.internalError();
         rethrow;
       } finally {
-        await sentrySpan.finish();
+        // Status/throwable are already set above. Mark ended synchronously
+        // (the SDK's own `finished` flag can lag behind an async finish),
+        // then finish WITHOUT awaiting: on a root span `finish()` awaits
+        // the transaction's transport send (an HTTP POST on web), and a
+        // slow or hung collector must never stall the caller.
+        handle.markEnded();
+        unawaited(_finishQuietly(sentrySpan));
       }
     }, zoneValues: {_spanZoneKey: handle});
+  }
+
+  /// Finishes [span], swallowing any error: telemetry delivery failure must
+  /// never surface as an unhandled zone error or change the outcome of the
+  /// instrumented operation.
+  static Future<void> _finishQuietly(ISentrySpan span) async {
+    try {
+      await span.finish();
+    } catch (_) {
+      // Intentionally ignored -- see doc comment.
+    }
   }
 
   @override
@@ -78,6 +107,12 @@ class SentryObservability implements Observability {
     // but is annotated `@internal` in the SDK source -- using it directly
     // would trip `invalid_use_of_internal_member` under `flutter analyze`.
     final trace = span.toSentryTrace();
+    // A NoOp span (Sentry not initialised / span dropped by the SDK)
+    // reports all-zero ids, which W3C declares invalid. Never emit that.
+    if (trace.traceId == const SentryId.empty() ||
+        trace.spanId == const SpanId.empty()) {
+      return null;
+    }
     return buildTraceParent(
       traceId: trace.traceId.toString(),
       spanId: trace.spanId.toString(),
@@ -165,6 +200,14 @@ class _SentrySpanHandle implements ObservabilitySpan {
   _SentrySpanHandle(this.sentrySpan);
 
   final ISentrySpan sentrySpan;
+
+  bool _ended = false;
+
+  /// True once [SentryObservability.runInSpan] is done with this span (set
+  /// synchronously, before the async finish) or the SDK reports it finished.
+  bool get isEnded => _ended || sentrySpan.finished;
+
+  void markEnded() => _ended = true;
 
   @override
   ObservabilitySpan startChild(

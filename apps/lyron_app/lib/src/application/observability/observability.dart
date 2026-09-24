@@ -17,8 +17,11 @@ enum BreadcrumbLevel { debug, info, warning, error }
 abstract class Observability {
   /// Runs [body] as a span named [name] with operation [operation]. If
   /// there is already an active span in the current Zone, the new span is
-  /// its child; otherwise it starts a new root trace. The span finishes
-  /// automatically when [body] completes or throws; on throw,
+  /// its child; otherwise it starts a new root trace. An ambient span that
+  /// has already finished (work scheduled inside a span that runs after it
+  /// ended) does not count: a new root is started instead. The span
+  /// finishes automatically when [body] completes or throws, without the
+  /// returned future waiting for telemetry delivery; on throw,
   /// [ObservabilitySpanStatus.internalError] is set before the exception
   /// is rethrown unmodified. [body] runs inside a new Zone in which this
   /// span is the ambient [currentSpan]/[currentTraceParent] for its
@@ -32,12 +35,14 @@ abstract class Observability {
   });
 
   /// The active span in the current Zone. Never null -- resolves to a
-  /// [NoopObservabilitySpan] when nothing is active, so callers never need
-  /// to branch on whether tracing is active.
+  /// [NoopObservabilitySpan] when nothing is active (or the ambient span
+  /// already finished), so callers never need to branch on whether tracing
+  /// is active.
   ObservabilitySpan get currentSpan;
 
   /// W3C `traceparent` header value for the current span, or null if there
-  /// is no active span.
+  /// is no active span (including a finished one, or a span with invalid
+  /// all-zero ids).
   String? get currentTraceParent;
 
   /// Reports a handled error, explicitly linked to the current span.
