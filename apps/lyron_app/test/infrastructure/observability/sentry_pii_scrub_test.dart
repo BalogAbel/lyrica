@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_pii_scrub.dart';
@@ -242,12 +243,14 @@ void main() {
   });
 
   test('redacts JWT scanning in linear time on pathological input', () {
-    final hostile = 'eyJ' * 33334; // ~100 KB
+    // Just under the 64 KB scrub cap, so the whole run is scanned.
+    final hostile = 'eyJ' * 20000;
     final stopwatch = Stopwatch()..start();
-    final result = scrubPii({'v': hostile});
+    final result = scrubPii({'v': hostile, 'small': 'eyJ' * 2000});
     stopwatch.stop();
 
-    expect(result, {'v': hostile});
+    expect(result!['small'], 'eyJ' * 2000);
+    expect(result['v'], startsWith('eyJeyJ'));
     expect(stopwatch.elapsedMilliseconds, lessThan(1000));
   });
 
@@ -316,7 +319,7 @@ void main() {
     });
   });
 
-  group('userinfo removal is greedy to the last @ of the token', () {
+  group('userinfo removal', () {
     test('userinfo containing a raw ?, / or # does not leak', () {
       final result = scrubPii({
         'q': 'https://u:p?ss@host/x',
@@ -341,14 +344,60 @@ void main() {
       expect(scrubPii({'m': 'mailto:a@b?x=1'}), {'m': 'mailto:a@b'});
     });
 
-    test('over-redacts an @ in the query or path (documented trade-off, '
-        'bias is leak-free)', () {
+    test('an @ inside the query or fragment never swallows the ? and leaks '
+        'later params', () {
       final result = scrubPii({
-        'query': 'https://host/path?email=a@b.c',
-        'path': 'https://host/a@b',
+        'rest':
+            'https://abc.supabase.co/rest/v1/profiles?email=eq.bob@x.com&apikey=SECRET',
+        'path': 'https://h/p?email=a@b.c&token=SECRET',
+        'nopath': 'https://h?email=a@b.c&token=S',
+        'both': 'https://u:p@h/x?email=a@b.c&token=S',
+        'frag': 'https://h/p#email=a@b.c&token=S',
+        'two': 'https://h/p?a=x@y@z&token=S',
       });
 
-      expect(result, {'query': 'https://b.c', 'path': 'https://b'});
+      expect(result, {
+        'rest': 'https://abc.supabase.co/rest/v1/profiles',
+        'path': 'https://h/p',
+        'nopath': 'https://h',
+        'both': 'https://h/x',
+        'frag': 'https://h/p',
+        'two': 'https://h/p',
+      });
+    });
+
+    test('an @ in the path (before any ?) over-redacts, documented '
+        'trade-off', () {
+      expect(scrubPii({'path': 'https://host/a@b'}), {'path': 'https://b'});
+    });
+
+    test('a userinfo that is not host-shaped and holds ?/# is dropped as '
+        'userinfo, not read as host + query', () {
+      final result = scrubPii({
+        'q': 'https://u:p?ss@host/x',
+        'h': 'https://u:p#ss@host/x',
+        'sq': 'https://u:p/ss?x@host/x',
+      });
+
+      expect(result, {
+        'q': 'https://host/x',
+        'h': 'https://host/x',
+        'sq': 'https://host/x',
+      });
+    });
+
+    test('when what remains after a userinfo drop is not host-shaped the '
+        'URL is cut to its scheme (fail-safe)', () {
+      expect(scrubPii({'x': 'https://localhost:abc?email=a@b&token=S'}), {
+        'x': 'https://',
+      });
+    });
+
+    test('userinfo is dropped for every URL in a token, not just the '
+        'first', () {
+      expect(scrubPii({'j': '{"a":"https://x/y?k=1","b":"https://u:p@h/z"}'}), {
+        'j': '{"a":"https://x/y","b":"https://h/z"}',
+      });
     });
   });
 
@@ -410,6 +459,141 @@ void main() {
     });
   });
 
+  group('an unwrapped URL is stripped to the end of its token', () {
+    test('a quote, angle bracket or unbalanced closer inside a query value '
+        'does not leak later params', () {
+      final result = scrubPii({
+        'apos': "https://h/x?q='a'&token=S",
+        'quote': 'https://h/x?q="a"&token=S',
+        'angle': 'https://h/x?q=<a>&token=S',
+        'paren': 'https://h/x?k=a)b&token=S',
+        'bracket': 'https://h/x?a=1]secret=S',
+        'brace': 'https://h/x?a=1}secret=S',
+        'real': "https://h/rest/v1/songs?title=eq.Don't&apikey=S",
+      });
+
+      expect(result, {
+        'apos': 'https://h/x',
+        'quote': 'https://h/x',
+        'angle': 'https://h/x',
+        'paren': 'https://h/x',
+        'bracket': 'https://h/x',
+        'brace': 'https://h/x',
+        'real': 'https://h/rest/v1/songs',
+      });
+    });
+
+    test('a wrapped URL still ends at its own closer only', () {
+      final result = scrubPii({
+        'p': '(https://h/x?f(a)=1&t=S)tail',
+        'q': '"https://h/x?a=1"tail',
+        'a': '<https://h/x?a=1>tail',
+        'j': '{"url":"https://x/y?a=1","code":401}',
+      });
+
+      expect(result, {
+        'p': '(https://h/x)tail',
+        'q': '"https://h/x"tail',
+        'a': '<https://h/x>tail',
+        'j': '{"url":"https://x/y","code":401}',
+      });
+    });
+  });
+
+  group('each ?/# is classified on its own, not once per token', () {
+    test('a URL after a non-URL question mark in the same token is '
+        'stripped', () {
+      final result = scrubPii({
+        'a': 'why?https://h/x?token=S',
+        'b': 'err?url=https://h/x?token=S',
+        'c': 'u1?a=1,https://x?b=2',
+        'd': '[C]Hello?https://abc.supabase.co/rest?apikey=S',
+        'e': 'https://h/a=b?token=S',
+        'f': 'why?https://h/x?flag',
+      });
+
+      expect(result, {
+        'a': 'why?https://h/x',
+        'b': 'err?url=https://h/x',
+        'c': 'u1?a=1,https://x',
+        'd': '[C]Hello?https://abc.supabase.co/rest',
+        'e': 'https://h/a=b',
+        'f': 'why?https://h/x',
+      });
+    });
+
+    test('non-URL question marks stay untouched next to each other', () {
+      final input = {
+        'a': 'why?what?how',
+        'b': 'a?b,c?d',
+        'c': '[C]Hello?[G]World?[Am]x',
+      };
+
+      expect(scrubPii(input), input);
+    });
+  });
+
+  group('slash-only (schemeless) tokens and ChordPro', () {
+    test('a slash chord followed by a question mark is not mangled', () {
+      final input = {
+        'a': '[C/G]Why?[Am]Because',
+        'b': 'a/b?x',
+        'c': '[D/F#]Why?[G]x',
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('schemeless slash URLs with a key=value query are stripped', () {
+      final result = scrubPii({
+        'host': 'example.supabase.co/rest/v1/songs?apikey=SECRET',
+        'abs': '/rest/v1/songs?apikey=S',
+        'rel': 'rest/v1/songs?apikey=S',
+        'frag': 'rest/v1/songs#access_token=T',
+      });
+
+      expect(result, {
+        'host': 'example.supabase.co/rest/v1/songs',
+        'abs': '/rest/v1/songs',
+        'rel': 'rest/v1/songs',
+        'frag': 'rest/v1/songs',
+      });
+    });
+  });
+
+  group('map keys are scrubbed like string values', () {
+    test('a key holding a URL query, userinfo or JWT is scrubbed', () {
+      const jwt =
+          'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
+      final result = scrubPii({
+        'https://h/x?token=S': 1,
+        'https://u:p@h/y': 2,
+        jwt: 3,
+        'plain_key': 4,
+      });
+
+      expect(result, {
+        'https://h/x': 1,
+        'https://h/y': 2,
+        '[redacted]': 3,
+        'plain_key': 4,
+      });
+    });
+
+    test('keys that collide after scrubbing do not throw, the later wins', () {
+      final result = scrubPii({
+        'https://h/x?a=1': 'first',
+        'https://h/x?b=2': 'second',
+      });
+
+      expect(result, {'https://h/x': 'second'});
+    });
+
+    test('a sensitive key is still dropped before its value is looked at', () {
+      expect(scrubPii({'token': 'https://h/x?a=1', 'ok': 1}), {'ok': 1});
+    });
+  });
+
   group('key denylist gaps', () {
     test('drops authorization-suffixed, key-material and credential keys', () {
       final result = scrubPii({
@@ -432,6 +616,104 @@ void main() {
       });
 
       expect(result, {'safe': 'kept'});
+    });
+
+    test('drops credential-like keys added in revision 3', () {
+      final result = scrubPii({
+        'passwd': 1,
+        'db_passwd': 1,
+        'pwd': 1,
+        'passphrase': 1,
+        'ssh_passphrase': 1,
+        'otp': 1,
+        'totp': 1,
+        'email_otp': 1,
+        'csrf': 1,
+        'xsrf': 1,
+        'sig': 1,
+        'signature': 1,
+        'auth': 1,
+        'auth_header': 1,
+        'creds': 1,
+        'token_hash': 1,
+        'authcode': 1,
+        'auth_code': 1,
+        'authorization_code': 1,
+        'mfa_code': 1,
+        'recovery_code': 1,
+        'recovery_codes': 1,
+        'service_role_key': 1,
+        'supabase_key': 1,
+        'nonce': 1,
+        'password_hash': 1,
+        'private_key_id': 1,
+        'jwts': 1,
+        'access_jwt': 1,
+        'secrets': 1,
+        'client_secrets': 1,
+        'passwords': 1,
+        'cookies': 1,
+        'apikeys': 1,
+        'safe': 'kept',
+      });
+
+      expect(result, {'safe': 'kept'});
+    });
+
+    test('keeps generic short names that are ordinary data in this app', () {
+      final input = {
+        'code': 401,
+        'status_code': 500,
+        'time_signature': '4/4',
+        'key_signature': 'G',
+        'author': 'Anon',
+        'authority': 'x',
+        'authored_at': 't',
+        'pin': 3,
+        'pinned': true,
+        'signal': 1,
+        'sigma': 2,
+        'nonces_seen': 3,
+        'total_tokens': 4,
+        'max_tokens': 5,
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('a bool value is never a secret, so a bool-valued key is kept', () {
+      final input = {
+        'has_password': true,
+        'show_password': false,
+        'is_secret': true,
+        'reset_password': false,
+        'has_token': true,
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    test('the same keys with a non-bool value are still dropped', () {
+      final result = scrubPii({
+        'has_password': 'yes',
+        'reset_password': 'hunter2',
+        'is_secret': 1,
+        'ok': true,
+      });
+
+      expect(result, {'ok': true});
+    });
+
+    test('pagination and cancellation cursors are kept', () {
+      final input = {
+        'page_token': 'abc',
+        'next_page_token': 'def',
+        'prev_page_token': 'ghi',
+        'cancel_token': 'jkl',
+        'sync_token': 'mno',
+      };
+
+      expect(scrubPii(input), input);
     });
 
     test('still keeps plural-token metrics and near-miss keys', () {
@@ -553,19 +835,133 @@ void main() {
       expect(scrubPii({'x': broken()}), {'scrub_error': true});
     });
 
-    test('hostile query/hash runs stay linear', () {
-      final stopwatch = Stopwatch()..start();
-      final result = scrubPii({
-        'q': '?' * 100000,
-        'h': 'x.co${'?' * 100000}',
-        'f': '#' * 100000,
-        'u': '://' * 30000,
-        'a': 'https://${'@' * 100000}',
-      });
-      stopwatch.stop();
+    // 60 000 is just under the 64 KB scrub cap, so the whole token really
+    // is scanned (a whitespace-free 1 MB token is cut to nothing by the
+    // cap and would exercise nothing); 1 MB proves the cap keeps that cheap.
+    for (final size in [60000, 1 << 20]) {
+      test('hostile delimiter runs of $size chars stay fast', () {
+        final inputs = <String, String>{
+          'question': '?' * size,
+          'hash': '#' * size,
+          'at': '@' * size,
+          'scheme': '://' * (size ~/ 3),
+          'comma': ',' * size,
+          'equals': '=' * size,
+          'host_question': 'x.co${'?' * size}',
+          'slash_question': 'a/b${'?' * size}',
+          'alt_question': 'a?' * (size ~/ 2),
+          'host_alt': 'abc.def?' * (size ~/ 8),
+          'url_at': 'https://${'@' * size}',
+          'url_at_query': 'https://h/${'?a@' * (size ~/ 3)}',
+          'scheme_at': 'https://a@' * (size ~/ 10),
+          'scheme_hash_q': 'https://x${'?#' * (size ~/ 2)}',
+          'comma_url': ',https://x/y?a=1' * (size ~/ 16),
+          'equals_url': '=https://x/y' * (size ~/ 12),
+          'urls_at_q': 'https://h?@' * (size ~/ 11),
+          'paren': '(https://x/y?a=(' * (size ~/ 16),
+          'slash_q_hash': 'a/b?#' * (size ~/ 5),
+          'after_q_scheme': '?ab://' * (size ~/ 6),
+        };
 
-      expect(result, isNotNull);
-      expect(stopwatch.elapsedMilliseconds, lessThan(2000));
+        for (final entry in inputs.entries) {
+          final stopwatch = Stopwatch()..start();
+          final result = scrubPii({'v': entry.value});
+          stopwatch.stop();
+
+          expect(result, isNotNull, reason: entry.key);
+          expect(
+            result!.containsKey('scrub_error'),
+            isFalse,
+            reason: entry.key,
+          );
+          expect(
+            stopwatch.elapsedMilliseconds,
+            lessThan(300),
+            reason: '${entry.key} took ${stopwatch.elapsedMilliseconds} ms',
+          );
+        }
+      });
+    }
+  });
+
+  group('size caps', () {
+    test('a 10 MB string is scrubbed on a bounded prefix and stays under the '
+        'output cap, fast', () {
+      final huge = 'did it work? yes it did ' * (10 * 1024 * 1024 ~/ 24);
+      final stopwatch = Stopwatch()..start();
+
+      final result = scrubPii({'v': huge});
+
+      stopwatch.stop();
+      final value = result!['v'] as String;
+      expect(value.length, lessThanOrEqualTo(8 * 1024 + 16));
+      expect(value, endsWith('…[truncated]'));
+      expect(value, startsWith('did it work? yes it did'));
+      expect(stopwatch.elapsedMilliseconds, lessThan(300));
+    });
+
+    test('a single 6M-char token neither overflows the stack nor yields a '
+        'scrub_error', () {
+      final token = 'a' * 6000000;
+
+      final result = scrubPii({'v': token});
+
+      expect(result!.containsKey('scrub_error'), isFalse);
+      expect(result['v'], isA<String>());
+      expect((result['v'] as String).length, lessThan(100));
+    });
+
+    test('a string within the caps is returned untouched, no marker', () {
+      final result = scrubPii({'v': 'x' * 8000});
+
+      expect(result, {'v': 'x' * 8000});
+    });
+
+    test('a redacted result never contains an unscrubbed tail of a truncated '
+        'input', () {
+      // Each JWT (~700 chars) collapses to `[redacted]`, so the scrubbed
+      // 64 KB prefix is far below the output cap and the cut-off boundary
+      // shows up in the output. A JWT straddling it must not survive.
+      final jwt =
+          'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0${'A' * 655}.dGVzdC1zaWduYXR1cmU';
+      final input = '$jwt ' * 200;
+
+      final value = scrubPii({'v': input})!['v'] as String;
+
+      expect(value, isNot(contains('eyJ')));
+      expect(value, contains('[redacted]'));
+      expect(value, endsWith('…[truncated]'));
+    });
+
+    test('a wide self-referencing map produces a bounded encoded size', () {
+      final cyclic = <String, Object?>{};
+      for (var i = 0; i < 256; i++) {
+        cyclic['key_number_$i'] = cyclic;
+      }
+
+      final result = scrubPii(cyclic);
+
+      expect(jsonEncode(result).length, lessThan(100 * 1024));
+    });
+
+    test('a wide structure of long strings is bounded by a total string '
+        'budget, later values become [truncated]', () {
+      final long = 'w' * 8000;
+      final result = scrubPii({
+        'list': List<String>.filled(200, long),
+        'more': {for (var i = 0; i < 200; i++) 'k$i': long},
+      });
+
+      expect(jsonEncode(result).length, lessThan(100 * 1024));
+      expect((result!['list'] as List).last, '[truncated]');
+    });
+
+    test('a huge key is capped too', () {
+      final key = 'k' * 100000;
+
+      final result = scrubPii({key: 1});
+
+      expect(result!.keys.single.length, lessThanOrEqualTo(8 * 1024 + 16));
     });
   });
 
