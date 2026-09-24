@@ -77,7 +77,12 @@ later, independent of this decision.
    await the collector before recording the association
    (`sentry_span.dart:72-86`) and, because the finish is unawaited, a fast
    handler could capture first. The behavior is pinned by the
-   `error to trace linking` tests in `sentry_observability_test.dart`. Setting `Scope.span` globally in `runInSpan` was considered and
+   `error to trace linking` tests in `sentry_observability_test.dart` (a
+   plain `Sentry.captureException` in a zone handler) and, for the real
+   web path, by `report_uncaught_zone_error_sentry_test.dart` (the same
+   escaping error captured through `reportUncaughtZoneError`'s default
+   capture carries the span's trace id, level `fatal`, `handled: false`).
+   Setting `Scope.span` globally in `runInSpan` was considered and
    rejected: it would reintroduce the exact cross-trace attribution bug
    this Zone design exists to avoid, in exchange for linking a remaining
    category of error (unhandled errors that never crossed a span) that is
@@ -166,8 +171,9 @@ later, independent of this decision.
    the way the SDK's own zone does: `Mechanism(type: 'runZonedGuarded',
    handled: false)`, level `fatal` (the SDK default
    `markAutomaticallyCollectedErrorsAsFatal`; the option is not readable
-   without `@internal` API, so it is hard-coded), and the scope span marked
-   `internalError`.
+   without `@internal` API, so it is hard-coded), and the scope span (if
+   any; none is bound in this app, so this SDK-parity marking is currently
+   a no-op) marked `internalError`.
    On native, `PlatformDispatcher.onError` (via `OnErrorIntegration`)
    already covers asynchronous errors, and a `bootstrap()` failure
    propagates as an uncaught error like before. Android ANR detection is
@@ -199,32 +205,61 @@ later, independent of this decision.
    `sendDefaultPii = false`, plus a **recursive** scrub (`scrubPii` in
    `sentry_pii_scrub.dart`) on span/breadcrumb/exception-extra data. It
    normalizes keys (lower-case, with `-`, `_`, `.` and whitespace removed)
-   and drops those equal to `jwt`, `codeverifier`, `tokens`,
-   `accesstokens`, `refreshtokens` or `idtokens`, or ending in `token`,
-   `secret`, `password`, `cookie`, `apikey`, `authorization`, `privatekey`,
-   `secretkey`, `accesskey`, `credential` or `credentials` (a suffix match,
-   so `token_count`, `tokenizer` and `max_tokens` are kept; the plural
-   `tokens` is exact-only for that reason); it traverses any `Map`,
+   and drops those equal to a small exact set (`jwts`, `tokens`,
+   `accesstokens`, `refreshtokens`, `idtokens`, `codeverifier`, `tokenhash`,
+   `otp`, `totp`, `csrf`, `xsrf`, `sig`, `signature`, `auth`, `authheader`,
+   `creds`, `nonce`, `pwd`, ...) or ending in `token`, `jwt`, `secret(s)`,
+   `password(s)`, `passwd`, `passphrase`, `cookie(s)`, `apikey(s)`,
+   `authorization`, `privatekey(id)`, `secretkey`, `accesskey`,
+   `servicerolekey`, `supabasekey`, `credential(s)`, `passwordhash`,
+   `authcode`, `authorizationcode`, `mfacode` or `recoverycode(s)` (a suffix
+   match, so `token_count`, `tokenizer` and `max_tokens` are kept; the
+   plural `tokens` and the short generic names are exact-only for that
+   reason, so `time_signature`, `author` and a bare `code` (an HTTP status)
+   are kept). Two exceptions keep an otherwise matching key: a `bool` value
+   is never a secret (`has_password: true`), and opaque pagination /
+   cancellation cursors (`page_token`, `next_page_token`, `prev_page_token`,
+   `cancel_token`, `sync_token`) are allowlisted. Kept keys are themselves
+   string-scrubbed (a key holding a URL or JWT); keys that collide
+   afterwards overwrite each other, the later wins. It traverses any `Map`,
    `Iterable` and `Uri`, bounded (depth 16, 256 elements per collection, a
-   2048-container budget per call; beyond the depth or budget the value
-   becomes the string `[truncated]`, extra elements are dropped) so a
-   cyclic or hostile structure cannot overflow the stack or hang the caller,
-   and `scrubPii` never throws (any failure yields `{'scrub_error': true}`
-   with no data), so scrubbing can never break an instrumented operation;
-   and in strings it redacts JWTs anywhere in the string (a linear-time
+   2048-container and a 2048-element budget per call; beyond the depth or
+   container budget the value becomes the string `[truncated]`, extra
+   elements are dropped) so a cyclic or hostile structure cannot overflow
+   the stack or hang the caller, and `scrubPii` never throws (any failure
+   yields `{'scrub_error': true}` with no data), so scrubbing can never
+   break an instrumented operation. Strings are size-capped: only the first
+   64 KB is scrubbed (trimmed back to the last whitespace when cut, so a
+   partial token at the boundary is dropped, never emitted half-redacted),
+   the scrubbed result is cut to 8 KB plus the marker `…[truncated]` (an
+   unscrubbed tail is never emitted), and a 64 KB total of key and string
+   characters per call turns later strings into `[truncated]`; this bounds
+   both main-isolate time and the encoded size Sentry has to accept. In
+   strings it redacts JWTs anywhere in the string (a linear-time
    scan — an unanchored regex is quadratic on hostile input) and
-   `sb_secret_...` Supabase keys, then, per whitespace-delimited token,
-   drops userinfo greedily up to the token's last `@` (so a raw `?`, `/` or
-   `#` in a password cannot leak its tail; an `@` in a path or query
-   over-redacts, `https://host/a@b` becomes `https://b`, a deliberate
-   leak-free bias), and, for URL-shaped segments (a scheme, a `/`, or a bare
-   host whose query/fragment contains `=`, which also strips the ambiguous
-   `v1.2?x=1`), the query string and `key=value` fragments (implicit-flow
-   `#access_token=...`), up to the first quote, `<`, `>` or unbalanced
-   `)`, `]`, `}` and keeping the rest verbatim, so JSON- or
-   bracket-wrapped URLs keep their surroundings (`,` `;` `.` are not
-   terminators: `ids=1,2` is a legal query value; a raw quote inside a
-   query value ends the region early). Email addresses are a documented
+   `sb_secret_...` Supabase keys, then, per whitespace-delimited token and
+   per `://` URL, drops userinfo up to the last `@` that precedes the first
+   `?`/`#` (so a raw `/` or `@` in a password cannot leak its tail). When
+   the only `@`s come after the first `?`/`#`, the `@` is read as query
+   content (`https://h/p?email=a@b.c` becomes `https://h/p`) unless the text
+   before the `?`/`#` is not a plain `host[:port]` (`https://u:p?ss@host/x`),
+   in which case it is userinfo. Trade-offs: an `@` in a path over-redacts
+   (`https://host/a@b` becomes `https://b`), and a single host-shaped word
+   holding a raw `?`/`#` and no `:` before the `@` is read as host + query
+   (that word is kept). Then, for URL-shaped parts, the query string and
+   `key=value` fragments (implicit-flow `#access_token=...`) are dropped: a
+   URL wrapped in a quote, `<`, `(`, `[` or `{` (the character immediately
+   before it) ends at the matching closer with the rest kept verbatim, so
+   JSON- or bracket-wrapped URLs keep their surroundings; an unwrapped URL
+   is stripped to the end of its token, so a quote or closer inside a query
+   value cannot end it early (`,` `;` `.` never end a region: `ids=1,2` is
+   a legal query value). The one remaining early end is a quote that is both
+   the wrapper and part of a query value. Each `?`/`#` is classified on its
+   own (`why?https://h/x?token=S` strips the URL). A part is URL-shaped
+   with a scheme of two or more characters, or, only when its query or
+   fragment contains `=`, a `/` (`rest/v1/x?apikey=S`) or a bare host
+   (which also strips the ambiguous `v1.2?x=1`), so ChordPro such as
+   `[C/G]Why?[Am]Because` is not mangled. Email addresses are a documented
    non-goal of the scrub. (An earlier draft
    stripped query strings on the assumption that they carried business
    content, and a later draft left them unscrubbed on the narrowed policy;
@@ -371,3 +406,29 @@ short (the spec's "Revision 2" lists each item with its rationale):
   and `anrEnabled` set explicitly (it defaults to `false` in 8.14.2).
 - Sentry-backed tests run offline (recording transport plus an
   `HttpOverrides` guard).
+
+### Revision 3 (independent re-review of the scrub, 2026-09-24)
+
+A further independent review (verified by probes) found regressions and
+gaps in the previous round; point 7 above describes the as-built result:
+
+- Greedy userinfo removal swallowed the `?` when an `@` sat in the query
+  (`?email=a@b.c&token=S` leaked the token). The drop is now per URL, ends at
+  the last `@` before the first `?`/`#`, and reads a later `@` as query
+  content unless the text before the delimiter is not `host[:port]`.
+- A quote or unbalanced closer inside a query value leaked later params.
+  A URL now ends only at the closer matching its own wrapper; an unwrapped
+  URL is stripped to the end of its token.
+- The first-`?` classification was reused for later URLs in the same token
+  (`why?https://h/x?token=S`); each `?`/`#` is now classified on its own.
+- Key denylist gaps (`passwd`, `otp`, `csrf`, `sig`, `signature`, `auth`,
+  `service_role_key`, plurals, ...) closed with exact-only short names, and
+  benign cases kept (bool values, pagination/cancel cursors).
+- No size caps: added the per-string 64 KB scrub prefix / 8 KB result cap,
+  64 KB total string budget and 2048-element budget.
+- Schemeless `/` tokens need a `key=value` query/fragment, so ChordPro slash
+  chords are no longer mangled; map keys are string-scrubbed.
+- The zone-error handler's scope-span marking is SDK-parity code and a no-op
+  in this app (nothing binds a scope span); the error-to-trace link for an
+  error escaping a nested span into the guarded zone is now pinned through
+  `reportUncaughtZoneError` itself.

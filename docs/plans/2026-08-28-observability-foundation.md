@@ -2381,7 +2381,11 @@ where this plan and those documents disagree, they win.
   `sb_secret_` keys, `key=value` fragments, and emails as a documented
   non-goal. A later re-review added greedy userinfo removal, bare-host
   URLs, terminator-bounded query/fragment stripping, more denylisted keys,
-  bounded traversal and a never-throwing `scrubPii`. The policy is in the
+  bounded traversal and a never-throwing `scrubPii`; a third review round
+  (spec "Revision 3") replaced the greedy last-`@` userinfo rule with a
+  per-URL rule, made unwrapped URLs strip to the end of the token,
+  classified each `?`/`#` on its own, extended the key denylist, added size
+  caps and string-scrubbed map keys. The policy is in the
   spec's "PII and secret redaction" and
   ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The
   test file grew accordingly (the plan expected 7 tests).
@@ -2413,7 +2417,14 @@ where this plan and those documents disagree, they win.
   `observability_providers.dart` was dropped because `providers.dart`
   re-exports it. The plan said bootstrap needed manual verification only;
   `test/bootstrap/init_observability_test.dart` and
-  `test/bootstrap/bootstrap_guarded_zone_test.dart` now cover it.
+  `test/bootstrap/bootstrap_guarded_zone_test.dart` now cover it. The
+  web zone handler reports an unhandled event like the SDK's own zone
+  (`Mechanism(type: 'runZonedGuarded', handled: false)`, level `fatal`; the
+  scope span, if any, is marked `internalError`, which is a no-op in this app
+  because nothing binds a scope span), pinned against an offline real Sentry
+  by `test/bootstrap/report_uncaught_zone_error_sentry_test.dart`, which also
+  checks that an error escaping a nested span into the guarded zone keeps
+  that span's trace id.
 - **Task 10 (`SongCatalogController`).** Implemented as planned, with the
   new tests in a nested `group('observability instrumentation')` inside the
   existing `SongCatalogController` group. Commit `6bda5d1` complements the
