@@ -5,8 +5,10 @@
 Accepted. Revised 2026-08-28 after an adversarial opus review of the
 first draft found several blocking defects (see "Revision notes" at the
 end), and again after execution and PR review ("Revision 2" in the
-revision notes) — the decisions below reflect the as-built implementation,
-not the original draft.
+revision notes), and again after two further scrub reviews ("Revision 3" and
+"Revision 4", the latter replacing the URL heuristics by a small rule set) —
+the decisions below reflect the as-built implementation, not the original
+draft.
 
 ## Context
 
@@ -208,59 +210,62 @@ later, independent of this decision.
    and drops those equal to a small exact set (`jwts`, `tokens`,
    `accesstokens`, `refreshtokens`, `idtokens`, `codeverifier`, `tokenhash`,
    `otp`, `totp`, `csrf`, `xsrf`, `sig`, `signature`, `auth`, `authheader`,
-   `creds`, `nonce`, `pwd`, ...) or ending in `token`, `jwt`, `secret(s)`,
+   `creds`, `nonce`, `pwd`, `pin`, `passcode`, `bearer`, ...) or ending in
+   `token`, `jwt`, `secret(s)`,
    `password(s)`, `passwd`, `passphrase`, `cookie(s)`, `apikey(s)`,
    `authorization`, `privatekey(id)`, `secretkey`, `accesskey`,
    `servicerolekey`, `supabasekey`, `credential(s)`, `passwordhash`,
-   `authcode`, `authorizationcode`, `mfacode` or `recoverycode(s)` (a suffix
-   match, so `token_count`, `tokenizer` and `max_tokens` are kept; the
-   plural `tokens` and the short generic names are exact-only for that
-   reason, so `time_signature`, `author` and a bare `code` (an HTTP status)
-   are kept). Two exceptions keep an otherwise matching key: a `bool` value
+   `authcode`, `authorizationcode`, `mfacode`, `otpcode`, `verificationcode`
+   or `recoverycode(s)` (a suffix match, so `token_count`, `tokenizer` and
+   `max_tokens` are kept; the plural `tokens` and the short generic names are
+   exact-only for that reason, so `time_signature`, `author` and a bare
+   `code` (an HTTP status) are kept; `session_id`/`sessionid` are generic
+   correlation ids, not credentials in this app, and are kept too). Two exceptions keep an otherwise matching key: a `bool` value
    is never a secret (`has_password: true`), and opaque pagination /
    cancellation cursors (`page_token`, `next_page_token`, `prev_page_token`,
    `cancel_token`, `sync_token`) are allowlisted. Kept keys are themselves
    string-scrubbed (a key holding a URL or JWT); keys that collide
-   afterwards overwrite each other, the later wins. It traverses any `Map`,
-   `Iterable` and `Uri`, bounded (depth 16, 256 elements per collection, a
+   afterwards overwrite each other, the later wins. It traverses any `Map` and
+   `Iterable`, bounded (depth 16, 256 elements per collection, a
    2048-container and a 2048-element budget per call; beyond the depth or
    container budget the value becomes the string `[truncated]`, extra
    elements are dropped) so a cyclic or hostile structure cannot overflow
-   the stack or hang the caller, and `scrubPii` never throws (any failure
-   yields `{'scrub_error': true}` with no data), so scrubbing can never
-   break an instrumented operation. Strings are size-capped: only the first
-   64 KB is scrubbed (trimmed back to the last whitespace when cut, so a
+   the stack or hang the caller. `null`, numbers and bools pass through;
+   everything else (a `String`, `Uri`, exception, enum, any object) is
+   scrubbed as its `toString()` (`[unprintable]` if that throws), because the
+   SDK's JSON serialization falls back to exactly that and an object holding
+   a URL or token must not bypass the string scrub. `scrubPii` never throws
+   (any failure yields `{'scrub_error': true}` with no data), so scrubbing can
+   never break an instrumented operation. Strings are size-capped: only the
+   first 64 KB is scrubbed (trimmed back to the last whitespace when cut, so a
    partial token at the boundary is dropped, never emitted half-redacted),
    the scrubbed result is cut to 8 KB plus the marker `…[truncated]` (an
    unscrubbed tail is never emitted), and a 64 KB total of key and string
    characters per call turns later strings into `[truncated]`; this bounds
    both main-isolate time and the encoded size Sentry has to accept. In
-   strings it redacts JWTs anywhere in the string (a linear-time
-   scan — an unanchored regex is quadratic on hostile input) and
-   `sb_secret_...` Supabase keys, then, per whitespace-delimited token and
-   per `://` URL, drops userinfo up to the last `@` that precedes the first
-   `?`/`#` (so a raw `/` or `@` in a password cannot leak its tail). When
-   the only `@`s come after the first `?`/`#`, the `@` is read as query
-   content (`https://h/p?email=a@b.c` becomes `https://h/p`) unless the text
-   before the `?`/`#` is not a plain `host[:port]` (`https://u:p?ss@host/x`),
-   in which case it is userinfo. Trade-offs: an `@` in a path over-redacts
-   (`https://host/a@b` becomes `https://b`), and a single host-shaped word
-   holding a raw `?`/`#` and no `:` before the `@` is read as host + query
-   (that word is kept). Then, for URL-shaped parts, the query string and
-   `key=value` fragments (implicit-flow `#access_token=...`) are dropped: a
-   URL wrapped in a quote, `<`, `(`, `[` or `{` (the character immediately
-   before it) ends at the matching closer with the rest kept verbatim, so
-   JSON- or bracket-wrapped URLs keep their surroundings; an unwrapped URL
-   is stripped to the end of its token, so a quote or closer inside a query
-   value cannot end it early (`,` `;` `.` never end a region: `ids=1,2` is
-   a legal query value). The one remaining early end is a quote that is both
-   the wrapper and part of a query value. Each `?`/`#` is classified on its
-   own (`why?https://h/x?token=S` strips the URL). A part is URL-shaped
-   with a scheme of two or more characters, or, only when its query or
-   fragment contains `=`, a `/` (`rest/v1/x?apikey=S`) or a bare host
-   (which also strips the ambiguous `v1.2?x=1`), so ChordPro such as
-   `[C/G]Why?[Am]Because` is not mangled. Email addresses are a documented
-   non-goal of the scrub. (An earlier draft
+   strings the scrub is a **small, conservative rule set** (the URL rules are
+   deliberately not a heuristic: see "Revision 4"). It redacts JWTs anywhere
+   in the string (a linear-time scan — an unanchored regex is quadratic on
+   hostile input) and `sb_secret_...` Supabase keys, then works per
+   whitespace-delimited token: (A) a token holding a scheme URL (the first
+   `://` preceded by a scheme of two or more characters) keeps what precedes
+   the scheme verbatim; an `@` after the first `/`, `?` or `#` following
+   `://` is ambiguous (path/query `@`, or userinfo holding one of those) and
+   replaces everything after `://` by `[redacted]`; otherwise userinfo (up to
+   the last `@` of the authority) is dropped and everything from the first
+   `?` — or from an earlier `#` whose fragment holds a `=`, the implicit-flow
+   `#access_token=...` — to the end of the token is dropped (a plain
+   `#fragment` without a query is kept), at most 8 URLs per token; (B) a
+   token without a scheme URL is cut at its first `?` (or `#=`) when it is a
+   non-hierarchical scheme URI (`mailto:a@b?subject=hi`) or when the text
+   before it is host-shaped or contains a `/` AND the query/fragment holds a
+   `=` (`example.co/rest/v1/x?apikey=S`), so ChordPro such as
+   `[C/G]Why?[Am]Because` and prose are not mangled; and (C) the value of
+   credential key/value text (`refresh_token=abc`, `"access_token":"abc"`,
+   `password: x`, `Authorization: Bearer x`, for a fixed list of credential
+   names) is replaced by `[redacted]`, run after the URL rules and followed by
+   one more URL pass so the result is idempotent. Email addresses are a
+   documented non-goal of the scrub. (An earlier draft
    stripped query strings on the assumption that they carried business
    content, and a later draft left them unscrubbed on the narrowed policy;
    review showed URLs carry credentials in userinfo, query string and
@@ -410,7 +415,9 @@ short (the spec's "Revision 2" lists each item with its rationale):
 ### Revision 3 (independent re-review of the scrub, 2026-09-24)
 
 A further independent review (verified by probes) found regressions and
-gaps in the previous round; point 7 above describes the as-built result:
+gaps in the previous round. The URL items below describe what Revision 3
+did; **Revision 4 supersedes them** (the URL handling is now the rule set in
+point 7), while the key, size-cap and map-key items still stand:
 
 - Greedy userinfo removal swallowed the `?` when an `@` sat in the query
   (`?email=a@b.c&token=S` leaked the token). The drop is now per URL, ends at
@@ -432,3 +439,37 @@ gaps in the previous round; point 7 above describes the as-built result:
   in this app (nothing binds a scope span); the error-to-trace link for an
   error escaping a nested span into the guarded zone is now pinned through
   `reportUncaughtZoneError` itself.
+
+### Revision 4 (freeze of the URL heuristics, 2026-09-25)
+
+Four review rounds in a row, each fixing the URL heuristic state machine
+(userinfo removal, opener/closer tracking, per-`?` classification, a
+no-`=` shortcut: about a dozen interacting states), introduced a new leak
+class; example tests could not catch combinations, and an independent fuzzer
+still found 255 failing signatures (out of 1.5M cases) after Revision 3. The
+decision was to **stop patching**: the state machine is replaced by the small,
+auditable rule set in point 7 (A scheme URL, B schemeless URL shape, C
+credential key/value text) plus a committed seeded property fuzzer
+(`test/infrastructure/observability/sentry_pii_scrub_fuzz_test.dart`) that
+states the properties (a planted secret never survives, benign text is
+unchanged, the scrub is idempotent, it never throws).
+
+Accepted trade-offs, in exchange for a rule set a reviewer can read in
+minutes: text after a URL in the same whitespace-free token (JSON, brackets,
+quotes) is dropped; an `@` in a path or query over-redacts the whole URL to
+`scheme://[redacted]`; a few look-alikes with a `=` after a `?` are cut
+(`foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`, `[G/B]Love?[C]=joy`,
+`v1.2?x=1`). Documented residuals that cannot be told from prose: a bare
+`?SECRET` without `=`; a schemeless URL after an earlier non-URL `?` in the
+same token or glued after a `=`/`,` unless its key is a credential name
+(rule C); the words of a quoted credential value after the first. Exception
+messages passed to `captureException` never go through `scrubPii`
+(`docs/deferred/2026-08-28-observability-remaining-use-cases.md` records the
+centralized `beforeSend*` scrub as the recommended long-term path).
+
+Other fixes in the round: non-String objects (an exception holding a URL) are
+scrubbed as their `toString()` instead of bypassing the scrub;
+`span.setData` forwards the value when key scrubbing rewrites the key (it was
+silently dropped); keys `pin`, `passcode`, `bearer`, `otpcode` and
+`verificationcode` are denied (`code`, `session_id` and `sessionid` stay: too
+generic); the exact 8 KB output / 64 KB input cap boundaries are pinned.

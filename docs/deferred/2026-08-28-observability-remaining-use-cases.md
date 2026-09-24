@@ -112,17 +112,34 @@ Suggestions raised while reviewing the observability foundation PR that were
 considered and deliberately not done in this slice. Each one is recorded with
 the reason and the condition under which to reopen it.
 
-- **Centralize scrubbing in SDK hooks.** Today `scrubPii` is called from each
-  `SentryObservability` method that accepts caller data (span `data`,
-  breadcrumb `data`, `captureException` `extra`). Scrubbing once in
-  `beforeSend`, `beforeSendTransaction` and `beforeBreadcrumb` instead would
-  mean a new call site cannot forget it, and would also cover events and
-  breadcrumbs the SDK builds itself, which never pass through
-  `SentryObservability`. This is a real structural benefit, deferred because
-  it needs all three hooks and moving the scrub tests to the hook level, and
-  with a single adapter and few call sites the per-call-site approach is
-  enough. *Trigger:* a second telemetry backend, or enough call sites (or
-  direct SDK use) that a forgotten `scrubPii` becomes a realistic risk.
+- **Centralize scrubbing in SDK hooks (now the recommended long-term path).**
+  Today `scrubPii` is called from each `SentryObservability` method that
+  accepts caller data (span `data`, breadcrumb `data`, `captureException`
+  `extra`). Scrubbing once in `beforeSend`, `beforeSendTransaction` and
+  `beforeBreadcrumb` instead would mean a new call site cannot forget it, and
+  would also cover everything the per-call-site approach structurally cannot:
+  **exception messages passed to `captureException` never go through
+  `scrubPii`** (only its `extra` map does, so `captureException(
+  StateError('bad https://h/x?token=S'), ...)` sends the message as is), and
+  neither do events and breadcrumbs the SDK builds itself (HTTP, navigation,
+  and log breadcrumbs, the auto-captured unhandled error's message). Four
+  rounds of review on the URL rules also showed that the scrub is a moving
+  target best fixed in one place. Deferred only because it needs all three
+  hooks (plus the exception `value` and stack-frame paths) and moving the
+  scrub tests to the hook level. *Trigger (raised):* the first call site
+  that captures an exception whose message can carry request content, the
+  first direct SDK use, a second telemetry backend, or the next
+  observability slice, whichever comes first.
+- **Known scrub residuals (Revision 4, accepted).** `scrubPii` cannot tell
+  these from prose, so they are not caught: a bare `?SECRET` without `=`; a
+  schemeless URL after an earlier non-URL `?` in the same token (`why?/p?k=S`)
+  or glued after a `=`/`,` (`url=abc.co?k=S`) unless its key is a credential
+  name; the words after the first of a quoted credential value
+  (`"password": "a b"`). Benign look-alikes with a `=` after the `?` are cut
+  (`foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`, `[G/B]Love?[C]=joy`,
+  `v1.2?x=1`). Generic correlation keys `code`, `session_id` and `sessionid`
+  are deliberately NOT denied. *Trigger:* a call site that has to forward
+  free text, or a real incident showing one of these shapes.
 - **Move the web `traceparent` gate out of `TracingHttpClient`.** The
   `!kIsWeb` check lives inside the client (`isWeb` constructor parameter);
   the suggestion is to decide in the composition root (bootstrap builds a

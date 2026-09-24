@@ -2385,11 +2385,19 @@ where this plan and those documents disagree, they win.
   (spec "Revision 3") replaced the greedy last-`@` userinfo rule with a
   per-URL rule, made unwrapped URLs strip to the end of the token,
   classified each `?`/`#` on its own, extended the key denylist, added size
-  caps and string-scrubbed map keys. The policy is in the
+  caps and string-scrubbed map keys. A fourth round (spec and ADR-036
+  "Revision 4") **froze the URL heuristics and replaced the whole URL state
+  machine** (userinfo/closer/per-`?` tracking of Revisions 2-3, superseded)
+  by a small conservative rule set (A scheme URL, B schemeless URL shape, C
+  credential key/value text), scrubbed non-String objects as their
+  `toString()`, and added `sentry_pii_scrub_fuzz_test.dart`, a committed
+  seeded property fuzzer. The policy is in the
   spec's "PII and secret redaction" and
   ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The
   test file grew accordingly (the plan expected 7 tests).
-- **Task 8 (`SentryObservability`).** The catch clause is
+- **Task 8 (`SentryObservability`).** (Revision 4 also fixed
+  `_SentrySpanHandle.setData`, which dropped the value when key scrubbing
+  rewrote the key.) The catch clause is
   `catch (error)` (the plan's `catch (error, stackTrace)` left the stack
   trace unused). Commit `3c059a9` then changed behavior the plan does not
   describe: a finished ambient span is ignored (`runInSpan` starts a new

@@ -12,7 +12,9 @@ rationale. Execution and PR review then changed several details (installed
 SDK version, PII scrub policy, finished-span and telemetry-delivery
 behavior, bootstrap structure, ANR); this document has been synced to the
 as-built code, and "Revision 2" in the revision notes lists what changed
-and why.
+and why. Two later reviews of the PII scrub ("Revision 3" and "Revision 4")
+followed; Revision 4 replaced the URL heuristics by a small conservative rule
+set plus a committed property fuzzer.
 
 ## Problem
 
@@ -490,18 +492,21 @@ Layered, not relying on a single control:
      (`jwts`, `tokens`, `accesstokens`, `refreshtokens`, `idtokens`,
      `codeverifier`, `tokenhash`, `otp`, `totp`, `emailotp`, `smsotp`,
      `csrf`, `xsrf`, `sig`, `signature`, `auth`, `authheader`, `creds`,
-     `nonce`, `pwd`) or when they end in `token`, `jwt`, `secret(s)`,
+     `nonce`, `pwd`, `pin`, `passcode`, `bearer`) or when they end in `token`, `jwt`, `secret(s)`,
      `password(s)`, `passwd`, `passphrase`, `cookie(s)`, `apikey(s)`,
      `authorization`, `privatekey(id)`, `secretkey`, `accesskey`,
      `servicerolekey`, `supabasekey`, `credential(s)`, `passwordhash`,
-     `authcode`, `authorizationcode`, `mfacode` or `recoverycode(s)` (so
+     `authcode`, `authorizationcode`, `mfacode`, `otpcode`,
+     `verificationcode` or `recoverycode(s)` (so
      `refresh_token`, `x-api-key`, `client_secret`, `set-cookie`,
      `Proxy-Authorization`, `private_key`, `service_role_key` and
      `recovery_codes` are all caught). The match is on the suffix, not a
      substring, and the plural `tokens` and the short generic names are
      exact-only: `token_count`, `tokenizer`, `tokens_used`, `max_tokens`,
-     `time_signature`, `author` and a bare `code` (an HTTP status is
-     ordinary data) are kept. Two exceptions keep an otherwise matching
+     `time_signature`, `author`, `pinned` and a bare `code` (an HTTP status is
+     ordinary data) are kept; `session_id` and `sessionid` are generic
+     correlation ids, not credentials in this app, and are deliberately not
+     denied. Two exceptions keep an otherwise matching
      key: a `bool` value is never a secret (`has_password: true`), and
      opaque pagination/cancellation cursors (`page_token`,
      `next_page_token`, `prev_page_token`, `cancel_token`, `sync_token`) are
@@ -510,9 +515,13 @@ Layered, not relying on a single control:
      each other, the later entry wins. ChordPro content, lyrics, and other
      business/domain content are deliberately **not** treated as sensitive
      — per explicit product direction, that content may aid debugging.
-   - **Traversal** is recursive over any `Map` (keys stringified), any
-     `Iterable` (returned as fixed-length lists) and `Uri` values
-     (stringified, then scrubbed as strings). It is bounded: containers
+   - **Traversal** is recursive over any `Map` (keys stringified) and any
+     `Iterable` (returned as fixed-length lists). `null`, numbers and bools
+     pass through; every other value (`String`, `Uri`, exceptions, enums,
+     arbitrary objects) is scrubbed as its `toString()` (`[unprintable]` if
+     that throws), because the SDK's JSON serialization falls back to
+     `toString()` and an object holding a URL or token must not bypass the
+     string scrub. It is bounded: containers
      nested 16 levels deep or beyond, and containers past a 2048-container
      budget per call (a wide self-referencing structure), become the
      string `[truncated]`; each collection keeps at most its first 256
@@ -531,61 +540,77 @@ Layered, not relying on a single control:
      turns later strings into `[truncated]` and drops remaining entries.
      This bounds main-isolate time (a 10 MB string takes ~15 ms) and the
      encoded size that reaches Sentry (a wide self-referencing map encodes
-     to ~60 KB instead of ~10 MB, which the envelope limits would have
-     dropped), and it avoids the regex stack overflow a multi-million-char
+     to ~42 KB with short keys (`k0`..`k255`) and ~62 KB with 15-character
+     keys (`key_number_0`..), measured, instead of ~10 MB, which the
+     envelope limits would have dropped), and it avoids the regex stack overflow a multi-million-char
      token caused.
-   - **Strings**: JWTs (`eyJ<seg>.<seg>.<seg>`) anywhere in the string —
-     including embedded ones such as `Bearer eyJ...` — and Supabase secret
-     keys (`sb_secret_...`) are replaced with `[redacted]`, regardless of
-     key. JWT detection is a linear-time scan, deliberately not one regex:
+   - **Strings** are scrubbed by a small, conservative rule set (Revision 4;
+     the earlier URL state machine was dropped, see there). It errs towards
+     dropping and never guesses. JWTs (`eyJ<seg>.<seg>.<seg>`) anywhere in the
+     string — including embedded ones such as `Bearer eyJ...` — and Supabase
+     secret keys (`sb_secret_...`) are replaced with `[redacted]`, regardless
+     of key. JWT detection is a linear-time scan, deliberately not one regex:
      an unanchored regex is quadratic on hostile input such as
-     `'eyJ' * 30000` and would block the main isolate. The string is then
-     scrubbed per whitespace-delimited token, preserving the original
-     whitespace, so a URL inside an error message is handled while ordinary
-     prose is untouched.
-     - *Userinfo* (`user:pass@`) is dropped per `://` URL (its region runs
-       to the next `://`) up to the last `@` that precedes the first
-       `?`/`#`, so a raw `/` or `@` inside a password cannot end the
-       authority early and leak the tail (`https://u:p/ss@host/x`,
-       `https://user:p@ss@host/x`). When the only `@`s come after the first
-       `?`/`#`, the text before that delimiter decides: a plain
-       `host[:port]` means the `@` is query content
-       (`https://h/p?email=a@b.c&token=S` becomes `https://h/p`, the query
-       strip removes the rest); anything else (`https://u:p?ss@host/x`)
-       means the `?`/`#` belongs to the userinfo, which is dropped up to the
-       last `@`. If what remains after a drop is not host-shaped
-       (`b.c&token=S`), the URL is cut to `scheme://`. Trade-offs: an `@` in
-       a path before any `?` over-redacts (`https://host/a@b` becomes
-       `https://b`), and a userinfo that is a single host-shaped word with a
-       raw `?`/`#` and no `:` (`https://secret?x@host`) is read as host +
-       query, so that word is kept; a real password after a `:` is never
-       kept. `mailto:a@b` (no `://`) keeps its `@`.
-     - *Query and fragment*: in a URL-shaped part the query string is
-       dropped and a `key=value` fragment (implicit-flow
-       `#access_token=...` deep links) is dropped; a plain fragment and an
-       empty query are kept. A URL wrapped in a quote, `<`, `(`, `[` or `{`
-       (the character immediately before it) ends at the matching closer
-       (for brackets the first unbalanced one) and the rest of the token is
-       kept verbatim, so JSON-, quote- or bracket-wrapped URLs keep their
-       surroundings (`{"url":"https://x/y?a=1","code":401}` keeps
-       `,"code":401}`); an unwrapped URL is stripped to the end of its
-       token, so a quote, angle bracket or closer inside a query value
-       (`?title=eq.Don't&apikey=S`, `?k=a)b`) cannot end it early and leak
-       later parameters. `,`, `;` and `.` never end a region (`ids=1,2` is a
-       legal query value). The one remaining early end is a quote that is
-       both the wrapper and part of a query value
-       (`'https://h/x?q=Don't&t=S'`).
-     - *Classification*: each `?`/`#` is classified on its own, from state
-       tracked while scanning, so a URL after a non-URL `?` in the same token
-       (`why?https://h/x?token=S`, `u1?a=1,https://x?b=2`) is stripped. A
-       part is URL-shaped with a scheme of two or more characters (a
-       non-empty query is stripped), or, only when its query or fragment
-       contains `=`, a `/` (`example.co/rest/v1/songs?apikey=S`,
-       `/rest?a=1`) or a bare host (`abc.supabase.co?apikey=S`, `x.co:8080`);
-       a version-like `v1.2?x=1` matches the host shape and is stripped
-       (ambiguous, fail-safe). So `[C/G]Why?[Am]Because`, `a/b?x`,
-       `[C]Hello?[G]World`, `a?b`, `e.g?` and `C:\dir\file?.txt` are never
-       mangled.
+     `'eyJ' * 30000` and would block the main isolate. The string is then cut
+     into whitespace-delimited tokens (whitespace preserved), so a URL inside
+     an error message is handled while ordinary prose is untouched; a token
+     without `?`, `#` and `@` is left alone. Per token:
+     - *A. Scheme URL.* The first `://` preceded by a scheme of two or more
+       characters (`https`, `postgres`, `lyron`; not `a://`, not a drive
+       letter) starts the URL; what precedes the scheme (`(`, `"`, `uri=`,
+       `why?`) is kept verbatim. If an `@` occurs after the first `/`, `?` or
+       `#` following `://` it is ambiguous (an `@` in a path or query, or a
+       userinfo holding one of those characters) and the output is
+       `scheme://[redacted]` with the rest of the token dropped
+       (`https://h/files/me@x.com.png?token=S`, `https://u:p?ss@host/x`,
+       `https://host/a@b`). Otherwise userinfo — everything up to the last
+       `@` of the authority, which may hold `:` and `@` — is dropped
+       (`https://user:pass@host.com/path` becomes `https://host.com/path`), and
+       everything from the first `?`, or from an earlier `#` whose fragment
+       holds a `=` (implicit-flow `#access_token=...`), to the END OF THE TOKEN
+       is dropped: wrappers, closers and further URLs included
+       (`(https://h/x?q=a)&token=S)` becomes `(https://h/x`). A plain
+       `#fragment` with no query is kept. A kept remainder that itself holds a
+       scheme URL (`https://a/x,https://b/y`) is handled the same way, at
+       most 8 URLs per token; beyond that the rest becomes `[redacted]`.
+     - *B. No scheme URL* (also run on what A kept). A token starting with a
+       scheme of two or more characters and `:` (`mailto:foo@bar.com?subject=hi`
+       becomes `mailto:foo@bar.com`; not a one-letter Windows drive) is cut at
+       its first `?` (or `#` with a `=`). Any other token is cut at its first
+       `?` or `#` when the text before it is host-shaped
+       (`abc.supabase.co`, `x.co:8080`) or contains a `/`, AND the text after
+       it contains a `=` (`example.supabase.co/rest/v1/songs?apikey=S`,
+       `/rest/v1/songs?apikey=S`, `abc.supabase.co?apikey=S`). So
+       `[C/G]Why?[Am]Because`, `a/b?x`, `[C]Hello?[G]World`, `a?b`, `and/or?`,
+       `/usr/bin/x?y` and `C:\dir\file?.txt` are left alone.
+     - *C. Credential key/value text.* On the whole string, after the URL
+       rules, the value is replaced by `[redacted]` in `KEY=VALUE`,
+       `KEY: VALUE`, `"KEY":"VALUE"` and `'KEY':'VALUE'` for the keys
+       `refresh_token`, `access_token`, `id_token`, `provider_token`,
+       `provider_refresh_token`, `token`, `apikey`, `api_key`, `x-api-key`,
+       `password`, `passwd`, `secret`, `client_secret` and `authorization`
+       (case-insensitive, anchored at a word boundary, no leading wildcard: it
+       would be quadratic). A value runs up to whitespace, a quote or one of
+       `& , ; } )`; `authorization` also consumes a `Bearer `/`Basic ` word
+       (`Authorization: Bearer [redacted]`). It exists because opaque GoTrue
+       refresh tokens are not JWTs and would otherwise pass through prose and
+       JSON strings. The order (URL rules first) matters: run first, a
+       `token=` inside userinfo would rewrite the `@` that marks it. The URL
+       rules run once more afterwards because redacting a value can remove a
+       token's first `?` and so change how the rest is classified; that makes
+       the scrub idempotent.
+     - *Accepted trade-offs.* Text after a URL in the same whitespace-free
+       token (JSON, brackets, quotes) is dropped. An `@` in a path or query
+       over-redacts the URL. A few look-alikes with a `=` after a `?` are cut:
+       `foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`, `[G/B]Love?[C]=joy`,
+       `v1.2?x=1`; `Note:Why?` reads as a URI scheme.
+     - *Residuals* (cannot be told from prose, not caught): a bare `?SECRET`
+       without `=`; a schemeless URL after an earlier non-URL `?` in the same
+       token (`why?/p?k=S`) or glued after a `=`/`,` (`url=abc.co?k=S`) unless
+       its key is a credential name (rule C); the words after the first of a
+       quoted credential value (`"password": "a b"` redacts `a`). Exception
+       messages handed to `captureException` never go through `scrubPii` (see
+       `docs/deferred/2026-08-28-observability-remaining-use-cases.md`).
    - **Email addresses are a documented non-goal**: they are not redacted
      (`mailto:foo@bar.com?subject=hi` keeps the address; only its query is
      dropped). Call sites must not pass them.
@@ -856,25 +881,42 @@ captures transactions/events through `beforeSendTransaction`/`beforeSend`.
   in "PII and secret redaction": key normalization and suffix matching
   (including the kept `token_count`-style keys), nested and non-String-keyed
   maps, iterables and `Uri` values, JWT redaction (embedded, adjacent,
-  glued, and linear-time on pathological input), `sb_secret_` keys, URL
-  query/userinfo/fragment scrubbing per whitespace-delimited token
-  (per-URL userinfo including the `@`-in-query and `?`-in-userinfo shapes,
-  bare-host and slash URLs, JSON/bracket/quote-wrapped URLs, unwrapped URLs
-  with quotes/closers in the query, per-delimiter classification, the
-  `ids=1,2` no-partial-leak case), values that must not be mangled
-  (ChordPro slash chords, ordinary prose, `a?b`, `e.g?`,
-  `C:\dir\file?.txt`), map-key scrubbing, the extended key denylist
-  (added keys, kept generic names, bool values, cursors), size caps (10 MB
-  string, 6M-char token, wide self-referencing map encoded size, string
-  budget, no unscrubbed tail), linear-time on hostile delimiter runs, and
-  bounded, never-throwing traversal (cycles, 100k-deep nesting, infinite
-  iterables, throwing collections).
+  glued, and linear-time on pathological input), `sb_secret_` keys, the
+  URL rules A/B/C per whitespace-delimited token (the ambiguous-`@`
+  redaction, userinfo, everything after the first `?` dropped, the 8-URL
+  bound, schemeless and non-hierarchical URIs, credential key/value text in
+  prose and JSON with its linear-time cases, the verified probe list),
+  values that must not be mangled (ChordPro slash chords, ordinary prose,
+  `a?b`, `e.g?`, `C:\dir\file?.txt`) and the documented look-alike mangling
+  and residuals, non-String objects (exceptions, enums, throwing
+  `toString`), map-key scrubbing, the extended key denylist (added keys, kept
+  generic names, bool values, cursors), size caps including the exact
+  8192/8193 output and 64 KB / 64 KB + 1 input boundaries (10 MB string,
+  6M-char token, wide self-referencing map encoded size, string budget, no
+  unscrubbed tail), linear-time on hostile delimiter runs, and bounded,
+  never-throwing traversal (cycles, 100k-deep nesting, infinite iterables,
+  throwing collections).
+- `infrastructure/observability/sentry_pii_scrub_fuzz_test.dart` — a
+  committed seeded (fixed-seed xorshift, no external dependency) property
+  fuzzer, 100 000 cases in about 1 s, opt-in `--dart-define=
+  SCRUB_FUZZ_CASES=2000000` for a local sweep. It composes schemes,
+  userinfo (with `@ ? # / %40`), hosts (dotted, bare, IPv6, port,
+  non-ASCII), paths, queries, fragments, wrappers and multi-URL
+  concatenations, and asserts: a planted `SECRETVALUE` (in userinfo, query,
+  a `key=value` fragment, a schemeless prefix or credential text) never
+  survives; a benign corpus (prose, ChordPro, lyrics, times, versions,
+  emails in text, Windows and Unix paths) is returned unchanged; the output
+  is idempotent; nothing throws. Failures print the shortest offending
+  inputs.
 - `infrastructure/observability/sentry_observability_test.dart` — against a
   real in-memory Sentry SDK (offline as above): nested `runInSpan` produces
   parent/child; concurrent sibling calls do not cross-attach;
   `currentTraceParent` matches the active span's `toSentryTrace()`; ok /
   `internalError` status per outcome and no Sentry issue filed by a failing
-  span; span `data` is PII-scrubbed; a `finished ambient span (zone leak)`
+  span; span `data` is PII-scrubbed, and `span.setData` forwards the value
+  for a kept key and for a key the scrub rewrites (URL, JWT or oversized key;
+  the finished transaction's data is inspected, offline, with a
+  condition-based wait); a `finished ambient span (zone leak)`
   group (deferred work after a span finished starts a new root, a finished
   child is not ambient, `currentTraceParent` is never all-zero and is null
   when Sentry is not initialised); a `telemetry delivery is off the critical
@@ -1074,7 +1116,10 @@ what moved and why.
 ### Revision 3 (independent re-review of the scrub, 2026-09-24)
 
 An independent review, verified by probes, found regressions and gaps in the
-previous round. The sections above describe the as-built result.
+previous round. The URL-related items below describe what Revision 3 did and
+are **superseded by Revision 4** (the URL handling is now the rule set in
+"PII and secret redaction"); the key, size-cap, map-key and zone-error items
+still stand.
 
 - **`@` in a query swallowed the `?`** (regression): greedy userinfo removal
   to the token's last `@` turned `https://h/p?email=a@b.c&token=S` into
@@ -1113,3 +1158,42 @@ previous round. The sections above describe the as-built result.
   `_captureUnhandledZoneError` is SDK-parity code; docs now say so. A new
   test pins that an error escaping a nested span into the guarded zone, captured through
   `reportUncaughtZoneError`'s default capture, carries the span's trace id.
+
+### Revision 4 (freeze of the URL heuristics, 2026-09-25)
+
+Four review rounds in a row, each fixing the URL heuristic state machine
+(`_dropUserInfo`, opener/closer tracking, per-`?` classification, a no-`=`
+shortcut: about a dozen interacting states), introduced a new leak class;
+example tests could not catch combinations, and an independent fuzzer still
+found 255 failing signatures in 1.5M seeded cases after Revision 3. Decision
+(not re-litigated): freeze the heuristic, replace the URL state machine by
+the small rule set in "PII and secret redaction" (A scheme URL, B schemeless
+URL shape, C credential key/value text), and commit a seeded property fuzzer.
+`sentry_pii_scrub.dart` went from 753 to 574 lines (dartdoc included), and
+the URL code from ~370 lines of interacting states to ~140 (including the new
+credential key/value rule).
+
+- **New rules** as described above. Deviations from the first sketch of the
+  rules, each closing a leak the fuzzer or an adversarial sweep found: the
+  query cut also starts at a `#` with a `=` that comes BEFORE the first `?`
+  (`#access_token=S?x` leaked); rule B also runs on the text A kept (a
+  schemeless `/rest?k=S,https://h/y` prefix leaked); URL rules run BEFORE
+  credential key/value text (the reverse let a `token=` in a userinfo eat its
+  `@`) and once more after it (idempotency).
+- **Accepted trade-offs**: text after a URL in the same whitespace-free token
+  is dropped; `@` in a path/query over-redacts; a few look-alikes are cut.
+- **Non-String objects bypassed the scrub** (`FormatException('bad
+  https://h/x?token=S')`): everything but `null`/`num`/`bool`/collections is
+  now scrubbed as its `toString()`.
+- **`_SentrySpanHandle.setData` dropped the value** when key scrubbing
+  rewrote the key (`containsKey(key)` lookup): it now forwards
+  `scrubbed.entries`.
+- **Keys**: `pin`, `passcode`, `bearer` (exact) and `otpcode`,
+  `verificationcode` (suffix) added; `code`, `session_id` and `sessionid`
+  stay out (generic correlation ids).
+- **Boundary pins** for the 8192/8193 output and 64 KB / 64 KB + 1 input
+  caps. **Doc fix**: the wide self-referencing map encodes to ~42 KB (short
+  keys) to ~62 KB (`key_number_N` keys), not "~60 KB" for all shapes.
+- **Verification**: 2 000 000 fuzz cases, 0 failures; a separate 6 000 000
+  case adversarial sweep (piece-wise random tokens with a leak oracle and
+  idempotency check), 0 failures; mutation checks on each rule.
