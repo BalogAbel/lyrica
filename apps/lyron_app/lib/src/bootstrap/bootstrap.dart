@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -13,48 +14,138 @@ import 'package:lyron_app/src/infrastructure/observability/tracing_http_client.d
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-Future<void> bootstrap() async {
-  WidgetsFlutterBinding.ensureInitialized();
+/// Reports an error that escaped every other handler inside the guarded
+/// bootstrap zone (see [runBootstrapGuarded]).
+///
+/// Always prints locally first ([dump], default
+/// `FlutterError.dumpErrorToConsole`, which does NOT invoke
+/// `FlutterError.onError`), so nothing is ever swallowed silently -- even
+/// when Sentry is disabled or uninitialized. Then hands the error to
+/// [capture] (default `Sentry.captureException`, a no-op returning
+/// `SentryId.empty()` on the `NoOpHub` when Sentry is not initialized).
+/// A failing [capture] is contained: telemetry must never turn a reported
+/// error into a second one.
+///
+/// No double report: Sentry's `FlutterErrorIntegration` only sees errors
+/// routed through `FlutterError.onError`, and it explicitly does not forward
+/// them to `Zone.handleUncaughtError` (flutter_error_integration.dart: "we
+/// don't call Zone.current.handleUncaughtError"). Errors reaching a zone
+/// handler never pass through `FlutterError.onError`, and [dump] does not
+/// re-enter it, so each error is captured exactly once.
+void reportUncaughtZoneError(
+  Object error,
+  StackTrace stackTrace, {
+  FutureOr<void> Function(Object error, StackTrace stackTrace)? capture,
+  void Function(FlutterErrorDetails details)? dump,
+}) {
+  final dumpError =
+      dump ??
+      (FlutterErrorDetails details) =>
+          FlutterError.dumpErrorToConsole(details, forceReport: true);
+  final captureError =
+      capture ??
+      (Object e, StackTrace s) => Sentry.captureException(e, stackTrace: s);
 
-  final sentryConfig = SentryConfig.fromEnvironment();
-  final observability = sentryConfig.isEnabled
-      ? const SentryObservability()
-      : const NoopObservability();
-  setCurrentObservability(observability);
+  try {
+    dumpError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'bootstrap',
+        context: ErrorDescription('in the guarded bootstrap zone'),
+      ),
+    );
+  } catch (_) {
+    // Printing is best effort; still try to capture below.
+  }
+  unawaited(
+    Future<void>.sync(
+      () => captureError(error, stackTrace),
+    ).then<void>((_) {}, onError: (Object _, StackTrace _) {}),
+  );
+}
 
-  if (sentryConfig.isEnabled) {
+/// Runs [body] (normally [bootstrap]) the way the Sentry SDK would, so that
+/// unhandled asynchronous errors are still captured on every platform.
+///
+/// SDK facts (sentry_flutter 8.14.2), which this mirrors:
+/// - `sentry_flutter/lib/src/sentry_flutter.dart:76-77`:
+///   `isOnErrorSupported = !isWeb && PlatformDispatcher.onError is usable`.
+///   On web this is always false, so no `OnErrorIntegration` is installed
+///   (`sentry_flutter.dart:169-171`); the comment at `:73-75` says Flutter
+///   Web does not deliver `Future` errors via `PlatformDispatcher.onError`
+///   (flutter/flutter#100277).
+/// - `sentry_flutter.dart:82`: `useRunZonedGuarded = !isOnErrorSupported &&
+///   isRootZone`. The SDK only uses a zone when it was given an `appRunner`
+///   (`sentry/lib/src/sentry.dart:157-176`); on native it is a plain
+///   `await appRunner()`.
+///
+/// [bootstrap] deliberately calls `SentryFlutter.init` WITHOUT `appRunner`
+/// (so a `Supabase.initialize` failure is not hidden by the SDK), so on web
+/// the SDK installs no zone at all and uncaught async errors would be lost.
+/// This function supplies that zone: on web ([useGuardedZone] defaults to
+/// `kIsWeb`) the whole [body] -- including
+/// `WidgetsFlutterBinding.ensureInitialized()` and `runApp`, which must share
+/// one zone -- runs in `runZonedGuarded`, with [onError] (default
+/// [reportUncaughtZoneError]) as handler. On native ([useGuardedZone] false)
+/// `PlatformDispatcher.onError` (via Sentry's `OnErrorIntegration`) already
+/// covers async errors, so [body] is simply awaited and its failure
+/// propagates exactly as before.
+///
+/// A failure of [body] itself (sync throw or async error) is routed to
+/// [onError] explicitly, once, so it is always printed and captured.
+Future<void> runBootstrapGuarded(
+  Future<void> Function() body, {
+  bool useGuardedZone = kIsWeb,
+  void Function(Object error, StackTrace stackTrace) onError =
+      reportUncaughtZoneError,
+}) {
+  if (!useGuardedZone) {
+    return body();
+  }
+  final done = Completer<void>();
+  runZonedGuarded(() {
+    Future<void>.sync(body).then<void>(
+      (_) => done.complete(),
+      onError: (Object error, StackTrace stackTrace) {
+        onError(error, stackTrace);
+        done.complete();
+      },
+    );
+  }, onError);
+  return done.future;
+}
+
+/// Initializes Sentry (when [config] is enabled) and returns the
+/// [Observability] the rest of the app must use, also publishing it through
+/// [setCurrentObservability].
+///
+/// Fail soft (ADR-036 point 5): if [init] throws (e.g. a malformed DSN), the
+/// error is reported and [NoopObservability] is used. `Sentry` stays on its
+/// `NoOpHub` in that case, so keeping [SentryObservability] would do
+/// pointless work (spans/trace context against a disabled hub); the caller
+/// must build `TracingHttpClient` from the returned value.
+Future<Observability> initObservability(
+  SentryConfig config, {
+  FutureOr<void> Function(FlutterOptionsConfiguration) init =
+      SentryFlutter.init,
+}) async {
+  Observability observability = const NoopObservability();
+  if (config.isEnabled) {
     try {
-      // Deliberately no `appRunner`: Sentry's `appRunner` pattern runs the
-      // given closure inside its own `runZonedGuarded` zone, whose `onError`
-      // silently absorbs any exception the closure throws (reported to
-      // Sentry, if reachable, but never rethrown to this call site) -- see
-      // RunZonedGuardedIntegration.call in the installed SDK. That is the
-      // right behavior for genuinely optional app code, but Supabase.
-      // initialize() below is a hard dependency: if it throws, there is no
-      // working backend and the app cannot function. Running it as an
-      // appRunner would turn that failure into a silent, un-rendered blank
-      // screen (runApp() never reached, nothing thrown, nothing visible)
-      // instead of the loud, debuggable failure it was before this slice
-      // introduced Sentry. Calling SentryFlutter.init without appRunner
-      // still installs its global FlutterError.onError/PlatformDispatcher.
-      // onError hooks (those are set up regardless), so an unhandled error
-      // later is still reported to Sentry -- it just does not swallow a
-      // Supabase.initialize failure into invisibility.
-      await SentryFlutter.init((options) {
-        options.dsn = sentryConfig.dsn;
-        options.environment = sentryConfig.environment;
+      await init((options) {
+        options.dsn = config.dsn;
+        options.environment = config.environment;
         options.tracesSampleRate = 1.0;
         options.sendDefaultPii = false;
+        // sentry_flutter 8.14.2 defaults `anrEnabled` to false
+        // (sentry_flutter_options.dart:72; Android only). The spec puts
+        // Android ANR detection in scope, so opt in. iOS/macOS
+        // `enableAppHangTracking` already defaults to true (:271), left as is.
+        options.anrEnabled = true;
       });
+      observability = const SentryObservability();
     } catch (error, stackTrace) {
-      // Telemetry must fail soft (see SentryConfig's doc comment and
-      // ADR-036 point 5): a bad SENTRY_DSN throws out of SentryFlutter.
-      // init's internal setup. Sentry's own static API (Sentry.
-      // captureException et al.) already no-ops safely when the SDK never
-      // finished initializing -- no need to repoint `observability` at
-      // NoopObservability here. We only need to make sure the app still
-      // starts, which happens unconditionally below regardless of this
-      // catch firing.
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
@@ -67,6 +158,15 @@ Future<void> bootstrap() async {
       );
     }
   }
+  setCurrentObservability(observability);
+  return observability;
+}
+
+Future<void> bootstrap() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final sentryConfig = SentryConfig.fromEnvironment();
+  final observability = await initObservability(sentryConfig);
 
   final supabaseConfig = SupabaseConfig.fromEnvironment();
   // supabase_flutter 2.16 deprecated anonKey in favour of publishableKey;
