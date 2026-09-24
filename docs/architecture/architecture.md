@@ -150,7 +150,8 @@ transaction can be lost on process exit. Sentry is initialised without
 `appRunner` (`initObservability`, failing soft to `NoopObservability` on a
 bad DSN), so a `Supabase.initialize` failure stays loud; on web
 `runBootstrapGuarded` supplies the error zone the SDK would otherwise
-have provided. Native crashes and iOS app hangs are captured
+have provided, reporting its errors as unhandled fatal events like the
+SDK's own zone does. Native crashes and iOS app hangs are captured
 automatically by `sentry_flutter`'s bundled hooks, and Android ANR
 detection is enabled explicitly (it is off by default in the installed
 `sentry_flutter` 8.14.2);

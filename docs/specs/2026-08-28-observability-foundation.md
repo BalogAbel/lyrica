@@ -295,8 +295,9 @@ because W3C declares that value invalid.
 
 **Span finish is fire-and-forget.** `runInSpan` sets the span's status and
 `throwable` first, marks the handle ended, and then starts `span.finish()`
-without awaiting it (`unawaited(_finishQuietly(...))`, which swallows any
-error). Finishing a root span awaits the transaction's transport send — on
+without awaiting it (`unawaited(_finishQuietly(...))`, a defensive guard
+that swallows any error; transport errors are already swallowed by the
+SDK's `Hub.captureTransaction`). Finishing a root span awaits the transaction's transport send — on
 web an HTTP POST inside the SDK's `HttpTransport` — so awaiting it stalled
 the caller (a slow sentry.io delayed `refreshCatalog()`). Accepted
 consequences: telemetry delivery failures are silent, and an in-flight
@@ -432,10 +433,17 @@ null check.
   innermost span it crossed (inner spans finish first). It is **not**
   linked when it is thrown outside any `runInSpan`, when it never passes
   through a `runInSpan` boundary (for example a failure inside an unawaited
-  future or `Timer` started in a body), or when the SDK captures it before
-  the span's finish has recorded the association (`runInSpan` does not
-  await the finish). This is derived from reading the SDK source; no
-  committed test pins it. The remaining gap is accepted: the alternative
+  future or `Timer` started in a body), or when its span never finishes.
+  There is no capture-before-finish window in the current configuration:
+  `SentrySpan.finish` reaches `Hub.setSpanContext` synchronously (its only
+  earlier `await` iterates `options.performanceCollectors`, empty here),
+  and `runInSpan` calls `_finishQuietly` in its `finally`, before the
+  rethrow completes. A window would appear only if frames tracking is
+  adopted (`SentryWidgetsFlutterBinding` registers a
+  `PerformanceContinuousCollector`; `SentrySpan.finish` then awaits it
+  before recording the association, `sentry_span.dart:72-86`, and the
+  finish is unawaited). The `error to trace linking` tests in
+  `sentry_observability_test.dart` pin the current behavior. The remaining gap is accepted: the alternative
   (mutating `Scope.span` globally) reintroduces cross-trace attribution
   bugs under concurrent root operations.
 - **Handled**: explicit `observability.captureException(error, stackTrace)`
@@ -474,17 +482,28 @@ Layered, not relying on a single control:
    and `captureException` `extra` map before it reaches the Sentry SDK.
    The file's dartdoc is authoritative; in summary:
    - **Keys** are normalized (lower-cased, with `-`, `_`, `.` and
-     whitespace removed) and dropped when equal to `authorization`, `jwt`
-     or `codeverifier`, or when they end in `token`, `secret`, `password`,
-     `cookie` or `apikey` (so `refresh_token`, `x-api-key`,
-     `client_secret` and `set-cookie` are all caught). The match is on the
-     suffix, not a substring: `token_count` and `tokenizer` are ordinary
-     metrics and are kept. ChordPro content, lyrics, and other
+     whitespace removed) and dropped when equal to `jwt`, `codeverifier`,
+     `tokens`, `accesstokens`, `refreshtokens` or `idtokens`, or when they
+     end in `token`, `secret`, `password`, `cookie`, `apikey`,
+     `authorization`, `privatekey`, `secretkey`, `accesskey`, `credential`
+     or `credentials` (so `refresh_token`, `x-api-key`, `client_secret`,
+     `set-cookie`, `Proxy-Authorization` and `private_key` are all caught).
+     The match is on the suffix, not a substring, and the plural `tokens`
+     is exact-only: `token_count`, `tokenizer`, `tokens_used` and
+     `max_tokens` are ordinary metrics and are kept. ChordPro content, lyrics, and other
      business/domain content are deliberately **not** treated as sensitive
      — per explicit product direction, that content may aid debugging.
    - **Traversal** is recursive over any `Map` (keys stringified), any
      `Iterable` (returned as fixed-length lists) and `Uri` values
-     (stringified, then scrubbed as strings).
+     (stringified, then scrubbed as strings). It is bounded: containers
+     nested 16 levels deep or beyond, and containers past a 2048-container
+     budget per call (a wide self-referencing structure), become the
+     string `[truncated]`; each collection keeps at most its first 256
+     elements (an infinite lazy iterable is cut, the rest is dropped
+     silently). **`scrubPii` never throws**: any failure while scrubbing (a
+     throwing iterator, exhausted stack) returns `{'scrub_error': true}`
+     with no data, so a hostile value can neither break the instrumented
+     operation nor leave a transaction unfinished.
    - **Strings**: JWTs (`eyJ<seg>.<seg>.<seg>`) anywhere in the string —
      including embedded ones such as `Bearer eyJ...` — and Supabase secret
      keys (`sb_secret_...`) are replaced with `[redacted]`, regardless of
@@ -493,12 +512,28 @@ Layered, not relying on a single control:
      `'eyJ' * 30000` and would block the main isolate. The string is then
      scrubbed per whitespace-delimited token, preserving the original
      whitespace, so a URL inside an error message is handled while ordinary
-     prose is untouched. In a URL-shaped token the userinfo (`user:pass@`)
-     is dropped, the whole query string is dropped, and a `key=value`
+     prose is untouched. Within a token the userinfo (`user:pass@`) is
+     dropped from the first `://` up to the token's LAST `@`, so a raw
+     `?`, `/` or `#` inside a password cannot end the authority early and
+     leak the tail. Trade-off, deliberately leak-free: an `@` in the path or
+     query also swallows everything before it (`https://host/a@b` becomes
+     `https://b`, `https://host/p?email=a@b.c` becomes `https://b.c`). In a
+     URL-shaped segment the query string is dropped and a `key=value`
      fragment (implicit-flow `#access_token=...` deep links) is dropped; a
-     plain fragment is kept. A token counts as URL-shaped only with a
-     scheme of two or more characters or a `/` before the `?`/`#`, so
-     `[C]Hello?[G]World`, `a?b` and `C:\dir\file?.txt` are never mangled.
+     plain fragment and an empty query are kept. The dropped region ends at
+     the first quote, `<`, `>` or unbalanced `)`, `]`, `}` and the rest of
+     the token is kept verbatim, so JSON-, quote- or bracket-wrapped URLs
+     keep their surroundings (`{"url":"https://x/y?a=1","code":401}` keeps
+     `,"code":401}`); balanced brackets (`?a[0]=1`) stay inside the region.
+     `,`, `;` and `.` are deliberately not terminators (`ids=1,2` is a legal
+     query value, ending there would leak `2`); consequently a raw quote
+     inside a query value (legal, rare) ends the region early. A segment
+     is URL-shaped with a scheme of two or more characters, a `/` before the
+     `?`/`#`, or a bare host (`abc.supabase.co?apikey=S`, `x.co:8080`) whose
+     query or fragment contains `=`; a version-like `v1.2?x=1` matches the
+     host shape and is stripped (ambiguous, fail-safe). So
+     `[C]Hello?[G]World`, `a?b`, `e.g?` and `C:\dir\file?.txt` are never
+     mangled.
    - **Email addresses are a documented non-goal**: they are not redacted
      (`mailto:foo@bar.com?subject=hi` keeps the address; only its query is
      dropped). Call sites must not pass them.
@@ -643,9 +678,13 @@ Three decisions are baked into this structure:
 - **Fail soft.** If `SentryFlutter.init` throws (for example a malformed
   DSN: `Dsn.parse` throws an `ArgumentError` before any integration is
   installed), the error is reported through `FlutterError.reportError`, the
-  app continues, and `NoopObservability` is used. Sentry then stays on its
-  `NoOpHub`, so keeping `SentryObservability` would only do pointless work
-  against a disabled hub. `TracingHttpClient` is built from the returned
+  app continues, and `NoopObservability` is used, so no spans are created
+  against a half-initialized SDK. Sentry stays on its `NoOpHub` only when
+  the failure happens before the hub exists (a bad DSN throws from
+  `options.parsedDsn` in `_setDefaultConfiguration`, `sentry.dart:150-152`,
+  `:305-314`); a later throw leaves a live hub behind the no-op adapter,
+  which is harmless (no spans are created; the SDK's global error hooks
+  still capture). `TracingHttpClient` is built from the returned
   value, never from a value picked before init.
 - **Web error capture is supplied by `runBootstrapGuarded`.** On web
   (`kIsWeb`) `sentry_flutter` installs no `OnErrorIntegration`
@@ -658,8 +697,15 @@ Three decisions are baked into this structure:
   Its handler, `reportUncaughtZoneError`, first prints the error locally
   with `FlutterError.dumpErrorToConsole` (which does not re-enter
   `FlutterError.onError`, so nothing is swallowed and nothing is captured
-  twice) and then calls `Sentry.captureException`, a no-op on the `NoOpHub`
-  when Sentry is not initialised; a failing capture is contained. A failure
+  twice) and then reports the error the way the SDK's own zone does
+  (`sentry_run_zoned_guarded.dart:99-116`): a `SentryEvent` whose throwable
+  carries `Mechanism(type: 'runZonedGuarded', handled: false)`, level
+  `fatal` (the SDK default `markAutomaticallyCollectedErrorsAsFatal`; the
+  option is not readable without `@internal` API, so the level is
+  hard-coded), and the scope span marked `internalError`; a plain
+  `captureException` would have reported it as handled, level `error`.
+  This is a no-op on the `NoOpHub` when Sentry is not initialised; a
+  failing capture is contained. A failure
   of `bootstrap()` itself is routed to the same handler exactly once. On
   native, `PlatformDispatcher.onError` (via `OnErrorIntegration`) already
   covers asynchronous errors, so `runBootstrapGuarded` just awaits
@@ -758,9 +804,12 @@ captures transactions/events through `beforeSendTransaction`/`beforeSend`.
   (including the kept `token_count`-style keys), nested and non-String-keyed
   maps, iterables and `Uri` values, JWT redaction (embedded, adjacent,
   glued, and linear-time on pathological input), `sb_secret_` keys, URL
-  query/userinfo/fragment scrubbing per whitespace-delimited token, and
-  values that must not be mangled (ChordPro, ordinary prose, `a?b`,
-  `C:\dir\file?.txt`).
+  query/userinfo/fragment scrubbing per whitespace-delimited token
+  (greedy userinfo, bare-host URLs, JSON/bracket/quote-wrapped URLs, the
+  `ids=1,2` no-partial-leak case), values that must not be mangled
+  (ChordPro, ordinary prose, `a?b`, `e.g?`, `C:\dir\file?.txt`), the
+  extended key denylist, and bounded, never-throwing traversal (cycles,
+  100k-deep nesting, infinite iterables, throwing collections).
 - `infrastructure/observability/sentry_observability_test.dart` — against a
   real in-memory Sentry SDK (offline as above): nested `runInSpan` produces
   parent/child; concurrent sibling calls do not cross-attach;
@@ -770,11 +819,24 @@ captures transactions/events through `beforeSendTransaction`/`beforeSend`.
   group (deferred work after a span finished starts a new root, a finished
   child is not ambient, `currentTraceParent` is never all-zero and is null
   when Sentry is not initialised); a `telemetry delivery is off the critical
-  path` group (a hung transport does not delay `runInSpan`, a failing or
-  throwing transport surfaces no error, sync and async body throws finish
-  the span exactly once); an explicit "tests are offline" guard; and
-  smoke tests that breadcrumbs, user context and `captureException` do not
-  throw.
+  path` group (a hung transport does not delay `runInSpan`; a failing
+  transport surfaces no error, which is an SDK contract because
+  `Hub.captureTransaction` swallows transport errors; a `finish()` that
+  throws, forced through a public throwing `PerformanceContinuousCollector`,
+  is swallowed and the span still stops being ambient, which pins the
+  `_finishQuietly` guard and `markEnded`; sync and async body throws finish
+  the span exactly once); a `hostile data map` group (self-referencing or
+  throwing span/breadcrumb/exception data cannot break `runInSpan` or
+  leave the transaction unsent); an `error to trace linking` group (an
+  error that crossed a finished child span is captured with that span's
+  trace and span ids; one that never crossed a span is not linked); an
+  explicit "tests are offline" guard; and smoke tests that breadcrumbs,
+  user context and `captureException` do not throw.
+- `bootstrap/report_uncaught_zone_error_sentry_test.dart` — the default
+  capture of `reportUncaughtZoneError` against an offline real Sentry: the
+  event's exception mechanism is `runZonedGuarded` with `handled == false`,
+  level `fatal`, the scope span is marked `internalError`; with Sentry not
+  initialised the call is a safe no-op that still prints locally.
 - `infrastructure/config/sentry_config_test.dart` — empty DSN →
   `isEnabled == false`; non-empty DSN → `isEnabled == true`; environment
   default.
@@ -923,6 +985,14 @@ what moved and why.
 - **Span finish is fire-and-forget**: `runInSpan` no longer awaits
   `span.finish()`, so telemetry delivery cannot stall the instrumented
   operation. See "Span finish is fire-and-forget".
+- **Re-review round (2026-09-24)**: web zone errors are now reported as
+  unhandled (`Mechanism runZonedGuarded, handled: false`, level `fatal`)
+  instead of handled errors; the scrub gained greedy userinfo, bare-host
+  URL, terminator-bounded query/fragment, key-denylist and bounded-traversal
+  rules and never throws; the trace-linkage "capture before finish" window
+  was found not to exist in the current configuration (it would appear only
+  with frames tracking) and is pinned by tests; the `NoOpHub` claim after
+  init failure was made precise.
 - **Unhandled-error trace linkage restated**: the earlier text said
   SDK-auto-captured unhandled errors are never trace-linked. That is false
   for errors that propagate through `runInSpan` (the SDK's

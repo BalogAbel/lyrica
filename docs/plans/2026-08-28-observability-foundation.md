@@ -2379,7 +2379,10 @@ where this plan and those documents disagree, they win.
   unanchored regex were wrong: the first missed embedded JWTs, the second is
   quadratic on hostile input), `Map`/`Iterable`/`Uri` traversal,
   `sb_secret_` keys, `key=value` fragments, and emails as a documented
-  non-goal. The policy is in the spec's "PII and secret redaction" and
+  non-goal. A later re-review added greedy userinfo removal, bare-host
+  URLs, terminator-bounded query/fragment stripping, more denylisted keys,
+  bounded traversal and a never-throwing `scrubPii`. The policy is in the
+  spec's "PII and secret redaction" and
   ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The
   test file grew accordingly (the plan expected 7 tests).
 - **Task 8 (`SentryObservability`).** The catch clause is
@@ -2389,8 +2392,8 @@ where this plan and those documents disagree, they win.
   root, `currentSpan` is a no-op span, `captureException` attaches no
   span); `currentTraceParent` returns null for all-zero trace or span ids;
   and `runInSpan` no longer awaits span finish (status and `throwable` are
-  set first, then `unawaited(_finishQuietly(...))` swallows transport
-  errors), so telemetry delivery cannot stall the caller, at the price of
+  set first, then `unawaited(_finishQuietly(...))`, a defensive guard: the
+  SDK's `Hub.captureTransaction` is what swallows transport errors), so telemetry delivery cannot stall the caller, at the price of
   silent delivery failures and possible loss of an in-flight transaction on
   process exit. The `Observability` interface dartdoc was updated to match.
   The tests run offline: the SDK swaps `NoOpTransport` for `HttpTransport`

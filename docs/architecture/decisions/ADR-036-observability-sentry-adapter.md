@@ -63,10 +63,21 @@ later, independent of this decision.
    `span.throwable`, so an error that propagated through a `runInSpan` and
    is later captured automatically **is** trace-linked, to the innermost
    span it crossed. It is **not** linked when it is thrown outside any
-   span, when it never crosses a `runInSpan` boundary, or when the SDK
-   captures it before the (unawaited) span finish has recorded the
-   association. This is derived from the SDK source; no committed test pins
-   it. Setting `Scope.span` globally in `runInSpan` was considered and
+   span, when it never crosses a `runInSpan` boundary, or when its span
+   never finishes. There is no capture-before-finish window in the current
+   configuration: `SentrySpan.finish` reaches `Hub.setSpanContext`
+   synchronously (its only earlier `await` iterates
+   `options.performanceCollectors`, which is empty here), and `runInSpan`
+   calls `_finishQuietly` in its `finally`, before the rethrow completes, so
+   the association exists before any handler can capture the error. A
+   window would appear only if frames tracking is adopted
+   (`SentryWidgetsFlutterBinding` instead of `WidgetsFlutterBinding`
+   registers a `PerformanceContinuousCollector`,
+   `frames_tracking_integration.dart:36-41`): `SentrySpan.finish` would then
+   await the collector before recording the association
+   (`sentry_span.dart:72-86`) and, because the finish is unawaited, a fast
+   handler could capture first. The behavior is pinned by the
+   `error to trace linking` tests in `sentry_observability_test.dart`. Setting `Scope.span` globally in `runInSpan` was considered and
    rejected: it would reintroduce the exact cross-trace attribution bug
    this Zone design exists to avoid, in exchange for linking a remaining
    category of error (unhandled errors that never crossed a span) that is
@@ -126,8 +137,12 @@ later, independent of this decision.
    `SentryFlutter.init` throws (for example a malformed DSN, which
    `Dsn.parse` rejects before any integration is installed) the error is
    reported through `FlutterError.reportError` and `NoopObservability` is
-   used — Sentry then stays on its `NoOpHub`, so keeping the Sentry adapter
-   would only do pointless work. Because `Observability` must exist before
+   used, so no spans are created against a half-initialized SDK. Sentry
+   stays on its `NoOpHub` only when the failure happens before the hub
+   exists (a bad DSN: `_setDefaultConfiguration` throws in
+   `options.parsedDsn`, `sentry.dart:150-152`, `:305-314`); a later throw
+   leaves a live hub behind the no-op adapter, which is harmless because no
+   spans are created and the SDK's global error hooks still capture. Because `Observability` must exist before
    `Supabase.initialize` (needed for `TracingHttpClient`), which itself
    runs before any `ProviderScope` exists, the instance is held in a
    package-level singleton set by `initObservability` through
@@ -147,7 +162,12 @@ later, independent of this decision.
    so uncaught asynchronous errors would be lost;
    `runBootstrapGuarded`, called from `main()`, supplies the zone: when
    `kIsWeb` it runs the whole `bootstrap()` in one `runZonedGuarded`
-   whose handler prints the error locally and then reports it to Sentry.
+   whose handler prints the error locally and then reports it to Sentry
+   the way the SDK's own zone does: `Mechanism(type: 'runZonedGuarded',
+   handled: false)`, level `fatal` (the SDK default
+   `markAutomaticallyCollectedErrorsAsFatal`; the option is not readable
+   without `@internal` API, so it is hard-coded), and the scope span marked
+   `internalError`.
    On native, `PlatformDispatcher.onError` (via `OnErrorIntegration`)
    already covers asynchronous errors, and a `bootstrap()` failure
    propagates as an uncaught error like before. Android ANR detection is
@@ -179,15 +199,33 @@ later, independent of this decision.
    `sendDefaultPii = false`, plus a **recursive** scrub (`scrubPii` in
    `sentry_pii_scrub.dart`) on span/breadcrumb/exception-extra data. It
    normalizes keys (lower-case, with `-`, `_`, `.` and whitespace removed)
-   and drops those equal to `authorization`, `jwt` or `codeverifier` or
-   ending in `token`, `secret`, `password`, `cookie` or `apikey` (a suffix
-   match, so `token_count` and `tokenizer` are kept); it traverses any
-   `Map`, `Iterable` and `Uri`; and in strings it redacts JWTs anywhere in
-   the string (a linear-time scan — an unanchored regex is quadratic on
-   hostile input) and `sb_secret_...` Supabase keys, then, per
-   whitespace-delimited URL-shaped token, drops userinfo, the query string
-   and `key=value` fragments (implicit-flow `#access_token=...`). Email
-   addresses are a documented non-goal of the scrub. (An earlier draft
+   and drops those equal to `jwt`, `codeverifier`, `tokens`,
+   `accesstokens`, `refreshtokens` or `idtokens`, or ending in `token`,
+   `secret`, `password`, `cookie`, `apikey`, `authorization`, `privatekey`,
+   `secretkey`, `accesskey`, `credential` or `credentials` (a suffix match,
+   so `token_count`, `tokenizer` and `max_tokens` are kept; the plural
+   `tokens` is exact-only for that reason); it traverses any `Map`,
+   `Iterable` and `Uri`, bounded (depth 16, 256 elements per collection, a
+   2048-container budget per call; beyond the depth or budget the value
+   becomes the string `[truncated]`, extra elements are dropped) so a
+   cyclic or hostile structure cannot overflow the stack or hang the caller,
+   and `scrubPii` never throws (any failure yields `{'scrub_error': true}`
+   with no data), so scrubbing can never break an instrumented operation;
+   and in strings it redacts JWTs anywhere in the string (a linear-time
+   scan — an unanchored regex is quadratic on hostile input) and
+   `sb_secret_...` Supabase keys, then, per whitespace-delimited token,
+   drops userinfo greedily up to the token's last `@` (so a raw `?`, `/` or
+   `#` in a password cannot leak its tail; an `@` in a path or query
+   over-redacts, `https://host/a@b` becomes `https://b`, a deliberate
+   leak-free bias), and, for URL-shaped segments (a scheme, a `/`, or a bare
+   host whose query/fragment contains `=`, which also strips the ambiguous
+   `v1.2?x=1`), the query string and `key=value` fragments (implicit-flow
+   `#access_token=...`), up to the first quote, `<`, `>` or unbalanced
+   `)`, `]`, `}` and keeping the rest verbatim, so JSON- or
+   bracket-wrapped URLs keep their surroundings (`,` `;` `.` are not
+   terminators: `ids=1,2` is a legal query value; a raw quote inside a
+   query value ends the region early). Email addresses are a documented
+   non-goal of the scrub. (An earlier draft
    stripped query strings on the assumption that they carried business
    content, and a later draft left them unscrubbed on the narrowed policy;
    review showed URLs carry credentials in userinfo, query string and
@@ -319,7 +357,9 @@ short (the spec's "Revision 2" lists each item with its rationale):
   first plan assumed; the "v2" tracing API is a 9.x API and is not present.
 - The PII scrub policy (point 7) was tightened after review found credential
   leaks (URL userinfo, schemeless URLs, header-style key names, embedded
-  JWTs, a quadratic JWT regex, `key=value` fragments).
+  JWTs, a quadratic JWT regex, `key=value` fragments) and again by a later
+  re-review (greedy userinfo, bare-host URLs, more key names, JSON-wrapped
+  URLs, bounded traversal, never-throwing `scrubPii`).
 - `SentryObservability` ignores finished ambient spans, returns a null
   `traceparent` for all-zero ids, and no longer awaits span finish
   (points 2 and 6).
