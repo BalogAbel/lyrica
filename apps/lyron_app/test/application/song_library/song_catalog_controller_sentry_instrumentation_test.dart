@@ -105,12 +105,11 @@ void main() {
       firstTransaction.future.timeout(const Duration(seconds: 10));
 
   /// Lets any straggling Sentry work (an issue event, a second transaction)
-  /// surface before a "nothing else happened" assertion.
-  Future<void> pump() async {
-    for (var i = 0; i < 10; i++) {
-      await Future<void>.delayed(Duration.zero);
-    }
-  }
+  /// surface before a "nothing else happened" assertion. A real delay, not
+  /// event-loop hops: those are not enough on a slow machine (negative
+  /// assertions cannot wait on a condition, so they get a real short wait).
+  Future<void> pump() =>
+      Future<void>.delayed(const Duration(milliseconds: 100));
 
   Map<String, SentrySpan> spansByName(SentryTransaction tx) => {
     for (final span in tx.spans) span.context.description!: span,

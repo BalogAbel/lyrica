@@ -97,6 +97,12 @@ void main() {
     }
   }
 
+  /// Real short wait before a NEGATIVE assertion (nothing was reported, no
+  /// uncaught error): such a check cannot wait on a condition, and event-loop
+  /// hops are not enough on a slow machine.
+  Future<void> settle() =>
+      Future<void>.delayed(const Duration(milliseconds: 100));
+
   /// Waits (polling on real timers) until [done]. `runInSpan` deliberately
   /// does not await span finish, and the SDK's transaction pipeline (event
   /// processors, envelope building) does real asynchronous work after it, so
@@ -330,7 +336,7 @@ void main() {
       }),
       throwsException,
     );
-    await pump();
+    await settle();
 
     expect(events, isEmpty, reason: 'runInSpan must not captureException');
   });
@@ -500,7 +506,7 @@ void main() {
           (span) async => 'value',
         );
         await transport.firstSend.future.timeout(const Duration(seconds: 10));
-        await pump();
+        await settle();
       }, (error, stack) => uncaught.add(error));
 
       expect(result, 'value');
@@ -528,7 +534,7 @@ void main() {
           caught = e;
         }
         await transport.firstSend.future.timeout(const Duration(seconds: 10));
-        await pump();
+        await settle();
       }, (e, stack) => uncaught.add(e));
 
       expect(caught, same(error), reason: 'body error rethrown unmodified');

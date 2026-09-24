@@ -52,6 +52,21 @@ void main() {
     });
   }
 
+  /// Waits (polling on real timers, 10 s deadline) until [done]. Delivery is
+  /// not a fixed number of event-loop hops: on Linux CI the SDK's IO enricher
+  /// awaits `Process.run('cat', ['/proc/meminfo'])` on the first event after
+  /// every `Sentry.init`, which takes real time. Use this before asserting
+  /// that an event was delivered, never `pumpEventQueue`.
+  Future<void> pumpUntil(bool Function() done) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!done()) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('timed out waiting for the Sentry event to be delivered');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+  }
+
   setUp(() {
     events = [];
     httpAttempts = [];
@@ -70,7 +85,7 @@ void main() {
       final error = StateError('boom');
 
       reportUncaughtZoneError(error, StackTrace.current, dump: (_) {});
-      await pumpEventQueue();
+      await pumpUntil(() => events.isNotEmpty);
 
       expect(events, hasLength(1));
       final event = events.single;
@@ -97,7 +112,7 @@ void main() {
         StackTrace.current,
         dump: (_) {},
       );
-      await pumpEventQueue();
+      await pumpUntil(() => events.isNotEmpty);
 
       expect(transaction.status, const SpanStatus.internalError());
       await transaction.finish();
@@ -131,12 +146,13 @@ void main() {
         // The default capture path, only the local dump is silenced.
         onError: (e, s) => reportUncaughtZoneError(e, s, dump: (_) {}),
       );
-      await pumpEventQueue();
-
       // The finished root transaction also passes `beforeSend`.
-      final errorEvents = events.where((e) => e is! SentryTransaction);
-      expect(errorEvents, hasLength(1));
-      final event = errorEvents.single;
+      Iterable<SentryEvent> errorEvents() =>
+          events.where((e) => e is! SentryTransaction);
+      await pumpUntil(() => errorEvents().isNotEmpty);
+
+      expect(errorEvents(), hasLength(1));
+      final event = errorEvents().single;
       final parts = childTraceParent!.split('-');
       expect(event.contexts.trace!.traceId.toString(), parts[1]);
       expect(event.contexts.trace!.spanId.toString(), parts[2]);
@@ -161,6 +177,10 @@ void main() {
           );
           await pumpEventQueue();
         }, (e, s) => unhandled.add(e));
+        // Negative assertions below: Sentry is disabled, so nothing can ever
+        // be delivered; a real short delay (not event-loop hops) still lets a
+        // stray capture surface before `isEmpty` is checked.
+        await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(dumped, hasLength(1));
         expect(dumped.single.exception, isA<StateError>());
