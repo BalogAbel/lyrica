@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_pii_scrub.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthChangeEvent, AuthState, Session, User;
 
 void main() {
   test('drops denylisted keys case-insensitively', () {
@@ -558,7 +560,8 @@ void main() {
     });
   });
 
-  group('each ?/# is classified on its own, not once per token', () {
+  group('a scheme URL after a non-URL ? in one token is still cut, plain '
+      '?s stay', () {
     test('a URL after a non-URL question mark in the same token is '
         'stripped', () {
       final result = scrubPii({
@@ -1354,6 +1357,196 @@ void main() {
       expect(one('[G/B]Love?[C]=joy'), '[G/B]Love');
       expect(one('v1.2?x=1'), 'v1.2');
       expect(one('foo.bar?baz=qux'), 'foo.bar');
+    });
+  });
+
+  group('review round 5: rule C names, cross-token pairs, JWT scan, cap', () {
+    Object? one(String input) => scrubPii({'v': input})!['v'];
+
+    test('rule C matches camelCase and _-prefixed credential names', () {
+      expect(
+        {
+          for (final input in [
+            'accessToken=S',
+            'refreshToken: S',
+            'idToken=S',
+            'providerToken: S',
+            'providerRefreshToken=S',
+            'clientSecret=S',
+            'apiKey=S',
+            'my_token=S',
+            'sb_access_token=S',
+            'new_password=S',
+            '_secret=S',
+            'x_authorization=S',
+            '{"refreshToken":"S"}',
+          ])
+            input: one(input),
+        },
+        {
+          'accessToken=S': 'accessToken=[redacted]',
+          'refreshToken: S': 'refreshToken: [redacted]',
+          'idToken=S': 'idToken=[redacted]',
+          'providerToken: S': 'providerToken: [redacted]',
+          'providerRefreshToken=S': 'providerRefreshToken=[redacted]',
+          'clientSecret=S': 'clientSecret=[redacted]',
+          'apiKey=S': 'apiKey=[redacted]',
+          'my_token=S': 'my_token=[redacted]',
+          'sb_access_token=S': 'sb_access_token=[redacted]',
+          'new_password=S': 'new_password=[redacted]',
+          '_secret=S': '_secret=[redacted]',
+          'x_authorization=S': 'x_authorization=[redacted]',
+          '{"refreshToken":"S"}': '{"refreshToken":"[redacted]"}',
+        },
+      );
+    });
+
+    test('a key that merely starts with a credential name is untouched', () {
+      final input = {
+        'a': 'token_count=3',
+        'b': 'tokenizer: x',
+        'c': 'password_reset_flow: on',
+        'd': 'secret_santa=2024',
+        'e': 'mytoken=abc',
+        'f': 'myToken=S',
+        'g': 'tokenType: bearer',
+        'h': 'expiresIn: 3600',
+      };
+
+      expect(scrubPii(input), input);
+    });
+
+    Session realSession() => Session(
+      accessToken: 'opaqueAccessValue',
+      tokenType: 'bearer',
+      refreshToken: 'v1rTkSECRETVALUE',
+      providerToken: 'ya29.SECRETX',
+      providerRefreshToken: '1//SECRETY',
+      user: const User(
+        id: 'user-id-1',
+        appMetadata: {},
+        userMetadata: {},
+        aud: 'authenticated',
+        createdAt: '2026-01-01T00:00:00Z',
+      ),
+    );
+
+    test('a real gotrue Session and AuthState never leak their tokens through '
+        'the toString scrub', () {
+      final session = realSession();
+      final result = scrubPii({
+        'session': session,
+        'state': AuthState(AuthChangeEvent.signedIn, session),
+        'list': [session],
+      })!;
+      final text = result.toString();
+
+      expect(text, isNot(contains('SECRETVALUE')));
+      expect(text, isNot(contains('SECRETX')));
+      expect(text, isNot(contains('SECRETY')));
+      expect(text, isNot(contains('opaqueAccessValue')));
+      expect(text, contains('refreshToken: [redacted]'));
+      expect(text, contains('providerToken: [redacted]'));
+    });
+
+    test('a credential key whose value is in the next whitespace token is not '
+        'eaten by the URL pass', () {
+      expect(one('x.co?a=1,token: SECRETVALUE'), 'x.co [redacted]');
+      expect(one('https://h/p?x=1,"token": S'), 'https://h/p [redacted]');
+      expect(one('ab:?APIKEY = S'), 'ab: = [redacted]');
+      expect(
+        one('https://h/p?x=1,authorization: Bearer S'),
+        'https://h/p Bearer [redacted]',
+      );
+      // Ordering stays: a `token=` inside userinfo must not eat its `@`.
+      expect(one('https://SECRET{token=%40@'), 'https://');
+      for (final output in [
+        one('x.co?a=1,token: SECRETVALUE'),
+        one('https://h/p?x=1,"token": S'),
+        one('ab:?APIKEY = S'),
+      ]) {
+        expect(one(output as String), output);
+      }
+    });
+
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
+
+    test('a JWT after an eyJ-containing dotted prefix is redacted whole', () {
+      expect(one('surveyJson.v1.$jwt'), 'surv[redacted]');
+      expect(one('eyJx.y.$jwt'), '[redacted]');
+      // A real JWT's own payload starts with `eyJ` too, so it marks the two
+      // parts after it: a dotted word glued to a JWT goes with it (accepted
+      // over-redaction, never a leak).
+      expect(one('a.eyJb.c.$jwt.tail'), 'a.[redacted]');
+      expect(one('$jwt.tail'), '[redacted]');
+      expect(one('$jwt tail.x'), '[redacted] tail.x');
+    });
+
+    test('JWT scan stays exact for the plain shapes', () {
+      expect(one('eyJa.b.c'), '[redacted]');
+      expect(one('x-eyJa.b.c.d'), 'x-[redacted].d');
+      expect(one('eyJa.b.'), '[redacted]');
+      expect(one('eyJa..c'), 'eyJa..c');
+      expect(one('$jwt.$jwt'), '[redacted]');
+      expect(one('$jwt $jwt'), '[redacted] [redacted]');
+    });
+
+    test('JWT scan is linear on dot-heavy hostile input', () {
+      final inputs = [
+        'eyJ.a.' * 9000,
+        '.' * 60000,
+        'eyJ' * 20000,
+        'eyJa.b.' * 8000,
+        'a.eyJa.' * 8000,
+      ];
+      for (final input in inputs) {
+        final stopwatch = Stopwatch()..start();
+        final result = scrubPii({'v': input})!;
+        stopwatch.stop();
+
+        expect(result.containsKey('scrub_error'), isFalse);
+        expect(stopwatch.elapsedMilliseconds, lessThan(300));
+      }
+    });
+
+    test('userinfo is cut at the LAST @ of the authority, however many', () {
+      expect(one('https://a@b@c@host/x?k=S'), 'https://host/x');
+      expect(one('https://a@b@c@d@host?k=S'), 'https://host');
+      expect(one('https://u:p@x@host/x'), 'https://host/x');
+    });
+
+    test(
+      'truncation is idempotent, including at a surrogate-pair boundary',
+      () {
+        final input = '${'a' * 8191}😀${'b' * 100}';
+
+        final once = one(input) as String;
+
+        expect(once, '${'a' * 8191}…[truncated]');
+        expect(one(once), once);
+        final exact = one('x' * 9000) as String;
+        expect(exact, '${'x' * 8192}…[truncated]');
+        expect(one(exact), exact);
+        // Already-marked output at exactly one marker over the limit is kept
+        // as is, not cut again (pins the guard's boundary).
+        final marked = '${'a' * 8191}\uD83D…[truncated]';
+        expect(one(marked), marked);
+      },
+    );
+
+    test('documented residual: a schemeless URL after any non-whitespace '
+        'prefix keeps an unknown-key query', () {
+      expect(one('x=abc.co?foo=SECRETVALUE'), 'x=abc.co?foo=SECRETVALUE');
+      expect(
+        one('{"url":"x.co:8080?k=SECRETVALUE"}'),
+        '{"url":"x.co:8080?k=SECRETVALUE"}',
+      );
+      expect(one('("abc.co?k=SECRETVALUE")'), '("abc.co?k=SECRETVALUE")');
+      // A credential name glued to a preceding letter is not matched either.
+      expect(one('authToken=SECRETVALUE'), 'authToken=SECRETVALUE');
+      expect(one('sessionToken: SECRETVALUE'), 'sessionToken: SECRETVALUE');
+      // ...but a credential-named key in the same position is rule C's.
+      expect(one('("abc.co?token=S")'), '("abc.co?token=[redacted]")');
     });
   });
 

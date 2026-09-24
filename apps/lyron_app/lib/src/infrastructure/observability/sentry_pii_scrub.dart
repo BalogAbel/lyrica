@@ -134,54 +134,66 @@ String _redactJwts(String value) {
 String _redactJwtsInRun(String run) {
   if (!run.contains(_jwtPrefix) || !run.contains('.')) return run;
   final parts = run.split('.');
-  final out = StringBuffer();
-  var index = 0;
-  while (index < parts.length) {
+  final out = <String>[];
+  // Last part index already swallowed by a redaction; -1 when none.
+  var coveredUntil = -1;
+  for (var index = 0; index < parts.length; index++) {
     final part = parts[index];
     final start = part.indexOf(_jwtPrefix);
     // header needs >= 1 char after `eyJ`, payload >= 1 char, signature part
     // must exist (it may be empty, e.g. unsigned JWTs).
-    final isJwt =
+    final isJwtStart =
         start >= 0 &&
         start + _jwtPrefix.length < part.length &&
         index + 2 < parts.length &&
         parts[index + 1].isNotEmpty;
-    if (isJwt) {
-      out
-        ..write(part.substring(0, start))
-        ..write(_redacted);
-      index += 3;
-    } else {
-      out.write(part);
-      index += 1;
+    if (isJwtStart) {
+      // Every candidate marks its own three parts, advancing by one part (not
+      // three) and merging overlaps: an `eyJ`-containing prefix part
+      // (`surveyJson.v1.<JWT>`, `eyJx.y.<JWT>`) must not misalign the scan and
+      // leave the real payload and signature behind.
+      if (index > coveredUntil) {
+        out.add('${part.substring(0, start)}$_redacted');
+      }
+      coveredUntil = index + 2;
+    } else if (index > coveredUntil) {
+      out.add(part);
     }
-    if (index < parts.length) out.write('.');
   }
-  return out.toString();
+  return out.join('.');
 }
 
 /// Credential names whose `KEY=VALUE`, `KEY: VALUE`, `"KEY":"VALUE"` and
 /// `'KEY':'VALUE'` text has its value redacted (rule C, see [scrubPii]).
 const _credentialTextKeys =
     'refresh_token|access_token|id_token|provider_token|'
-    'provider_refresh_token|token|apikey|api_key|x-api-key|password|passwd|'
-    'secret|client_secret';
+    'provider_refresh_token|refreshtoken|accesstoken|idtoken|providertoken|'
+    'providerrefreshtoken|token|apikey|api_key|x-api-key|password|passwd|'
+    'secret|client_secret|clientsecret';
+
+/// Start of a credential key: not directly after a letter or digit. A
+/// negative lookbehind, not `\b`: `\b` does not fire between `_` and a letter,
+/// so `my_token=S` and `sb_access_token=S` were missed. `mytoken=S` and
+/// `myToken=S` (a letter before) are still not credential keys here.
+const _keyStart = r'(?<![A-Za-z0-9])';
 
 /// What ends a credential value: whitespace, a quote, or `& , ; } )`.
 const _credentialValue = '''[^\\s"'&,;})]+''';
 
 /// `KEY` + separator kept verbatim (`$1`), value replaced. Linear: the key is
-/// a literal alternation anchored at a word boundary (no leading wildcard,
-/// which would be quadratic), the value a single character-class run.
+/// a literal alternation behind a one-character lookbehind (no leading
+/// wildcard, which would be quadratic), the value a single character-class
+/// run.
 final _credentialPairPattern = RegExp(
-  '''\\b((?:$_credentialTextKeys)["']?\\s*[:=]\\s*["']?)$_credentialValue''',
+  '''$_keyStart((?:$_credentialTextKeys)["']?\\s*[:=]\\s*["']?)'''
+  '$_credentialValue',
   caseSensitive: false,
 );
 
 /// `authorization` additionally consumes a `Bearer `/`Basic ` scheme word,
 /// which stays visible (`Authorization: Bearer [redacted]`).
 final _authorizationPairPattern = RegExp(
-  '''\\b(authorization["']?\\s*[:=]\\s*["']?(?:(?:bearer|basic)\\s+)?)'''
+  '''$_keyStart(authorization["']?\\s*[:=]\\s*["']?(?:(?:bearer|basic)\\s+)?)'''
   '$_credentialValue',
   caseSensitive: false,
 );
@@ -189,6 +201,22 @@ final _authorizationPairPattern = RegExp(
 String _redactCredentialPairs(String value) => value
     .replaceAllMapped(_authorizationPairPattern, (m) => '${m[1]}$_redacted')
     .replaceAllMapped(_credentialPairPattern, (m) => '${m[1]}$_redacted');
+
+final _whitespacePattern = RegExp(r'\s');
+
+/// Pre-pass for a credential pair whose key and value sit in DIFFERENT
+/// whitespace tokens (`x.co?a=1,token: S`, `?APIKEY = S`, `authorization:
+/// Bearer S`): the URL rules cut from a `?` to the end of the token, which
+/// would delete the key (`token:`) and leave its value (`S`) behind as a bare
+/// word. The value is redacted here, only when the matched key + separator
+/// part (`$1`) contains whitespace, i.e. the pair really spans tokens. A pair
+/// inside one token is left to rule C after the URL rules (see [_scrubText]).
+String _redactCrossTokenPairs(String value) => value
+    .replaceAllMapped(_authorizationPairPattern, _redactIfSpansWhitespace)
+    .replaceAllMapped(_credentialPairPattern, _redactIfSpansWhitespace);
+
+String _redactIfSpansWhitespace(Match m) =>
+    m[1]!.contains(_whitespacePattern) ? '${m[1]}$_redacted' : m[0]!;
 
 final _whitespaceDelimitedTokenPattern = RegExp(r'\S+');
 
@@ -316,23 +344,25 @@ String _scrubSchemeless(String token) {
 /// * Keys: normalized (lower-cased, `-`/`_`/`.`/whitespace removed) and
 ///   dropped when equal to one of a small exact set (`jwts`, `tokens`,
 ///   `accesstokens`, `refreshtokens`, `idtokens`, `codeverifier`,
-///   `tokenhash`, `otp`, `totp`, `csrf`, `xsrf`, `sig`, `signature`, `auth`,
-///   `authheader`, `creds`, `nonce`, `pwd`, ...) or when they end in `token`,
-///   `jwt`, `secret(s)`, `password(s)`, `passwd`, `passphrase`,
-///   `cookie(s)`, `apikey(s)`, `authorization`, `privatekey(id)`,
-///   `secretkey`, `accesskey`, `servicerolekey`, `supabasekey`,
-///   `credential(s)`, `passwordhash`, `authcode`, `authorizationcode`,
-///   `mfacode` or `recoverycode(s)` (`refresh_token`, `x-api-key`,
+///   `tokenhash`, `otp`, `totp`, `emailotp`, `smsotp`, `csrf`, `xsrf`, `sig`,
+///   `signature`, `auth`, `authheader`, `creds`, `nonce`, `pwd`, `pin`,
+///   `passcode`, `bearer`) or when they end in one of `token`, `jwt`,
+///   `secret`, `secrets`, `password`, `passwords`, `passwd`, `passphrase`,
+///   `cookie`, `cookies`, `apikey`, `apikeys`, `authorization`, `privatekey`,
+///   `privatekeyid`, `secretkey`, `accesskey`, `servicerolekey`,
+///   `supabasekey`, `credential`, `credentials`, `passwordhash`, `authcode`,
+///   `authorizationcode`, `mfacode`, `otpcode`, `verificationcode`,
+///   `recoverycode` or `recoverycodes` (`refresh_token`, `x-api-key`,
 ///   `Proxy-Authorization`, `service_role_key`, `set-cookie`, ...). Suffix,
 ///   not substring, and short generic names are exact only: `token_count`,
 ///   `tokenizer`, `tokens_used`, `max_tokens`, `time_signature`, `author`
 ///   and bare `code` (an HTTP status) are kept. Two exceptions keep an
 ///   otherwise matching key: a `bool` value is never a secret (`has_password:
 ///   true`), and opaque pagination/cancellation cursors (`page_token`,
-///   `next_page_token`, `prev_page_token`, `cancel_token`, `sync_token`) are
-///   allowlisted. Kept keys are themselves run through the string scrub
-///   below (a key holding a URL or JWT); keys that collide afterwards
-///   overwrite each other, the later entry wins.
+///   `next_page_token`, `prev_page_token`, `previous_page_token`,
+///   `cancel_token`, `sync_token`) are allowlisted. Kept keys are themselves
+///   run through the string scrub below (a key holding a URL or JWT); keys
+///   that collide afterwards overwrite each other, the later entry wins.
 /// * Values: maps (any key type, keys stringified) and iterables (returned
 ///   as fixed-length lists) are traversed recursively, bounded: containers
 ///   nested 16 levels deep or beyond, and containers past a total budget of
@@ -349,14 +379,28 @@ String _scrubSchemeless(String token) {
 ///   input cut there is first trimmed back to its last whitespace, so a
 ///   token straddling the cut is never emitted half-redacted) and the RESULT
 ///   is cut to 8 KB plus the marker `…[truncated]`; an unscrubbed tail is
-///   never emitted. A total budget of 64 KB of key and string characters per
+///   never emitted. A result that already ends in the marker and is at most
+///   one marker over the limit (our own earlier output) is not cut again, so
+///   the scrub stays idempotent at a surrogate-pair cut. A total budget of 64 KB of key and string characters per
 ///   call applies; past it strings become `[truncated]` and remaining
 ///   entries are dropped. This bounds both time (a 10 MB string is
 ///   processed in ~15 ms) and the encoded size of what reaches Sentry.
-/// * Strings: a small, conservative rule set (ADR-036 point 7, "Revision 4").
-///   It errs towards dropping, never towards guessing. In order:
+/// * Strings: a small, conservative rule set (ADR-036 point 7, "Revision 4",
+///   amended by "Revision 5"). It errs towards dropping, never towards
+///   guessing. In order:
 ///   * JWTs and `sb_secret_...` Supabase secret keys are replaced with
 ///     `[redacted]` anywhere in the string (JWT scanning is linear-time).
+///     Every dot-separated part holding `eyJ` marks itself and the two parts
+///     after it, overlaps merged, so an `eyJ`-containing dotted prefix
+///     (`surveyJson.v1.<JWT>`, `eyJx.y.<JWT>`) cannot misalign the scan and
+///     leave the payload and signature behind. A JWT's own payload starts with
+///     `eyJ` too, so a dotted word glued after a JWT (`<JWT>.tail`) is
+///     redacted with it (accepted over-redaction).
+///   * Credential pairs whose key and value sit in DIFFERENT whitespace
+///     tokens (`x.co?a=1,token: S`, `?APIKEY = S`) have the value redacted
+///     first (rule C's patterns, applied only when the key + separator part
+///     contains whitespace): the URL rules below cut a token from its `?` to
+///     its end and would delete the key while leaving the value behind.
 ///   * The string is cut into whitespace-delimited tokens (whitespace is
 ///     preserved), so ordinary prose (`did it work? yes it did`) is
 ///     untouched. A token without `?`, `#` and `@` is left alone.
@@ -385,10 +429,16 @@ String _scrubSchemeless(String token) {
 ///   * C. Credential key/value text: the value is replaced with `[redacted]`
 ///     in `KEY=VALUE`, `KEY: VALUE`, `"KEY":"VALUE"` and `'KEY':'VALUE'` for
 ///     `refresh_token`, `access_token`, `id_token`, `provider_token`,
-///     `provider_refresh_token`, `token`, `apikey`, `api_key`, `x-api-key`,
-///     `password`, `passwd`, `secret`, `client_secret` and `authorization`
-///     (case-insensitive, anchored at a word boundary; `authorization` also
-///     consumes a `Bearer `/`Basic ` word). A value runs to whitespace, a
+///     `provider_refresh_token`, `refreshToken`, `accessToken`, `idToken`,
+///     `providerToken`, `providerRefreshToken` (case-insensitive, so
+///     `refreshtoken` too), `token`, `apikey` (so `apiKey`), `api_key`,
+///     `x-api-key`, `password`, `passwd`, `secret`, `client_secret`,
+///     `clientSecret` and `authorization` (`authorization` also consumes a
+///     `Bearer `/`Basic ` word). The key must not follow a letter or digit
+///     directly (a lookbehind, not `\b`, so `my_token=S`, `sb_access_token=S`
+///     and `new_password=S` match; `token_count=3`, `tokenizer:`,
+///     `password_reset_flow:` and `secret_santa=2024` do not, the key must be
+///     followed directly by the separator). A value runs to whitespace, a
 ///     quote or one of `& , ; } )`. It runs on the whole string AFTER the URL
 ///     rules (before, a `token=` inside userinfo could eat its `@`), and the
 ///     URL rules run once more after it, because redacting a value can move
@@ -400,9 +450,12 @@ String _scrubSchemeless(String token) {
 ///   `[G/B]Love?[C]=joy`, `v1.2?x=1`); `Note:Why?` reads as a URI scheme.
 ///   Known residuals, not caught because they cannot be told from prose: a
 ///   bare `?SECRET` without `=`; a schemeless URL after an earlier non-URL
-///   `?` in the same token (`why?/p?k=S`) or glued after a `=`/`,`
-///   (`url=abc.co?k=S`) unless its key is a credential name (rule C); the
-///   words after the first of a quoted credential value
+///   `?` in the same token (`why?/p?k=S`) or after ANY non-whitespace prefix
+///   (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless
+///   its key is a credential name (rule C); a credential name glued to a
+///   preceding letter or digit (`myToken=S`, `authToken=S`, `mytoken=S`),
+///   since rule C matches only the names above (with a leading `_`, `-` or
+///   space allowed); the words after the first of a quoted credential value
 ///   (`"password": "a b"` redacts `a`). Exception messages handed to
 ///   `captureException` never go through this function at all.
 /// * Never throws: any failure while scrubbing (a throwing iterator, a
@@ -532,7 +585,13 @@ String _scrubString(String value, _Budget budget) {
   final limit = budget.chars < _maxStringOutputChars
       ? budget.chars
       : _maxStringOutputChars;
-  if (text.length > limit) {
+  if (text.length > limit &&
+      !(text.length <= limit + _truncatedSuffix.length &&
+          text.endsWith(_truncatedSuffix))) {
+    // (The exception: a result that already ends in the marker and is at most
+    // one marker over the limit is our own earlier output, e.g. cut short of
+    // the limit at a surrogate pair. Cutting it again would make the scrub
+    // non-idempotent.)
     var end = limit;
     // Never split a surrogate pair.
     if (end > 0 && (text.codeUnitAt(end - 1) & 0xFC00) == 0xD800) end--;
@@ -548,13 +607,21 @@ String _scrubText(String value) {
   final redacted = _redactJwts(
     value,
   ).replaceAll(_supabaseSecretKeyPattern, _redacted);
-  // URLs first, credential key/value text second. The other way round, a
-  // `token=...` inside a URL's userinfo would be rewritten before the URL
-  // rules see it, and could consume the `@` that marks it as userinfo. The
-  // URL rules run once more afterwards: redacting a value can remove the
-  // first `?` of a token and so change how its remainder is classified; the
-  // second pass makes the whole scrub idempotent.
-  return _scrubTokens(_redactCredentialPairs(_scrubTokens(redacted)));
+  // 1. Credential pairs whose key and value are in different whitespace
+  //    tokens, before the URL rules: those cut a token from its `?` to its
+  //    end and would delete the key while leaving the value behind.
+  // 2. URLs, then credential key/value text. The other way round, a
+  //    `token=...` inside a URL's userinfo would be rewritten before the URL
+  //    rules see it, and could consume the `@` that marks it as userinfo. So
+  //    rule C runs on the whole string only AFTER the URL rules (and the
+  //    pre-pass above touches nothing without whitespace between key and
+  //    value).
+  // 3. The URL rules once more: redacting a value can remove the first `?`
+  //    of a token and so change how its remainder is classified; the second
+  //    pass makes the whole scrub idempotent.
+  return _scrubTokens(
+    _redactCredentialPairs(_scrubTokens(_redactCrossTokenPairs(redacted))),
+  );
 }
 
 String _scrubTokens(String text) => text.replaceAllMapped(

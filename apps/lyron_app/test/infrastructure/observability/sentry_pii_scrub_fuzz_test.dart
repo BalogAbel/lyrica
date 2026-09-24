@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_pii_scrub.dart';
 
-/// Seeded property fuzzer for the PII scrub (ADR-036 point 7, "Revision 4").
+/// Seeded property fuzzer for the PII scrub (ADR-036 point 7, "Revision 4"
+/// and "Revision 5").
 ///
 /// Four rounds of review each found a new leak class in a heuristic URL state
 /// machine that example tests could not cover. The scrub is now a small
@@ -9,8 +10,11 @@ import 'package:lyron_app/src/infrastructure/observability/sentry_pii_scrub.dart
 /// combinations of URL parts, wrappers and separators that nobody would write
 /// by hand and asserts four properties:
 ///
-/// 1. a secret planted in the userinfo, query or `key=value` fragment of a
-///    scheme URL, or in credential key/value text, never survives;
+/// 1. a secret planted in the userinfo (one to four `@`), query or `key=value`
+///    fragment of a scheme URL, in a JWT (also behind `surveyJson.v1.` /
+///    `eyJx.y.` dotted prefixes) or `sb_secret_...` key, or in credential
+///    key/value text (snake_case, camelCase, `_`-prefixed, quoted, spaced, and
+///    after a URL in the same token) never survives;
 /// 2. a benign corpus (prose, ChordPro, lyrics, paths, times, ...) comes back
 ///    UNCHANGED, alone and in random space-joined combinations;
 /// 3. the output is idempotent (`scrub(scrub(x)) == scrub(x)`);
@@ -63,6 +67,11 @@ List<String> _secretUserinfos() => [
   'u:token=x&$_secret',
   'token=x,$_secret',
   'u:password=1;$_secret',
+  // Three or more `@`: the userinfo ends at the LAST one.
+  'a@b@$_secret',
+  '$_secret@b@c',
+  'a@$_secret@c@d',
+  'u:p@x@$_secret@y@z',
 ];
 
 const _hosts = [
@@ -239,6 +248,20 @@ String _secretPair(_Rng rng) {
     'authorization',
     'Authorization',
     'TOKEN',
+    // camelCase, `_`-prefixed and upper-case forms (a real gotrue `Session`
+    // prints `refreshToken: ...`).
+    'accessToken',
+    'refreshToken',
+    'idToken',
+    'providerToken',
+    'providerRefreshToken',
+    'clientSecret',
+    'apiKey',
+    'APIKEY',
+    'my_token',
+    'sb_access_token',
+    'new_password',
+    '_secret',
   ];
   final key = rng.pick(keys);
   final value = rng.pick([
@@ -257,8 +280,93 @@ String _secretPair(_Rng rng) {
     '$key=$value&next=1',
     '$key=$value;',
     '($key=$value)',
+    '$key = $value',
+    '"$key": "$value"',
+    '$key : $value',
   ]);
   return _withProse(rng, pair);
+}
+
+/// A credential pair right after a URL-ish prefix in the same whitespace
+/// token, with the value in the NEXT token: the URL pass cuts from the `?` to
+/// the end of its token and used to delete the key while leaving the value.
+String _secretPairAfterUrl(_Rng rng) {
+  const prefixes = [
+    'x.co?a=1,',
+    'https://h/p?x=1,',
+    'https://h/p?x=1&',
+    '/rest/v1/x?a=1;',
+    'ab:?',
+    'x.co:8080#a=1,',
+    'a/b?',
+  ];
+  const keys = [
+    'token',
+    'accessToken',
+    'refresh_token',
+    'apiKey',
+    'APIKEY',
+    'password',
+    'my_token',
+    'authorization',
+  ];
+  final key = rng.pick(keys);
+  final value = rng.pick([_secret, 'abc$_secret', '$_secret.tail']);
+  final pair = rng.pick([
+    '$key: $value',
+    '"$key": $value',
+    '"$key": "$value"',
+    '$key = $value',
+    '$key : $value',
+    if (key == 'authorization') 'authorization: Bearer $value',
+  ]);
+  return _withProse(rng, '${rng.pick(prefixes)}$pair');
+}
+
+const _jwtHeader = 'eyJhbGciOiJIUzI1NiJ9';
+const _jwtPayload = 'eyJzdWIiOiJ1c2VyIn0';
+
+/// A JWT-shaped string with the planted secret in its header, payload or
+/// signature, optionally behind an `eyJ`-containing dotted prefix that used to
+/// misalign the scan, and optionally with dotted text after it.
+String _jwtWithSecret(_Rng rng) {
+  final where = rng.nextInt(3);
+  final header = where == 0 ? 'eyJ$_secret' : _jwtHeader;
+  final payload = where == 1 ? 'eyJ$_secret' : _jwtPayload;
+  final signature = where == 2
+      ? _secret
+      : rng.pick(['dGVzdC1zaWduYXR1cmU', '', 'a-b_c']);
+  final prefix = rng.pick([
+    '',
+    '',
+    'surveyJson.v1.',
+    'eyJx.y.',
+    'a.eyJb.c.',
+    'x-',
+  ]);
+  final suffix = rng.pick(['', '', '.tail', ';next', '.a.b']);
+  return '$prefix$header.$payload.$signature$suffix';
+}
+
+/// A token holding a planted JWT or `sb_secret_...` key, in prose, a wrapper,
+/// a scheme URL, or glued after a `=`/`,`/`:`.
+String _secretJwtOrKey(_Rng rng) {
+  final secretKey = rng.pick([
+    'sb_secret_$_secret',
+    'sb_secret_${_secret}_x-y',
+  ]);
+  final secret = rng.chance(60) ? _jwtWithSecret(rng) : secretKey;
+  final wrapper = rng.pick(_wrappers);
+  final shape = rng.nextInt(6);
+  final body = switch (shape) {
+    0 => secret,
+    1 => 'Bearer $secret',
+    2 => '${rng.pick(['x=', 'k:', 'a,', 'v;'])}$secret',
+    3 => '${rng.pick(_schemes)}://${rng.pick(_hosts)}/p?k=$secret',
+    4 => '${rng.pick(_schemes)}://u:$secret@${rng.pick(_hosts)}',
+    _ => '$secret ${rng.pick(_prose)}',
+  };
+  return _withProse(rng, '${wrapper[0]}$body${wrapper[1]}');
 }
 
 // Individually unchanged by the scrub. `foo.bar?baz=qux` and look-alikes are
@@ -345,6 +453,9 @@ String _garbage(_Rng rng) {
           'token=',
           'password: ',
           '"secret":"',
+          'accessToken=',
+          'eyJa.b.',
+          'sb_secret_',
         ]),
       )
       ..write(out.length % 2 == 0 ? '@' : 'h')
@@ -407,7 +518,7 @@ void main() {
     }
 
     for (var i = 0; i < _cases; i++) {
-      switch (i % 5) {
+      switch (i % 8) {
         case 0:
         case 1:
           checkNeverLeaks('secret-in-url', _secretToken(rng));
@@ -419,14 +530,21 @@ void main() {
         case 3:
           checkNeverLeaks('secret-in-pair', _secretPair(rng));
         case 4:
-          final input = i % 10 == 4 ? _benignText(rng) : _garbage(rng);
+          checkNeverLeaks('secret-in-jwt-or-key', _secretJwtOrKey(rng));
+        case 5:
+          checkNeverLeaks('secret-pair-after-url', _secretPairAfterUrl(rng));
+        case 6:
+          checkNeverLeaks('secret-in-jwt-or-key', _secretJwtOrKey(rng));
+        case 7:
+          final benignCase = (i ~/ 8).isEven;
+          final input = benignCase ? _benignText(rng) : _garbage(rng);
           final result = scrubPii({'v': input});
           if (result == null || result.containsKey('scrub_error')) {
             failures.add('never-throws', input, 'scrub_error');
             break;
           }
           final output = result['v'] as String;
-          if (i % 10 == 4 && output != input) {
+          if (benignCase && output != input) {
             failures.add('benign-unchanged', input, output);
           }
           final again = _scrub(output);
@@ -480,5 +598,31 @@ void main() {
     expect(tokens.any((t) => t.contains('#access_token=$_secret')), isTrue);
     expect(tokens.any((t) => '://'.allMatches(t).length >= 3), isTrue);
     expect(tokens.any((t) => t.startsWith('{"url":"')), isTrue);
+    expect(
+      tokens.any((t) => RegExp('@[^@]*@[^@]*@').hasMatch(t)),
+      isTrue,
+      reason: 'three or more @ in one token',
+    );
+
+    final planted = List.generate(2000, (_) => _secretJwtOrKey(rng));
+    expect(planted.every((t) => t.contains(_secret)), isTrue);
+    expect(planted.any((t) => t.contains('sb_secret_$_secret')), isTrue);
+    expect(planted.any((t) => t.contains('surveyJson.v1.eyJ')), isTrue);
+    expect(planted.any((t) => t.contains('eyJx.y.eyJ')), isTrue);
+    expect(planted.any((t) => t.contains('.eyJ$_secret.')), isTrue);
+    expect(planted.any((t) => t.contains('.$_secret')), isTrue);
+
+    final pairs = List.generate(2000, (_) => _secretPair(rng));
+    expect(pairs.every((t) => t.contains(_secret)), isTrue);
+    for (final shape in ['accessToken', 'my_token', 'new_password', 'apiKey']) {
+      expect(pairs.any((t) => t.contains(shape)), isTrue, reason: shape);
+    }
+    expect(pairs.any((t) => t.contains('"password": "')), isTrue);
+
+    final afterUrl = List.generate(2000, (_) => _secretPairAfterUrl(rng));
+    expect(afterUrl.every((t) => t.contains(_secret)), isTrue);
+    expect(afterUrl.any((t) => t.contains(',"token": ')), isTrue);
+    expect(afterUrl.any((t) => t.contains('?APIKEY = ')), isTrue);
+    expect(afterUrl.any((t) => t.contains('ab:?')), isTrue);
   });
 }
