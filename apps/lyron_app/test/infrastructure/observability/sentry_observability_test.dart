@@ -97,6 +97,24 @@ void main() {
     }
   }
 
+  /// Waits (polling on real timers) until [done]. `runInSpan` deliberately
+  /// does not await span finish, and the SDK's transaction pipeline (event
+  /// processors, envelope building) does real asynchronous work after it, so
+  /// a fixed number of event-loop hops is not enough on a slow machine — that
+  /// flaked in CI (`transactions` was still empty). Use this, never a fixed
+  /// [pump], before asserting that a transaction/event was delivered.
+  Future<void> pumpUntil(bool Function() done) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!done()) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('timed out waiting for telemetry delivery');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    // Let any further deliveries that are already in flight settle.
+    await pump();
+  }
+
   test(
     'runInSpan with no enclosing span starts a root, currentSpan sees it',
     () async {
@@ -220,7 +238,7 @@ void main() {
       }),
       throwsA(same(error)),
     );
-    await pump();
+    await pumpUntil(() => transactions.isNotEmpty);
 
     expect(transactions, hasLength(1));
     expect(
@@ -233,7 +251,7 @@ void main() {
     const observability = SentryObservability();
 
     await observability.runInSpan('root', 'business.refresh', (span) async {});
-    await pump();
+    await pumpUntil(() => transactions.isNotEmpty);
 
     expect(transactions, hasLength(1));
     expect(transactions.single.contexts.trace!.status, const SpanStatus.ok());
@@ -252,7 +270,7 @@ void main() {
       }),
       throwsA(same(error)),
     );
-    await pump();
+    await pumpUntil(() => transactions.isNotEmpty);
 
     expect(transactions, hasLength(1));
     final tx = transactions.single;
@@ -303,7 +321,7 @@ void main() {
         data: {'token': 'child-secret', 'kept': 2},
       );
     }, data: {'token': 'x', 'ok': 1});
-    await pump();
+    await pumpUntil(() => transactions.isNotEmpty);
 
     final tx = transactions.single;
     final rootData = tx.contexts.trace!.data!;
@@ -347,7 +365,7 @@ void main() {
       expect(lateTraceId, isNot('0' * 32));
       expect(lateTraceId, isNot(rootTraceId));
 
-      await pump();
+      await pumpUntil(() => transactions.length >= 2);
       expect(
         transactions.map((t) => t.transaction),
         containsAll(['root', 'late-root']),
@@ -443,6 +461,7 @@ void main() {
           'business.refresh',
           (span) async => 'value',
         );
+        await transport.firstSend.future.timeout(const Duration(seconds: 10));
         await pump();
       }, (error, stack) => uncaught.add(error));
 
@@ -470,6 +489,7 @@ void main() {
         } catch (e) {
           caught = e;
         }
+        await transport.firstSend.future.timeout(const Duration(seconds: 10));
         await pump();
       }, (e, stack) => uncaught.add(e));
 
@@ -501,6 +521,12 @@ void main() {
           return 'value';
         });
         collector.throwOnFinish = false;
+        // No envelope is ever sent here (finish throws before
+        // `captureTransaction`), so there is nothing to wait for: only let
+        // the failed finish surface, if it is going to (a real, short delay
+        // rather than event-loop hops, so a slow machine cannot end the test
+        // before the failure would have been reported).
+        await Future<void>.delayed(const Duration(milliseconds: 100));
         await pump();
       }, (e, s) => uncaught.add(e));
 
@@ -530,7 +556,7 @@ void main() {
         }),
         throwsStateError,
       );
-      await pump();
+      await pumpUntil(() => transactions.length >= 2);
 
       expect(transactions.map((t) => t.transaction), ['sync', 'async']);
     });
@@ -553,7 +579,7 @@ void main() {
         (span) async => 'value',
         data: cyclic(),
       );
-      await pump();
+      await pumpUntil(() => transactions.isNotEmpty);
 
       expect(result, 'value');
       expect(transactions, hasLength(1));
@@ -570,7 +596,7 @@ void main() {
         (span) async => 'value',
         data: {'bad': _ThrowingMap()},
       );
-      await pump();
+      await pumpUntil(() => transactions.isNotEmpty);
 
       expect(result, 'value');
       expect(transactions, hasLength(1));
@@ -603,7 +629,7 @@ void main() {
           returnsNormally,
         );
       });
-      await pump();
+      await pumpUntil(() => transactions.isNotEmpty && events.isNotEmpty);
 
       expect(transactions, hasLength(1));
       expect(events, hasLength(1));
@@ -631,7 +657,7 @@ void main() {
         });
         await pump();
       }, (e, s) => Sentry.captureException(e, stackTrace: s));
-      await pump();
+      await pumpUntil(() => events.isNotEmpty);
 
       final parts = childTraceParent!.split('-');
       expect(events, hasLength(1));
@@ -649,7 +675,7 @@ void main() {
         childTraceParent = observability.currentTraceParent;
       });
       await Sentry.captureException(StateError('free'));
-      await pump();
+      await pumpUntil(() => events.isNotEmpty);
 
       final trace = events.single.contexts.trace;
       expect(trace?.traceId.toString(), isNot(childTraceParent!.split('-')[1]));
@@ -662,7 +688,9 @@ void main() {
     await observability.runInSpan('root', 'business.refresh', (span) async {
       await observability.runInSpan('child', 'db.query', (s) async {});
     });
-    await pump();
+    await pumpUntil(
+      () => transactions.isNotEmpty && transport.envelopes.isNotEmpty,
+    );
 
     expect(httpAttempts, isEmpty);
     expect(transport.envelopes, isNotEmpty);
