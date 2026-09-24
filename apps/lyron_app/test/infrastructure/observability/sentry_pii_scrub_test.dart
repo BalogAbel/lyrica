@@ -143,6 +143,131 @@ void main() {
     expect(result, {'safe': 'kept'});
   });
 
+  test('drops userInfo from a URL that has no query string', () {
+    final result = scrubPii({'url': 'https://user:pass@host.com/path'});
+
+    expect(result, {'url': 'https://host.com/path'});
+  });
+
+  test('drops a key=value fragment (implicit-flow tokens) from a URL', () {
+    final result = scrubPii({
+      'url': 'https://app/cb#access_token=A&refresh_token=R',
+      'plain': 'https://app/cb#frag',
+    });
+
+    expect(result, {'url': 'https://app/cb', 'plain': 'https://app/cb#frag'});
+  });
+
+  test('scrubs URLs embedded in whitespace-separated text per token', () {
+    final result = scrubPii({
+      'error':
+          'ClientException with message uri=https://x.supabase.co/rest/v1/songs?apikey=SECRET',
+      'spaced': 'failed   at\thttps://user:pw@x.co/a?b=1#t=2  done',
+    });
+
+    expect(result, {
+      'error':
+          'ClientException with message uri=https://x.supabase.co/rest/v1/songs',
+      'spaced': 'failed   at\thttps://x.co/a  done',
+    });
+  });
+
+  test('does not mangle legitimate values containing a question mark', () {
+    final result = scrubPii({
+      'chordpro': '[C]Hello?[G]World',
+      'windows': r'C:\Users\john\file?.txt',
+      'short': 'a?b',
+    });
+
+    expect(result, {
+      'chordpro': '[C]Hello?[G]World',
+      'windows': r'C:\Users\john\file?.txt',
+      'short': 'a?b',
+    });
+  });
+
+  test('traverses non-String-keyed maps, sets, iterables and Uri values', () {
+    final result = scrubPii({
+      'dynamic': <dynamic, dynamic>{'token': 'SECRET', 'ok': 1, 5: 'five'},
+      'set': {'https://x.com/p?apikey=S'},
+      'iterable': Iterable<Object?>.generate(1, (_) => {'password': 'p'}),
+      'uri': Uri.parse('https://x.com/p?apikey=S'),
+    });
+
+    expect(result, {
+      'dynamic': {'ok': 1, '5': 'five'},
+      'set': ['https://x.com/p'],
+      'iterable': [<String, Object?>{}],
+      'uri': 'https://x.com/p',
+    });
+  });
+
+  test('drops credential-shaped keys across naming styles', () {
+    final result = scrubPii({
+      'x-api-key': '1',
+      'secret': '2',
+      'client_secret': '3',
+      'password': '4',
+      'cookie': '5',
+      'set-cookie': '6',
+      'id_token': '7',
+      'provider_token': '8',
+      'provider_refresh_token': '9',
+      'code_verifier': '10',
+      'jwt': '11',
+      'Auth-Token': '12',
+      'access.token': '13',
+      'api key': '14',
+      'Authorization': '15',
+      'safe': 'kept',
+    });
+
+    expect(result, {'safe': 'kept'});
+  });
+
+  test('keeps keys that merely contain "token" but are not credentials', () {
+    final result = scrubPii({
+      'token_count': 3,
+      'tokenizer': 'whitespace',
+      'tokens_used': 9,
+    });
+
+    expect(result, {
+      'token_count': 3,
+      'tokenizer': 'whitespace',
+      'tokens_used': 9,
+    });
+  });
+
+  test('redacts JWT scanning in linear time on pathological input', () {
+    final hostile = 'eyJ' * 33334; // ~100 KB
+    final stopwatch = Stopwatch()..start();
+    final result = scrubPii({'v': hostile});
+    stopwatch.stop();
+
+    expect(result, {'v': hostile});
+    expect(stopwatch.elapsedMilliseconds, lessThan(1000));
+  });
+
+  test('redacts multiple and adjacent JWTs and JWTs glued to other text', () {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.dGVzdC1zaWduYXR1cmU';
+    final result = scrubPii({'two': '$jwt $jwt', 'glued': 'token=$jwt;next'});
+
+    expect(result, {
+      'two': '[redacted] [redacted]',
+      'glued': 'token=[redacted];next',
+    });
+  });
+
+  test('redacts Supabase secret API keys', () {
+    final result = scrubPii({
+      'key': 'sb_secret_AbC-123_x',
+      'text': 'using sb_secret_abc123 now',
+    });
+
+    expect(result, {'key': '[redacted]', 'text': 'using [redacted] now'});
+  });
+
   test('returns null for null input', () {
     expect(scrubPii(null), isNull);
   });
