@@ -379,14 +379,20 @@ String _scrubSchemeless(String token) {
 ///   input cut there is first trimmed back to its last whitespace, so a
 ///   token straddling the cut is never emitted half-redacted) and the RESULT
 ///   is cut to 8 KB plus the marker `…[truncated]`; an unscrubbed tail is
-///   never emitted. A result that already ends in the marker and is at most
-///   one marker over the limit (our own earlier output) is not cut again, so
-///   the scrub stays idempotent at a surrogate-pair cut. A total budget of 64 KB of key and string characters per
-///   call applies; past it strings become `[truncated]` and remaining
-///   entries are dropped. This bounds both time (a 10 MB string is
-///   processed in ~15 ms) and the encoded size of what reaches Sentry.
+///   never emitted. Properties that hold for EVERY input, including one an
+///   attacker ends with the marker: the output is never longer than 8 KB plus
+///   one marker; the marker this function appends occurs at most once (a
+///   trailing marker on the input is stripped before scrubbing and put back
+///   after, so it is neither scrubbed as part of a value nor doubled); no
+///   secret survives the cut (the cut happens on scrubbed text); and the
+///   scrub is idempotent, `scrub(scrub(x)) == scrub(x)`. A marker the INPUT
+///   holds elsewhere is ordinary text and is kept. A total budget of 64 KB of
+///   key and string characters per call applies; past it strings become
+///   `[truncated]` and remaining entries are dropped. This bounds both time
+///   (a 10 MB string is processed in ~15 ms) and the encoded size of what
+///   reaches Sentry.
 /// * Strings: a small, conservative rule set (ADR-036 point 7, "Revision 4",
-///   amended by "Revision 5"). It errs towards dropping, never towards
+///   amended by "Revisions 5 and 6"). It errs towards dropping, never towards
 ///   guessing. In order:
 ///   * JWTs and `sb_secret_...` Supabase secret keys are replaced with
 ///     `[redacted]` anywhere in the string (JWT scanning is linear-time).
@@ -448,16 +454,51 @@ String _scrubSchemeless(String token) {
 ///   over-redacts the URL to `scheme://[redacted]`; look-alikes with a `=`
 ///   after the `?` are cut (`foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`,
 ///   `[G/B]Love?[C]=joy`, `v1.2?x=1`); `Note:Why?` reads as a URI scheme.
-///   Known residuals, not caught because they cannot be told from prose: a
-///   bare `?SECRET` without `=`; a schemeless URL after an earlier non-URL
-///   `?` in the same token (`why?/p?k=S`) or after ANY non-whitespace prefix
-///   (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless
-///   its key is a credential name (rule C); a credential name glued to a
-///   preceding letter or digit (`myToken=S`, `authToken=S`, `mytoken=S`),
-///   since rule C matches only the names above (with a leading `_`, `-` or
-///   space allowed); the words after the first of a quoted credential value
-///   (`"password": "a b"` redacts `a`). Exception messages handed to
-///   `captureException` never go through this function at all.
+///   Known residuals, not caught because they cannot be told from prose (each
+///   verified with the exact input; the in-string text rule is deliberately a
+///   small named list, not a grammar):
+///   * A bare `?SECRET` without `=`; a schemeless URL after an earlier
+///     non-URL `?` in the same token (`why?/p?k=S`) or after ANY
+///     non-whitespace prefix (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`,
+///     `("abc.co?k=S")`) unless its key is a credential name (rule C).
+///   * A credential name glued to a preceding letter or digit (`myToken=S`,
+///     `authToken=S`, `mytoken=S`). The lookbehind allows ANY non-alphanumeric
+///     ASCII character before the name (`_`, `-`, space, `.`, `/`, `$`, ...),
+///     and, being ASCII-only, a non-ASCII letter too (`étoken=S` matches).
+///   * Escaped JSON: `{\"refresh_token\":\"S\"}` is unchanged, because a
+///     backslash before the quote is not allowed between key and separator.
+///     A JWT inside it is still caught by the JWT scan, an opaque token
+///     leaks.
+///   * A credential word in VALUE position eats the next key (matching is
+///     non-overlapping): `grant_type=refresh_token :password: S` gives
+///     `...:[redacted] S`, `password = token: S` gives
+///     `password = [redacted] S`, `token=x?password: S` gives
+///     `token=[redacted] S`; the second value is left behind.
+///   * A scheme word on keys other than `authorization` (`token: Bearer S`
+///     gives `token: [redacted] S`, likewise `apiKey: Bearer S`); the `=>`
+///     separator (`"token" => "S"` gives `"token" =[redacted] "S"`); an
+///     unquoted multi-word value (`password: correct horse` gives
+///     `[redacted] horse`); the words after the first of a quoted value
+///     (`"password": "a b"` redacts `a`).
+///   * Names outside the rule C list although the MAP-key deny list covers
+///     them: `api-key: S`, `Api-Key: S`, `pwd=S`, `code_verifier=S`,
+///     `token_hash=S`, `secret_key=S`, `private_key=S`.
+///   * The opposite, safe direction: the lookbehind also redacts cursors in
+///     TEXT that the MAP-key allowlist keeps (`next_page_token=abc`,
+///     `sync_token: 7` and `max_token=5` all give `[redacted]`).
+///
+///   Further hardening should go through the centralized `beforeSend` /
+///   `beforeSendTransaction` / `beforeBreadcrumb` hooks plus a structured
+///   allowlist (see the deferred-work doc
+///   docs/deferred/2026-08-28-observability-remaining-use-cases.md), not
+///   through more regexes here. The gotrue/supabase `toString()` shapes
+///   (`Session`, `AuthState`, `User`, `PostgrestException`,
+///   `ClientException`, `FunctionException`, `StorageException`) were audited
+///   and are covered: `providerToken`, `providerRefreshToken`, `accessToken`
+///   and `refreshToken` are redacted by rule C, an `actionLink` query is cut
+///   by the URL rules; the email address is the documented non-goal below.
+///   Exception messages handed to `captureException` never go through this
+///   function at all.
 /// * Never throws: any failure while scrubbing (a throwing iterator, a
 ///   pathological structure) returns `{'scrub_error': true}` with no data.
 ///
@@ -564,12 +605,22 @@ bool _isWhitespaceUnit(int c) =>
 /// character budget) plus a marker. Order matters: the cut always happens on
 /// the already-scrubbed text, never before, and nothing beyond the scrubbed
 /// prefix is ever emitted.
+///
+/// A trailing [_truncatedSuffix] on [value] (our own earlier output, or an
+/// attacker imitating it) is stripped before scrubbing and re-appended after,
+/// so the marker is never scrubbed as part of a value (`token=x…[truncated]`)
+/// and is never appended twice. The result is therefore at most
+/// [_maxStringOutputChars] plus one marker long, for every input.
 String _scrubString(String value, _Budget budget) {
   if (budget.chars <= 0) return _truncated;
   var input = value;
-  var cut = false;
+  var marked = false;
+  if (input.endsWith(_truncatedSuffix)) {
+    marked = true;
+    input = input.substring(0, input.length - _truncatedSuffix.length);
+  }
   if (input.length > _maxStringInputChars) {
-    cut = true;
+    marked = true;
     var end = _maxStringInputChars;
     if (!_isWhitespaceUnit(input.codeUnitAt(end))) {
       while (end > 0 && !_isWhitespaceUnit(input.codeUnitAt(end - 1))) {
@@ -585,20 +636,14 @@ String _scrubString(String value, _Budget budget) {
   final limit = budget.chars < _maxStringOutputChars
       ? budget.chars
       : _maxStringOutputChars;
-  if (text.length > limit &&
-      !(text.length <= limit + _truncatedSuffix.length &&
-          text.endsWith(_truncatedSuffix))) {
-    // (The exception: a result that already ends in the marker and is at most
-    // one marker over the limit is our own earlier output, e.g. cut short of
-    // the limit at a surrogate pair. Cutting it again would make the scrub
-    // non-idempotent.)
+  if (text.length > limit) {
+    marked = true;
     var end = limit;
     // Never split a surrogate pair.
     if (end > 0 && (text.codeUnitAt(end - 1) & 0xFC00) == 0xD800) end--;
-    text = '${text.substring(0, end)}$_truncatedSuffix';
-  } else if (cut) {
-    text = '$text$_truncatedSuffix';
+    text = text.substring(0, end);
   }
+  if (marked) text = '$text$_truncatedSuffix';
   budget.chars -= text.length;
   return text;
 }

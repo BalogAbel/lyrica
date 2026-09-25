@@ -1550,6 +1550,135 @@ void main() {
     });
   });
 
+  group('review round 6: 8 KB cut marker and cross-token whitespace', () {
+    const marker = '…[truncated]';
+    const cap = 8 * 1024;
+    String one(String input) => scrubPii({'v': input})!['v'] as String;
+    int markers(String text) => marker.allMatches(text).length;
+
+    test('an over-long input whose kept prefix already ends in the marker gets '
+        'no second marker', () {
+      final once = one('${'a' * cap}$marker ${'b' * 70000}');
+
+      expect(once, '${'a' * cap}$marker');
+      expect(markers(once), 1);
+      expect(once.length, lessThanOrEqualTo(cap + marker.length));
+      expect(one(once), once);
+    });
+
+    test('a cut right after a rule-C value keeps the marker on a second pass, '
+        'and never leaks', () {
+      final once = one('${'x' * 8175} token=SECRETVALUE tail');
+
+      expect(once, '${'x' * 8175} token=[redacted]$marker');
+      expect(once, isNot(contains('SECRETVALUE')));
+      expect(markers(once), 1);
+      expect(once.length, lessThanOrEqualTo(cap + marker.length));
+      expect(one(once), once);
+    });
+
+    test('an attacker-supplied trailing marker cannot bypass the length '
+        'bound', () {
+      for (final input in [
+        '${'x ' * 30000}$marker',
+        '${'x' * 70000}$marker',
+        '${'a' * 9000}$marker',
+        '$marker$marker$marker',
+      ]) {
+        final once = one(input);
+
+        expect(
+          once.length,
+          lessThanOrEqualTo(cap + marker.length),
+          reason: 'input length ${input.length}',
+        );
+        expect(one(once), once);
+      }
+      expect(one('${'x ' * 30000}$marker').length, lessThanOrEqualTo(8204));
+    });
+
+    test(
+      'a short input that legitimately ends in the marker is kept as is',
+      () {
+        expect(one('did it work$marker'), 'did it work$marker');
+        expect(one(marker), marker);
+      },
+    );
+
+    test('a tab, newline or several spaces between a cross-token key '
+        'separator and its value still redact the value', () {
+      expect(one('x.co?a=1,token:\tS'), 'x.co\t[redacted]');
+      expect(one('x.co?a=1,token:\n S'), 'x.co\n [redacted]');
+      expect(one('x.co?a=1,token:   S'), 'x.co   [redacted]');
+      expect(one('x.co?a=1,token\t:\tS'), 'x.co\t:\t[redacted]');
+      expect(
+        one('https://h/p?x=1,password =\n\tS'),
+        'https://h/p =\n\t[redacted]',
+      );
+    });
+  });
+
+  group('documented residuals of the in-string text rule (Revision 6)', () {
+    String one(String input) => scrubPii({'v': input})!['v'] as String;
+
+    test('leaks and mangling stay exactly as documented', () {
+      expect(
+        {
+          for (final input in [
+            r'{\"refresh_token\":\"SECRETVALUE\"}',
+            r'{\"refresh_token\":\"eyJa.b.c\"}',
+            'grant_type=refresh_token :password: S',
+            'password = token: S',
+            'token=x?password: S',
+            'token: Bearer S',
+            'apiKey: Bearer S',
+            '"token" => "S"',
+            'password: correct horse',
+            'api-key: S',
+            'Api-Key: S',
+            'pwd=S',
+            'code_verifier=S',
+            'token_hash=S',
+            'secret_key=S',
+            'private_key=S',
+          ])
+            input: one(input),
+        },
+        {
+          r'{\"refresh_token\":\"SECRETVALUE\"}':
+              r'{\"refresh_token\":\"SECRETVALUE\"}',
+          r'{\"refresh_token\":\"eyJa.b.c\"}':
+              r'{\"refresh_token\":\"[redacted]\"}',
+          'grant_type=refresh_token :password: S':
+              'grant_type=refresh_token :[redacted] S',
+          'password = token: S': 'password = [redacted] S',
+          'token=x?password: S': 'token=[redacted] S',
+          'token: Bearer S': 'token: [redacted] S',
+          'apiKey: Bearer S': 'apiKey: [redacted] S',
+          '"token" => "S"': '"token" =[redacted] "S"',
+          'password: correct horse': 'password: [redacted] horse',
+          'api-key: S': 'api-key: S',
+          'Api-Key: S': 'Api-Key: S',
+          'pwd=S': 'pwd=S',
+          'code_verifier=S': 'code_verifier=S',
+          'token_hash=S': 'token_hash=S',
+          'secret_key=S': 'secret_key=S',
+          'private_key=S': 'private_key=S',
+        },
+      );
+    });
+
+    test('cursors are over-redacted in text, and the lookbehind accepts any '
+        'non-alphanumeric ASCII character before the name', () {
+      expect(one('next_page_token=abc'), 'next_page_token=[redacted]');
+      expect(one('sync_token: 7'), 'sync_token: [redacted]');
+      expect(one('max_token=5'), 'max_token=[redacted]');
+      for (final prefix in ['.', '/', r'$', '_', '-', ' ', 'é']) {
+        expect(one('${prefix}token=S'), '${prefix}token=[redacted]');
+      }
+    });
+  });
+
   group('exact size-cap boundaries', () {
     test('output: 8192 characters are kept whole, 8193 are cut with the '
         'marker', () {

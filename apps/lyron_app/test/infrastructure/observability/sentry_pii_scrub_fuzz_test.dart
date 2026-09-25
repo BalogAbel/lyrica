@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_pii_scrub.dart';
 
 /// Seeded property fuzzer for the PII scrub (ADR-036 point 7, "Revision 4"
-/// and "Revision 5").
+/// to "Revision 6").
 ///
 /// Four rounds of review each found a new leak class in a heuristic URL state
 /// machine that example tests could not cover. The scrub is now a small
@@ -312,13 +312,23 @@ String _secretPairAfterUrl(_Rng rng) {
   ];
   final key = rng.pick(keys);
   final value = rng.pick([_secret, 'abc$_secret', '$_secret.tail']);
+  // Tab, newline and multi-space separators too: the pre-pass must treat any
+  // whitespace between the key/separator and the value alike (`\s`, not ' ').
+  final gap = rng.pick([' ', '\t', '\n', '  ', ' \t', '\n ', '\r\n']);
+  final gap2 = rng.pick([' ', '\t', '\n', '   ']);
   final pair = rng.pick([
     '$key: $value',
     '"$key": $value',
     '"$key": "$value"',
     '$key = $value',
     '$key : $value',
+    '$key:$gap$value',
+    '"$key":$gap$value',
+    '"$key":$gap"$value"',
+    '$key$gap2=$gap$value',
+    '$key$gap2:$gap$value',
     if (key == 'authorization') 'authorization: Bearer $value',
+    if (key == 'authorization') 'authorization:${gap}Bearer$gap2$value',
   ]);
   return _withProse(rng, '${rng.pick(prefixes)}$pair');
 }
@@ -624,5 +634,12 @@ void main() {
     expect(afterUrl.any((t) => t.contains(',"token": ')), isTrue);
     expect(afterUrl.any((t) => t.contains('?APIKEY = ')), isTrue);
     expect(afterUrl.any((t) => t.contains('ab:?')), isTrue);
+    for (final gap in ['\t', '\n', '  ']) {
+      expect(
+        afterUrl.any((t) => RegExp('(:|=)$gap$_secret').hasMatch(t)),
+        isTrue,
+        reason: 'gap ${gap.codeUnits}',
+      );
+    }
   });
 }
