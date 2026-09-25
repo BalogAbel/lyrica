@@ -1376,6 +1376,8 @@ void main() {
       supabaseClientProvider,
       songCatalogDatabaseProvider,
       planningLocalDatabaseProvider,
+      // observability
+      observabilityProvider,
       // auth
       authRepositoryProvider,
       activeOrganizationResolutionProvider,
@@ -1417,8 +1419,8 @@ void main() {
       planningSyncStateProvider,
     ];
 
-    expect(surface, hasLength(40));
-    expect(surface.toSet(), hasLength(40)); // all distinct symbols
+    expect(surface, hasLength(41));
+    expect(surface.toSet(), hasLength(41)); // all distinct symbols
     expect(closeSharedDatabases, isA<Function>());
   });
 }

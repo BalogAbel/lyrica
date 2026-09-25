@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
@@ -42,7 +43,9 @@ class SongCatalogController extends ChangeNotifier {
     this._lastKnownIdentityReader,
     AppForegroundState? foregroundState,
     this._refreshInterval = _defaultRefreshInterval,
+    Observability? observability,
   }) : _foregroundState = foregroundState ?? _AlwaysForegroundState(),
+       _observability = observability ?? const NoopObservability(),
        _state = const CatalogSnapshotState.initial() {
     _foregroundSubscription = _foregroundState.watchForeground().listen(
       _handleForegroundChange,
@@ -91,6 +94,7 @@ class SongCatalogController extends ChangeNotifier {
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final AppForegroundState _foregroundState;
   final Duration _refreshInterval;
+  final Observability _observability;
 
   CatalogSnapshotState _state;
   int _refreshGeneration = 0;
@@ -171,6 +175,18 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   Future<void> _refreshCatalog() async {
+    await _observability.runInSpan(
+      'song_catalog.refresh',
+      'business.refresh',
+      (_) => _refreshCatalogBody(),
+    );
+  }
+
+  Future<void> _refreshCatalogBody() async {
+    _observability.addBreadcrumb(
+      'song_catalog.refresh started',
+      category: 'song_catalog',
+    );
     final generation = _refreshGeneration;
     final session = _authSessionReader();
     if (session == null) {
@@ -188,7 +204,11 @@ class SongCatalogController extends ChangeNotifier {
     String? organizationId;
     var organizationLookupWasConnectivityFailure = false;
     try {
-      organizationId = await _resolveOrganizationId();
+      organizationId = await _observability.runInSpan(
+        'membership.resolve',
+        'http.client',
+        (_) => _resolveOrganizationId(),
+      );
     } catch (error) {
       if (_isAuthorizationFailure(error)) {
         _setStateIfCurrent(
@@ -365,7 +385,11 @@ class SongCatalogController extends ChangeNotifier {
     if (_isStale(generation)) {
       return;
     }
-    final sessionStatus = await _sessionVerifier();
+    final sessionStatus = await _observability.runInSpan(
+      'auth.verify_session',
+      'http.client',
+      (_) => _sessionVerifier(),
+    );
     if (_isStale(generation)) {
       return;
     }
@@ -415,7 +439,11 @@ class SongCatalogController extends ChangeNotifier {
     );
 
     try {
-      final summaries = await _remoteRepository.listSongs();
+      final summaries = await _observability.runInSpan(
+        'song_catalog.list_songs',
+        'http.client',
+        (_) => _remoteRepository.listSongs(),
+      );
       if (summaries.isEmpty) {
         final resolution = await _store.resolveEmptySnapshot(
           userId: context.userId,
@@ -461,24 +489,38 @@ class SongCatalogController extends ChangeNotifier {
         }
       }
 
-      final sources = await Future.wait(
-        summaries.map((summary) => _remoteRepository.getSongSource(summary.id)),
+      final sources = await _observability.runInSpan(
+        'song_catalog.fetch_sources',
+        'http.client',
+        (_) => Future.wait(
+          summaries.map(
+            (summary) => _remoteRepository.getSongSource(summary.id),
+          ),
+        ),
       );
       if (_isStale(generation)) {
         return;
       }
 
-      await _store.replaceActiveSnapshot(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        summaries: summaries,
-        sources: sources,
-        refreshedAt: DateTime.now().toUtc(),
+      await _observability.runInSpan(
+        'song_catalog.write_snapshot',
+        'db.write',
+        (_) => _store.replaceActiveSnapshot(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          summaries: summaries,
+          sources: sources,
+          refreshedAt: DateTime.now().toUtc(),
+        ),
       );
       if (_isStale(generation)) {
         return;
       }
 
+      _observability.addBreadcrumb(
+        'song_catalog.refresh succeeded',
+        category: 'song_catalog',
+      );
       _setStateIfCurrent(
         generation,
         _state.copyWith(
@@ -490,6 +532,11 @@ class SongCatalogController extends ChangeNotifier {
         ),
       );
     } catch (error) {
+      _observability.addBreadcrumb(
+        'song_catalog.refresh failed',
+        category: 'song_catalog',
+        level: BreadcrumbLevel.warning,
+      );
       if (_isAuthorizationFailure(error)) {
         _setStateIfCurrent(
           generation,

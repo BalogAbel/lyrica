@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
+import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
@@ -1468,6 +1469,67 @@ void main() {
         const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
       );
     });
+
+    group('observability instrumentation', () {
+      test(
+        'a successful refresh records the start and success breadcrumbs',
+        () async {
+          final recorder = _RecordingObservability();
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            observability: recorder,
+          );
+
+          await controller.refreshCatalog();
+
+          expect(recorder.breadcrumbMessages, [
+            'song_catalog.refresh started',
+            'song_catalog.refresh succeeded',
+          ]);
+          expect(recorder.spanNames.first, 'song_catalog.refresh');
+        },
+      );
+
+      test(
+        'a failed refresh records the failure breadcrumb, not the success one',
+        () async {
+          final recorder = _RecordingObservability();
+          remoteRepository.listSongsError = Exception('boom');
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            observability: recorder,
+          );
+
+          await controller.refreshCatalog();
+
+          expect(recorder.spanNames, contains('song_catalog.refresh'));
+          expect(recorder.breadcrumbMessages, [
+            'song_catalog.refresh started',
+            'song_catalog.refresh failed',
+          ]);
+        },
+      );
+    });
   });
 
   group('SongCatalogController implausible-empty snapshot handling (D4, '
@@ -1719,6 +1781,32 @@ class _FakeSongRepository implements SongRepository {
     }
 
     return _sources[id]!;
+  }
+}
+
+class _RecordingObservability extends NoopObservability {
+  final List<String> spanNames = [];
+  final List<String> breadcrumbMessages = [];
+
+  @override
+  Future<T> runInSpan<T>(
+    String name,
+    String operation,
+    Future<T> Function(ObservabilitySpan span) body, {
+    Map<String, Object?>? data,
+  }) {
+    spanNames.add(name);
+    return body(const NoopObservabilitySpan());
+  }
+
+  @override
+  void addBreadcrumb(
+    String message, {
+    String? category,
+    BreadcrumbLevel level = BreadcrumbLevel.info,
+    Map<String, Object?>? data,
+  }) {
+    breadcrumbMessages.add(message);
   }
 }
 

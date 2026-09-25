@@ -23,6 +23,7 @@ class _LyronAppState extends ConsumerState<LyronApp> {
     super.initState();
     ref.read(deepLinkListenerProvider).start();
     ref.read(membershipRefreshEffectProvider);
+    ref.read(observabilityUserContextEffectProvider);
     ref.read(planningSyncControllerProvider);
   }
 
