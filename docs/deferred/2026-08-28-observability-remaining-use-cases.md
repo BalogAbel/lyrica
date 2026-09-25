@@ -130,12 +130,14 @@ the reason and the condition under which to reopen it.
   that captures an exception whose message can carry request content, the
   first direct SDK use, a second telemetry backend, or the next
   observability slice, whichever comes first.
-- **Known scrub residuals (Revision 4, accepted).** `scrubPii` cannot tell
-  these from prose, so they are not caught: a bare `?SECRET` without `=`; a
-  schemeless URL after an earlier non-URL `?` in the same token (`why?/p?k=S`)
-  or glued after a `=`/`,` (`url=abc.co?k=S`) unless its key is a credential
-  name; the words after the first of a quoted credential value
-  (`"password": "a b"`). Benign look-alikes with a `=` after the `?` are cut
+- **Known scrub residuals (Revision 4, amended by Revision 5, accepted).**
+  `scrubPii` cannot tell these from prose, so they are not caught: a bare
+  `?SECRET` without `=`; a schemeless URL after an earlier non-URL `?` in the
+  same token (`why?/p?k=S`) or after any non-whitespace prefix
+  (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless its
+  key is a credential name; a credential name glued to a preceding letter or
+  digit (`myToken=S`, `authToken=S`); the words after the first of a quoted
+  credential value (`"password": "a b"`). Benign look-alikes with a `=` after the `?` are cut
   (`foo.bar?baz=qux`, `Dr.Who?name=x`, `1.5?x=2`, `[G/B]Love?[C]=joy`,
   `v1.2?x=1`). Generic correlation keys `code`, `session_id` and `sessionid`
   are deliberately NOT denied. *Trigger:* a call site that has to forward

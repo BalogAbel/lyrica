@@ -12,9 +12,10 @@ rationale. Execution and PR review then changed several details (installed
 SDK version, PII scrub policy, finished-span and telemetry-delivery
 behavior, bootstrap structure, ANR); this document has been synced to the
 as-built code, and "Revision 2" in the revision notes lists what changed
-and why. Two later reviews of the PII scrub ("Revision 3" and "Revision 4")
-followed; Revision 4 replaced the URL heuristics by a small conservative rule
-set plus a committed property fuzzer.
+and why. Three later reviews of the PII scrub ("Revision 3", "Revision 4" and
+"Revision 5") followed; Revision 4 replaced the URL heuristics by a small
+conservative rule set plus a committed property fuzzer, Revision 5 closed the
+gaps a review found in that rule set.
 
 ## Problem
 
@@ -540,8 +541,8 @@ Layered, not relying on a single control:
      turns later strings into `[truncated]` and drops remaining entries.
      This bounds main-isolate time (a 10 MB string takes ~15 ms) and the
      encoded size that reaches Sentry (a wide self-referencing map encodes
-     to ~42 KB with short keys (`k0`..`k255`) and ~62 KB with 15-character
-     keys (`key_number_0`..), measured, instead of ~10 MB, which the
+     to ~42 KB with short keys (`k0`..`k255`) and ~62 KB with 12-14-character
+     keys (`key_number_0`..`key_number_255`), measured, instead of ~10 MB, which the
      envelope limits would have dropped), and it avoids the regex stack overflow a multi-million-char
      token caused.
    - **Strings** are scrubbed by a small, conservative rule set (Revision 4;
@@ -551,10 +552,16 @@ Layered, not relying on a single control:
      secret keys (`sb_secret_...`) are replaced with `[redacted]`, regardless
      of key. JWT detection is a linear-time scan, deliberately not one regex:
      an unanchored regex is quadratic on hostile input such as
-     `'eyJ' * 30000` and would block the main isolate. The string is then cut
+     `'eyJ' * 30000` and would block the main isolate. Every dot-separated
+     part holding `eyJ` marks itself and the two parts after it (overlaps
+     merged), so an `eyJ`-containing prefix (`surveyJson.v1.<JWT>`,
+     `eyJx.y.<JWT>`) cannot misalign the scan; a dotted word glued after a
+     JWT (`<JWT>.tail`) is redacted with it (Revision 5). The string is then cut
      into whitespace-delimited tokens (whitespace preserved), so a URL inside
      an error message is handled while ordinary prose is untouched; a token
-     without `?`, `#` and `@` is left alone. Per token:
+     without `?`, `#` and `@` is left alone. Before the per-token rules, a
+     pre-pass redacts the value of a credential pair whose key and value sit
+     in different whitespace tokens (Revision 5, see rule C). Per token:
      - *A. Scheme URL.* The first `://` preceded by a scheme of two or more
        characters (`https`, `postgres`, `lyron`; not `a://`, not a drive
        letter) starts the URL; what precedes the scheme (`(`, `"`, `uri=`,
@@ -587,9 +594,14 @@ Layered, not relying on a single control:
        rules, the value is replaced by `[redacted]` in `KEY=VALUE`,
        `KEY: VALUE`, `"KEY":"VALUE"` and `'KEY':'VALUE'` for the keys
        `refresh_token`, `access_token`, `id_token`, `provider_token`,
-       `provider_refresh_token`, `token`, `apikey`, `api_key`, `x-api-key`,
-       `password`, `passwd`, `secret`, `client_secret` and `authorization`
-       (case-insensitive, anchored at a word boundary, no leading wildcard: it
+       `provider_refresh_token`, `refreshtoken`, `accesstoken`, `idtoken`,
+       `providertoken`, `providerrefreshtoken` (so camelCase), `token`,
+       `apikey`, `api_key`, `x-api-key`, `password`, `passwd`, `secret`,
+       `client_secret`, `clientsecret` and `authorization`
+       (case-insensitive; the key must not directly follow a letter or digit,
+       a negative lookbehind rather than `\b` so `my_token=S`,
+       `sb_access_token=S`, `new_password=S` match while `token_count=3`,
+       `tokenizer:`, `password_reset_flow:` do not; no leading wildcard: it
        would be quadratic). A value runs up to whitespace, a quote or one of
        `& , ; } )`; `authorization` also consumes a `Bearer `/`Basic ` word
        (`Authorization: Bearer [redacted]`). It exists because opaque GoTrue
@@ -598,7 +610,12 @@ Layered, not relying on a single control:
        `token=` inside userinfo would rewrite the `@` that marks it. The URL
        rules run once more afterwards because redacting a value can remove a
        token's first `?` and so change how the rest is classified; that makes
-       the scrub idempotent.
+       the scrub idempotent. A pair whose key and value are in DIFFERENT
+       whitespace tokens (`x.co?a=1,token: S`, `?APIKEY = S`) would lose its
+       key to the URL rules (they cut a token from its `?` to its end) and
+       leave the value: a pre-pass with the same patterns redacts the value
+       first, only when the matched key + separator part contains whitespace.
+       Pipeline: pre-pass, URL rules, rule C, URL rules (Revision 5).
      - *Accepted trade-offs.* Text after a URL in the same whitespace-free
        token (JSON, brackets, quotes) is dropped. An `@` in a path or query
        over-redacts the URL. A few look-alikes with a `=` after a `?` are cut:
@@ -606,9 +623,13 @@ Layered, not relying on a single control:
        `v1.2?x=1`; `Note:Why?` reads as a URI scheme.
      - *Residuals* (cannot be told from prose, not caught): a bare `?SECRET`
        without `=`; a schemeless URL after an earlier non-URL `?` in the same
-       token (`why?/p?k=S`) or glued after a `=`/`,` (`url=abc.co?k=S`) unless
-       its key is a credential name (rule C); the words after the first of a
-       quoted credential value (`"password": "a b"` redacts `a`). Exception
+       token (`why?/p?k=S`) or after any non-whitespace prefix
+       (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless
+       its key is a credential name (rule C); a credential name glued to a
+       preceding letter or digit (`myToken=S`, `authToken=S`, `mytoken=S`:
+       only the names above, with a leading `_`, `-` or space allowed, are
+       matched); the words after the first of a quoted credential value
+       (`"password": "a b"` redacts `a`). Exception
        messages handed to `captureException` never go through `scrubPii` (see
        `docs/deferred/2026-08-28-observability-remaining-use-cases.md`).
    - **Email addresses are a documented non-goal**: they are not redacted
@@ -881,7 +902,10 @@ captures transactions/events through `beforeSendTransaction`/`beforeSend`.
   in "PII and secret redaction": key normalization and suffix matching
   (including the kept `token_count`-style keys), nested and non-String-keyed
   maps, iterables and `Uri` values, JWT redaction (embedded, adjacent,
-  glued, and linear-time on pathological input), `sb_secret_` keys, the
+  glued, dotted `eyJ`-containing prefixes, and linear-time on pathological
+  input), `sb_secret_` keys, camelCase / `_`-prefixed credential names
+  including a real gotrue `Session`/`AuthState`, cross-token credential
+  pairs, userinfo with 3+ `@`, idempotent truncation at a surrogate pair, the
   URL rules A/B/C per whitespace-delimited token (the ambiguous-`@`
   redaction, userinfo, everything after the first `?` dropped, the 8-URL
   bound, schemeless and non-hierarchical URIs, credential key/value text in
@@ -902,9 +926,12 @@ captures transactions/events through `beforeSendTransaction`/`beforeSend`.
   SCRUB_FUZZ_CASES=2000000` for a local sweep. It composes schemes,
   userinfo (with `@ ? # / %40`), hosts (dotted, bare, IPv6, port,
   non-ASCII), paths, queries, fragments, wrappers and multi-URL
-  concatenations, and asserts: a planted `SECRETVALUE` (in userinfo, query,
-  a `key=value` fragment, a schemeless prefix or credential text) never
-  survives; a benign corpus (prose, ChordPro, lyrics, times, versions,
+  concatenations, plus (Revision 5) JWTs (also behind `surveyJson.v1.` /
+  `eyJx.y.` prefixes), `sb_secret_` keys, camelCase / `_`-prefixed / quoted /
+  spaced credential keys (also after a URL in the same token) and userinfo
+  with up to four `@`, and asserts: a planted `SECRETVALUE` (in userinfo,
+  query, a `key=value` fragment, a schemeless prefix, a JWT, an
+  `sb_secret_` key or credential text) never survives; a benign corpus (prose, ChordPro, lyrics, times, versions,
   emails in text, Windows and Unix paths) is returned unchanged; the output
   is idempotent; nothing throws. Failures print the shortest offending
   inputs.
@@ -1197,3 +1224,33 @@ credential key/value rule).
 - **Verification**: 2 000 000 fuzz cases, 0 failures; a separate 6 000 000
   case adversarial sweep (piece-wise random tokens with a leak oracle and
   idempotency check), 0 failures; mutation checks on each rule.
+
+### Revision 5 (review of the frozen rule set, 2026-09-25)
+
+An independent review (7.6M cases, its own fuzzer) found the Revision 4 design
+sound and a handful of gaps; the fixes are minimal, add no new heuristic
+family, and end the iteration on the scrub heuristics. Details and rationale
+are in ADR-036 "Revision 5"; in short:
+
+- **Rule C names**: camelCase (`refreshtoken`, `accesstoken`, `idtoken`,
+  `providertoken`, `providerrefreshtoken`, `clientsecret`, and `apiKey` via
+  case-insensitivity) added, and the leading `\b` replaced by a negative
+  lookbehind so `_`-prefixed keys (`my_token`, `sb_access_token`,
+  `new_password`) match. A real gotrue `Session`/`AuthState` printed
+  `refreshToken: ...`/`providerToken: ...` unredacted through the non-String
+  `toString()` scrub. Still untouched: `token_count=3`, `tokenizer:`,
+  `password_reset_flow:`, `secret_santa=2024`, `myToken=S` (residual).
+- **Cross-token pre-pass**: `x.co?a=1,token: S`, `https://h/p?x=1,"token": S`
+  and `ab:?APIKEY = S` lost their key to the URL pass and left the value.
+- **JWT scan**: every `eyJ`-containing part marks itself and the next two,
+  overlaps merged (`surveyJson.v1.<JWT>`, `eyJx.y.<JWT>` leaked payload and
+  signature). Accepted over-redaction: a dotted word after a JWT goes with it.
+- **8 KB cut** is idempotent at a surrogate-pair boundary.
+- **Docs**: complete dartdoc key list (`otpcode`, `verificationcode`); the
+  `key_number_N` key length is 12-14 characters, not 15; the residual wording
+  is "after any non-whitespace prefix".
+- **Tests**: real `Session`/`AuthState` case, userinfo with 3+ `@` (a
+  surviving mutant), extended fuzzer generator (JWT with dotted prefixes,
+  `sb_secret_`, camelCase/`_`-prefixed/quoted/spaced keys, pairs after a URL,
+  up to four `@` in userinfo), and `report_uncaught_zone_error_sentry_test.dart`
+  polls for delivery instead of a fixed number of event-loop hops.

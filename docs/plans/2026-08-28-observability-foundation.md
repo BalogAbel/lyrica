@@ -2391,7 +2391,11 @@ where this plan and those documents disagree, they win.
   by a small conservative rule set (A scheme URL, B schemeless URL shape, C
   credential key/value text), scrubbed non-String objects as their
   `toString()`, and added `sentry_pii_scrub_fuzz_test.dart`, a committed
-  seeded property fuzzer. The policy is in the
+  seeded property fuzzer. A fifth round (spec and ADR-036 "Revision 5")
+  added camelCase and `_`-prefixed credential names to rule C (a lookbehind
+  instead of `\b`), a cross-token credential pre-pass, an overlapping-range
+  JWT scan, an idempotent 8 KB cut and a wider fuzzer generator, and made
+  the Sentry-delivery zone-error test poll for delivery. The policy is in the
   spec's "PII and secret redaction" and
   ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The
   test file grew accordingly (the plan expected 7 tests).
