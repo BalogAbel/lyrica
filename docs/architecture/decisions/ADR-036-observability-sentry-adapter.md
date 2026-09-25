@@ -6,7 +6,9 @@ Accepted. Revised 2026-08-28 after an adversarial opus review of the
 first draft found several blocking defects (see "Revision notes" at the
 end), and again after execution and PR review ("Revision 2" in the
 revision notes), and again after two further scrub reviews ("Revision 3" and
-"Revision 4", the latter replacing the URL heuristics by a small rule set) —
+"Revision 4", the latter replacing the URL heuristics by a small rule set, and
+a final "Revision 5" and "Revision 6" that closed the remaining gaps and
+documented the residuals) —
 the decisions below reflect the as-built implementation, not the original
 draft.
 
@@ -240,7 +242,8 @@ later, independent of this decision.
    first 64 KB is scrubbed (trimmed back to the last whitespace when cut, so a
    partial token at the boundary is dropped, never emitted half-redacted),
    the scrubbed result is cut to 8 KB plus the marker `…[truncated]` (an
-   unscrubbed tail is never emitted), and a 64 KB total of key and string
+   unscrubbed tail is never emitted; output is never longer than 8 KB plus one
+   marker and the scrub is idempotent, see "Revision 6"), and a 64 KB total of key and string
    characters per call turns later strings into `[truncated]`; this bounds
    both main-isolate time and the encoded size Sentry has to accept. In
    strings the scrub is a **small, conservative rule set** (the URL rules are
@@ -467,7 +470,7 @@ same token or after any non-whitespace prefix (`url=abc.co?k=S`,
 `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless its key is a credential
 name (rule C); a credential name glued to a preceding letter or digit
 (`myToken=S`, `authToken=S`; Revision 5); the words of a quoted credential
-value after the first. Exception
+value after the first (complete residual list: Revision 6). Exception
 messages passed to `captureException` never go through `scrubPii`
 (`docs/deferred/2026-08-28-observability-remaining-use-cases.md` records the
 centralized `beforeSend*` scrub as the recommended long-term path).
@@ -519,7 +522,8 @@ plan is to stop iterating on the scrub heuristics after this round.
 - **Idempotency at the 8 KB cut.** `'a'*8191 + '😀' + ...` was cut before the
   surrogate pair (8191 chars + marker) and a second pass cut the marker
   again. A result that already ends in the marker and is at most one marker
-  over the limit is now left alone.
+  over the limit is now left alone (superseded by the marker strip and
+  re-append of Revision 6).
 - **Docs.** The `scrubPii` dartdoc lists the complete key suffix list
   (`otpcode`, `verificationcode` were missing there); the residual wording
   is "after any non-whitespace prefix", not "glued after `=`/`,`"
@@ -534,3 +538,57 @@ plan is to stop iterating on the scrub heuristics after this round.
   fixed number of event-loop hops (the same flake class as the earlier CI
   failure); it now polls for delivery. Negative assertions keep a real
   100 ms delay.
+
+### Revision 6 (final round on the frozen rule set, 2026-09-25)
+
+An independent review (round 6, 7M cases) closed every earlier finding and
+found only minor items. The decision: **no new regex families and no new
+rules**; the two fixes below plus honest documentation of what the in-string
+scrub does not catch.
+
+- **8 KB cut.** Two edges of the cut are fixed in `_scrubString`. (a) An
+  over-long input whose kept prefix already ended in the marker
+  (`'a'*8192 + '…[truncated]' + ' ' + 'b'*70000`) got a second marker (8216
+  characters; a second pass gave 8204). (b) A cut right after a rule-C value
+  (`'x'*8175 + ' token=SECRETVALUE tail'`) gave `…token=[redacted]…[truncated]`
+  and a second pass ate the marker as part of the value. Both had one cause,
+  the marker being handled as part of the text. A trailing marker on the input
+  is now stripped before scrubbing and re-appended after, once. What holds for
+  every input, including one an attacker ends with the marker: the output is
+  never longer than 8 KB plus one marker, the marker the function appends
+  occurs at most once (a marker inside the input is ordinary text), nothing
+  leaks through the cut, and the scrub is idempotent. This replaces the
+  Revision 5 "at most one marker over the limit" exception. A pinned attacker
+  case (`('x ' * 30000) + '…[truncated]'` gives at most 8204 characters)
+  kills the mutant that dropped the length bound.
+- **Test gap (whitespace in the pre-pass).** The cross-token pre-pass uses
+  `\s`, but tests only covered plain spaces (a surviving mutant: `\s` to
+  `' '`). Tab, newline and multi-space separators are pinned
+  (`x.co?a=1,token:\tS`, `x.co?a=1,token:\n S`) and the committed fuzzer's
+  after-URL generator uses them too (0 failures at 2M cases).
+- **Residuals, documented, each with its exact input** (the `scrubPii`
+  dartdoc has the complete list): escaped JSON (`{\"refresh_token\":\"S\"}`
+  is unchanged, a JWT inside is still caught, an opaque token leaks); a
+  credential word in VALUE position eats the next key because matching is
+  non-overlapping (`grant_type=refresh_token :password: S`,
+  `password = token: S`, `token=x?password: S`); a scheme word on keys other
+  than `authorization` (`token: Bearer S`, `apiKey: Bearer S`); the `=>`
+  separator (`"token" => "S"`); unquoted multi-word values
+  (`password: correct horse`); names outside the in-string list although the
+  MAP-key deny list covers them (`api-key: S`, `Api-Key: S`, `pwd=S`,
+  `code_verifier=S`, `token_hash=S`, `secret_key=S`, `private_key=S`); and, in
+  the safe direction, cursors redacted in TEXT while the same MAP keys are
+  allowlisted (`next_page_token=abc`, `sync_token: 7`, `max_token=5`). The
+  Revision 4/5 wording that the lookbehind allows "a leading `_`, `-` or
+  space" was too narrow: it allows ANY non-alphanumeric ASCII character
+  (`.`, `/`, `$`, ...) and also a non-ASCII letter (`étoken=S`).
+- **Where further hardening goes.** Through the centralized `beforeSend` /
+  `beforeSendTransaction` / `beforeBreadcrumb` hooks plus a structured
+  allowlist (`docs/deferred/2026-08-28-observability-remaining-use-cases.md`),
+  not through more regexes in `scrubPii`.
+- **Audit.** The gotrue/supabase `toString()` shapes (`Session`, `AuthState`,
+  `User`, `PostgrestException`, `ClientException`, `FunctionException`,
+  `StorageException`) were audited: `providerToken`, `providerRefreshToken`,
+  `accessToken` and `refreshToken` are redacted by rule C, an `actionLink`
+  query is cut by the URL rules; the email address is the documented
+  non-goal.

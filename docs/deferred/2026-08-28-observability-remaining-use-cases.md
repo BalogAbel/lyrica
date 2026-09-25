@@ -130,7 +130,7 @@ the reason and the condition under which to reopen it.
   that captures an exception whose message can carry request content, the
   first direct SDK use, a second telemetry backend, or the next
   observability slice, whichever comes first.
-- **Known scrub residuals (Revision 4, amended by Revision 5, accepted).**
+- **Known scrub residuals (Revision 4, amended by Revisions 5 and 6, accepted).**
   `scrubPii` cannot tell these from prose, so they are not caught: a bare
   `?SECRET` without `=`; a schemeless URL after an earlier non-URL `?` in the
   same token (`why?/p?k=S`) or after any non-whitespace prefix
@@ -142,6 +142,33 @@ the reason and the condition under which to reopen it.
   `v1.2?x=1`). Generic correlation keys `code`, `session_id` and `sessionid`
   are deliberately NOT denied. *Trigger:* a call site that has to forward
   free text, or a real incident showing one of these shapes.
+- **Further scrub residuals (Revision 6, verified, accepted; do not fix with
+  more regexes).** Each with its exact input: escaped JSON
+  (`{\"refresh_token\":\"S\"}` is unchanged; a JWT inside is still caught, an
+  opaque token leaks); a credential word in VALUE position eats the next key
+  because matching is non-overlapping (`grant_type=refresh_token :password: S`
+  gives `...:[redacted] S`, `password = token: S` gives
+  `password = [redacted] S`, `token=x?password: S` gives `token=[redacted] S`);
+  a scheme word on keys other than `authorization` (`token: Bearer S`,
+  `apiKey: Bearer S`); the `=>` separator (`"token" => "S"` gives
+  `"token" =[redacted] "S"`); unquoted multi-word values
+  (`password: correct horse` gives `[redacted] horse`); names outside the
+  in-string text list although the MAP-key deny list covers them
+  (`api-key: S`, `Api-Key: S`, `pwd=S`, `code_verifier=S`, `token_hash=S`,
+  `secret_key=S`, `private_key=S`). In the safe direction, the lookbehind
+  over-redacts cursors in TEXT (`next_page_token=abc`, `sync_token: 7`,
+  `max_token=5` give `[redacted]`) while the same MAP keys are allowlisted.
+  The lookbehind allows ANY non-alphanumeric ASCII character before the name
+  (`.`, `/`, `$`, `_`, `-`, space, ...), not only `_`, `-` or space.
+  The gotrue/supabase `toString()` shapes (`Session`, `AuthState`, `User`,
+  `PostgrestException`, `ClientException`, `FunctionException`,
+  `StorageException`) were audited and are covered: `providerToken`,
+  `providerRefreshToken`, `accessToken` and `refreshToken` are redacted,
+  an `actionLink` query is cut; the email address is the documented non-goal.
+  **Further hardening should go through the centralized `beforeSend` /
+  `beforeSendTransaction` / `beforeBreadcrumb` hooks plus a structured
+  allowlist (the first item of this list), not through more regexes in
+  `scrubPii`.** *Trigger:* same as above.
 - **Move the web `traceparent` gate out of `TracingHttpClient`.** The
   `!kIsWeb` check lives inside the client (`isWeb` constructor parameter);
   the suggestion is to decide in the composition root (bootstrap builds a

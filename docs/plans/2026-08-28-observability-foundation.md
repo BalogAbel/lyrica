@@ -2394,7 +2394,9 @@ where this plan and those documents disagree, they win.
   seeded property fuzzer. A fifth round (spec and ADR-036 "Revision 5")
   added camelCase and `_`-prefixed credential names to rule C (a lookbehind
   instead of `\b`), a cross-token credential pre-pass, an overlapping-range
-  JWT scan, an idempotent 8 KB cut and a wider fuzzer generator, and made
+  JWT scan, an 8 KB cut idempotent at a surrogate-pair boundary (a sixth round,
+  spec and ADR-036 "Revision 6", made it a fixed point for every input and
+  bounded the output at 8 KB plus one marker) and a wider fuzzer generator, and made
   the Sentry-delivery zone-error test poll for delivery. The policy is in the
   spec's "PII and secret redaction" and
   ADR-036 point 7, and the dartdoc of `scrubPii` is authoritative. The

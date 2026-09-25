@@ -15,7 +15,8 @@ as-built code, and "Revision 2" in the revision notes lists what changed
 and why. Three later reviews of the PII scrub ("Revision 3", "Revision 4" and
 "Revision 5") followed; Revision 4 replaced the URL heuristics by a small
 conservative rule set plus a committed property fuzzer, Revision 5 closed the
-gaps a review found in that rule set.
+gaps a review found in that rule set, and Revision 6 fixed the 8 KB cut edges
+and documented the residuals.
 
 ## Problem
 
@@ -627,9 +628,18 @@ Layered, not relying on a single control:
        (`url=abc.co?k=S`, `{"url":"x.co:8080?k=S"}`, `("abc.co?k=S")`) unless
        its key is a credential name (rule C); a credential name glued to a
        preceding letter or digit (`myToken=S`, `authToken=S`, `mytoken=S`:
-       only the names above, with a leading `_`, `-` or space allowed, are
-       matched); the words after the first of a quoted credential value
-       (`"password": "a b"` redacts `a`). Exception
+       only the names above are matched, and any non-alphanumeric ASCII character,
+       e.g. `_`, `-`, space, `.`, `/`, `$`, may precede them); the words after
+       the first of a quoted credential value (`"password": "a b"` redacts
+       `a`). More residuals, verified (Revision 6): escaped JSON
+       (`{\"refresh_token\":\"S\"}`); a credential word in value position eats
+       the next key (`password = token: S`); a scheme word on keys other than
+       `authorization` (`token: Bearer S`); the `=>` separator; unquoted
+       multi-word values (`password: correct horse`); names outside the
+       in-string list though the MAP-key deny list covers them (`api-key: S`,
+       `pwd=S`, `code_verifier=S`, `token_hash=S`, `secret_key=S`,
+       `private_key=S`); cursors over-redacted in text (`next_page_token=abc`,
+       safe direction). See ADR-036 "Revision 6". Exception
        messages handed to `captureException` never go through `scrubPii` (see
        `docs/deferred/2026-08-28-observability-remaining-use-cases.md`).
    - **Email addresses are a documented non-goal**: they are not redacted
@@ -1254,3 +1264,31 @@ are in ADR-036 "Revision 5"; in short:
   `sb_secret_`, camelCase/`_`-prefixed/quoted/spaced keys, pairs after a URL,
   up to four `@` in userinfo), and `report_uncaught_zone_error_sentry_test.dart`
   polls for delivery instead of a fixed number of event-loop hops.
+
+### Revision 6 (final round on the frozen rule set, 2026-09-25)
+
+The final review (round 6, 7M cases) found only minor items; no new rules or
+regexes were added. Details and rationale are in ADR-036 "Revision 6"; in
+short:
+
+- **8 KB cut**: a trailing `…[truncated]` on the input is stripped before
+  scrubbing and re-appended once, so the output is never longer than 8 KB plus
+  one marker (also for an attacker-supplied marker), the appended marker
+  occurs at most once, and the scrub is idempotent, including after a cut
+  right behind a rule-C value (`'x'*8175 + ' token=SECRETVALUE tail'`), which
+  used to lose the marker on a second pass, and an over-long input whose kept
+  prefix already ended in the marker, which used to get a second one.
+- **Tests**: tab, newline and multi-space between a cross-token key separator
+  and its value (`x.co?a=1,token:\tS`, `x.co?a=1,token:\n S`; a surviving
+  mutant, `\s` to `' '`), the same in the committed fuzzer's after-URL
+  generator (0 failures at 2M cases), and the attacker-marker length bound.
+- **Residuals documented with exact inputs** (complete list in the `scrubPii`
+  dartdoc and ADR-036 "Revision 6"): escaped JSON, a credential word in value
+  position eating the next key, a scheme word on keys other than
+  `authorization`, the `=>` separator, unquoted multi-word values, names
+  outside the in-string list that the MAP-key deny list covers (`api-key`,
+  `pwd`, `code_verifier`, `token_hash`, `secret_key`, `private_key`), cursors
+  over-redacted in text (`next_page_token=abc`). The lookbehind allows ANY
+  non-alphanumeric ASCII character before the name, not only `_`, `-` or a
+  space. Further hardening belongs in the centralized `beforeSend*` hooks and
+  a structured allowlist, not in more regexes.
