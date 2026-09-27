@@ -209,3 +209,11 @@ propagation, but in the 9.28.0 source reviewed at design time it has no
 public accessor for the active span (`hub.getActiveSpan()` is `@internal`),
 which `TracingHttpClient` needs. *Trigger:* the constraints allow 9.x and a
 public ambient accessor exists (or the accessor is no longer needed).
+
+Until then, 8.14.2's `android/build.gradle` pins Kotlin
+`languageVersion = "1.6"`, which the app's Kotlin 2.2 compiler rejects
+(`:sentry_flutter:compileReleaseKotlin` fails with "Language version 1.6 is
+no longer supported"). `apps/lyron_app/android/build.gradle.kts` overrides
+the plugin's `languageVersion`/`apiVersion` to 1.8 in a
+`gradle.projectsEvaluated` block; delete that override as part of the 9.x
+upgrade.
