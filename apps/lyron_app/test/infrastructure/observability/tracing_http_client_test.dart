@@ -82,100 +82,95 @@ void main() {
     expect(inner.lastRequest!.headers.containsKey('traceparent'), isFalse);
   });
 
-  test(
-    'throws TimeoutException for a non-token request once the response '
-    'backstop elapses (tier 2, R1)',
-    () async {
-      final inner = _NeverCompletingInnerClient();
-      final client = TracingHttpClient(
-        inner,
-        const _FakeObservability(null),
-        timeout: const Duration(milliseconds: 100),
-        isWeb: false,
-      );
+  test('throws TimeoutException for a non-token request once the response '
+      'backstop elapses (tier 2, R1)', () async {
+    final inner = _NeverCompletingInnerClient();
+    final client = TracingHttpClient(
+      inner,
+      const _FakeObservability(null),
+      timeout: const Duration(milliseconds: 100),
+      isWeb: false,
+    );
 
-      final request = http.Request('GET', Uri.parse('https://example.com/'));
+    final request = http.Request('GET', Uri.parse('https://example.com/'));
 
-      expect(client.send(request), throwsA(isA<TimeoutException>()));
-    },
-  );
+    expect(client.send(request), throwsA(isA<TimeoutException>()));
+  });
 
-  test(
-    'does NOT apply the general response backstop to a /auth/v1/token '
-    'request (tier 2 is skipped for it) -- guarded: the identical setup '
-    'on a non-token URL above DOES throw within the same short backstop, '
-    'proving this is a real behavior difference, not a no-op',
-    () async {
-      final inner = _NeverCompletingInnerClient();
-      final client = TracingHttpClient(
-        inner,
-        const _FakeObservability(null),
-        // Deliberately the SAME short duration used by the non-token test
-        // above, which throws within it. The token-refresh path is no
-        // longer exempted from any timeout (I1) -- it uses the longer,
-        // separate `tokenRefreshTimeout` instead -- so it must NOT throw
-        // within this short *general* backstop duration.
-        timeout: const Duration(milliseconds: 100),
-        tokenRefreshTimeout: const Duration(seconds: 10),
-        isWeb: false,
-      );
+  test('does NOT apply the general response backstop to a /auth/v1/token '
+      'request (tier 2 is skipped for it) -- guarded: the identical setup '
+      'on a non-token URL above DOES throw within the same short backstop, '
+      'proving this is a real behavior difference, not a no-op', () async {
+    final inner = _NeverCompletingInnerClient();
+    final client = TracingHttpClient(
+      inner,
+      const _FakeObservability(null),
+      // Deliberately the SAME short duration used by the non-token test
+      // above, which throws within it. The token-refresh path is no
+      // longer exempted from any timeout (I1) -- it uses the longer,
+      // separate `tokenRefreshTimeout` instead -- so it must NOT throw
+      // within this short *general* backstop duration.
+      timeout: const Duration(milliseconds: 100),
+      tokenRefreshTimeout: const Duration(seconds: 10),
+      isWeb: false,
+    );
 
-      final request = http.Request(
-        'POST',
-        Uri.parse('https://example.supabase.co/auth/v1/token?grant_type=refresh_token'),
-      );
+    final request = http.Request(
+      'POST',
+      Uri.parse(
+        'https://example.supabase.co/auth/v1/token?grant_type=refresh_token',
+      ),
+    );
 
-      await expectLater(
-        client
-            .send(request)
-            .timeout(
-              const Duration(milliseconds: 300),
-              onTimeout: () =>
-                  throw StateError('did not time out (expected)'),
+    await expectLater(
+      client
+          .send(request)
+          .timeout(
+            const Duration(milliseconds: 300),
+            onTimeout: () => throw StateError('did not time out (expected)'),
+          ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('throws TimeoutException for a /auth/v1/token request once the '
+      'longer token-refresh backstop elapses (tier 3, I1) -- proves the '
+      'token-refresh path is bounded, not hung forever', () async {
+    final inner = _NeverCompletingInnerClient();
+    final client = TracingHttpClient(
+      inner,
+      const _FakeObservability(null),
+      // General backstop is intentionally long here so only the
+      // token-refresh backstop below can be the one that fires.
+      timeout: const Duration(seconds: 10),
+      tokenRefreshTimeout: const Duration(milliseconds: 100),
+      isWeb: false,
+    );
+
+    final request = http.Request(
+      'POST',
+      Uri.parse(
+        'https://example.supabase.co/auth/v1/token?grant_type=refresh_token',
+      ),
+    );
+
+    await expectLater(
+      // Bounded outer guard (distinct exception type) so a regression
+      // back to "no timeout at all" fails this test promptly -- with a
+      // clear mismatch (StateError, not TimeoutException) -- instead of
+      // hanging the suite or accidentally matching via the outer bound.
+      client
+          .send(request)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => throw StateError(
+              'did not time out within the '
+              'token-refresh backstop (regression to unbounded)',
             ),
-        throwsA(isA<StateError>()),
-      );
-    },
-  );
-
-  test(
-    'throws TimeoutException for a /auth/v1/token request once the '
-    'longer token-refresh backstop elapses (tier 3, I1) -- proves the '
-    'token-refresh path is bounded, not hung forever',
-    () async {
-      final inner = _NeverCompletingInnerClient();
-      final client = TracingHttpClient(
-        inner,
-        const _FakeObservability(null),
-        // General backstop is intentionally long here so only the
-        // token-refresh backstop below can be the one that fires.
-        timeout: const Duration(seconds: 10),
-        tokenRefreshTimeout: const Duration(milliseconds: 100),
-        isWeb: false,
-      );
-
-      final request = http.Request(
-        'POST',
-        Uri.parse('https://example.supabase.co/auth/v1/token?grant_type=refresh_token'),
-      );
-
-      await expectLater(
-        // Bounded outer guard (distinct exception type) so a regression
-        // back to "no timeout at all" fails this test promptly -- with a
-        // clear mismatch (StateError, not TimeoutException) -- instead of
-        // hanging the suite or accidentally matching via the outer bound.
-        client
-            .send(request)
-            .timeout(
-              const Duration(seconds: 5),
-              onTimeout: () =>
-                  throw StateError('did not time out within the '
-                      'token-refresh backstop (regression to unbounded)'),
-            ),
-        throwsA(isA<TimeoutException>()),
-      );
-    },
-  );
+          ),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
 
   test('a TracingHttpClient timeout surfaces as AuthRetryableFetchException '
       'when driven through a real gotrue GoTrueClient (gotrue-2.27.2, pinned '

@@ -67,7 +67,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           TextButton(
                             onPressed: () {
                               final routerState = GoRouterState.of(context);
-                              final from = routerState.uri.queryParameters['from'];
+                              final from =
+                                  routerState.uri.queryParameters['from'];
                               context.go(from ?? AppRoutes.home.path);
                             },
                             child: const Text(AppStrings.continueOfflineAction),
