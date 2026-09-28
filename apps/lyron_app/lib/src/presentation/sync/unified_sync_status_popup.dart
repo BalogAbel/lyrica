@@ -13,12 +13,21 @@ import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class UnifiedSyncStatusPopup extends ConsumerWidget {
-  const UnifiedSyncStatusPopup({super.key});
+  const UnifiedSyncStatusPopup({super.key, this.from});
+
+  // Captured by show() from the CALLER's context, before showDialog opens.
+  // A DialogRoute's own context is not a GoRouter page context --
+  // GoRouterState.of(context) called from inside the dialog throws
+  // GoError('There is no GoRouterState above the current context'), so the
+  // route string must be read up front, while context is still the real
+  // page context, and threaded down as plain data (B1).
+  final String? from;
 
   static Future<void> show(BuildContext context) {
+    final from = GoRouterState.of(context).uri.toString();
     return showDialog<void>(
       context: context,
-      builder: (_) => const UnifiedSyncStatusPopup(),
+      builder: (_) => UnifiedSyncStatusPopup(from: from),
     );
   }
 
@@ -81,11 +90,10 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
         .read(unifiedManualSyncControllerProvider)
         .syncNow();
     if (!result.requiresReauth || !context.mounted) return;
-    final from = GoRouterState.of(context).uri.toString();
     context.go(
       Uri(
         path: AppRoutes.signIn.path,
-        queryParameters: {'from': from},
+        queryParameters: from == null ? null : {'from': from},
       ).toString(),
     );
   }

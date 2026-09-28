@@ -1106,11 +1106,64 @@ void main() {
     );
   });
 
-  // Task 2.6c: pressing the Sync button while sessionExpired must route to
-  // re-auth (same pattern as ReauthBanner), instead of silently reporting a
-  // spurious sync failure for a session that can never succeed.
+  // Helper: builds a real page (with a button that opens the popup via its
+  // REAL .show() -> showDialog path) plus the sign-in route, wired into a
+  // real GoRouter. This is deliberately NOT the "mount popup as page body"
+  // style below -- that style is a false green for B1 because a DialogRoute
+  // context is not a GoRouter page context, so GoRouterState.of(context)
+  // called from inside the dialog never gets exercised by it.
+  Widget _appWithRealShowDialogPath({
+    required UnifiedManualSyncController controller,
+  }) {
+    return ProviderScope(
+      overrides: [
+        unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+        unifiedManualSyncControllerProvider.overrideWith((_) => controller),
+      ],
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => Scaffold(
+                body: Builder(
+                  builder: (innerContext) => TextButton(
+                    key: const ValueKey('open-popup'),
+                    onPressed: () => UnifiedSyncStatusPopup.show(innerContext),
+                    child: const Text('Open popup'),
+                  ),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: AppRoutes.signIn.path,
+              builder: (context, state) =>
+                  const Scaffold(body: Text('SIGN IN SCREEN')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Task 2.6c / B1 fix: pressing the Sync button while sessionExpired must
+  // route to re-auth (same pattern as ReauthBanner), instead of silently
+  // reporting a spurious sync failure for a session that can never succeed.
+  //
+  // This goes through the REAL UnifiedSyncStatusPopup.show() -> showDialog
+  // path (B1 regression guard). Before the B1 fix, UnifiedSyncStatusPopup's
+  // _syncNow read GoRouterState.of(context) from inside the dialog's own
+  // context, which throws GoError('There is no GoRouterState above the
+  // current context') because a DialogRoute's context has no GoRouterState
+  // association -- only GoRouter.of(context) (InheritedWidget lookup) works
+  // there. The prior version of this test mounted UnifiedSyncStatusPopup
+  // directly as a page body (Scaffold(body: UnifiedSyncStatusPopup())),
+  // which never opens a real dialog route and so never hit that throw --
+  // a false green.
   testWidgets(
-    'Sync button navigates to sign-in when syncNow reports requiresReauth',
+    'Sync button navigates to sign-in when syncNow reports requiresReauth '
+    '(via real showDialog path)',
     (tester) async {
       final fakeController = _FakeManualSyncController(
         result: const UnifiedManualSyncRunResult(
@@ -1122,32 +1175,11 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            unifiedSyncOverviewProvider.overrideWithValue(_overview()),
-            unifiedManualSyncControllerProvider.overrideWith(
-              (_) => fakeController,
-            ),
-          ],
-          child: MaterialApp.router(
-            routerConfig: GoRouter(
-              initialLocation: '/',
-              routes: [
-                GoRoute(
-                  path: '/',
-                  builder: (context, state) =>
-                      const Scaffold(body: UnifiedSyncStatusPopup()),
-                ),
-                GoRoute(
-                  path: AppRoutes.signIn.path,
-                  builder: (context, state) =>
-                      const Scaffold(body: Text('SIGN IN SCREEN')),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _appWithRealShowDialogPath(controller: fakeController),
       );
+
+      await tester.tap(find.byKey(const ValueKey('open-popup')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('unified-sync-popup-sync-now')));
       await tester.pumpAndSettle();
@@ -1158,38 +1190,18 @@ void main() {
   );
 
   testWidgets(
-    'Sync button does not navigate when syncNow does not require reauth',
+    'Sync button does not navigate when syncNow does not require reauth '
+    '(via real showDialog path)',
     (tester) async {
       final fakeController = _FakeManualSyncController(
         result: const UnifiedManualSyncRunResult.clean(),
       );
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            unifiedSyncOverviewProvider.overrideWithValue(_overview()),
-            unifiedManualSyncControllerProvider.overrideWith(
-              (_) => fakeController,
-            ),
-          ],
-          child: MaterialApp.router(
-            routerConfig: GoRouter(
-              initialLocation: '/',
-              routes: [
-                GoRoute(
-                  path: '/',
-                  builder: (context, state) =>
-                      const Scaffold(body: UnifiedSyncStatusPopup()),
-                ),
-                GoRoute(
-                  path: AppRoutes.signIn.path,
-                  builder: (context, state) =>
-                      const Scaffold(body: Text('SIGN IN SCREEN')),
-                ),
-              ],
-            ),
-          ),
-        ),
+        _appWithRealShowDialogPath(controller: fakeController),
       );
+
+      await tester.tap(find.byKey(const ValueKey('open-popup')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('unified-sync-popup-sync-now')));
       await tester.pumpAndSettle();
