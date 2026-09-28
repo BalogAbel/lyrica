@@ -292,10 +292,24 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
                 return false;
               }
+              // F-D: an unknown/unresolvable membership on an ordinary
+              // same-user signedIn re-edge (token refresh, foreground
+              // resume, re-sign-in) must not clobber a previously-known,
+              // good organizationId with null -- that starves the
+              // local-first context-establishment path of the one thing
+              // it needs to work offline. Only a genuinely new identity
+              // (no prior row, or a different user -- reached through
+              // wipePriorAndProceedFor, which already erased the prior
+              // identity before calling this closure) gets null here.
+              final sameUserPriorIdentity = priorIdentity;
               final identity = LastKnownIdentity(
                 userId: session.userId,
                 email: session.email,
-                organizationId: null,
+                organizationId:
+                    sameUserPriorIdentity != null &&
+                        sameUserPriorIdentity.userId == session.userId
+                    ? sameUserPriorIdentity.organizationId
+                    : null,
               );
               await lifecycle.writeIdentity(identity);
           }
