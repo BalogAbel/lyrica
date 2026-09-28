@@ -287,6 +287,20 @@ void main() {
         hangCompleter.complete(_organizationId);
         async.flushMicrotasks();
         expectCatalogVisible('phase B after the hung network finally resolves');
+        // Make the drain assumption load-bearing: isRunning only flips back
+        // to false once UnifiedManualSyncController._runUntilQuiescent's
+        // `do { ... } while (_queued)` loop has genuinely exited with no
+        // press queued behind it -- i.e. every in-flight/queued press from
+        // the hang above has actually finished, not just the first one.
+        // Without this, phase C's requiresReauth assertions below could be
+        // silently observing a still-in-flight run from phase B instead of
+        // a fresh call, and this test would give no signal either way.
+        expect(
+          syncController.isRunning,
+          isFalse,
+          reason: 'every manual/automatic sync press queued behind the hung '
+              'network must have fully drained before phase C begins',
+        );
 
         // --- Phase C: session expires. ---
         authRepository.emitSession(null);
