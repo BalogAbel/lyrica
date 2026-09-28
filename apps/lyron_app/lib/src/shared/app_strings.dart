@@ -14,6 +14,7 @@ class AppStrings {
   static const reauthRequiredMessage =
       'You are offline. Sign in again to sync your changes.';
   static const reauthSignInAction = 'Sign in';
+  static const continueOfflineAction = 'Continue offline';
   static const reauthDifferentUserTitle = 'Másik fiók jelentkezett be.';
   static String reauthDifferentUserPendingMessage({
     required String email,

@@ -63,6 +63,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         if (isSessionExpired) ...[
                           const SizedBox(height: 12),
                           const Text(AppStrings.sessionExpiredMessage),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () {
+                              final routerState = GoRouterState.of(context);
+                              final from = routerState.uri.queryParameters['from'];
+                              context.go(from ?? AppRoutes.home.path);
+                            },
+                            child: const Text(AppStrings.continueOfflineAction),
+                          ),
                         ],
                         const SizedBox(height: 24),
                         FilledButton(
