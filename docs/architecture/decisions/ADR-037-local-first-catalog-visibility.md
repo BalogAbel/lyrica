@@ -1,6 +1,11 @@
 # ADR-037: Local-First Catalog Visibility
 
-**Status:** Proposed (design-gate pending as of 2026-09-28)
+**Status:** Accepted (design-gate approved 2026-09-28; implemented on
+`fix/offline-catalog-local-first-visibility`, including a planning-side
+mirror of the same fix, an ownership guard so a stale different-user context
+can never surface, and reauth-routing for the manual Sync control — see the
+spec's own commit history for the full list of adversarial-review findings
+closed before merge)
 **Amends:** D3 of
 `docs/architecture/decisions/ADR-035-local-data-purge-contract.md`'s
 companion spec (`docs/specs/2026-08-19-local-data-durability-contract.md`,
