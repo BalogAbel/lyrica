@@ -17,6 +17,7 @@ import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 
 final planningPlanTitlesProvider = Provider.autoDispose<Map<String, String>>((
@@ -148,6 +149,17 @@ final unifiedManualSyncControllerProvider =
             userId: c.userId,
             organizationId: c.organizationId,
           );
+        },
+        authStatusReader: () {
+          try {
+            return ref.read(appAuthControllerProvider).state.status;
+          } catch (_) {
+            // Mirrors the defensive read pattern used elsewhere (e.g.
+            // ReauthBanner): tests that don't wire appAuthControllerProvider
+            // must not crash sync -- fall back to signedIn so the manual
+            // sync flow behaves the same as before this gate existed.
+            return AppAuthStatus.signedIn;
+          }
         },
         syncSongMutations: (context) async {
           await ref
