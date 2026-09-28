@@ -380,35 +380,39 @@ transferring. Two concrete failure shapes:
    (distinct from LF-T5's general offline-duration divergence) with its own
    trigger condition.
 
-### R2 — planning had the same cross-user gap the catalog side already closed (I3)
+### R2 — planning cross-user gap: already closed by I3, verified and test strengthened
 
-**Problem.** `PlanningSyncController._tryEstablishLocalFirstContext` (added
-in Task 2.7, hardened for the sessionExpired-hiding bug in the I2 fix) never
-compares the last-known identity's `userId` against the *live* session's
-`userId`. During the different-user re-auth window (user A's data still
-present, user B's session live, the `wipePriorAndProceedFor`
-confirmation dialog still pending) a `refreshPlanning()` call — from a plan
-list refresh, a mutation sync, or a manual Sync press — can establish user
-A's context from local data, then immediately fetch org A's payload using
-user B's live token and overwrite A's local projection with the fetch
-result via `_replaceProjection(userId: A, ...)`. If the user then cancels
-the different-user prompt (`cancelToPriorUser`), A's local data has already
-been corrupted by B's fetch before the cancellation could prevent it. This
-is the `PlanningSyncController` analog of the catalog-side I3 fix
-(`d3c7165`), missed because I3 only touched
-`SongCatalogController`/`_refreshCatalogBody` and the planning-parity
-assessment (Task 2.7) was scoped to the F-B shape, not this one.
+**Original report's claim** (from the PR review this section responds to):
+`PlanningSyncController._refreshPlanning` never compares the last-known
+identity's `userId` against the live session's `userId`, so during the
+different-user re-auth window (user A's data still present, user B's
+session live, the `wipePriorAndProceedFor` confirmation dialog still
+pending) a `refreshPlanning()` call could establish A's context, fetch org
+A's payload under B's token, and overwrite A's local projection before the
+user's cancel could prevent it — the `PlanningSyncController` analog of the
+catalog-side I3 fix, claimed to be missed because I3 supposedly only
+touched `SongCatalogController`.
 
-**Fix.** Mirror `SongCatalogController`'s ownership rule exactly:
-`_tryEstablishLocalFirstContext`'s `userId` resolution becomes
-`session?.userId ?? identity.userId` (unchanged), and `_refreshPlanning`
-gains the same guard I3 added to `_refreshCatalogBody`: if
-`_state.userId != null && _state.userId != session.userId`, the state is
-stale for a different user and is reset before any network fetch or
-`_replaceProjection` call can run under the wrong identity. This does not
-touch `wipePriorAndProceedFor`/`cancelToPriorUser` themselves — it stops
-planning from racing ahead of that flow while it is still pending, exactly
-as I3 already does on the catalog side.
+**Verified against the actual commit history: this claim was incorrect.**
+I3 (`d3c7165`) already touched BOTH `SongCatalogController` AND
+`PlanningSyncController` in the same commit — `_refreshPlanning` already
+carries the guard: if `_state.userId != null && _state.userId !=
+session.userId`, state is reset before any fetch or `_replaceProjection`
+call can run under the wrong identity, placed before the null-session
+early return resolves `userId`/`organizationId`, before local-first, and
+before the fetch/replace-projection logic. The implementer assigned to
+"fix" this correctly refused to write a duplicate guard once it re-checked
+the commit history rather than trusting the review's framing at face value.
+
+**What actually changed for R2**: the guard was already correct, but its
+existing regression test only asserted the end state (`state.userId` no
+longer `'user-A'`), not that the fetch/`_replaceProjection` calls
+themselves never ran for org A — weaker than this section originally
+specified. Strengthened (commit `24b4b16`) to directly count remote-fetch
+and `_replaceProjection` calls by organization id, and verified by
+temporarily disabling the guard: both counts independently go from 1 to 2
+for org A under user B's session, confirming the strengthened assertions
+actually catch the regression the guard prevents.
 
 ### R3 — sessionExpired users had no way back from the sign-in screen while still offline
 

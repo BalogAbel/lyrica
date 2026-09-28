@@ -255,24 +255,29 @@ suite after every task, same discipline as Steps 1–2.
   the spec's R1 section explicitly says is insufficient for the DNS/no-route
   case).
 
-### Task R2 — planning cross-user guard (sonnet)
+### Task R2 — planning cross-user guard (sonnet) — already closed by I3, test strengthened
 
-- Red test (must fail on current code): seed `LastKnownIdentity` A + a
-  cached planning projection for A. Session is B (live, different user).
-  Call `refreshPlanning()`. Assert: no context is established for A, no
-  network fetch is attempted for org A, and A's local projection is
-  untouched — count `_replaceProjection`/remote-fetch calls directly, don't
-  just assert on the visible end state.
-- Implementation: mirror `SongCatalogController`'s I3 ownership guard
-  (commit `d3c7165`) in `PlanningSyncController._refreshPlanning`: if
-  `_state.userId != null && _state.userId != session.userId`, reset before
-  any network fetch or `_replaceProjection` call. Do not touch
-  `wipePriorAndProceedFor`/`cancelToPriorUser` (auth_providers.dart) — this
-  guard only stops planning from racing ahead of that flow, it doesn't
-  change the flow itself.
-- Full suite green.
+The implementer re-checked commit history before writing a duplicate fix:
+`d3c7165` (the I3 fix) already touched BOTH `SongCatalogController` and
+`PlanningSyncController` in the same commit, and `_refreshPlanning` already
+carries this exact guard (`_state.userId != null && _state.userId !=
+session.userId` -> reset before any fetch/`_replaceProjection`). No new
+guard was written — see the spec's R2 section for the corrected account of
+why this task's original framing ("I3 only touched the catalog side") was
+wrong.
 
-**Checkpoint: per-task review (sonnet) on R1 and R2.**
+What DID land: the existing regression test only asserted the end state
+(`state.userId` no longer `'user-A'`), weaker than this task originally
+specified (direct fetch/`_replaceProjection` call counts). Strengthened in
+commit `24b4b16` to count both directly by organization id, verified by
+temporarily disabling the guard and confirming both counts regress (1 -> 2
+for org A) — proof the strengthened assertions actually catch what the
+guard prevents.
+
+**Checkpoint: per-task review (sonnet) on R1 and R2 — both reviewed;
+R1 approved, R2's "already fixed, test strengthened" finding accepted
+without a further review round given the implementer's own
+guard-disable regression proof.**
 
 ### Task R3 — offline escape hatch from the sign-in screen (haiku)
 
