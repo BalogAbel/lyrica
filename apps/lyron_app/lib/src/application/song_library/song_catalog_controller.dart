@@ -277,11 +277,15 @@ class SongCatalogController extends ChangeNotifier {
       );
     } catch (error) {
       if (_isAuthorizationFailure(error)) {
+        // Task 2.2 (F-C): status-only. context/hasCachedCatalog may already
+        // be set here -- from a prior refresh (hadContextBeforeRefresh) or
+        // from the local-first path earlier in THIS call -- and an
+        // authorization failure on the org lookup is not one of the four
+        // invariant causes. _state.copyWith with no context/hasCachedCatalog
+        // override leaves both exactly as found (null stays null).
         _setStateIfCurrent(
           generation,
-          const CatalogSnapshotState.initial().copyWith(
-            sessionStatus: CatalogSessionStatus.expired,
-          ),
+          _state.copyWith(sessionStatus: CatalogSessionStatus.expired),
         );
         _resetSessionLifecycle();
         return;
@@ -466,14 +470,22 @@ class SongCatalogController extends ChangeNotifier {
     }
 
     if (sessionStatus == CatalogSessionStatus.expired) {
+      // Task 2.2 (F-F #1): status-only. The org lookup + membership check
+      // already succeeded this attempt (that's how we got here), so
+      // `context` is a legitimately resolved context, same as the
+      // unverifiableDueToConnectivity branch below reuses it -- a verifier
+      // hiccup alone is not one of the four invariant causes.
+      // connectionStatus mirrors that branch's cache-availability choice.
       _setStateIfCurrent(
         generation,
         _state.copyWith(
-          clearContext: true,
-          connectionStatus: CatalogConnectionStatus.unavailable,
+          context: context,
+          connectionStatus: hasCachedCatalog
+              ? CatalogConnectionStatus.offlineCached
+              : CatalogConnectionStatus.unavailable,
           refreshStatus: CatalogRefreshStatus.idle,
           sessionStatus: CatalogSessionStatus.expired,
-          hasCachedCatalog: false,
+          hasCachedCatalog: hasCachedCatalog,
         ),
       );
       _resetSessionLifecycle();
@@ -609,14 +621,20 @@ class SongCatalogController extends ChangeNotifier {
         level: BreadcrumbLevel.warning,
       );
       if (_isAuthorizationFailure(error)) {
+        // Task 2.2 (F-F #2): status-only, same shape as the post-verify
+        // expired branch above -- listSongs() throwing an authorization
+        // error is not one of the four invariant causes. `context` was
+        // already resolved and verified non-empty this attempt.
         _setStateIfCurrent(
           generation,
           _state.copyWith(
-            clearContext: true,
-            connectionStatus: CatalogConnectionStatus.unavailable,
+            context: context,
+            connectionStatus: hasCachedCatalog
+                ? CatalogConnectionStatus.offlineCached
+                : CatalogConnectionStatus.unavailable,
             refreshStatus: CatalogRefreshStatus.failed,
             sessionStatus: CatalogSessionStatus.expired,
-            hasCachedCatalog: false,
+            hasCachedCatalog: hasCachedCatalog,
           ),
         );
         _resetSessionLifecycle();

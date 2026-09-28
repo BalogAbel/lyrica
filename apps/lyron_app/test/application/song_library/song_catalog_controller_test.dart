@@ -758,7 +758,13 @@ void main() {
     );
 
     test(
-      'confirmed session expiry blocks cached authenticated reading',
+      // Task 2.2 (F-F #1): this assertion used to encode the old
+      // destructive behaviour (clearContext: true on a post-verify expired
+      // result). Per the invariant, a session-verifier expiry is not one
+      // of the four allowed context-change causes -- the resolved context
+      // and its cached data must stay visible, status-only.
+      'confirmed session expiry preserves the established context and '
+      'reports the cached catalog as offline-available',
       () async {
         await store.replaceActiveSnapshot(
           userId: 'user-1',
@@ -792,13 +798,16 @@ void main() {
 
         await controller.refreshCatalog();
 
-        expect(controller.state.context, isNull);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
         expect(
           controller.state.connectionStatus,
-          CatalogConnectionStatus.unavailable,
+          CatalogConnectionStatus.offlineCached,
         );
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
-        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(controller.state.hasCachedCatalog, isTrue);
         expect(sessionVerifierCalls, 1);
 
         await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -849,7 +858,14 @@ void main() {
     );
 
     test(
-      'authorization failure while refreshing the song catalog expires the session and stops refresh retries',
+      // Task 2.2 (F-F #2): this assertion used to encode the old
+      // destructive behaviour (clearContext: true on a listSongs()
+      // authorization failure). Per the invariant, this is not one of the
+      // four allowed context-change causes -- the org lookup already
+      // resolved and verified this context this attempt, so it must stay
+      // status-only (connectionStatus reflects the absence of a cached
+      // snapshot here, but context itself is preserved).
+      'authorization failure while refreshing the song catalog expires the session, preserves context, and stops refresh retries',
       () async {
         final foregroundState = _TestAppForegroundState();
         final delayedRepository = _DelayedSongRepository();
@@ -884,7 +900,10 @@ void main() {
         );
         await refreshFuture;
 
-        expect(controller.state.context, isNull);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
         expect(
           controller.state.connectionStatus,
@@ -1754,6 +1773,134 @@ void main() {
         expect(controller.state.context, isNull);
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
         expect(controller.state.hasCachedCatalog, isFalse);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-C): the org-lookup authorization-failure branch used to
+      // reset unconditionally to CatalogSnapshotState.initial(), destroying
+      // an already-established context even though an authorization
+      // failure is not one of the invariant's four context-change causes.
+      // This test fails against that old code (context becomes null).
+      'org-lookup authorization failure preserves an already-established '
+      'context and only marks the session expired',
+      () async {
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        organizationReaderState.nextError = const AuthApiException(
+          'unauthorized',
+          statusCode: '401',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(
+          controller.state.hasCachedCatalog,
+          establishedHasCachedCatalog,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-F #1): the post-verify sessionStatus == expired branch
+      // used to clearContext: true unconditionally. Fails against old code
+      // (context becomes null, connectionStatus becomes unavailable).
+      'post-verify session-expired result preserves context and reports '
+      'offlineCached when a cached snapshot exists',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        var sessionStatus = CatalogSessionStatus.verified;
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => sessionStatus,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+
+        sessionStatus = CatalogSessionStatus.expired;
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-F #2): the listSongs() authorization-failure catch
+      // branch used to clearContext: true unconditionally. Fails against
+      // old code (context becomes null).
+      'listSongs authorization failure preserves context and cached '
+      'catalog visibility',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        remoteRepository.listSongsError = const AuthApiException(
+          'unauthorized',
+          statusCode: '401',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(
+          controller.state.hasCachedCatalog,
+          establishedHasCachedCatalog,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
       },
     );
 
