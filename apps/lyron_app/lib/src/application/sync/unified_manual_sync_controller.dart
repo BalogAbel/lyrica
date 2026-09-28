@@ -111,15 +111,11 @@ class UnifiedManualSyncController extends ChangeNotifier {
   }
 
   Future<UnifiedManualSyncRunResult> _runOnce() async {
-    final context = _activeContextReader();
-    if (context == null) {
-      return const UnifiedManualSyncRunResult.clean();
-    }
-    // Local-first now normally keeps `context` populated even under
-    // sessionExpired, so a non-null context is no longer proof the session
-    // can sync. Attempting the four network steps here would just produce
-    // spurious failures instead of the user's real problem: needs to
-    // re-authenticate. Skip all four outright rather than attempt-and-catch.
+    // Check sessionExpired FIRST, before context nullness. A null context
+    // under sessionExpired is reachable (empty local-first snapshot, no
+    // organizationId with no store fallback, first refresh never completed
+    // before expiry) and must still surface requiresReauth -- otherwise the
+    // user presses Sync, gets a silent no-op, and has no path to re-auth.
     if (_authStatusReader() == AppAuthStatus.sessionExpired) {
       return const UnifiedManualSyncRunResult(
         songSyncFailed: false,
@@ -128,6 +124,10 @@ class UnifiedManualSyncController extends ChangeNotifier {
         planningRefreshFailed: false,
         requiresReauth: true,
       );
+    }
+    final context = _activeContextReader();
+    if (context == null) {
+      return const UnifiedManualSyncRunResult.clean();
     }
     var songSyncFailed = false;
     var songCatalogRefreshFailed = false;
