@@ -1181,7 +1181,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('open-popup')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('unified-sync-popup-sync-now')));
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-popup-sync-now')),
+      );
       await tester.pumpAndSettle();
 
       expect(fakeController.syncNowCalls, 1);
@@ -1203,7 +1205,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('open-popup')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('unified-sync-popup-sync-now')));
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-popup-sync-now')),
+      );
       await tester.pumpAndSettle();
 
       expect(fakeController.syncNowCalls, 1);

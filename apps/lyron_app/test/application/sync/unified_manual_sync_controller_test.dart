@@ -110,99 +110,87 @@ void main() {
       expect(ran, isFalse);
     });
 
-    test(
-      'sessionExpired with a preserved context skips all four steps and '
-      'reports requiresReauth without failures (Task 2.6a)',
-      () async {
-        var callCount = 0;
-        final controller = UnifiedManualSyncController(
-          activeContextReader: _ctx,
-          authStatusReader: () => AppAuthStatus.sessionExpired,
-          syncSongMutations: (_) async => callCount++,
-          refreshSongCatalog: () async => callCount++,
-          syncPlanningMutations: (_) async => callCount++,
-          refreshPlanning: () async => callCount++,
-        );
+    test('sessionExpired with a preserved context skips all four steps and '
+        'reports requiresReauth without failures (Task 2.6a)', () async {
+      var callCount = 0;
+      final controller = UnifiedManualSyncController(
+        activeContextReader: _ctx,
+        authStatusReader: () => AppAuthStatus.sessionExpired,
+        syncSongMutations: (_) async => callCount++,
+        refreshSongCatalog: () async => callCount++,
+        syncPlanningMutations: (_) async => callCount++,
+        refreshPlanning: () async => callCount++,
+      );
 
-        final result = await controller.syncNow();
+      final result = await controller.syncNow();
 
-        expect(callCount, 0);
-        expect(result.requiresReauth, isTrue);
-        expect(result.songSyncFailed, isFalse);
-        expect(result.songCatalogRefreshFailed, isFalse);
-        expect(result.planningSyncFailed, isFalse);
-        expect(result.planningRefreshFailed, isFalse);
-        expect(result.anyFailure, isFalse);
-      },
-    );
+      expect(callCount, 0);
+      expect(result.requiresReauth, isTrue);
+      expect(result.songSyncFailed, isFalse);
+      expect(result.songCatalogRefreshFailed, isFalse);
+      expect(result.planningSyncFailed, isFalse);
+      expect(result.planningRefreshFailed, isFalse);
+      expect(result.anyFailure, isFalse);
+    });
 
-    test(
-      'sessionExpired with null context still reports requiresReauth, not '
-      'clean (I1)',
-      () async {
-        var callCount = 0;
-        final controller = UnifiedManualSyncController(
-          activeContextReader: () => null,
-          authStatusReader: () => AppAuthStatus.sessionExpired,
-          syncSongMutations: (_) async => callCount++,
-          refreshSongCatalog: () async => callCount++,
-          syncPlanningMutations: (_) async => callCount++,
-          refreshPlanning: () async => callCount++,
-        );
+    test('sessionExpired with null context still reports requiresReauth, not '
+        'clean (I1)', () async {
+      var callCount = 0;
+      final controller = UnifiedManualSyncController(
+        activeContextReader: () => null,
+        authStatusReader: () => AppAuthStatus.sessionExpired,
+        syncSongMutations: (_) async => callCount++,
+        refreshSongCatalog: () async => callCount++,
+        syncPlanningMutations: (_) async => callCount++,
+        refreshPlanning: () async => callCount++,
+      );
 
-        final result = await controller.syncNow();
+      final result = await controller.syncNow();
 
-        expect(callCount, 0);
-        expect(result.requiresReauth, isTrue);
-        expect(result.songSyncFailed, isFalse);
-        expect(result.songCatalogRefreshFailed, isFalse);
-        expect(result.planningSyncFailed, isFalse);
-        expect(result.planningRefreshFailed, isFalse);
-        expect(result.anyFailure, isFalse);
-      },
-    );
+      expect(callCount, 0);
+      expect(result.requiresReauth, isTrue);
+      expect(result.songSyncFailed, isFalse);
+      expect(result.songCatalogRefreshFailed, isFalse);
+      expect(result.planningSyncFailed, isFalse);
+      expect(result.planningRefreshFailed, isFalse);
+      expect(result.anyFailure, isFalse);
+    });
 
-    test(
-      'non-sessionExpired status with null context stays clean, not '
-      'requiresReauth (I1 regression, other direction)',
-      () async {
-        var ran = false;
-        final controller = UnifiedManualSyncController(
-          activeContextReader: () => null,
-          authStatusReader: () => AppAuthStatus.signedIn,
-          syncSongMutations: (_) async => ran = true,
-          refreshSongCatalog: () async => ran = true,
-          syncPlanningMutations: (_) async => ran = true,
-          refreshPlanning: () async => ran = true,
-        );
+    test('non-sessionExpired status with null context stays clean, not '
+        'requiresReauth (I1 regression, other direction)', () async {
+      var ran = false;
+      final controller = UnifiedManualSyncController(
+        activeContextReader: () => null,
+        authStatusReader: () => AppAuthStatus.signedIn,
+        syncSongMutations: (_) async => ran = true,
+        refreshSongCatalog: () async => ran = true,
+        syncPlanningMutations: (_) async => ran = true,
+        refreshPlanning: () async => ran = true,
+      );
 
-        final result = await controller.syncNow();
+      final result = await controller.syncNow();
 
-        expect(ran, isFalse);
-        expect(result.requiresReauth, isFalse);
-        expect(result.anyFailure, isFalse);
-      },
-    );
+      expect(ran, isFalse);
+      expect(result.requiresReauth, isFalse);
+      expect(result.anyFailure, isFalse);
+    });
 
-    test(
-      'signedIn with a preserved context runs all four steps unchanged '
-      '(regression guard for Task 2.6b)',
-      () async {
-        final calls = <String>[];
-        final controller = UnifiedManualSyncController(
-          activeContextReader: _ctx,
-          authStatusReader: () => AppAuthStatus.signedIn,
-          syncSongMutations: (_) async => calls.add('song'),
-          refreshSongCatalog: () async => calls.add('catalog'),
-          syncPlanningMutations: (_) async => calls.add('planning'),
-          refreshPlanning: () async => calls.add('planRefresh'),
-        );
+    test('signedIn with a preserved context runs all four steps unchanged '
+        '(regression guard for Task 2.6b)', () async {
+      final calls = <String>[];
+      final controller = UnifiedManualSyncController(
+        activeContextReader: _ctx,
+        authStatusReader: () => AppAuthStatus.signedIn,
+        syncSongMutations: (_) async => calls.add('song'),
+        refreshSongCatalog: () async => calls.add('catalog'),
+        syncPlanningMutations: (_) async => calls.add('planning'),
+        refreshPlanning: () async => calls.add('planRefresh'),
+      );
 
-        final result = await controller.syncNow();
+      final result = await controller.syncNow();
 
-        expect(calls, ['song', 'catalog', 'planning', 'planRefresh']);
-        expect(result.requiresReauth, isFalse);
-      },
-    );
+      expect(calls, ['song', 'catalog', 'planning', 'planRefresh']);
+      expect(result.requiresReauth, isFalse);
+    });
   });
 }

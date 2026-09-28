@@ -160,7 +160,10 @@ void main() {
         // fails (offline here -- any refresh failure reproduces this, since
         // _refreshPlanning never re-checks ownership before reusing
         // _state.userId).
-        session = const AppAuthSession(userId: 'user-B', email: 'b@lyron.local');
+        session = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
         remoteRepository.error = Exception('offline');
 
         await controller.refreshPlanning();
@@ -876,54 +879,51 @@ void main() {
       expect(remoteRepository.fetchCallCount, fetchCallCountBefore);
     });
 
-    test(
-      'refreshPlanning establishes local-first context on every refresh '
-      'attempt with a null-session boundary, not only at the '
-      'sessionExpired transition',
-      () async {
-        await store.replaceActiveProjection(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          plans: [
-            CachedPlanRecord(
-              id: 'plan-1',
-              slug: 'plan-org-1',
-              name: 'Plan org-1',
-              description: 'Description org-1',
-              scheduledFor: DateTime.utc(2026, 4, 5, 9),
-              updatedAt: DateTime.utc(2026, 4, 3, 12),
-              version: 1,
-            ),
-          ],
-          sessions: const [],
-          items: const [],
-          refreshedAt: DateTime.utc(2026, 4, 3, 12),
-        );
-        remoteRepository.error = StateError('network unreachable');
+    test('refreshPlanning establishes local-first context on every refresh '
+        'attempt with a null-session boundary, not only at the '
+        'sessionExpired transition', () async {
+      await store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-org-1',
+            name: 'Plan org-1',
+            description: 'Description org-1',
+            scheduledFor: DateTime.utc(2026, 4, 5, 9),
+            updatedAt: DateTime.utc(2026, 4, 3, 12),
+            version: 1,
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+      remoteRepository.error = StateError('network unreachable');
 
-        final controller = PlanningSyncController(
-          localStore: () => store,
-          localDataLifecycle: lifecycle,
-          remoteRepository: () => remoteRepository,
-          authSessionReader: () => null,
-          lastKnownIdentityReader: () =>
-              (userId: 'user-1', organizationId: 'org-1'),
-        );
+      final controller = PlanningSyncController(
+        localStore: () => store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: () => remoteRepository,
+        authSessionReader: () => null,
+        lastKnownIdentityReader: () =>
+            (userId: 'user-1', organizationId: 'org-1'),
+      );
 
-        await controller.handleSessionExpired();
-        // NOTE: handleOfflineAuthenticated() is deliberately NOT called
-        // here. refreshPlanning() alone, on a later refresh attempt (e.g. a
-        // foreground resume), must be able to establish local-first
-        // context on its own.
-        await controller.refreshPlanning();
+      await controller.handleSessionExpired();
+      // NOTE: handleOfflineAuthenticated() is deliberately NOT called
+      // here. refreshPlanning() alone, on a later refresh attempt (e.g. a
+      // foreground resume), must be able to establish local-first
+      // context on its own.
+      await controller.refreshPlanning();
 
-        expect(controller.state.userId, 'user-1');
-        expect(controller.state.organizationId, 'org-1');
-        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
-        expect(controller.state.hasLocalPlanningData, isTrue);
-        expect(remoteRepository.fetchCallCount, 0);
-      },
-    );
+      expect(controller.state.userId, 'user-1');
+      expect(controller.state.organizationId, 'org-1');
+      expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+      expect(controller.state.hasLocalPlanningData, isTrue);
+      expect(remoteRepository.fetchCallCount, 0);
+    });
 
     test(
       'switching to a new active organization that fails to refresh does not expose the previous organization projection',

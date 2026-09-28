@@ -1810,10 +1810,7 @@ void main() {
         await controller.refreshCatalog();
 
         expect(controller.state.context, establishedContext);
-        expect(
-          controller.state.hasCachedCatalog,
-          establishedHasCachedCatalog,
-        );
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
       },
     );
@@ -1851,10 +1848,8 @@ void main() {
           final establishedContext = controller.state.context;
           expect(establishedContext, isNotNull);
           final establishedSessionStatus = controller.state.sessionStatus;
-          final establishedConnectionStatus =
-              controller.state.connectionStatus;
-          final establishedHasCachedCatalog =
-              controller.state.hasCachedCatalog;
+          final establishedConnectionStatus = controller.state.connectionStatus;
+          final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
 
           organizationReaderState.nextError = AuthRetryableFetchException();
           unawaited(controller.refreshCatalog());
@@ -2049,10 +2044,7 @@ void main() {
         await controller.refreshCatalog();
 
         expect(controller.state.context, establishedContext);
-        expect(
-          controller.state.hasCachedCatalog,
-          establishedHasCachedCatalog,
-        );
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
       },
     );
@@ -2135,10 +2127,7 @@ void main() {
         await controller.refreshCatalog();
 
         expect(controller.state.context, establishedContext);
-        expect(
-          controller.state.hasCachedCatalog,
-          establishedHasCachedCatalog,
-        );
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
       },
     );

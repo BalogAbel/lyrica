@@ -198,117 +198,108 @@ void main() {
   // an ordinary same-user signedIn re-edge (token refresh, foreground
   // resume, re-sign-in) -- that starves the local-first context path.
   group('F-D: unknown-resolution branch preserves organizationId', () {
-    test(
-      'same-user connectivity-failure resolution preserves the prior '
-      'organizationId instead of overwriting it with null',
-      () async {
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-1',
-            email: 'user@example.com',
-            organizationId: 'org-known',
+    test('same-user connectivity-failure resolution preserves the prior '
+        'organizationId instead of overwriting it with null', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user@example.com',
+          organizationId: 'org-known',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async =>
+                const ActiveOrganizationResolution.unknownConnectivityFailure(),
           ),
-        );
-        authRepository.currentSession = const AppAuthSession(
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-1');
+      expect(identityStore.writes.single.organizationId, 'org-known');
+    });
+
+    test('same-user unresolvable (non-connectivity, resolution == null) '
+        'preserves the prior organizationId instead of overwriting it with '
+        'null', () async {
+      identityStore.seed(
+        const LastKnownIdentity(
           userId: 'user-1',
           email: 'user@example.com',
-        );
-        final container = ProviderContainer(
-          overrides: [
-            appAuthControllerProvider.overrideWith((_) => authController),
-            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-            activeOrganizationResolutionProvider.overrideWithValue(
-              () async =>
-                  const ActiveOrganizationResolution.unknownConnectivityFailure(),
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        container.read(appAuthListenableProvider);
-        await authController.restoreSession();
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
-
-        expect(identityStore.writes, hasLength(1));
-        expect(identityStore.writes.single.userId, 'user-1');
-        expect(identityStore.writes.single.organizationId, 'org-known');
-      },
-    );
-
-    test(
-      'same-user unresolvable (non-connectivity, resolution == null) '
-      'preserves the prior organizationId instead of overwriting it with '
-      'null',
-      () async {
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-1',
-            email: 'user@example.com',
-            organizationId: 'org-known',
+          organizationId: 'org-known',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          // Throwing here makes membershipResolutionDetailedProvider's
+          // await propagate out of resolveRaw(), which the listener's
+          // own try/catch turns into `resolution = null` -- the "an
+          // uninitialized backend" branch called out at auth_providers
+          // .dart:221-227.
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => throw StateError('backend unavailable'),
           ),
-        );
-        authRepository.currentSession = const AppAuthSession(
-          userId: 'user-1',
-          email: 'user@example.com',
-        );
-        final container = ProviderContainer(
-          overrides: [
-            appAuthControllerProvider.overrideWith((_) => authController),
-            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-            // Throwing here makes membershipResolutionDetailedProvider's
-            // await propagate out of resolveRaw(), which the listener's
-            // own try/catch turns into `resolution = null` -- the "an
-            // uninitialized backend" branch called out at auth_providers
-            // .dart:221-227.
-            activeOrganizationResolutionProvider.overrideWithValue(
-              () async => throw StateError('backend unavailable'),
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
+        ],
+      );
+      addTearDown(container.dispose);
 
-        container.read(appAuthListenableProvider);
-        await authController.restoreSession();
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        expect(identityStore.writes, hasLength(1));
-        expect(identityStore.writes.single.userId, 'user-1');
-        expect(identityStore.writes.single.organizationId, 'org-known');
-      },
-    );
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-1');
+      expect(identityStore.writes.single.organizationId, 'org-known');
+    });
 
-    test(
-      'regression guard: a genuinely new user (no prior identity row) with '
-      'an unknown resolution still gets organizationId: null',
-      () async {
-        authRepository.currentSession = const AppAuthSession(
-          userId: 'user-1',
-          email: 'user@example.com',
-        );
-        final container = ProviderContainer(
-          overrides: [
-            appAuthControllerProvider.overrideWith((_) => authController),
-            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-            activeOrganizationResolutionProvider.overrideWithValue(
-              () async =>
-                  const ActiveOrganizationResolution.unknownConnectivityFailure(),
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
+    test('regression guard: a genuinely new user (no prior identity row) with '
+        'an unknown resolution still gets organizationId: null', () async {
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-1',
+        email: 'user@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async =>
+                const ActiveOrganizationResolution.unknownConnectivityFailure(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
 
-        container.read(appAuthListenableProvider);
-        await authController.restoreSession();
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        expect(identityStore.writes, hasLength(1));
-        expect(identityStore.writes.single.userId, 'user-1');
-        expect(identityStore.writes.single.organizationId, isNull);
-      },
-    );
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-1');
+      expect(identityStore.writes.single.organizationId, isNull);
+    });
   });
 
   test(
@@ -914,47 +905,44 @@ void main() {
     // `priorIdentity.userId == session.userId` is false and the branch
     // still writes organizationId: null for the new user, same as before
     // this fix.
-    test(
-      'different-user wipe-and-proceed with an unknown resolution still '
-      'writes organizationId: null for the new user',
-      () async {
-        await seedPriorUserData();
-        identityStore.seed(
-          const LastKnownIdentity(
-            userId: 'user-1',
-            email: 'user1@example.com',
-            organizationId: 'org-1',
+    test('different-user wipe-and-proceed with an unknown resolution still '
+        'writes organizationId: null for the new user', () async {
+      await seedPriorUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async =>
+                const ActiveOrganizationResolution.unknownConnectivityFailure(),
           ),
-        );
-        authRepository.currentSession = const AppAuthSession(
-          userId: 'user-2',
-          email: 'user2@example.com',
-        );
-        final container = ProviderContainer(
-          overrides: [
-            appAuthControllerProvider.overrideWith((_) => authController),
-            lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
-            songCatalogDatabaseProvider.overrideWithValue(songDatabase),
-            planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
-            activeOrganizationResolutionProvider.overrideWithValue(
-              () async =>
-                  const ActiveOrganizationResolution.unknownConnectivityFailure(),
-            ),
-          ],
-        );
-        addTearDown(container.dispose);
+        ],
+      );
+      addTearDown(container.dispose);
 
-        container.read(appAuthListenableProvider);
-        await authController.restoreSession();
-        await pump();
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
 
-        expect(container.read(reauthPromptControllerProvider).pending, isNull);
-        expect(identityStore.clearCount, 1);
-        expect(identityStore.writes, hasLength(1));
-        expect(identityStore.writes.single.userId, 'user-2');
-        expect(identityStore.writes.single.organizationId, isNull);
-      },
-    );
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+      expect(identityStore.clearCount, 1);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-2');
+      expect(identityStore.writes.single.organizationId, isNull);
+    });
 
     test('outcome 3: different user with pending work is confirmed first; on '
         'confirm the prior catalog, planning data and identity are wiped and '

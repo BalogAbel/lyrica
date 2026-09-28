@@ -100,45 +100,39 @@ void main() {
 
     final request = http.Request('GET', Uri.parse('https://example.com/'));
 
-    expect(
-      client.send(request),
-      throwsA(isA<TimeoutException>()),
-    );
+    expect(client.send(request), throwsA(isA<TimeoutException>()));
   });
 
-  test(
-    'a TracingHttpClient timeout surfaces as AuthRetryableFetchException '
-    'when driven through a real gotrue GoTrueClient (gotrue-2.27.2, pinned '
-    'via supabase_flutter)',
-    () async {
-      // Real characterization test, not a source citation: a genuine
-      // GoTrueClient is constructed with a TracingHttpClient (wrapping an
-      // inner http.Client that never completes, with a short test-only
-      // timeout) as its httpClient, and a real gotrue method is called.
-      // gotrue's GotrueFetch._handleRequest wraps ANY exception the injected
-      // http.Client throws -- including our TimeoutException -- as
-      // AuthRetryableFetchException. This exercises that live, not merely
-      // asserting it from reading gotrue-2.27.2/lib/src/fetch.dart.
-      final inner = _NeverCompletingInnerClient();
-      final tracingClient = TracingHttpClient(
-        inner,
-        const _FakeObservability(null),
-        timeout: const Duration(milliseconds: 50),
-        isWeb: false,
-      );
+  test('a TracingHttpClient timeout surfaces as AuthRetryableFetchException '
+      'when driven through a real gotrue GoTrueClient (gotrue-2.27.2, pinned '
+      'via supabase_flutter)', () async {
+    // Real characterization test, not a source citation: a genuine
+    // GoTrueClient is constructed with a TracingHttpClient (wrapping an
+    // inner http.Client that never completes, with a short test-only
+    // timeout) as its httpClient, and a real gotrue method is called.
+    // gotrue's GotrueFetch._handleRequest wraps ANY exception the injected
+    // http.Client throws -- including our TimeoutException -- as
+    // AuthRetryableFetchException. This exercises that live, not merely
+    // asserting it from reading gotrue-2.27.2/lib/src/fetch.dart.
+    final inner = _NeverCompletingInnerClient();
+    final tracingClient = TracingHttpClient(
+      inner,
+      const _FakeObservability(null),
+      timeout: const Duration(milliseconds: 50),
+      isWeb: false,
+    );
 
-      final client = GoTrueClient(
-        url: 'https://example.supabase.co/auth/v1',
-        httpClient: tracingClient,
-        // No token to auto-refresh in this test, and startAutoRefresh()
-        // would otherwise leave a periodic Timer running past the test.
-        autoRefreshToken: false,
-      );
+    final client = GoTrueClient(
+      url: 'https://example.supabase.co/auth/v1',
+      httpClient: tracingClient,
+      // No token to auto-refresh in this test, and startAutoRefresh()
+      // would otherwise leave a periodic Timer running past the test.
+      autoRefreshToken: false,
+    );
 
-      await expectLater(
-        client.getUser('a-fake-jwt-for-this-test-only'),
-        throwsA(isA<AuthRetryableFetchException>()),
-      );
-    },
-  );
+    await expectLater(
+      client.getUser('a-fake-jwt-for-this-test-only'),
+      throwsA(isA<AuthRetryableFetchException>()),
+    );
+  });
 }

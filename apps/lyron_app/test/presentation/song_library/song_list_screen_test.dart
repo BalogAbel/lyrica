@@ -1073,10 +1073,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.text(AppStrings.songCatalogUnavailableMessage),
-        findsNothing,
-      );
+      expect(find.text(AppStrings.songCatalogUnavailableMessage), findsNothing);
       expect(find.text('Egy út'), findsOneWidget);
     },
   );
@@ -1102,10 +1099,7 @@ void main() {
         find.text(AppStrings.songCatalogUnavailableMessage),
         findsOneWidget,
       );
-      expect(
-        find.text(AppStrings.songListEmptyMessage),
-        findsNothing,
-      );
+      expect(find.text(AppStrings.songListEmptyMessage), findsNothing);
     },
   );
 }

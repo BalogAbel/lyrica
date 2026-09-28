@@ -87,9 +87,7 @@ class PlanningSyncController extends ChangeNotifier {
       // wiping to initial() and waiting for a later event to recover.
       if (_state.userId == context.userId &&
           _state.organizationId == context.organizationId) {
-        _setState(
-          _state.copyWith(accessStatus: PlanningAccessStatus.signedIn),
-        );
+        _setState(_state.copyWith(accessStatus: PlanningAccessStatus.signedIn));
         return;
       }
 
