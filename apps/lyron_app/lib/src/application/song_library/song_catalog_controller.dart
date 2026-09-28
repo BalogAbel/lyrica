@@ -201,6 +201,30 @@ class SongCatalogController extends ChangeNotifier {
     }
     _rememberAuthenticatedUser(session.userId);
 
+    // Captured before the local-first attempt below so the org-lookup
+    // connectivity-failure branch further down (which short-circuits
+    // whenever "context is already established") can tell a context that
+    // was already valid BEFORE this refresh attempt apart from one this
+    // same call just established locally. Only the former is safe to
+    // treat as "nothing to do, a good status already reflects this" --
+    // the latter still needs this attempt to compute a real
+    // connectionStatus/sessionStatus for the freshly-established context,
+    // or an offline cold start would surface a stale `verified` status
+    // from CatalogSnapshotState.initial()'s default.
+    final hadContextBeforeRefresh = _state.context != null;
+    if (!hadContextBeforeRefresh) {
+      final identity = _lastKnownIdentityReader?.call();
+      await _tryEstablishLocalFirstContext(
+        generation: generation,
+        sessionUserId: session.userId,
+        identityUserId: identity?.userId,
+        identityOrganizationId: identity?.organizationId,
+      );
+      if (_isStale(generation)) {
+        return;
+      }
+    }
+
     String? organizationId;
     var organizationLookupWasConnectivityFailure = false;
     try {
@@ -222,7 +246,7 @@ class SongCatalogController extends ChangeNotifier {
       }
       if (_isConnectivityFailure(error)) {
         organizationLookupWasConnectivityFailure = true;
-        if (_state.context != null) {
+        if (hadContextBeforeRefresh) {
           return;
         }
         if (!_verifiedEmptyMembershipSeen) {
@@ -660,6 +684,76 @@ class SongCatalogController extends ChangeNotifier {
       _rememberAuthenticatedUser(session.userId);
     }
     _updateRefreshScheduler();
+  }
+
+  // Step 1 (docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+  // Task 1.1): local-first context establishment, purely from local data --
+  // no network call, no session verification. Reused by _refreshCatalogBody
+  // (signed-in path, sessionUserId non-null) and, from a later task, by the
+  // sessionExpired path (sessionUserId null, identity-only). Deliberately
+  // NOT a membership resolution: it never touches
+  // _verifiedEmptyMembershipSeen or the membership-revocation marker (D5.2).
+  //
+  // Org resolution order: the last-known identity's own organizationId when
+  // that identity's userId matches the userId this call is establishing
+  // context for, else the store's own last-cached organization id for that
+  // userId. Only ever sets state when a non-empty local snapshot exists for
+  // the resulting (userId, organizationId) pair, and never overwrites a
+  // context another, newer refresh already established while this method's
+  // local reads were in flight (the two staleness/clobber checks below).
+  Future<bool> _tryEstablishLocalFirstContext({
+    required int generation,
+    required String? sessionUserId,
+    required String? identityUserId,
+    required String? identityOrganizationId,
+  }) async {
+    final userId = sessionUserId ?? identityUserId;
+    if (userId == null) {
+      return false;
+    }
+
+    var organizationId = identityUserId == userId
+        ? identityOrganizationId
+        : null;
+    organizationId ??= await _store.readLatestCachedOrganizationId(
+      userId: userId,
+    );
+    if (_isStale(generation)) {
+      return false;
+    }
+    if (organizationId == null) {
+      return false;
+    }
+
+    final context = ActiveCatalogContext(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    final hasCachedCatalog = await _hasCachedCatalog(context);
+    if (_isStale(generation)) {
+      return false;
+    }
+    if (!hasCachedCatalog) {
+      return false;
+    }
+    if (_state.context != null) {
+      // A concurrent refresh (e.g. connectivity returned moments after this
+      // read started) may have already established a real context while
+      // this local read was in flight. Never clobber it -- same rule
+      // handleOfflineAuthenticated already applies.
+      return false;
+    }
+
+    _setStateIfCurrent(
+      generation,
+      _state.copyWith(
+        context: context,
+        connectionStatus: CatalogConnectionStatus.offlineCached,
+        refreshStatus: CatalogRefreshStatus.idle,
+        hasCachedCatalog: true,
+      ),
+    );
+    return true;
   }
 
   Future<bool> _hasCachedCatalog(ActiveCatalogContext context) async {

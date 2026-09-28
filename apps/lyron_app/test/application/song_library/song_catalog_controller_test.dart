@@ -1470,6 +1470,59 @@ void main() {
       );
     });
 
+    test(
+      'refreshCatalog establishes local-first context from a cached snapshot '
+      'before the network organization lookup ever resolves',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final organizationLookup = Completer<String?>();
+        final sessionVerification = Completer<CatalogSessionStatus>();
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () => organizationLookup.future,
+          sessionVerifier: () => sessionVerification.future,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        unawaited(controller.refreshCatalog());
+        // Pump the event loop once without ever completing the hung network
+        // futures above.
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+
+        // Cleanup: let the in-flight refresh settle so the test doesn't leak
+        // a pending timer/future.
+        organizationLookup.complete('org-1');
+        sessionVerification.complete(CatalogSessionStatus.verified);
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
+
     group('observability instrumentation', () {
       test(
         'a successful refresh records the start and success breadcrumbs',

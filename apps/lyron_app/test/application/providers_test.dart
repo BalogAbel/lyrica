@@ -307,14 +307,26 @@ void main() {
     final controller = container.read(songCatalogControllerProvider);
     await controller.refreshCatalog();
 
-    // The catalog context clears (no organization resolved), but nothing
-    // was deleted. planningSyncStateProvider's accessStatus is left
-    // exactly as it was before this resolution -- Step 1 no longer runs
+    // Local-first (docs/specs/2026-09-28-offline-catalog-local-first
+    // -visibility.md, Task 1.1) establishes context from the cached
+    // snapshot before this refresh's organization lookup ever runs. The
+    // lookup then genuinely resolves to null (no membership) -- but a
+    // single verified-empty resolution only records the marker, it does
+    // not purge (D5.4/D5.5), so per the invariant (only a real purge,
+    // sign-out, a fresh differently-named resolution, or a different-user
+    // sign-in may change `context`) the locally-established context and
+    // cached data survive this one resolution untouched.
+    // planningSyncStateProvider's accessStatus is left exactly as it was
+    // before this resolution -- Step 1 no longer runs
     // PlanningSyncController.handleVerifiedEmptyMembership's state reset
     // on a first resolution (that reset only belongs to an actual purge,
     // which does not happen here); with no organization ever resolved in
     // this test, that status never left its signedOut default.
-    expect(controller.state.context, isNull);
+    expect(
+      controller.state.context,
+      const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+    );
+    expect(controller.state.hasCachedCatalog, isTrue);
     expect(
       container.read(planningSyncStateProvider).accessStatus,
       PlanningAccessStatus.signedOut,
