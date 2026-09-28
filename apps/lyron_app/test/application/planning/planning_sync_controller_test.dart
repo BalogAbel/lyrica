@@ -134,8 +134,12 @@ void main() {
       // user A's planning context is established, then user B signs in on
       // the same device (this call path is new since Task 2.7). Fails
       // against old code: state.userId stays 'user-A', and -- without the
-      // guard -- _refreshPlanning goes on to fetch org-A's payload and
-      // write it into the store under user B's session. The remote fetch
+      // guard -- _refreshPlanning goes on to fetch org-A's payload (using
+      // user B's live session token, since that's the only session the
+      // controller has) and write it into the store keyed by the stale
+      // captured userId 'user-A', overwriting A's local projection out
+      // from under the confirmation dialog still pending on the
+      // different-user sign-in flow. The remote fetch
       // deliberately succeeds here (no forced offline error) so a missing
       // guard is caught by both the fetch-call-count and the
       // replaceActiveProjection-call-count assertions below, not only by
@@ -182,7 +186,7 @@ void main() {
           isNot('user-A'),
           reason:
               'user A\'s stale planning context must never surface once '
-              'user B has signed in, even when the refresh fails',
+              'user B has signed in',
         );
         expect(
           remoteRepository.fetchCallsByOrganizationId,

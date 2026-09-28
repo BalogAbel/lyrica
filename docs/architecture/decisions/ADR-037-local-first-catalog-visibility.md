@@ -94,7 +94,7 @@ to do to a `context` it does not own the deletion policy for.
   clear `context` must justify itself against the four-cause invariant
   above, not merely against "this call failed."
 
-## Amendment: two-tier HTTP timeout (2026-09-28, PR #79 review)
+## Amendment: three-tier HTTP timeout (2026-09-28, PR #79 review)
 
 The 15s single-timeout shape (Step 1 item 2, as originally accepted) bounded
 how long a hung request could stay invisible, but wrapped the *entire*
