@@ -154,12 +154,32 @@ class PlanningSyncController extends ChangeNotifier {
 
   Future<void> _refreshPlanning() async {
     final generation = _refreshGeneration;
-    var userId = _state.userId;
-    var organizationId = _state.organizationId;
     final session = _authSessionReader();
     if (_disposed || _state.accessStatus == PlanningAccessStatus.signedOut) {
       return;
     }
+    // I3 ownership guard (Opus adversarial review of the whole branch diff,
+    // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+    // Invariant cause 4): _state.userId may have been established for a
+    // DIFFERENT user (e.g. while sessionExpired, via local-first) and a
+    // different user has since signed in on this device (this call path is
+    // new since Task 2.7). Without this check the code below reuses
+    // _state.userId/organizationId unrevalidated, silently
+    // refreshing/reporting the PRIOR user's stale planning context under
+    // the new session. Reset to initial() so local-first / the fetch below
+    // run fresh for the CURRENT session's user, mirroring
+    // SongCatalogController's equivalent guard in _refreshCatalogBody.
+    if (session != null &&
+        _state.userId != null &&
+        _state.userId != session.userId) {
+      _setState(
+        const PlanningSyncState.initial().copyWith(
+          accessStatus: PlanningAccessStatus.signedIn,
+        ),
+      );
+    }
+    var userId = _state.userId;
+    var organizationId = _state.organizationId;
     if (session == null || userId == null || organizationId == null) {
       // Task 2.7 (docs/specs/2026-09-28-offline-catalog-local-first
       // -visibility.md, Step 2 item 7): mirrors SongCatalogController's

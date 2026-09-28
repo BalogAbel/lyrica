@@ -1961,6 +1961,64 @@ void main() {
     );
 
     test(
+      // I3 (Opus adversarial review of the whole branch diff,
+      // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+      // Invariant cause 4): _refreshCatalogBody never compares
+      // _state.context's userId against the CURRENT session's userId.
+      // Scenario: user A's context is established (e.g. while
+      // sessionExpired, via local-first). User B then signs in on the same
+      // device. hadContextBeforeRefresh is true (context is non-null), so
+      // local-first is skipped -- but if the org lookup then fails for ANY
+      // reason (connectivity here), Tasks 2.2/2.3's context-preserving
+      // fixes keep user A's OLD context displayed to user B instead of
+      // clearing it. Fails against old code: state.context stays A's.
+      'org-lookup failure after a different user signs in does not '
+      'preserve the prior user\'s stale context',
+      () async {
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        expect(establishedContext!.userId, 'user-A');
+
+        // User B signs in on the same device. The org lookup then fails
+        // (connectivity here -- any of the Tasks 2.2/2.3 failure kinds
+        // reproduces this) while user A's context is still in state.
+        currentSession = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+        organizationReaderState.nextError = AuthRetryableFetchException();
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context?.userId,
+          isNot('user-A'),
+          reason:
+              'user A\'s stale context must never surface once user B has '
+              'signed in, even when the org lookup fails',
+        );
+      },
+    );
+
+    test(
       // Task 2.3 (F-E) regression guard: a genuine AuthException that is
       // NOT AuthRetryableFetchException must still take the
       // authorization/expiry path. The fix must not overcorrect and treat

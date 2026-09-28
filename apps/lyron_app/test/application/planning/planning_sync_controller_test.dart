@@ -126,6 +126,55 @@ void main() {
       },
     );
 
+    test(
+      // I3 analog (Opus adversarial review of the whole branch diff,
+      // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+      // Invariant cause 4): _refreshPlanning never compares _state.userId
+      // against the CURRENT session's userId before reusing it. Scenario:
+      // user A's planning context is established, then user B signs in on
+      // the same device (this call path is new since Task 2.7). Fails
+      // against old code: state.userId stays 'user-A'.
+      'a different user signing in before a refresh clears the prior '
+      'user\'s stale planning context',
+      () async {
+        session = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-A',
+            organizationId: 'org-A',
+          ),
+        );
+        expect(controller.state.userId, 'user-A');
+
+        // User B signs in on the same device, and the refresh that follows
+        // fails (offline here -- any refresh failure reproduces this, since
+        // _refreshPlanning never re-checks ownership before reusing
+        // _state.userId).
+        session = const AppAuthSession(userId: 'user-B', email: 'b@lyron.local');
+        remoteRepository.error = Exception('offline');
+
+        await controller.refreshPlanning();
+
+        expect(
+          controller.state.userId,
+          isNot('user-A'),
+          reason:
+              'user A\'s stale planning context must never surface once '
+              'user B has signed in, even when the refresh fails',
+        );
+      },
+    );
+
     test('overlapping refreshes do not run concurrently', () async {
       final firstRefresh = Completer<PlanningSyncPayload>();
       remoteRepository.nextPayload = firstRefresh.future;

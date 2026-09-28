@@ -231,6 +231,26 @@ class SongCatalogController extends ChangeNotifier {
     }
     _rememberAuthenticatedUser(session.userId);
 
+    // I3 ownership guard (Opus adversarial review of the whole branch diff,
+    // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+    // Invariant cause 4): _state.context may have been established for a
+    // DIFFERENT user (e.g. while sessionExpired, via local-first) and a
+    // different user has since signed in on this device. Without this
+    // check, hadContextBeforeRefresh below treats that stale context as
+    // "already valid, nothing to do", and the org-lookup failure branches
+    // (Tasks 2.2/2.3, which preserve context on status-only/connectivity
+    // failures) would then keep displaying user A's cached songs to user B
+    // until the separate wipePriorAndProceedFor sign-in purge
+    // (auth_providers.dart) completes -- which can be delayed behind a
+    // confirmation dialog. Reset to initial() here so
+    // hadContextBeforeRefresh becomes false and local-first / the org
+    // lookup run fresh for the CURRENT session's user. This is a pure
+    // display-ownership guard -- the actual data purge for the prior user
+    // is still wipePriorAndProceedFor's job.
+    if (_state.context != null && _state.context!.userId != session.userId) {
+      _setStateIfCurrent(generation, const CatalogSnapshotState.initial());
+    }
+
     // Captured before the local-first attempt below so the org-lookup
     // connectivity-failure branch further down (which short-circuits
     // whenever "context is already established") can tell a context that
