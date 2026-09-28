@@ -694,52 +694,29 @@ class SongCatalogController extends ChangeNotifier {
   // context, and if no local snapshot exists for the identity it leaves the
   // state exactly as handleSessionExpired() already set it (expired, no
   // context, nothing to show).
+  //
+  // Task 2.5 (docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+  // Step 2 item 5): thin wrapper around _tryEstablishLocalFirstContext, the
+  // same helper _refreshCatalogBody's null-session branch uses. No live
+  // session by construction (this is the sessionExpired gap-filler), so
+  // sessionUserId is null, matching that branch's pattern. The outer
+  // `_state.context != null` guard is kept even though the helper carries
+  // its own equivalent clobber check internally -- it's a cheap synchronous
+  // short-circuit that skips the helper's async store reads entirely when
+  // there is plainly nothing to do, harmless and slightly cheaper than
+  // relying on the helper's guard alone.
   Future<void> handleOfflineAuthenticated() async {
     if (_state.context != null) {
       return;
     }
 
     final identity = _lastKnownIdentityReader?.call();
-    if (identity == null) {
-      return;
-    }
-    final organizationId = identity.organizationId;
-    if (organizationId == null) {
-      return;
-    }
-
     final generation = _refreshGeneration;
-    final context = ActiveCatalogContext(
-      userId: identity.userId,
-      organizationId: organizationId,
-    );
-    final hasCachedCatalog = await _hasCachedCatalog(context);
-    if (_isStale(generation)) {
-      return;
-    }
-    if (_state.context != null) {
-      // A concurrent refreshCatalog() -- e.g. connectivity returned moments
-      // after a cold start -- may have already established a real, live
-      // context while the read above was in flight. An ordinary successful
-      // refresh does not bump _refreshGeneration, so the staleness check
-      // above cannot catch that on its own; re-check the same guard this
-      // method already applies up front, so this offline gap-filler can
-      // never clobber a context a newer online refresh just set.
-      return;
-    }
-    if (!hasCachedCatalog) {
-      return;
-    }
-
-    _setStateIfCurrent(
-      generation,
-      _state.copyWith(
-        context: context,
-        connectionStatus: CatalogConnectionStatus.offlineCached,
-        refreshStatus: CatalogRefreshStatus.idle,
-        sessionStatus: CatalogSessionStatus.expired,
-        hasCachedCatalog: true,
-      ),
+    await _tryEstablishLocalFirstContext(
+      generation: generation,
+      sessionUserId: null,
+      identityUserId: identity?.userId,
+      identityOrganizationId: identity?.organizationId,
     );
   }
 
