@@ -1644,6 +1644,119 @@ void main() {
       },
     );
 
+    test(
+      // Task 2.1 guard (F-B, docs/specs/2026-09-28-offline-catalog-local
+      // -first-visibility.md, Step 2): a null-session refresh is a pure
+      // local branch (no network call) and must never destroy an
+      // already-established context. Old code reset unconditionally to
+      // initial() here -- this test fails against that code.
+      'null-session refresh preserves an already-established context and '
+      'only marks the session expired',
+      () async {
+        AppAuthSession? session = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => session,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+
+        session = null;
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
+      // Task 2.1: the null-session branch now runs the same local-first
+      // establishment as the signed-in path -- no prior context, but a
+      // last-known identity with a cached snapshot must establish context
+      // on THIS branch, not only via the separate one-shot
+      // handleOfflineAuthenticated.
+      'null-session refresh establishes context from local-first when no '
+      'prior context exists but a cached snapshot does',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async =>
+              throw StateError('must not be called offline'),
+          sessionVerifier: () async =>
+              throw StateError('must not be called offline'),
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+      },
+    );
+
+    test(
+      // Task 2.1: the genuine-nothing-to-show case must still fall back to
+      // initial() -- no prior context, no identity, no cache.
+      'null-session refresh falls back to initial when local-first finds '
+      'nothing',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async =>
+              throw StateError('must not be called offline'),
+          sessionVerifier: () async =>
+              throw StateError('must not be called offline'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isFalse);
+      },
+    );
+
     group('observability instrumentation', () {
       test(
         'a successful refresh records the start and success breadcrumbs',

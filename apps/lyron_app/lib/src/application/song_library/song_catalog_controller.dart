@@ -191,11 +191,41 @@ class SongCatalogController extends ChangeNotifier {
     final session = _authSessionReader();
     if (session == null) {
       _verifiedEmptyMembershipSeen = false;
+      // Task 2.1 (docs/specs/2026-09-28-offline-catalog-local-first
+      // -visibility.md, Step 2 / F-B): this is a pure local branch, no
+      // network call -- it must never destroy an already-established
+      // context (the invariant). If context already exists, leave it
+      // exactly as found and only update sessionStatus. If it does not,
+      // try the same local-first establishment the signed-in path uses,
+      // identity-only (sessionUserId: null -- there is no live session to
+      // compare userId against; the helper falls back to
+      // identityUserId). Only when that genuinely finds nothing (no
+      // identity, no cached org, or no cached snapshot for that org) does
+      // this fall back to initial().
+      if (_state.context != null) {
+        _setStateIfCurrent(
+          generation,
+          _state.copyWith(sessionStatus: CatalogSessionStatus.expired),
+        );
+        return;
+      }
+      final identity = _lastKnownIdentityReader?.call();
+      await _tryEstablishLocalFirstContext(
+        generation: generation,
+        sessionUserId: null,
+        identityUserId: identity?.userId,
+        identityOrganizationId: identity?.organizationId,
+      );
+      if (_isStale(generation)) {
+        return;
+      }
       _setStateIfCurrent(
         generation,
-        const CatalogSnapshotState.initial().copyWith(
-          sessionStatus: CatalogSessionStatus.expired,
-        ),
+        _state.context != null
+            ? _state.copyWith(sessionStatus: CatalogSessionStatus.expired)
+            : const CatalogSnapshotState.initial().copyWith(
+                sessionStatus: CatalogSessionStatus.expired,
+              ),
       );
       return;
     }
