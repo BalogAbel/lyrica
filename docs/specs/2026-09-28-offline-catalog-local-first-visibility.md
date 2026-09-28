@@ -312,3 +312,120 @@ purge logic itself is unchanged by this spec.
   assertion directly encoded one of F-B..F-F's old destructive behaviour is
   updated to assert the new invariant instead, not deleted.
 - `./scripts/verify.sh` is green.
+
+## Review follow-ups R1–R3 (PR #79 review, 2026-09-28)
+
+Three findings from reviewing the implemented PR. All three are fixed on
+this same branch, same PR.
+
+### R1 — the response-timeout shape was too blunt
+
+**Problem.** `TracingHttpClient`'s 15s `.timeout(...)` (Step 1 item 2) wraps
+the *entire* request, including the time after the server has already
+committed a write or rotated a token but before the response body finishes
+transferring. Two concrete failure shapes:
+
+- **`/auth/v1/token` (refresh)**: gotrue rotates the refresh token on
+  redemption. If the client abandons the request via timeout after the
+  server already rotated but before the response arrives, the client still
+  holds the OLD (now-consumed) refresh token. A retry with it lands outside
+  gotrue's short reuse-interval grace window (10s, gotrue-2.27.2's
+  `Constants` — reuse inside the window is tolerated as a benign retry;
+  outside it, gotrue treats it as token-reuse and revokes the whole
+  session), forcing a needless full re-authentication on a connection that
+  was merely slow, not actually broken.
+- **A write RPC**: the same abandon-after-commit shape turns a client's own
+  later retry of the same logical write into a false optimistic-concurrency
+  (`base_version`) conflict against itself.
+
+**Fix — two-tier timeout, not one blunt one:**
+
+1. **Connect timeout: 10s**, native only. `TracingHttpClient` gains a
+   platform seam (conditional import: `dart:io`'s `HttpClient` wrapped as
+   an `IOClient` on native, where `HttpClient.connectionTimeout` is
+   settable; a no-op passthrough on web, since `BrowserClient` exposes no
+   connect-timeout knob — the browser's own TCP/TLS timeout applies
+   instead, unchanged from before this fix). This is what actually bounds
+   the measured 75s "network up, no route" hang from the original
+   investigation, without touching in-flight response time at all.
+2. **Response backstop: 60s**, applied to every request EXCEPT
+   `/auth/v1/token` (path-matched on the outgoing request's URL). A
+   `/auth/v1/token` request gets the connect timeout only, never the
+   response backstop, so an in-flight refresh is never abandoned
+   client-side once the connection is established and the server may have
+   already committed a rotation.
+3. **Verified via context7 against the exact pinned stack**
+   (`http`, `supabase` 2.16.1, `gotrue` 2.27.2, `supabase_flutter` 2.17.2):
+   the custom `httpClient` passed to `Supabase.initialize` flows into both
+   `_gotrueHttpClient` (used directly by the constructed `GoTrueClient`)
+   and `_authHttpClient` (wraps the same traced client for postgrest/rest
+   calls) — confirmed by reading `supabase_client.dart`'s constructor in
+   the pinned `supabase-2.16.1` source, not assumed. A connect-timeout or
+   response-backstop failure still throws through the same paths already
+   proven to classify as connectivity (`TimeoutException` — direct match
+   in `isConnectivityFailure`; wrapped by gotrue's `GotrueFetch` into
+   `AuthRetryableFetchException` for any exception the client throws,
+   itself also directly matched).
+4. **Residual risk, documented, not eliminated**: a write RPC that commits
+   server-side *after* the 60s response backstop has already abandoned the
+   request can still produce a false OCC conflict on the client's own
+   retry. This is not a new failure class — an OS-level connection drop
+   already produced the identical shape before this fix — and it is the
+   same mechanism `docs/deferred/2026-07-31-occ-divergence-lf-t5.md`
+   already tracks the mitigations for (the S12 mutation budget bounds how
+   much unsynced intent can be affected; the footprint monitor surfaces it
+   before it becomes a silent pile of conflicts). A narrower companion
+   entry, `docs/deferred/2026-09-28-client-abandoned-committed-write-lf-t5b.md`,
+   records the client-abandons-but-server-commits mechanism specifically
+   (distinct from LF-T5's general offline-duration divergence) with its own
+   trigger condition.
+
+### R2 — planning had the same cross-user gap the catalog side already closed (I3)
+
+**Problem.** `PlanningSyncController._tryEstablishLocalFirstContext` (added
+in Task 2.7, hardened for the sessionExpired-hiding bug in the I2 fix) never
+compares the last-known identity's `userId` against the *live* session's
+`userId`. During the different-user re-auth window (user A's data still
+present, user B's session live, the `wipePriorAndProceedFor`
+confirmation dialog still pending) a `refreshPlanning()` call — from a plan
+list refresh, a mutation sync, or a manual Sync press — can establish user
+A's context from local data, then immediately fetch org A's payload using
+user B's live token and overwrite A's local projection with the fetch
+result via `_replaceProjection(userId: A, ...)`. If the user then cancels
+the different-user prompt (`cancelToPriorUser`), A's local data has already
+been corrupted by B's fetch before the cancellation could prevent it. This
+is the `PlanningSyncController` analog of the catalog-side I3 fix
+(`d3c7165`), missed because I3 only touched
+`SongCatalogController`/`_refreshCatalogBody` and the planning-parity
+assessment (Task 2.7) was scoped to the F-B shape, not this one.
+
+**Fix.** Mirror `SongCatalogController`'s ownership rule exactly:
+`_tryEstablishLocalFirstContext`'s `userId` resolution becomes
+`session?.userId ?? identity.userId` (unchanged), and `_refreshPlanning`
+gains the same guard I3 added to `_refreshCatalogBody`: if
+`_state.userId != null && _state.userId != session.userId`, the state is
+stale for a different user and is reset before any network fetch or
+`_replaceProjection` call can run under the wrong identity. This does not
+touch `wipePriorAndProceedFor`/`cancelToPriorUser` themselves — it stops
+planning from racing ahead of that flow while it is still pending, exactly
+as I3 already does on the catalog side.
+
+### R3 — sessionExpired users had no way back from the sign-in screen while still offline
+
+**Problem.** `ReauthBanner` and the (now reauth-aware, per Task 2.6) manual
+Sync button both navigate to `AppRoutes.signIn` under `sessionExpired`.
+`SignInScreen` had no route back — a `sessionExpired` user who taps Sync (or
+the banner) by mistake, or simply wants to keep reading cached songs while
+genuinely offline, is stuck on the sign-in screen: no offline sign-in is
+possible, so the only way out is force-quitting and relaunching the app.
+The router (`app_router.dart`) already permits `sessionExpired` users to
+navigate to ordinary in-app routes (it only forces `AppRoutes.home` from
+`bootstrap`, otherwise returns `null`/no redirect) — the missing piece is
+purely a button on `SignInScreen` giving that path back.
+
+**Fix.** `SignInScreen`, when `AppAuthStatus.sessionExpired`, shows a
+"Continue offline" action alongside the existing sign-in methods, which
+navigates to the `from` query parameter (the route the banner/Sync button
+captured on the way in) or `AppRoutes.home` if there is none. Not shown
+under `signedOut` (there is nothing to "continue" to — no local identity is
+established, matching the invariant's own worked examples).

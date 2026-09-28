@@ -216,6 +216,93 @@ diff before fixing anything the review flags.**
   `docs/specs/2026-08-19-local-data-durability-contract.md` D3 (this
   change).
 
+## Review follow-ups R1–R3 (PR #79 review, 2026-09-28)
+
+See `docs/specs/2026-09-28-offline-catalog-local-first-visibility.md`'s
+"Review follow-ups R1–R3" section for full background on each. TDD, full
+suite after every task, same discipline as Steps 1–2.
+
+### Task R1 — two-tier HTTP timeout (sonnet)
+
+- Red test: a fake native (`dart:io`) socket that never completes the TCP
+  handshake — assert the client throws within the 10s connect-timeout
+  bound, not the 60s response backstop. A separate test: a
+  `/auth/v1/token`-path request whose connection succeeds but whose
+  response body never arrives — assert it does NOT throw at 60s (only the
+  connect timeout applies to it). A third: a non-token request whose
+  connection succeeds but response never arrives — assert it DOES throw at
+  the 60s backstop.
+- Implementation: `TracingHttpClient` gains a conditional-import platform
+  seam for the connect timeout (native: `IOClient` wrapping an
+  `HttpClient()..connectionTimeout = Duration(seconds: 10)`; web: current
+  `BrowserClient`-based behavior unchanged, no connect-timeout knob
+  available). Path-match the outgoing request against `/auth/v1/token` to
+  decide whether the 60s response backstop applies.
+- Verify via context7 (pinned `http`, `supabase` 2.16.1, `gotrue` 2.27.2,
+  `supabase_flutter` 2.17.2) that the injected `httpClient` really does
+  flow into `GoTrueClient`'s own HTTP calls (read `supabase_client.dart`'s
+  constructor in the pinned source, don't assume) and that both timeout
+  shapes still classify as connectivity failures through the existing
+  `isConnectivityFailure`/`AuthRetryableFetchException` machinery — no new
+  classification code should be needed, this is a characterization check,
+  not a new feature.
+- Add `docs/deferred/2026-09-28-client-abandoned-committed-write-lf-t5b.md`
+  (already drafted alongside the spec update — verify it, adjust only if
+  the implementation ends up differing from what's described there).
+- STOP and report if a native connect timeout genuinely cannot be
+  implemented against the client Supabase actually uses on this pinned
+  stack (would mean falling back to a purely response-based bound, which
+  the spec's R1 section explicitly says is insufficient for the DNS/no-route
+  case).
+
+### Task R2 — planning cross-user guard (sonnet)
+
+- Red test (must fail on current code): seed `LastKnownIdentity` A + a
+  cached planning projection for A. Session is B (live, different user).
+  Call `refreshPlanning()`. Assert: no context is established for A, no
+  network fetch is attempted for org A, and A's local projection is
+  untouched — count `_replaceProjection`/remote-fetch calls directly, don't
+  just assert on the visible end state.
+- Implementation: mirror `SongCatalogController`'s I3 ownership guard
+  (commit `d3c7165`) in `PlanningSyncController._refreshPlanning`: if
+  `_state.userId != null && _state.userId != session.userId`, reset before
+  any network fetch or `_replaceProjection` call. Do not touch
+  `wipePriorAndProceedFor`/`cancelToPriorUser` (auth_providers.dart) — this
+  guard only stops planning from racing ahead of that flow, it doesn't
+  change the flow itself.
+- Full suite green.
+
+**Checkpoint: per-task review (sonnet) on R1 and R2.**
+
+### Task R3 — offline escape hatch from the sign-in screen (haiku)
+
+- Red test (widget test): `SignInScreen` under `AppAuthStatus.sessionExpired`
+  with a `from` query param set — the "Continue offline" button is visible
+  and tapping it navigates to `from`. Under `sessionExpired` with no `from`
+  — navigates to `AppRoutes.home`. Under `AppAuthStatus.signedOut` — the
+  button is absent.
+- Implementation: add the button + new `AppStrings` entries. No router
+  changes needed (`app_router.dart` already permits in-app routes under
+  `sessionExpired`, confirmed by reading it — only redirects away from
+  `bootstrap`).
+- Full suite green.
+
+**Checkpoint: per-task review (haiku) on R3.**
+
+### Final adversarial review (Opus, whole follow-up diff only)
+
+One question: "Can any request whose server-side effect committed be
+abandoned client-side by a timeout, and can any path establish, refresh, or
+overwrite catalog or planning context/projection for a user other than the
+live session user?" Verify line numbers against the live diff before fixing
+anything flagged.
+
+### Docs
+
+- ADR-037: record the two-tier timeout decision (connect vs. response, why
+  `/auth/v1/token` is exempted) as an amendment.
+- Spec's R1–R3 section (already drafted).
+
 ## Final steps
 
 1. `./scripts/verify.sh` green.

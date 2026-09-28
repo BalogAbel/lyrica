@@ -94,7 +94,37 @@ to do to a `context` it does not own the deletion policy for.
   clear `context` must justify itself against the four-cause invariant
   above, not merely against "this call failed."
 
-## Status Note Target
+## Amendment: two-tier HTTP timeout (2026-09-28, PR #79 review)
+
+The 15s single-timeout shape (Step 1 item 2, as originally accepted) bounded
+how long a hung request could stay invisible, but wrapped the *entire*
+request — including the window after the server has already committed a
+write or rotated a refresh token but before the response finishes
+transferring. Abandoning a request in that window client-side is worse than
+merely slow: for `/auth/v1/token`, it discards a refresh token the server
+already rotated, forcing a needless full re-auth outside gotrue's reuse
+grace window; for a write RPC, it turns the client's own later retry into a
+false optimistic-concurrency conflict against itself.
+
+Replaced with two tiers:
+
+- **Connect timeout (10s, native only)**: bounds the actual "network up, no
+  route" hang the original investigation measured (75s worst case), without
+  touching in-flight response time at all. No web equivalent exists
+  (`BrowserClient` exposes no connect-timeout knob), so web keeps relying on
+  the browser's own TCP/TLS timeout, unchanged from before this amendment.
+- **Response backstop (60s), exempting `/auth/v1/token`**: bounds how long
+  the app waits for a response once connected, for every request except a
+  token refresh — which only gets the connect timeout, so an in-flight
+  refresh can never be abandoned client-side after the connection is
+  established.
+
+This does not eliminate the abandon-after-commit risk for write RPCs
+entirely — see `docs/deferred/2026-09-28-client-abandoned-committed-write-lf-t5b.md`
+for the residual risk and its trigger condition — it narrows the window
+from "any request past 15s" to "a write RPC specifically, past 60s of
+connected-but-no-response time," and removes the token-refresh case
+entirely.
 
 `docs/specs/2026-08-19-local-data-durability-contract.md`'s D3 section
 carries a forward-reference status note (added alongside this ADR) pointing
