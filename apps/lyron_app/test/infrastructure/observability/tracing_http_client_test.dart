@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gotrue/gotrue.dart';
 import 'package:http/http.dart' as http;
 import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/infrastructure/observability/tracing_http_client.dart';
@@ -106,44 +107,38 @@ void main() {
   });
 
   test(
-    'TimeoutException thrown directly by http.Client surfaces as AuthRetryableFetchException in gotrue',
+    'a TracingHttpClient timeout surfaces as AuthRetryableFetchException '
+    'when driven through a real gotrue GoTrueClient (gotrue-2.27.2, pinned '
+    'via supabase_flutter)',
     () async {
-      // Regression test verifying the spec's claim: gotrue-2.27.2's
-      // GotrueFetch._handleRequest wraps ANY exception thrown by the
-      // injected http.Client — including TimeoutException — as
-      // AuthRetryableFetchException (gotrue-2.27.2/lib/src/fetch.dart:188-191).
-      //
-      // Behavior verified against the pinned gotrue source:
-      //   try {
-      //     response = await switch (method) { ... http calls ... }
-      //   } catch (e) {
-      //     throw AuthRetryableFetchException(message: e.toString());
-      //   }
-      //
-      // This means a TracingHttpClient that throws TimeoutException will
-      // flow through gotrue as AuthRetryableFetchException, which the app's
-      // isConnectivityFailure already classifies as a connectivity failure.
-      // No new exception-mapping code is needed.
-      final httpClient = _TimeoutThrowingInnerClient();
+      // Real characterization test, not a source citation: a genuine
+      // GoTrueClient is constructed with a TracingHttpClient (wrapping an
+      // inner http.Client that never completes, with a short test-only
+      // timeout) as its httpClient, and a real gotrue method is called.
+      // gotrue's GotrueFetch._handleRequest wraps ANY exception the injected
+      // http.Client throws -- including our TimeoutException -- as
+      // AuthRetryableFetchException. This exercises that live, not merely
+      // asserting it from reading gotrue-2.27.2/lib/src/fetch.dart.
+      final inner = _NeverCompletingInnerClient();
       final tracingClient = TracingHttpClient(
-        httpClient,
+        inner,
         const _FakeObservability(null),
+        timeout: const Duration(milliseconds: 50),
         isWeb: false,
       );
 
-      final request = http.Request('GET', Uri.parse('https://example.com/'));
+      final client = GoTrueClient(
+        url: 'https://example.supabase.co/auth/v1',
+        httpClient: tracingClient,
+        // No token to auto-refresh in this test, and startAutoRefresh()
+        // would otherwise leave a periodic Timer running past the test.
+        autoRefreshToken: false,
+      );
 
-      // Direct send() throws TimeoutException (our timeout mechanism).
-      try {
-        await tracingClient.send(request);
-        fail('Expected TimeoutException');
-      } on TimeoutException {
-        // Expected: the http.Client.send() threw, and it's passed through.
-      }
-
-      // When this flows through gotrue's _handleRequest catch block,
-      // it becomes AuthRetryableFetchException. The spec confirms this
-      // behavior against the pinned library source.
+      await expectLater(
+        client.getUser('a-fake-jwt-for-this-test-only'),
+        throwsA(isA<AuthRetryableFetchException>()),
+      );
     },
   );
 }

@@ -212,9 +212,21 @@ class SongCatalogController extends ChangeNotifier {
     // or an offline cold start would surface a stale `verified` status
     // from CatalogSnapshotState.initial()'s default.
     final hadContextBeforeRefresh = _state.context != null;
+    // The organizationId local-first actually established _state.context
+    // for THIS attempt (non-null only when _tryEstablishLocalFirstContext
+    // found a non-empty local snapshot and set state to it). Reused below by
+    // the org-lookup connectivity-failure fallback instead of a second,
+    // independent store read -- see I1 (Opus review of Step 1 diff,
+    // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md
+    // Invariant): a fresh readLatestCachedOrganizationId call can legally
+    // return a different org than the one local-first just displayed (the
+    // store's "latest cached" row need not be the identity's own org), and
+    // letting that fresh read overwrite an org local-first already
+    // established would flip _state.context on a connectivity failure alone.
+    String? locallyEstablishedOrganizationId;
     if (!hadContextBeforeRefresh) {
       final identity = _lastKnownIdentityReader?.call();
-      await _tryEstablishLocalFirstContext(
+      locallyEstablishedOrganizationId = await _tryEstablishLocalFirstContext(
         generation: generation,
         sessionUserId: session.userId,
         identityUserId: identity?.userId,
@@ -249,7 +261,12 @@ class SongCatalogController extends ChangeNotifier {
         if (hadContextBeforeRefresh) {
           return;
         }
-        if (!_verifiedEmptyMembershipSeen) {
+        if (locallyEstablishedOrganizationId != null) {
+          // Local-first already established context for this exact org this
+          // attempt, from a confirmed non-empty local snapshot -- reuse it
+          // instead of an independent fresh read that could disagree (I1).
+          organizationId = locallyEstablishedOrganizationId;
+        } else if (!_verifiedEmptyMembershipSeen) {
           organizationId = await _store.readLatestCachedOrganizationId(
             userId: session.userId,
           );
@@ -701,7 +718,13 @@ class SongCatalogController extends ChangeNotifier {
   // the resulting (userId, organizationId) pair, and never overwrites a
   // context another, newer refresh already established while this method's
   // local reads were in flight (the two staleness/clobber checks below).
-  Future<bool> _tryEstablishLocalFirstContext({
+  //
+  // Returns the organizationId _state.context was actually set to (non-null
+  // only on success), not merely an org id this call considered -- I1 (Opus
+  // review of Step 1 diff) needs the caller to be able to reuse EXACTLY the
+  // org a non-empty local snapshot was confirmed for, never an org this
+  // method rejected for having no cache.
+  Future<String?> _tryEstablishLocalFirstContext({
     required int generation,
     required String? sessionUserId,
     required String? identityUserId,
@@ -709,7 +732,7 @@ class SongCatalogController extends ChangeNotifier {
   }) async {
     final userId = sessionUserId ?? identityUserId;
     if (userId == null) {
-      return false;
+      return null;
     }
 
     var organizationId = identityUserId == userId
@@ -719,10 +742,10 @@ class SongCatalogController extends ChangeNotifier {
       userId: userId,
     );
     if (_isStale(generation)) {
-      return false;
+      return null;
     }
     if (organizationId == null) {
-      return false;
+      return null;
     }
 
     final context = ActiveCatalogContext(
@@ -731,17 +754,17 @@ class SongCatalogController extends ChangeNotifier {
     );
     final hasCachedCatalog = await _hasCachedCatalog(context);
     if (_isStale(generation)) {
-      return false;
+      return null;
     }
     if (!hasCachedCatalog) {
-      return false;
+      return null;
     }
     if (_state.context != null) {
       // A concurrent refresh (e.g. connectivity returned moments after this
       // read started) may have already established a real context while
       // this local read was in flight. Never clobber it -- same rule
       // handleOfflineAuthenticated already applies.
-      return false;
+      return null;
     }
 
     _setStateIfCurrent(
@@ -753,7 +776,7 @@ class SongCatalogController extends ChangeNotifier {
         hasCachedCatalog: true,
       ),
     );
-    return true;
+    return organizationId;
   }
 
   Future<bool> _hasCachedCatalog(ActiveCatalogContext context) async {

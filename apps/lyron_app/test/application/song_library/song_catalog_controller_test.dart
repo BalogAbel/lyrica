@@ -1523,6 +1523,127 @@ void main() {
       },
     );
 
+    test(
+      // I1 (Opus adversarial review of Step 1 diff): when local-first finds
+      // NO cache for the identity's own org, the connectivity-failure
+      // fallback must still fall through to the store's fresh
+      // readLatestCachedOrganizationId read -- there is nothing better to
+      // reuse. This pins that the fallback path is exercised exactly once
+      // (no double independent read) and lands on the store's real answer.
+      'connectivity-failure org fallback reads the store fresh when '
+      'local-first found no cache for the identity org',
+      () async {
+        final countingStore = _CallCountingSongCatalogStore(database);
+        // Only org-y has a cached snapshot; the identity's own org (org-x)
+        // has none.
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-y',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: countingStore,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async =>
+              throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-x'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-y'),
+        );
+        expect(
+          countingStore.readLatestCachedOrganizationIdCallCount,
+          1,
+          reason:
+              'local-first found no cache for org-x and made no store call '
+              '(identity supplied the org directly); exactly one fresh read '
+              'should happen, in the connectivity fallback',
+        );
+      },
+    );
+
+    test(
+      // I1 (Opus adversarial review of Step 1 diff): regression guard for
+      // the exact bug -- when local-first SUCCEEDS at establishing context
+      // for the identity's own org (a confirmed non-empty local snapshot),
+      // the connectivity-failure fallback must reuse THAT org, never an
+      // independent fresh readLatestCachedOrganizationId read that could
+      // legally disagree (the store's "latest cached" row need not be the
+      // identity's own org). A within-one-refresh context flip driven
+      // purely by a connectivity failure violates the spec's invariant.
+      'connectivity-failure org fallback reuses the org local-first already '
+      'displayed, not a diverging fresh store read',
+      () async {
+        final countingStore = _CallCountingSongCatalogStore(database);
+        // org-x is the identity's own org and has a cache. org-y is ALSO
+        // cached, refreshed later, so a fresh "latest cached" read would
+        // return org-y -- making the divergence observable if the I1 bug
+        // were still present.
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-x',
+          summaries: const [SongSummary(id: 'song-1', title: 'X Song')],
+          sources: const [SongSource(id: 'song-1', source: '{title: X Song}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-y',
+          summaries: const [SongSummary(id: 'song-2', title: 'Y Song')],
+          sources: const [SongSource(id: 'song-2', source: '{title: Y Song}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 11),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: countingStore,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async =>
+              throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-x'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-x'),
+        );
+        expect(
+          countingStore.readLatestCachedOrganizationIdCallCount,
+          0,
+          reason:
+              'local-first supplied org-x directly from identity and '
+              'established context for it; the connectivity fallback must '
+              'reuse that org id, never call the store fresh',
+        );
+      },
+    );
+
     group('observability instrumentation', () {
       test(
         'a successful refresh records the start and success breadcrumbs',
@@ -1795,6 +1916,22 @@ class _ConfigurableSongRepository implements SongRepository {
 
   @override
   Future<SongSource> getSongSource(String id) async => sources[id]!;
+}
+
+// I1 (Opus adversarial review of Step 1 diff): a thin DriftSongCatalogStore
+// subclass that counts calls to readLatestCachedOrganizationId, so tests can
+// prove the connectivity-failure org fallback reuses local-first's already-
+// established org instead of issuing a second, independent fresh read.
+class _CallCountingSongCatalogStore extends DriftSongCatalogStore {
+  _CallCountingSongCatalogStore(super.database);
+
+  int readLatestCachedOrganizationIdCallCount = 0;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({required String userId}) {
+    readLatestCachedOrganizationIdCallCount += 1;
+    return super.readLatestCachedOrganizationId(userId: userId);
+  }
 }
 
 class _FakeSongRepository implements SongRepository {
