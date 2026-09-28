@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -142,5 +143,87 @@ void main() {
     );
 
     expect(find.text('Continue offline'), findsNothing);
+  });
+
+  testWidgets('sessionExpired with from param navigates to that route when Continue offline is tapped', (tester) async {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final controller = _RecordingController(
+      testState: const AppAuthState(status: AppAuthStatus.sessionExpired),
+    );
+
+    final router = GoRouter(
+      initialLocation: '/sign-in?from=/plans/team-rehearsal',
+      routes: [
+        GoRoute(
+          path: '/sign-in',
+          builder: (context, state) => SignInScreen(),
+        ),
+        GoRoute(
+          path: '/plans/:planSlug',
+          builder: (context, state) => const Scaffold(body: Text('Plan Detail')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue offline'), findsOneWidget);
+
+    await tester.tap(find.text('Continue offline'));
+    await tester.pumpAndSettle();
+
+    expect(
+      router.routerDelegate.currentConfiguration.uri.toString(),
+      '/plans/team-rehearsal',
+    );
+  });
+
+  testWidgets('sessionExpired without from param navigates to home when Continue offline is tapped', (tester) async {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
+
+    final controller = _RecordingController(
+      testState: const AppAuthState(status: AppAuthStatus.sessionExpired),
+    );
+
+    final router = GoRouter(
+      initialLocation: '/sign-in',
+      routes: [
+        GoRoute(
+          path: '/sign-in',
+          builder: (context, state) => SignInScreen(),
+        ),
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const Scaffold(body: Text('Home')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue offline'), findsOneWidget);
+
+    await tester.tap(find.text('Continue offline'));
+    await tester.pumpAndSettle();
+
+    expect(
+      router.routerDelegate.currentConfiguration.uri.toString(),
+      '/',
+    );
   });
 }
