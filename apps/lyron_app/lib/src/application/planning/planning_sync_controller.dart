@@ -58,13 +58,65 @@ class PlanningSyncController extends ChangeNotifier {
   }) async {
     final boundaryGeneration = _advanceBoundaryGeneration();
     final session = _authSessionReader();
-    if (session == null || context == null) {
+    if (context == null) {
+      // No catalog-side context to mirror (signed out, or the catalog
+      // controller itself cleared its context for one of the 4 invariant
+      // causes) -- a reset here is correct and out of scope for I2.
       _invalidateRefreshGeneration();
       _setState(
         const PlanningSyncState.initial().copyWith(
           accessStatus: session == null
               ? PlanningAccessStatus.signedOut
               : PlanningAccessStatus.signedIn,
+        ),
+      );
+      return;
+    }
+
+    if (session == null) {
+      // I2 fix (Opus adversarial review of the whole branch diff,
+      // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md):
+      // catalog's local-first sets its context under sessionExpired, and
+      // that propagates here via activePlanningContextProvider with
+      // session == null but a non-null incoming context. That is an
+      // AUTH-OUTCOME, not one of the 4 invariant purge causes -- it must
+      // be status-only, mirroring the catalog controller's null-session
+      // _refreshCatalogBody branch (Task 2.1): if planning already owns
+      // this exact (userId, organizationId) boundary, leave it alone.
+      // Otherwise, try to re-establish it locally (no network) rather than
+      // wiping to initial() and waiting for a later event to recover.
+      if (_state.userId == context.userId &&
+          _state.organizationId == context.organizationId) {
+        _setState(
+          _state.copyWith(accessStatus: PlanningAccessStatus.signedIn),
+        );
+        return;
+      }
+
+      final hasProjection = await _localStore().hasProjection(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+      if (_isStaleBoundary(boundaryGeneration)) {
+        return;
+      }
+      if (!hasProjection) {
+        _invalidateRefreshGeneration();
+        _setState(
+          const PlanningSyncState.initial().copyWith(
+            accessStatus: PlanningAccessStatus.signedIn,
+          ),
+        );
+        return;
+      }
+      _lastAuthenticatedUserId = context.userId;
+      _setState(
+        _state.copyWith(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          accessStatus: PlanningAccessStatus.signedIn,
+          refreshStatus: PlanningRefreshStatus.idle,
+          hasLocalPlanningData: true,
         ),
       );
       return;
@@ -315,6 +367,20 @@ class PlanningSyncController extends ChangeNotifier {
     _advanceAuthGeneration();
     _advanceBoundaryGeneration();
     _invalidateRefreshGeneration();
+    // I2 (P6) fix (Opus adversarial review of the whole branch diff,
+    // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md):
+    // this used to unconditionally reset to PlanningSyncState.initial() on
+    // EVERY sessionExpired auth notification, wiping an already-established
+    // context -- an auth-outcome-driven destructive reset, not one of the 4
+    // invariant purge causes. Mirror the catalog controller's
+    // handleSessionExpired: status-only when there is a context to
+    // preserve, and only fall back to initial() when there genuinely is
+    // nothing established yet (so the local-first gap-filler below still
+    // has clean state to work from).
+    if (_state.userId != null && _state.organizationId != null) {
+      _setState(_state.copyWith(accessStatus: PlanningAccessStatus.signedIn));
+      return;
+    }
     _setState(
       const PlanningSyncState.initial().copyWith(
         accessStatus: PlanningAccessStatus.signedIn,
@@ -361,7 +427,21 @@ class PlanningSyncController extends ChangeNotifier {
     if (identity == null) {
       return;
     }
-    final organizationId = identity.organizationId;
+    // Item 3 (I2 fix, docs/specs/2026-09-28-offline-catalog-local-first
+    // -visibility.md): the last-known identity's own organizationId can be
+    // null (e.g. membership resolution never completed before the device
+    // went offline). Fall back to the store's last-cached organization id
+    // for this user, the same fallback SongCatalogController's equivalent
+    // helper already has via SongCatalogStore.readLatestCachedOrganizationId
+    // -- without it, planning's local-first silently gives up in a case the
+    // catalog side already recovers from.
+    var organizationId = identity.organizationId;
+    organizationId ??= await _localStore().readLatestCachedOrganizationId(
+      userId: identity.userId,
+    );
+    if (_isStaleBoundary(boundaryGeneration)) {
+      return;
+    }
     if (organizationId == null) {
       return;
     }

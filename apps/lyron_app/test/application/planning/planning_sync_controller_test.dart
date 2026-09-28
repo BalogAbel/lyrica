@@ -392,7 +392,18 @@ void main() {
     );
 
     test(
-      'session expiry keeps persisted planning data and pending mutations',
+      // I2 (b) fix (Opus adversarial review, docs/specs/2026-09-28-offline
+      // -catalog-local-first-visibility.md): handleSessionExpired() used to
+      // unconditionally reset to PlanningSyncState.initial(), wiping
+      // userId/organizationId/hasLocalPlanningData even when planning
+      // already had an established, valid context for this identity. That
+      // is an auth-outcome-driven destructive reset, not one of the 4
+      // invariant purge causes -- it must be status-only here, mirroring
+      // the catalog controller's handleSessionExpired (which only flips
+      // sessionStatus and never clears context). Fails against the old
+      // code: state.userId/organizationId were reset to null.
+      'session expiry keeps the established planning context, not just '
+      'the persisted data and pending mutations',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -423,8 +434,15 @@ void main() {
         await controller.handleSessionExpired();
 
         expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
-        expect(controller.state.userId, isNull);
-        expect(controller.state.organizationId, isNull);
+        expect(
+          controller.state.userId,
+          'user-1',
+          reason:
+              'an already-established planning context must survive a '
+              'sessionExpired notification -- status-only, not a reset',
+        );
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
         expect(
           await store.readPlanSummaries(
             userId: 'user-1',
@@ -436,6 +454,131 @@ void main() {
           await mutationStore.hasUnsyncedMutations(userId: 'user-1'),
           isTrue,
         );
+      },
+    );
+
+    test(
+      // I2 (a) fix, the reviewer's own repro shape: catalog's local-first
+      // (this branch's earlier work) sets context under sessionExpired,
+      // which propagates through ActivePlanningContextController into
+      // activePlanningContextProvider -> handleActiveContextChanged(ctx)
+      // with session still null. That call used to hard-reset planning to
+      // initial()/signedOut even when planning had ALREADY established
+      // (and could re-establish) valid state for the exact same identity
+      // the incoming context names -- an auth-outcome-driven destructive
+      // reset, not one of the 4 invariant purge causes. Fails against the
+      // old code: state.userId/organizationId are wiped to null and
+      // accessStatus flips to signedOut.
+      'handleActiveContextChanged with a null session and an incoming '
+      'context for the SAME identity already established via local-first '
+      'does not destroy the established planning state',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-org-1',
+              name: 'Plan org-1',
+              description: 'Description org-1',
+              scheduledFor: DateTime.utc(2026, 4, 5, 9),
+              updatedAt: DateTime.utc(2026, 4, 3, 12),
+              version: 1,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+        remoteRepository.error = StateError('network unreachable');
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+
+        // Catalog side propagates its own local-first context for the SAME
+        // identity while the session is still expired (step 3 of the
+        // reviewer's repro chain).
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          refresh: false,
+        );
+
+        expect(
+          controller.state.userId,
+          'user-1',
+          reason:
+              'planning context must survive a sessionExpired re-notify '
+              'for the same identity it already established',
+        );
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+      },
+    );
+
+    test(
+      // Item 3 (store fallback): identity.organizationId can be null (e.g.
+      // membership resolution never completed before the device went
+      // offline) while the local store still has a cached projection for
+      // this user from an earlier session. Mirrors
+      // SongCatalogStore.readLatestCachedOrganizationId's role in
+      // SongCatalogController._tryEstablishLocalFirstContext -- planning's
+      // equivalent helper had no such fallback and silently gave up.
+      'handleOfflineAuthenticated falls back to the store\'s last cached '
+      'organization id when the last-known identity has none',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-org-1',
+              name: 'Plan org-1',
+              description: 'Description org-1',
+              scheduledFor: DateTime.utc(2026, 4, 5, 9),
+              updatedAt: DateTime.utc(2026, 4, 3, 12),
+              version: 1,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+        remoteRepository.error = StateError('network unreachable');
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: null),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+        expect(remoteRepository.fetchCallCount, 0);
       },
     );
 
