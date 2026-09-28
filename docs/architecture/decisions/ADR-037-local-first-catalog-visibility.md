@@ -106,25 +106,42 @@ already rotated, forcing a needless full re-auth outside gotrue's reuse
 grace window; for a write RPC, it turns the client's own later retry into a
 false optimistic-concurrency conflict against itself.
 
-Replaced with two tiers:
+Replaced with two tiers, later corrected to three (I1, below):
 
 - **Connect timeout (10s, native only)**: bounds the actual "network up, no
   route" hang the original investigation measured (75s worst case), without
   touching in-flight response time at all. No web equivalent exists
   (`BrowserClient` exposes no connect-timeout knob), so web keeps relying on
   the browser's own TCP/TLS timeout, unchanged from before this amendment.
-- **Response backstop (60s), exempting `/auth/v1/token`**: bounds how long
-  the app waits for a response once connected, for every request except a
-  token refresh — which only gets the connect timeout, so an in-flight
-  refresh can never be abandoned client-side after the connection is
-  established.
+- **Response backstop (60s)**: bounds how long the app waits for a response
+  once connected, for every request except a token refresh.
+- **Token-refresh response backstop (120s) — corrected by I1 (2026-09-28,
+  post-PR#79 adversarial review)**: `/auth/v1/token` was originally fully
+  *exempted* from any response backstop, so an in-flight refresh could never
+  be abandoned client-side after the connection was established. That
+  exemption was itself a regression, worse than the 15s shape it replaced:
+  `dart:io`'s connect timeout only covers connect+TLS, not a stall after the
+  request is written, so a dead socket on the token endpoint (NAT drop,
+  wifi-to-cellular handoff, no keepalive) would hang forever with no bound
+  at all. Worse, gotrue's `GoTrueClient._callRefreshToken` de-dupes
+  concurrent refreshes for the same token into one shared `Completer`
+  (`_pendingRefreshes`), which `SupabaseClient._getAccessToken` awaits
+  *before* any REST/RPC call reaches `TracingHttpClient` — so a single hung
+  refresh could block every subsequent call in the app, for every identity,
+  indefinitely. `/auth/v1/token` now gets a LONGER but still finite backstop
+  (120s, well above the 60s general backstop and above any plausible
+  upstream gateway timeout) instead of none: this keeps the original intent
+  (don't abandon a refresh moments before/after the server rotates the
+  token on an ordinary slow-but-alive connection) while bounding the
+  dead-socket/hung-forever case.
 
 This does not eliminate the abandon-after-commit risk for write RPCs
 entirely — see `docs/deferred/2026-09-28-client-abandoned-committed-write-lf-t5b.md`
 for the residual risk and its trigger condition — it narrows the window
 from "any request past 15s" to "a write RPC specifically, past 60s of
-connected-but-no-response time," and removes the token-refresh case
-entirely.
+connected-but-no-response time," and, for the token-refresh case, from
+"any request past 15s" to "past 120s of connected-but-no-response time"
+rather than to "never."
 
 `docs/specs/2026-08-19-local-data-durability-contract.md`'s D3 section
 carries a forward-reference status note (added alongside this ADR) pointing

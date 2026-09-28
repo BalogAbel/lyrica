@@ -338,7 +338,8 @@ transferring. Two concrete failure shapes:
   later retry of the same logical write into a false optimistic-concurrency
   (`base_version`) conflict against itself.
 
-**Fix — two-tier timeout, not one blunt one:**
+**Fix — two-tier timeout, not one blunt one (later corrected to three tiers
+by I1, see below):**
 
 1. **Connect timeout: 10s**, native only. `TracingHttpClient` gains a
    platform seam (conditional import: `dart:io`'s `HttpClient` wrapped as
@@ -349,12 +350,31 @@ transferring. Two concrete failure shapes:
    the measured 75s "network up, no route" hang from the original
    investigation, without touching in-flight response time at all.
 2. **Response backstop: 60s**, applied to every request EXCEPT
-   `/auth/v1/token` (path-matched on the outgoing request's URL). A
-   `/auth/v1/token` request gets the connect timeout only, never the
-   response backstop, so an in-flight refresh is never abandoned
-   client-side once the connection is established and the server may have
-   already committed a rotation.
-3. **Verified via context7 against the exact pinned stack**
+   `/auth/v1/token` (path-matched on the outgoing request's URL), which
+   gets a longer, separate backstop instead — see the I1 correction below.
+3. ~~A `/auth/v1/token` request gets the connect timeout only, never the
+   response backstop~~ — **corrected by I1 (post-PR#79 adversarial
+   review, 2026-09-28)**: this original shape (no response bound at all for
+   token refresh) was itself a regression, worse than the 15s blunt timeout
+   it replaced. `dart:io`'s connect timeout only covers connect+TLS, not a
+   stall after the request is written, so a dead socket on the token
+   endpoint (NAT drop, wifi-to-cellular handoff, no keepalive) would hang
+   forever. Worse, gotrue-2.27.2's `GoTrueClient._callRefreshToken`
+   de-dupes concurrent refreshes for the same token into one shared
+   `Completer` (`_pendingRefreshes`, `gotrue_client.dart`), which
+   `SupabaseClient._getAccessToken` (`supabase-2.16.1/lib/src/supabase_client.dart`)
+   awaits *before* any REST/RPC call reaches `TracingHttpClient.send` at
+   all — so one hung refresh could block every subsequent call in the app,
+   for every identity, indefinitely, defeating the purpose of adding
+   timeouts in the first place. `/auth/v1/token` now gets a LONGER but
+   still finite backstop (`_tokenRefreshTimeout`, 120s — well above the 60s
+   general backstop and above any plausible upstream gateway timeout)
+   instead of none, preserving the original intent (don't abandon a
+   refresh moments before/after the server rotates the token on an
+   ordinary slow-but-alive connection) while bounding the
+   dead-socket/hung-forever case. See ADR-037's "Amendment: two-tier HTTP
+   timeout" section for the fuller writeup.
+4. **Verified via context7 against the exact pinned stack**
    (`http`, `supabase` 2.16.1, `gotrue` 2.27.2, `supabase_flutter` 2.17.2):
    the custom `httpClient` passed to `Supabase.initialize` flows into both
    `_gotrueHttpClient` (used directly by the constructed `GoTrueClient`)
@@ -366,7 +386,7 @@ transferring. Two concrete failure shapes:
    in `isConnectivityFailure`; wrapped by gotrue's `GotrueFetch` into
    `AuthRetryableFetchException` for any exception the client throws,
    itself also directly matched).
-4. **Residual risk, documented, not eliminated**: a write RPC that commits
+5. **Residual risk, documented, not eliminated**: a write RPC that commits
    server-side *after* the 60s response backstop has already abandoned the
    request can still produce a false OCC conflict on the client's own
    retry. This is not a new failure class — an OS-level connection drop
