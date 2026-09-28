@@ -12,11 +12,21 @@ import 'package:lyron_app/src/application/observability/observability.dart';
 /// configuration does not explicitly allow it. See
 /// docs/specs/2026-08-28-w3c-traceparent-correlation-spike.md for the web
 /// verification runbook required before this gate can be lifted.
+///
+/// Wraps every request with a configurable timeout to bound the socket-layer
+/// hang window on poor/no connectivity, per
+/// docs/specs/2026-09-28-offline-catalog-local-first-visibility.md Step 1.2.
 class TracingHttpClient extends http.BaseClient {
-  TracingHttpClient(this._inner, this._observability, {this._isWeb = kIsWeb});
+  TracingHttpClient(
+    this._inner,
+    this._observability, {
+    Duration timeout = const Duration(seconds: 15),
+    this._isWeb = kIsWeb,
+  }) : _timeout = timeout;
 
   final http.Client _inner;
   final Observability _observability;
+  final Duration _timeout;
   final bool _isWeb;
 
   @override
@@ -27,7 +37,7 @@ class TracingHttpClient extends http.BaseClient {
         request.headers['traceparent'] = traceParent;
       }
     }
-    return _inner.send(request);
+    return _inner.send(request).timeout(_timeout);
   }
 
   @override

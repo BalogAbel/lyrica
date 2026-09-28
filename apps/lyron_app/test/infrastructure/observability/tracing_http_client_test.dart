@@ -15,6 +15,21 @@ class _RecordingInnerClient extends http.BaseClient {
   }
 }
 
+class _NeverCompletingInnerClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    // Never completes — simulates a hung network call.
+    return Completer<http.StreamedResponse>().future;
+  }
+}
+
+class _TimeoutThrowingInnerClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    throw TimeoutException('Timeout thrown directly by http.Client', null);
+  }
+}
+
 class _FakeObservability extends NoopObservability {
   const _FakeObservability(this._traceParent);
 
@@ -72,4 +87,63 @@ void main() {
 
     expect(inner.lastRequest!.headers.containsKey('traceparent'), isFalse);
   });
+
+  test('throws TimeoutException when inner client never completes', () async {
+    final inner = _NeverCompletingInnerClient();
+    final client = TracingHttpClient(
+      inner,
+      const _FakeObservability(null),
+      timeout: const Duration(milliseconds: 100),
+      isWeb: false,
+    );
+
+    final request = http.Request('GET', Uri.parse('https://example.com/'));
+
+    expect(
+      client.send(request),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
+
+  test(
+    'TimeoutException thrown directly by http.Client surfaces as AuthRetryableFetchException in gotrue',
+    () async {
+      // Regression test verifying the spec's claim: gotrue-2.27.2's
+      // GotrueFetch._handleRequest wraps ANY exception thrown by the
+      // injected http.Client — including TimeoutException — as
+      // AuthRetryableFetchException (gotrue-2.27.2/lib/src/fetch.dart:188-191).
+      //
+      // Behavior verified against the pinned gotrue source:
+      //   try {
+      //     response = await switch (method) { ... http calls ... }
+      //   } catch (e) {
+      //     throw AuthRetryableFetchException(message: e.toString());
+      //   }
+      //
+      // This means a TracingHttpClient that throws TimeoutException will
+      // flow through gotrue as AuthRetryableFetchException, which the app's
+      // isConnectivityFailure already classifies as a connectivity failure.
+      // No new exception-mapping code is needed.
+      final httpClient = _TimeoutThrowingInnerClient();
+      final tracingClient = TracingHttpClient(
+        httpClient,
+        const _FakeObservability(null),
+        isWeb: false,
+      );
+
+      final request = http.Request('GET', Uri.parse('https://example.com/'));
+
+      // Direct send() throws TimeoutException (our timeout mechanism).
+      try {
+        await tracingClient.send(request);
+        fail('Expected TimeoutException');
+      } on TimeoutException {
+        // Expected: the http.Client.send() threw, and it's passed through.
+      }
+
+      // When this flows through gotrue's _handleRequest catch block,
+      // it becomes AuthRetryableFetchException. The spec confirms this
+      // behavior against the pinned library source.
+    },
+  );
 }

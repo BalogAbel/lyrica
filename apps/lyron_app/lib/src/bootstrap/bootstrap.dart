@@ -14,6 +14,13 @@ import 'package:lyron_app/src/infrastructure/observability/tracing_http_client.d
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// HTTP request timeout for Supabase-bound calls (auth, RPC, etc.).
+/// Sits below the measured 75s unroutable-network give-up and above ordinary
+/// mobile-network round-trip variance. A per-request bound; combined auth +
+/// RPC operations can still take ~30s in worst case.
+/// See docs/specs/2026-09-28-offline-catalog-local-first-visibility.md Step 1.2.
+const _supabaseHttpTimeout = Duration(seconds: 15);
+
 /// Reports an error that escaped every other handler inside the guarded
 /// bootstrap zone (see [runBootstrapGuarded]).
 ///
@@ -218,7 +225,11 @@ Future<void> bootstrap() async {
   await Supabase.initialize(
     url: supabaseConfig.url,
     publishableKey: supabaseConfig.anonKey,
-    httpClient: TracingHttpClient(http.Client(), observability),
+    httpClient: TracingHttpClient(
+      http.Client(),
+      observability,
+      timeout: _supabaseHttpTimeout,
+    ),
   );
   runApp(const _BootstrapScope(child: LyronApp()));
 }
