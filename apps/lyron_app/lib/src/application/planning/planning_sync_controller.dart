@@ -154,15 +154,31 @@ class PlanningSyncController extends ChangeNotifier {
 
   Future<void> _refreshPlanning() async {
     final generation = _refreshGeneration;
-    final userId = _state.userId;
-    final organizationId = _state.organizationId;
+    var userId = _state.userId;
+    var organizationId = _state.organizationId;
     final session = _authSessionReader();
-    if (_disposed ||
-        session == null ||
-        userId == null ||
-        organizationId == null ||
-        _state.accessStatus == PlanningAccessStatus.signedOut) {
+    if (_disposed || _state.accessStatus == PlanningAccessStatus.signedOut) {
       return;
+    }
+    if (session == null || userId == null || organizationId == null) {
+      // Task 2.7 (docs/specs/2026-09-28-offline-catalog-local-first
+      // -visibility.md, Step 2 item 7): mirrors SongCatalogController's
+      // Task 2.5 shape -- a null-session/unresolved-boundary refresh
+      // attempt tries to (re-)establish local-first context on EVERY
+      // attempt, not only once at the sessionExpired transition (which is
+      // all handleOfflineAuthenticated used to cover). Purely a local
+      // read; never touches the network.
+      await _tryEstablishLocalFirstContext(
+        boundaryGeneration: _boundaryGeneration,
+      );
+      if (_isStale(generation)) {
+        return;
+      }
+      userId = _state.userId;
+      organizationId = _state.organizationId;
+      if (session == null || userId == null || organizationId == null) {
+        return;
+      }
     }
 
     final hadLocalPlanningData = await _localStore().hasProjection(
@@ -294,14 +310,29 @@ class PlanningSyncController extends ChangeNotifier {
   // state exactly as handleSessionExpired() already set it (no context,
   // nothing to show).
   //
+  // Task 2.7 (docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+  // Step 2 item 7): thin wrapper around _tryEstablishLocalFirstContext, the
+  // same helper _refreshPlanning's null-session branch now also uses. Kept
+  // as its own public method (rather than inlined into _refreshPlanning)
+  // because it is still called directly, without going through a refresh
+  // attempt, at the signedIn -> sessionExpired auth transition
+  // (planning_providers.dart).
+  Future<void> handleOfflineAuthenticated() async {
+    await _tryEstablishLocalFirstContext(
+      boundaryGeneration: _boundaryGeneration,
+    );
+  }
+
   // Generation guard: this call does not establish a new boundary itself --
-  // it passively resolves the current unresolved one from local data -- so it
-  // captures _boundaryGeneration without advancing it, then checks
-  // _isStaleBoundary against that captured value after the local read
+  // it passively resolves the current unresolved one from local data -- so
+  // the caller captures _boundaryGeneration without advancing it, then this
+  // checks _isStaleBoundary against that captured value after the local read
   // completes. Advancing the generation here would be wrong: it would
   // invalidate a concurrent handleActiveContextChanged call that is
   // legitimately establishing a new boundary at the same time.
-  Future<void> handleOfflineAuthenticated() async {
+  Future<void> _tryEstablishLocalFirstContext({
+    required int boundaryGeneration,
+  }) async {
     if (_state.userId != null && _state.organizationId != null) {
       return;
     }
@@ -315,7 +346,6 @@ class PlanningSyncController extends ChangeNotifier {
       return;
     }
 
-    final boundaryGeneration = _boundaryGeneration;
     final hasProjection = await _localStore().hasProjection(
       userId: identity.userId,
       organizationId: organizationId,
@@ -324,6 +354,12 @@ class PlanningSyncController extends ChangeNotifier {
       return;
     }
     if (!hasProjection) {
+      return;
+    }
+    if (_state.userId != null && _state.organizationId != null) {
+      // A concurrent call (e.g. handleActiveContextChanged) may have
+      // already established a real context while this local read was in
+      // flight. Never clobber it.
       return;
     }
 
