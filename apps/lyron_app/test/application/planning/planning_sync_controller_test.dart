@@ -133,17 +133,25 @@ void main() {
       // against the CURRENT session's userId before reusing it. Scenario:
       // user A's planning context is established, then user B signs in on
       // the same device (this call path is new since Task 2.7). Fails
-      // against old code: state.userId stays 'user-A'.
+      // against old code: state.userId stays 'user-A', and -- without the
+      // guard -- _refreshPlanning goes on to fetch org-A's payload and
+      // write it into the store under user B's session. The remote fetch
+      // deliberately succeeds here (no forced offline error) so a missing
+      // guard is caught by both the fetch-call-count and the
+      // replaceActiveProjection-call-count assertions below, not only by
+      // the end-state assertion.
       'a different user signing in before a refresh clears the prior '
       'user\'s stale planning context',
       () async {
+        final countingStore = _CallCountingPlanningLocalStore(database);
+        final countingLifecycle = _lifecycleFor(countingStore);
         session = const AppAuthSession(
           userId: 'user-A',
           email: 'a@lyron.local',
         );
         final controller = PlanningSyncController(
-          localStore: () => store,
-          localDataLifecycle: lifecycle,
+          localStore: () => countingStore,
+          localDataLifecycle: countingLifecycle,
           remoteRepository: () => remoteRepository,
           authSessionReader: () => session,
         );
@@ -155,16 +163,17 @@ void main() {
           ),
         );
         expect(controller.state.userId, 'user-A');
+        expect(remoteRepository.fetchCallsByOrganizationId, ['org-A']);
+        expect(countingStore.replaceActiveProjectionCallCount, 1);
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
 
-        // User B signs in on the same device, and the refresh that follows
-        // fails (offline here -- any refresh failure reproduces this, since
-        // _refreshPlanning never re-checks ownership before reusing
-        // _state.userId).
+        // User B signs in on the same device. No local snapshot exists for
+        // user B, so a correctly-guarded refresh must never reach the
+        // network or the store on org A's behalf.
         session = const AppAuthSession(
           userId: 'user-B',
           email: 'b@lyron.local',
         );
-        remoteRepository.error = Exception('offline');
 
         await controller.refreshPlanning();
 
@@ -175,6 +184,22 @@ void main() {
               'user A\'s stale planning context must never surface once '
               'user B has signed in, even when the refresh fails',
         );
+        expect(
+          remoteRepository.fetchCallsByOrganizationId,
+          ['org-A'],
+          reason:
+              'org A must never be re-fetched once user B has signed in; '
+              'a missing guard would append a second org-A fetch here',
+        );
+        expect(
+          countingStore.replaceActiveProjectionCallCount,
+          1,
+          reason:
+              'the local store must never be written to again for org A '
+              'under user B\'s session; a missing guard would push this '
+              'past 1',
+        );
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
       },
     );
 
@@ -1008,6 +1033,7 @@ PlanningSyncPayload _payloadFor(
 class _FakePlanningRemoteRefreshRepository
     implements PlanningRemoteRefreshRepository {
   int fetchCallCount = 0;
+  final List<String> fetchCallsByOrganizationId = [];
   Object? error;
   Future<PlanningSyncPayload>? nextPayload;
   final Map<String, Future<PlanningSyncPayload>> payloadsByOrganizationId = {};
@@ -1017,6 +1043,7 @@ class _FakePlanningRemoteRefreshRepository
     required String organizationId,
   }) async {
     fetchCallCount += 1;
+    fetchCallsByOrganizationId.add(organizationId);
 
     if (error != null) {
       throw error!;
@@ -1034,6 +1061,41 @@ class _FakePlanningRemoteRefreshRepository
     }
 
     return _payloadFor(organizationId);
+  }
+}
+
+// Thin DriftPlanningLocalStore subclass that counts calls to
+// replaceActiveProjection (and records which organization each call wrote
+// for), mirroring _CallCountingSongCatalogStore in
+// song_catalog_controller_test.dart. Lets a test prove a guard actually
+// prevented a write, rather than only asserting the resulting state.
+class _CallCountingPlanningLocalStore extends DriftPlanningLocalStore {
+  _CallCountingPlanningLocalStore(super.database);
+
+  int replaceActiveProjectionCallCount = 0;
+  final List<String> replaceActiveProjectionOrganizationIds = [];
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) {
+    replaceActiveProjectionCallCount += 1;
+    replaceActiveProjectionOrganizationIds.add(organizationId);
+    return super.replaceActiveProjection(
+      userId: userId,
+      organizationId: organizationId,
+      plans: plans,
+      sessions: sessions,
+      items: items,
+      refreshedAt: refreshedAt,
+      shouldContinue: shouldContinue,
+    );
   }
 }
 
