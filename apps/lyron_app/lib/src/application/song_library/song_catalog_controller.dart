@@ -844,6 +844,14 @@ class SongCatalogController extends ChangeNotifier {
   }
 
   bool _isAuthorizationFailure(Object error) {
+    if (error is AuthRetryableFetchException) {
+      // gotrue's own connectivity/transient-failure type -- thrown for
+      // network errors, 5xx, and timeouts. It EXTENDS AuthException, so it
+      // must be excluded here before the general is-check below, or a
+      // transient network blip gets misclassified as an authorization
+      // failure (F-E).
+      return false;
+    }
     if (error is AuthException) {
       return true;
     }

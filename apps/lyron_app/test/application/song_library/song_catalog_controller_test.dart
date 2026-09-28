@@ -1819,6 +1819,187 @@ void main() {
     );
 
     test(
+      // Task 2.3 (F-E): AuthRetryableFetchException is gotrue's own
+      // connectivity/transient-failure type -- it EXTENDS AuthException, so
+      // the naive `error is AuthException` check in _isAuthorizationFailure
+      // misclassifies it as an authorization failure. Fails against old
+      // code: sessionStatus becomes expired and the refresh timer is
+      // stopped, instead of the connectivity path being taken.
+      'org-lookup AuthRetryableFetchException is classified as '
+      'connectivity, not authorization',
+      () {
+        fakeAsync((async) {
+          final organizationReaderState = _MutableOrganizationReader('org-1');
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: organizationReaderState.read,
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          final establishedContext = controller.state.context;
+          expect(establishedContext, isNotNull);
+          final establishedSessionStatus = controller.state.sessionStatus;
+          final establishedConnectionStatus =
+              controller.state.connectionStatus;
+          final establishedHasCachedCatalog =
+              controller.state.hasCachedCatalog;
+
+          organizationReaderState.nextError = AuthRetryableFetchException();
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          // Established context + connectivity failure on org-lookup hits
+          // the `if (hadContextBeforeRefresh) return;` early-return inside
+          // the _isConnectivityFailure branch (song_catalog_controller.dart,
+          // _refreshCatalogInternal org-lookup catch): no _setStateIfCurrent
+          // call at all, so EVERY state field is left bit-for-bit as it was
+          // before this attempt. Assert all of them, not just
+          // sessionStatus-isn't-expired, to prove the connectivity branch
+          // specifically fired (old buggy code took the authorization
+          // branch instead, which DOES call _setStateIfCurrent with
+          // sessionStatus: expired).
+          expect(controller.state.context, establishedContext);
+          expect(controller.state.sessionStatus, establishedSessionStatus);
+          expect(
+            controller.state.connectionStatus,
+            establishedConnectionStatus,
+          );
+          expect(
+            controller.state.hasCachedCatalog,
+            establishedHasCachedCatalog,
+          );
+          expect(
+            controller.state.sessionStatus,
+            isNot(CatalogSessionStatus.expired),
+          );
+
+          // _resetSessionLifecycle() must NOT have fired: the periodic
+          // refresh timer is still running. Clear the injected error so the
+          // next periodic tick can reach listSongs and prove the timer is
+          // still alive (old, buggy code stops the timer here, so the tick
+          // never fires and listSongsCalls stays flat).
+          organizationReaderState.nextError = null;
+          final callsBefore = remoteRepository.listSongsCalls;
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+        });
+      },
+    );
+
+    test(
+      // Task 2.3 (F-E): same misclassification, via the listSongs() catch
+      // block. Fails against old code: sessionStatus becomes expired
+      // (authorization/expiry path) and the refresh timer is stopped,
+      // instead of the connectivity path (unverifiableDueToConnectivity)
+      // that keeps the cached catalog visible and the timer alive.
+      'listSongs AuthRetryableFetchException is classified as '
+      'connectivity, not authorization',
+      () {
+        fakeAsync((async) {
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          final establishedContext = controller.state.context;
+          expect(establishedContext, isNotNull);
+          expect(controller.state.hasCachedCatalog, isTrue);
+
+          remoteRepository.listSongsError = AuthRetryableFetchException();
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          expect(controller.state.context, establishedContext);
+          expect(controller.state.hasCachedCatalog, isTrue);
+          expect(
+            controller.state.connectionStatus,
+            CatalogConnectionStatus.offlineCached,
+          );
+          expect(
+            controller.state.sessionStatus,
+            CatalogSessionStatus.unverifiableDueToConnectivity,
+          );
+
+          // _resetSessionLifecycle() must NOT have fired: the periodic
+          // refresh timer is still running. Clear the injected error so the
+          // next periodic tick can succeed and prove the timer is still
+          // alive (old, buggy code stops the timer here, so the tick never
+          // fires and listSongsCalls stays flat).
+          remoteRepository.listSongsError = null;
+          final callsBefore = remoteRepository.listSongsCalls;
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+        });
+      },
+    );
+
+    test(
+      // Task 2.3 (F-E) regression guard: a genuine AuthException that is
+      // NOT AuthRetryableFetchException must still take the
+      // authorization/expiry path. The fix must not overcorrect and treat
+      // ALL AuthExceptions as connectivity.
+      'a genuine (non-retryable) AuthException via listSongs still takes '
+      'the authorization/expiry path',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        remoteRepository.listSongsError = const AuthException(
+          'session expired',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(
+          controller.state.hasCachedCatalog,
+          establishedHasCachedCatalog,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
       // Task 2.2 (F-F #1): the post-verify sessionStatus == expired branch
       // used to clearContext: true unconditionally. Fails against old code
       // (context becomes null, connectionStatus becomes unavailable).
