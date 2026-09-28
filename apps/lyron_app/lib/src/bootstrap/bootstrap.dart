@@ -3,23 +3,25 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/infrastructure/config/sentry_config.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_observability.dart';
+import 'package:lyron_app/src/infrastructure/observability/tracing_http_base_client.dart';
 import 'package:lyron_app/src/infrastructure/observability/tracing_http_client.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// HTTP request timeout for Supabase-bound calls (auth, RPC, etc.).
-/// Sits below the measured 75s unroutable-network give-up and above ordinary
-/// mobile-network round-trip variance. A per-request bound; combined auth +
-/// RPC operations can still take ~30s in worst case.
-/// See docs/specs/2026-09-28-offline-catalog-local-first-visibility.md Step 1.2.
-const _supabaseHttpTimeout = Duration(seconds: 15);
+/// Response-backstop timeout for Supabase-bound calls (auth, RPC, etc.),
+/// applied once a connection is established (the separate 10s native
+/// connect timeout, see tracing_http_base_client.dart, bounds the
+/// measured 75s unroutable-network give-up before that). Exempted for
+/// `/auth/v1/token` -- see [TracingHttpClient].
+/// See docs/architecture/decisions/ADR-037-local-first-catalog-visibility.md,
+/// "Amendment: two-tier HTTP timeout".
+const _supabaseHttpResponseBackstop = Duration(seconds: 60);
 
 /// Reports an error that escaped every other handler inside the guarded
 /// bootstrap zone (see [runBootstrapGuarded]).
@@ -226,9 +228,9 @@ Future<void> bootstrap() async {
     url: supabaseConfig.url,
     publishableKey: supabaseConfig.anonKey,
     httpClient: TracingHttpClient(
-      http.Client(),
+      createTracingBaseHttpClient(),
       observability,
-      timeout: _supabaseHttpTimeout,
+      timeout: _supabaseHttpResponseBackstop,
     ),
   );
   runApp(const _BootstrapScope(child: LyronApp()));

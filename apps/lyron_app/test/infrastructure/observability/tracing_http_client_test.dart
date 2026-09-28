@@ -82,19 +82,63 @@ void main() {
     expect(inner.lastRequest!.headers.containsKey('traceparent'), isFalse);
   });
 
-  test('throws TimeoutException when inner client never completes', () async {
-    final inner = _NeverCompletingInnerClient();
-    final client = TracingHttpClient(
-      inner,
-      const _FakeObservability(null),
-      timeout: const Duration(milliseconds: 100),
-      isWeb: false,
-    );
+  test(
+    'throws TimeoutException for a non-token request once the response '
+    'backstop elapses (tier 2, R1)',
+    () async {
+      final inner = _NeverCompletingInnerClient();
+      final client = TracingHttpClient(
+        inner,
+        const _FakeObservability(null),
+        timeout: const Duration(milliseconds: 100),
+        isWeb: false,
+      );
 
-    final request = http.Request('GET', Uri.parse('https://example.com/'));
+      final request = http.Request('GET', Uri.parse('https://example.com/'));
 
-    expect(client.send(request), throwsA(isA<TimeoutException>()));
-  });
+      expect(client.send(request), throwsA(isA<TimeoutException>()));
+    },
+  );
+
+  test(
+    'does NOT apply the response backstop to a /auth/v1/token request '
+    '(R1 exemption) -- guarded: the identical setup on a non-token URL '
+    'above DOES throw within the same short backstop, proving this '
+    'exemption is a real behavior change, not a no-op',
+    () async {
+      final inner = _NeverCompletingInnerClient();
+      final client = TracingHttpClient(
+        inner,
+        const _FakeObservability(null),
+        // Deliberately the SAME short duration used by the non-token test
+        // above, which throws within it. Before this fix, `send()` applied
+        // `.timeout(_timeout)` unconditionally to every request -- so this
+        // exact setup, on this exact URL, would ALSO have thrown within
+        // this window under the old single-timeout shape. It does not
+        // throw now, because /auth/v1/token is now exempted from the
+        // response backstop entirely (only the connect timeout, baked into
+        // `_inner` before `send()` is ever called, applies to it).
+        timeout: const Duration(milliseconds: 100),
+        isWeb: false,
+      );
+
+      final request = http.Request(
+        'POST',
+        Uri.parse('https://example.supabase.co/auth/v1/token?grant_type=refresh_token'),
+      );
+
+      await expectLater(
+        client
+            .send(request)
+            .timeout(
+              const Duration(milliseconds: 300),
+              onTimeout: () =>
+                  throw StateError('did not time out (expected)'),
+            ),
+        throwsA(isA<StateError>()),
+      );
+    },
+  );
 
   test('a TracingHttpClient timeout surfaces as AuthRetryableFetchException '
       'when driven through a real gotrue GoTrueClient (gotrue-2.27.2, pinned '
