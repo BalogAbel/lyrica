@@ -20,9 +20,9 @@ class TracingHttpClient extends http.BaseClient {
   TracingHttpClient(
     this._inner,
     this._observability, {
-    Duration timeout = const Duration(seconds: 15),
+    this._timeout = const Duration(seconds: 15),
     this._isWeb = kIsWeb,
-  }) : _timeout = timeout;
+  });
 
   final http.Client _inner;
   final Observability _observability;

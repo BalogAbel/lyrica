@@ -24,13 +24,6 @@ class _NeverCompletingInnerClient extends http.BaseClient {
   }
 }
 
-class _TimeoutThrowingInnerClient extends http.BaseClient {
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
-    throw TimeoutException('Timeout thrown directly by http.Client', null);
-  }
-}
-
 class _FakeObservability extends NoopObservability {
   const _FakeObservability(this._traceParent);
 

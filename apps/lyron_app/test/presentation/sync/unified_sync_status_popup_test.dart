@@ -1112,7 +1112,7 @@ void main() {
   // style below -- that style is a false green for B1 because a DialogRoute
   // context is not a GoRouter page context, so GoRouterState.of(context)
   // called from inside the dialog never gets exercised by it.
-  Widget _appWithRealShowDialogPath({
+  Widget appWithRealShowDialogPath({
     required UnifiedManualSyncController controller,
   }) {
     return ProviderScope(
@@ -1175,7 +1175,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        _appWithRealShowDialogPath(controller: fakeController),
+        appWithRealShowDialogPath(controller: fakeController),
       );
 
       await tester.tap(find.byKey(const ValueKey('open-popup')));
@@ -1199,7 +1199,7 @@ void main() {
         result: const UnifiedManualSyncRunResult.clean(),
       );
       await tester.pumpWidget(
-        _appWithRealShowDialogPath(controller: fakeController),
+        appWithRealShowDialogPath(controller: fakeController),
       );
 
       await tester.tap(find.byKey(const ValueKey('open-popup')));
