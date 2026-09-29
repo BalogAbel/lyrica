@@ -2,21 +2,32 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart'
     show SongSyncStatus;
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
+import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class UnifiedSyncStatusPopup extends ConsumerWidget {
-  const UnifiedSyncStatusPopup({super.key});
+  const UnifiedSyncStatusPopup({super.key, this.from});
+
+  // Captured by show() from the CALLER's context, before showDialog opens.
+  // A DialogRoute's own context is not a GoRouter page context --
+  // GoRouterState.of(context) called from inside the dialog throws
+  // GoError('There is no GoRouterState above the current context'), so the
+  // route string must be read up front, while context is still the real
+  // page context, and threaded down as plain data (B1).
+  final String? from;
 
   static Future<void> show(BuildContext context) {
+    final from = GoRouterState.of(context).uri.toString();
     return showDialog<void>(
       context: context,
-      builder: (_) => const UnifiedSyncStatusPopup(),
+      builder: (_) => UnifiedSyncStatusPopup(from: from),
     );
   }
 
@@ -54,11 +65,7 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
                   ],
                   FilledButton.icon(
                     key: const ValueKey('unified-sync-popup-sync-now'),
-                    onPressed: () {
-                      unawaited(
-                        ref.read(unifiedManualSyncControllerProvider).syncNow(),
-                      );
-                    },
+                    onPressed: () => unawaited(_syncNow(context, ref)),
                     icon: const Icon(Icons.sync),
                     label: const Text(AppStrings.unifiedSyncNowAction),
                   ),
@@ -70,6 +77,24 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  // Only the button-pressed Sync path may navigate to re-auth (product
+  // requirement: "only kick me to sign-in when I press Sync"). Automatic
+  // triggers (OnlineTransitionDetector, foregroundSyncListenerProvider) call
+  // syncNow() directly and never look at requiresReauth, so under
+  // sessionExpired they silently no-op instead.
+  Future<void> _syncNow(BuildContext context, WidgetRef ref) async {
+    final result = await ref
+        .read(unifiedManualSyncControllerProvider)
+        .syncNow();
+    if (!result.requiresReauth || !context.mounted) return;
+    context.go(
+      Uri(
+        path: AppRoutes.signIn.path,
+        queryParameters: from == null ? null : {'from': from},
+      ).toString(),
     );
   }
 

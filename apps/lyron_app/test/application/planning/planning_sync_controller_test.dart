@@ -126,6 +126,159 @@ void main() {
       },
     );
 
+    test(
+      // I3 analog (Opus adversarial review of the whole branch diff,
+      // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+      // Invariant cause 4): _refreshPlanning never compares _state.userId
+      // against the CURRENT session's userId before reusing it. Scenario:
+      // user A's planning context is established, then user B signs in on
+      // the same device (this call path is new since Task 2.7). Fails
+      // against old code: state.userId stays 'user-A', and -- without the
+      // guard -- _refreshPlanning goes on to fetch org-A's payload (using
+      // user B's live session token, since that's the only session the
+      // controller has) and write it into the store keyed by the stale
+      // captured userId 'user-A', overwriting A's local projection out
+      // from under the confirmation dialog still pending on the
+      // different-user sign-in flow. The remote fetch
+      // deliberately succeeds here (no forced offline error) so a missing
+      // guard is caught by both the fetch-call-count and the
+      // replaceActiveProjection-call-count assertions below, not only by
+      // the end-state assertion.
+      'a different user signing in before a refresh clears the prior '
+      'user\'s stale planning context',
+      () async {
+        final countingStore = _CallCountingPlanningLocalStore(database);
+        final countingLifecycle = _lifecycleFor(countingStore);
+        session = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final controller = PlanningSyncController(
+          localStore: () => countingStore,
+          localDataLifecycle: countingLifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-A',
+            organizationId: 'org-A',
+          ),
+        );
+        expect(controller.state.userId, 'user-A');
+        expect(remoteRepository.fetchCallsByOrganizationId, ['org-A']);
+        expect(countingStore.replaceActiveProjectionCallCount, 1);
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
+
+        // User B signs in on the same device. No local snapshot exists for
+        // user B, so a correctly-guarded refresh must never reach the
+        // network or the store on org A's behalf.
+        session = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+
+        await controller.refreshPlanning();
+
+        expect(
+          controller.state.userId,
+          isNot('user-A'),
+          reason:
+              'user A\'s stale planning context must never surface once '
+              'user B has signed in',
+        );
+        expect(
+          remoteRepository.fetchCallsByOrganizationId,
+          ['org-A'],
+          reason:
+              'org A must never be re-fetched once user B has signed in; '
+              'a missing guard would append a second org-A fetch here',
+        );
+        expect(
+          countingStore.replaceActiveProjectionCallCount,
+          1,
+          reason:
+              'the local store must never be written to again for org A '
+              'under user B\'s session; a missing guard would push this '
+              'past 1',
+        );
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
+      },
+    );
+
+    test(
+      // R2 (PR #79 review). Same scenario as above, but with the production
+      // wiring: planning_providers.dart always injects a
+      // lastKnownIdentityReader. The test above builds the controller
+      // WITHOUT one, so it never reaches this path: the I3 guard resets the
+      // stale state, then _tryEstablishLocalFirstContext -- which used
+      // identity.userId with no comparison against the live session --
+      // re-established user A's context from LastKnownIdentity, and the
+      // refresh went on to fetch org A with user B's token and overwrite A's
+      // projection.
+      'a different user signing in does not re-establish the prior user\'s '
+      'context from LastKnownIdentity, fetch org A, or overwrite its '
+      'projection',
+      () async {
+        final countingStore = _CallCountingPlanningLocalStore(database);
+        final countingLifecycle = _lifecycleFor(countingStore);
+        session = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final controller = PlanningSyncController(
+          localStore: () => countingStore,
+          localDataLifecycle: countingLifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-A', organizationId: 'org-A'),
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-A',
+            organizationId: 'org-A',
+          ),
+        );
+        expect(controller.state.userId, 'user-A');
+        expect(remoteRepository.fetchCallsByOrganizationId, ['org-A']);
+        expect(countingStore.replaceActiveProjectionCallCount, 1);
+
+        // User B signs in while A's LastKnownIdentity (the confirmation
+        // dialog for the different-user flow is still pending) and A's
+        // projection are still on the device.
+        session = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+
+        await controller.refreshPlanning();
+
+        expect(
+          controller.state.userId,
+          isNot('user-A'),
+          reason:
+              'LastKnownIdentity names user A, but the live session is user '
+              'B: A\'s context must not be re-established under B\'s session',
+        );
+        expect(
+          remoteRepository.fetchCallsByOrganizationId,
+          ['org-A'],
+          reason: 'org A must never be re-fetched with user B\'s token',
+        );
+        expect(
+          countingStore.replaceActiveProjectionCallCount,
+          1,
+          reason:
+              'user A\'s projection must never be overwritten by B\'s '
+              'refresh',
+        );
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
+      },
+    );
+
     test('overlapping refreshes do not run concurrently', () async {
       final firstRefresh = Completer<PlanningSyncPayload>();
       remoteRepository.nextPayload = firstRefresh.future;
@@ -343,7 +496,18 @@ void main() {
     );
 
     test(
-      'session expiry keeps persisted planning data and pending mutations',
+      // I2 (b) fix (Opus adversarial review, docs/specs/2026-09-28-offline
+      // -catalog-local-first-visibility.md): handleSessionExpired() used to
+      // unconditionally reset to PlanningSyncState.initial(), wiping
+      // userId/organizationId/hasLocalPlanningData even when planning
+      // already had an established, valid context for this identity. That
+      // is an auth-outcome-driven destructive reset, not one of the 4
+      // invariant purge causes -- it must be status-only here, mirroring
+      // the catalog controller's handleSessionExpired (which only flips
+      // sessionStatus and never clears context). Fails against the old
+      // code: state.userId/organizationId were reset to null.
+      'session expiry keeps the established planning context, not just '
+      'the persisted data and pending mutations',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -374,8 +538,15 @@ void main() {
         await controller.handleSessionExpired();
 
         expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
-        expect(controller.state.userId, isNull);
-        expect(controller.state.organizationId, isNull);
+        expect(
+          controller.state.userId,
+          'user-1',
+          reason:
+              'an already-established planning context must survive a '
+              'sessionExpired notification -- status-only, not a reset',
+        );
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
         expect(
           await store.readPlanSummaries(
             userId: 'user-1',
@@ -387,6 +558,131 @@ void main() {
           await mutationStore.hasUnsyncedMutations(userId: 'user-1'),
           isTrue,
         );
+      },
+    );
+
+    test(
+      // I2 (a) fix, the reviewer's own repro shape: catalog's local-first
+      // (this branch's earlier work) sets context under sessionExpired,
+      // which propagates through ActivePlanningContextController into
+      // activePlanningContextProvider -> handleActiveContextChanged(ctx)
+      // with session still null. That call used to hard-reset planning to
+      // initial()/signedOut even when planning had ALREADY established
+      // (and could re-establish) valid state for the exact same identity
+      // the incoming context names -- an auth-outcome-driven destructive
+      // reset, not one of the 4 invariant purge causes. Fails against the
+      // old code: state.userId/organizationId are wiped to null and
+      // accessStatus flips to signedOut.
+      'handleActiveContextChanged with a null session and an incoming '
+      'context for the SAME identity already established via local-first '
+      'does not destroy the established planning state',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-org-1',
+              name: 'Plan org-1',
+              description: 'Description org-1',
+              scheduledFor: DateTime.utc(2026, 4, 5, 9),
+              updatedAt: DateTime.utc(2026, 4, 3, 12),
+              version: 1,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+        remoteRepository.error = StateError('network unreachable');
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+
+        // Catalog side propagates its own local-first context for the SAME
+        // identity while the session is still expired (step 3 of the
+        // reviewer's repro chain).
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          refresh: false,
+        );
+
+        expect(
+          controller.state.userId,
+          'user-1',
+          reason:
+              'planning context must survive a sessionExpired re-notify '
+              'for the same identity it already established',
+        );
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+        expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+      },
+    );
+
+    test(
+      // Item 3 (store fallback): identity.organizationId can be null (e.g.
+      // membership resolution never completed before the device went
+      // offline) while the local store still has a cached projection for
+      // this user from an earlier session. Mirrors
+      // SongCatalogStore.readLatestCachedOrganizationId's role in
+      // SongCatalogController._tryEstablishLocalFirstContext -- planning's
+      // equivalent helper had no such fallback and silently gave up.
+      'handleOfflineAuthenticated falls back to the store\'s last cached '
+      'organization id when the last-known identity has none',
+      () async {
+        await store.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-org-1',
+              name: 'Plan org-1',
+              description: 'Description org-1',
+              scheduledFor: DateTime.utc(2026, 4, 5, 9),
+              updatedAt: DateTime.utc(2026, 4, 3, 12),
+              version: 1,
+            ),
+          ],
+          sessions: const [],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 4, 3, 12),
+        );
+        remoteRepository.error = StateError('network unreachable');
+
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: null),
+        );
+
+        await controller.handleSessionExpired();
+        await controller.handleOfflineAuthenticated();
+
+        expect(controller.state.userId, 'user-1');
+        expect(controller.state.organizationId, 'org-1');
+        expect(controller.state.hasLocalPlanningData, isTrue);
+        expect(remoteRepository.fetchCallCount, 0);
       },
     );
 
@@ -684,6 +980,52 @@ void main() {
       expect(remoteRepository.fetchCallCount, fetchCallCountBefore);
     });
 
+    test('refreshPlanning establishes local-first context on every refresh '
+        'attempt with a null-session boundary, not only at the '
+        'sessionExpired transition', () async {
+      await store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-org-1',
+            name: 'Plan org-1',
+            description: 'Description org-1',
+            scheduledFor: DateTime.utc(2026, 4, 5, 9),
+            updatedAt: DateTime.utc(2026, 4, 3, 12),
+            version: 1,
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+      remoteRepository.error = StateError('network unreachable');
+
+      final controller = PlanningSyncController(
+        localStore: () => store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: () => remoteRepository,
+        authSessionReader: () => null,
+        lastKnownIdentityReader: () =>
+            (userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      await controller.handleSessionExpired();
+      // NOTE: handleOfflineAuthenticated() is deliberately NOT called
+      // here. refreshPlanning() alone, on a later refresh attempt (e.g. a
+      // foreground resume), must be able to establish local-first
+      // context on its own.
+      await controller.refreshPlanning();
+
+      expect(controller.state.userId, 'user-1');
+      expect(controller.state.organizationId, 'org-1');
+      expect(controller.state.accessStatus, PlanningAccessStatus.signedIn);
+      expect(controller.state.hasLocalPlanningData, isTrue);
+      expect(remoteRepository.fetchCallCount, 0);
+    });
+
     test(
       'switching to a new active organization that fails to refresh does not expose the previous organization projection',
       () async {
@@ -767,6 +1109,7 @@ PlanningSyncPayload _payloadFor(
 class _FakePlanningRemoteRefreshRepository
     implements PlanningRemoteRefreshRepository {
   int fetchCallCount = 0;
+  final List<String> fetchCallsByOrganizationId = [];
   Object? error;
   Future<PlanningSyncPayload>? nextPayload;
   final Map<String, Future<PlanningSyncPayload>> payloadsByOrganizationId = {};
@@ -776,6 +1119,7 @@ class _FakePlanningRemoteRefreshRepository
     required String organizationId,
   }) async {
     fetchCallCount += 1;
+    fetchCallsByOrganizationId.add(organizationId);
 
     if (error != null) {
       throw error!;
@@ -793,6 +1137,41 @@ class _FakePlanningRemoteRefreshRepository
     }
 
     return _payloadFor(organizationId);
+  }
+}
+
+// Thin DriftPlanningLocalStore subclass that counts calls to
+// replaceActiveProjection (and records which organization each call wrote
+// for), mirroring _CallCountingSongCatalogStore in
+// song_catalog_controller_test.dart. Lets a test prove a guard actually
+// prevented a write, rather than only asserting the resulting state.
+class _CallCountingPlanningLocalStore extends DriftPlanningLocalStore {
+  _CallCountingPlanningLocalStore(super.database);
+
+  int replaceActiveProjectionCallCount = 0;
+  final List<String> replaceActiveProjectionOrganizationIds = [];
+
+  @override
+  Future<void> replaceActiveProjection({
+    required String userId,
+    required String organizationId,
+    required List<CachedPlanRecord> plans,
+    required List<CachedSessionRecord> sessions,
+    required List<CachedSessionItemRecord> items,
+    required DateTime refreshedAt,
+    bool Function()? shouldContinue,
+  }) {
+    replaceActiveProjectionCallCount += 1;
+    replaceActiveProjectionOrganizationIds.add(organizationId);
+    return super.replaceActiveProjection(
+      userId: userId,
+      organizationId: organizationId,
+      plans: plans,
+      sessions: sessions,
+      items: items,
+      refreshedAt: refreshedAt,
+      shouldContinue: shouldContinue,
+    );
   }
 }
 

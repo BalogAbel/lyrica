@@ -443,6 +443,51 @@ specific finding:
   partial-edit-vs-full-edit error-code/semantics contracts are now pinned (see Backend
   Verification below).
 
+#### Offline soak pattern (local-first visibility)
+
+`docs/specs/2026-09-28-offline-catalog-local-first-visibility.md`,
+`docs/plans/2026-09-28-offline-catalog-local-first-visibility.md`. Added
+`apps/lyron_app/test/integration/offline_soak_local_first_visibility_test.dart`
+as the acceptance gate for that slice's invariant ("the catalog context shown
+to the user comes from local data, and only four things may change it").
+Reusable pattern for future slices proving a similar never-hidden-while-data-
+exists guarantee:
+
+- Real `ProviderContainer` wiring of the actual provider graph under test
+  (`songCatalogControllerProvider`, `songLibraryListProvider`,
+  `appAuthControllerProvider`, `unifiedManualSyncControllerProvider`,
+  `foregroundSyncListenerProvider`), not hand-rolled stand-in fakes for the
+  whole system. Only the true I/O boundaries are faked: the network client
+  (a controllable `Completer`-based double, deliberately left unresolved for
+  a real portion of the test — a fake that answers immediately cannot catch
+  a bug that only shows up while a request is genuinely in flight), the
+  foreground-state stream, and the clock.
+- `fake_async` pins real time and makes microtask draining deterministic
+  (`flushMicrotasks()`), rather than fast-forwarding simulated timers —
+  useful for proving a periodic refresh never fires mid-test and for
+  ordering assertions against async work without real delays.
+- Single-flight/coalescing internals (e.g. `UnifiedManualSyncController`'s
+  in-flight-plus-one-queued-rerun shape) must be explicitly drained and the
+  drain asserted (e.g. `controller.isRunning == false`) before moving to the
+  next phase of a multi-phase soak test — otherwise a later phase's call can
+  silently alias a stale in-flight `Future` from an earlier phase instead of
+  exercising fresh behavior, and the test can pass "by luck".
+- Both relevant states (here: `signedIn` and `sessionExpired`) are exercised
+  in one continuous run, via a real auth-stream emission, not two independent
+  tests each touching one state — an invariant broken only by a *transition*
+  is otherwise invisible.
+- The one legitimate exception to the invariant (here: a D1 purge) is
+  exercised too, in the same file, asserting the guaranteed property holds
+  everywhere else and is asserted to break — visibly and only — at that one
+  point, using the real purge machinery (`LocalDataLifecycle`,
+  `VerifiedEmptyMembershipCleanupCoordinator`), not a stubbed-through shortcut.
+- A first adversarial review of this test found a real gap (a drain
+  assumption asserted only in a comment, not enforced) — see
+  `docs/specs/2026-09-28-offline-catalog-local-first-visibility.md`'s
+  Step 2 review notes. Soak tests of this shape should expect at least one
+  review round hardening exactly this kind of "passes today, not provably
+  robust" gap.
+
 ### Widget Tests
 
 Cover:

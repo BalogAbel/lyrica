@@ -758,7 +758,13 @@ void main() {
     );
 
     test(
-      'confirmed session expiry blocks cached authenticated reading',
+      // Task 2.2 (F-F #1): this assertion used to encode the old
+      // destructive behaviour (clearContext: true on a post-verify expired
+      // result). Per the invariant, a session-verifier expiry is not one
+      // of the four allowed context-change causes -- the resolved context
+      // and its cached data must stay visible, status-only.
+      'confirmed session expiry preserves the established context and '
+      'reports the cached catalog as offline-available',
       () async {
         await store.replaceActiveSnapshot(
           userId: 'user-1',
@@ -792,13 +798,16 @@ void main() {
 
         await controller.refreshCatalog();
 
-        expect(controller.state.context, isNull);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
         expect(
           controller.state.connectionStatus,
-          CatalogConnectionStatus.unavailable,
+          CatalogConnectionStatus.offlineCached,
         );
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
-        expect(controller.state.hasCachedCatalog, isFalse);
+        expect(controller.state.hasCachedCatalog, isTrue);
         expect(sessionVerifierCalls, 1);
 
         await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -849,7 +858,14 @@ void main() {
     );
 
     test(
-      'authorization failure while refreshing the song catalog expires the session and stops refresh retries',
+      // Task 2.2 (F-F #2): this assertion used to encode the old
+      // destructive behaviour (clearContext: true on a listSongs()
+      // authorization failure). Per the invariant, this is not one of the
+      // four allowed context-change causes -- the org lookup already
+      // resolved and verified this context this attempt, so it must stay
+      // status-only (connectionStatus reflects the absence of a cached
+      // snapshot here, but context itself is preserved).
+      'authorization failure while refreshing the song catalog expires the session, preserves context, and stops refresh retries',
       () async {
         final foregroundState = _TestAppForegroundState();
         final delayedRepository = _DelayedSongRepository();
@@ -884,7 +900,10 @@ void main() {
         );
         await refreshFuture;
 
-        expect(controller.state.context, isNull);
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
         expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
         expect(
           controller.state.connectionStatus,
@@ -1470,6 +1489,722 @@ void main() {
       );
     });
 
+    test(
+      'refreshCatalog establishes local-first context from a cached snapshot '
+      'before the network organization lookup ever resolves',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final organizationLookup = Completer<String?>();
+        final sessionVerification = Completer<CatalogSessionStatus>();
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () => organizationLookup.future,
+          sessionVerifier: () => sessionVerification.future,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        unawaited(controller.refreshCatalog());
+        // Pump the event loop once without ever completing the hung network
+        // futures above.
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+
+        // Cleanup: let the in-flight refresh settle so the test doesn't leak
+        // a pending timer/future.
+        organizationLookup.complete('org-1');
+        sessionVerification.complete(CatalogSessionStatus.verified);
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
+
+    test(
+      // I1 (Opus adversarial review of Step 1 diff): when local-first finds
+      // NO cache for the identity's own org, the connectivity-failure
+      // fallback must still fall through to the store's fresh
+      // readLatestCachedOrganizationId read -- there is nothing better to
+      // reuse. This pins that the fallback path is exercised exactly once
+      // (no double independent read) and lands on the store's real answer.
+      'connectivity-failure org fallback reads the store fresh when '
+      'local-first found no cache for the identity org',
+      () async {
+        final countingStore = _CallCountingSongCatalogStore(database);
+        // Only org-y has a cached snapshot; the identity's own org (org-x)
+        // has none.
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-y',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: countingStore,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async =>
+              throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-x'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-y'),
+        );
+        expect(
+          countingStore.readLatestCachedOrganizationIdCallCount,
+          1,
+          reason:
+              'local-first found no cache for org-x and made no store call '
+              '(identity supplied the org directly); exactly one fresh read '
+              'should happen, in the connectivity fallback',
+        );
+      },
+    );
+
+    test(
+      // I1 (Opus adversarial review of Step 1 diff): regression guard for
+      // the exact bug -- when local-first SUCCEEDS at establishing context
+      // for the identity's own org (a confirmed non-empty local snapshot),
+      // the connectivity-failure fallback must reuse THAT org, never an
+      // independent fresh readLatestCachedOrganizationId read that could
+      // legally disagree (the store's "latest cached" row need not be the
+      // identity's own org). A within-one-refresh context flip driven
+      // purely by a connectivity failure violates the spec's invariant.
+      'connectivity-failure org fallback reuses the org local-first already '
+      'displayed, not a diverging fresh store read',
+      () async {
+        final countingStore = _CallCountingSongCatalogStore(database);
+        // org-x is the identity's own org and has a cache. org-y is ALSO
+        // cached, refreshed later, so a fresh "latest cached" read would
+        // return org-y -- making the divergence observable if the I1 bug
+        // were still present.
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-x',
+          summaries: const [SongSummary(id: 'song-1', title: 'X Song')],
+          sources: const [SongSource(id: 'song-1', source: '{title: X Song}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+        await countingStore.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-y',
+          summaries: const [SongSummary(id: 'song-2', title: 'Y Song')],
+          sources: const [SongSource(id: 'song-2', source: '{title: Y Song}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 11),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: countingStore,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async =>
+              throw const SocketException('offline'),
+          sessionVerifier: () async =>
+              CatalogSessionStatus.unverifiableDueToConnectivity,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-x'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-x'),
+        );
+        expect(
+          countingStore.readLatestCachedOrganizationIdCallCount,
+          0,
+          reason:
+              'local-first supplied org-x directly from identity and '
+              'established context for it; the connectivity fallback must '
+              'reuse that org id, never call the store fresh',
+        );
+      },
+    );
+
+    test(
+      // Task 2.1 guard (F-B, docs/specs/2026-09-28-offline-catalog-local
+      // -first-visibility.md, Step 2): a null-session refresh is a pure
+      // local branch (no network call) and must never destroy an
+      // already-established context. Old code reset unconditionally to
+      // initial() here -- this test fails against that code.
+      'null-session refresh preserves an already-established context and '
+      'only marks the session expired',
+      () async {
+        AppAuthSession? session = const AppAuthSession(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+        );
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => session,
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+
+        session = null;
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isTrue);
+      },
+    );
+
+    test(
+      // Task 2.1: the null-session branch now runs the same local-first
+      // establishment as the signed-in path -- no prior context, but a
+      // last-known identity with a cached snapshot must establish context
+      // on THIS branch, not only via the separate one-shot
+      // handleOfflineAuthenticated.
+      'null-session refresh establishes context from local-first when no '
+      'prior context exists but a cached snapshot does',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async =>
+              throw StateError('must not be called offline'),
+          sessionVerifier: () async =>
+              throw StateError('must not be called offline'),
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: 'org-1'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context,
+          const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+      },
+    );
+
+    test(
+      // Task 2.1: the genuine-nothing-to-show case must still fall back to
+      // initial() -- no prior context, no identity, no cache.
+      'null-session refresh falls back to initial when local-first finds '
+      'nothing',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => null,
+          organizationReader: () async =>
+              throw StateError('must not be called offline'),
+          sessionVerifier: () async =>
+              throw StateError('must not be called offline'),
+        );
+
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, isNull);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+        expect(controller.state.hasCachedCatalog, isFalse);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-C): the org-lookup authorization-failure branch used to
+      // reset unconditionally to CatalogSnapshotState.initial(), destroying
+      // an already-established context even though an authorization
+      // failure is not one of the invariant's four context-change causes.
+      // This test fails against that old code (context becomes null).
+      'org-lookup authorization failure preserves an already-established '
+      'context and only marks the session expired',
+      () async {
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        organizationReaderState.nextError = const AuthApiException(
+          'unauthorized',
+          statusCode: '401',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
+      // Task 2.3 (F-E): AuthRetryableFetchException is gotrue's own
+      // connectivity/transient-failure type -- it EXTENDS AuthException, so
+      // the naive `error is AuthException` check in _isAuthorizationFailure
+      // misclassifies it as an authorization failure. Fails against old
+      // code: sessionStatus becomes expired and the refresh timer is
+      // stopped, instead of the connectivity path being taken.
+      'org-lookup AuthRetryableFetchException is classified as '
+      'connectivity, not authorization',
+      () {
+        fakeAsync((async) {
+          final organizationReaderState = _MutableOrganizationReader('org-1');
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: organizationReaderState.read,
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          final establishedContext = controller.state.context;
+          expect(establishedContext, isNotNull);
+          final establishedSessionStatus = controller.state.sessionStatus;
+          final establishedConnectionStatus = controller.state.connectionStatus;
+          final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+          organizationReaderState.nextError = AuthRetryableFetchException();
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          // Established context + connectivity failure on org-lookup hits
+          // the `if (hadContextBeforeRefresh) return;` early-return inside
+          // the _isConnectivityFailure branch (song_catalog_controller.dart,
+          // _refreshCatalogInternal org-lookup catch): no _setStateIfCurrent
+          // call at all, so EVERY state field is left bit-for-bit as it was
+          // before this attempt. Assert all of them, not just
+          // sessionStatus-isn't-expired, to prove the connectivity branch
+          // specifically fired (old buggy code took the authorization
+          // branch instead, which DOES call _setStateIfCurrent with
+          // sessionStatus: expired).
+          expect(controller.state.context, establishedContext);
+          expect(controller.state.sessionStatus, establishedSessionStatus);
+          expect(
+            controller.state.connectionStatus,
+            establishedConnectionStatus,
+          );
+          expect(
+            controller.state.hasCachedCatalog,
+            establishedHasCachedCatalog,
+          );
+          expect(
+            controller.state.sessionStatus,
+            isNot(CatalogSessionStatus.expired),
+          );
+
+          // _resetSessionLifecycle() must NOT have fired: the periodic
+          // refresh timer is still running. Clear the injected error so the
+          // next periodic tick can reach listSongs and prove the timer is
+          // still alive (old, buggy code stops the timer here, so the tick
+          // never fires and listSongsCalls stays flat).
+          organizationReaderState.nextError = null;
+          final callsBefore = remoteRepository.listSongsCalls;
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+        });
+      },
+    );
+
+    test(
+      // Task 2.3 (F-E): same misclassification, via the listSongs() catch
+      // block. Fails against old code: sessionStatus becomes expired
+      // (authorization/expiry path) and the refresh timer is stopped,
+      // instead of the connectivity path (unverifiableDueToConnectivity)
+      // that keeps the cached catalog visible and the timer alive.
+      'listSongs AuthRetryableFetchException is classified as '
+      'connectivity, not authorization',
+      () {
+        fakeAsync((async) {
+          final controller = SongCatalogController(
+            onImplausibleEmptySnapshot:
+                ({required userId, required organizationId}) async {},
+            store: store,
+            localDataLifecycle: lifecycle,
+            remoteRepository: remoteRepository,
+            authSessionReader: () => const AppAuthSession(
+              userId: 'user-1',
+              email: 'demo@lyron.local',
+            ),
+            organizationReader: () async => 'org-1',
+            sessionVerifier: () async => CatalogSessionStatus.verified,
+            refreshInterval: const Duration(minutes: 5),
+          );
+          addTearDown(controller.dispose);
+
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+          final establishedContext = controller.state.context;
+          expect(establishedContext, isNotNull);
+          expect(controller.state.hasCachedCatalog, isTrue);
+
+          remoteRepository.listSongsError = AuthRetryableFetchException();
+          unawaited(controller.refreshCatalog());
+          async.flushMicrotasks();
+
+          expect(controller.state.context, establishedContext);
+          expect(controller.state.hasCachedCatalog, isTrue);
+          expect(
+            controller.state.connectionStatus,
+            CatalogConnectionStatus.offlineCached,
+          );
+          expect(
+            controller.state.sessionStatus,
+            CatalogSessionStatus.unverifiableDueToConnectivity,
+          );
+
+          // _resetSessionLifecycle() must NOT have fired: the periodic
+          // refresh timer is still running. Clear the injected error so the
+          // next periodic tick can succeed and prove the timer is still
+          // alive (old, buggy code stops the timer here, so the tick never
+          // fires and listSongsCalls stays flat).
+          remoteRepository.listSongsError = null;
+          final callsBefore = remoteRepository.listSongsCalls;
+          async.elapse(const Duration(minutes: 5));
+          async.flushMicrotasks();
+          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+        });
+      },
+    );
+
+    test(
+      // I3 (Opus adversarial review of the whole branch diff,
+      // docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+      // Invariant cause 4): _refreshCatalogBody never compares
+      // _state.context's userId against the CURRENT session's userId.
+      // Scenario: user A's context is established (e.g. while
+      // sessionExpired, via local-first). User B then signs in on the same
+      // device. hadContextBeforeRefresh is true (context is non-null), so
+      // local-first is skipped -- but if the org lookup then fails for ANY
+      // reason (connectivity here), Tasks 2.2/2.3's context-preserving
+      // fixes keep user A's OLD context displayed to user B instead of
+      // clearing it. Fails against old code: state.context stays A's.
+      'org-lookup failure after a different user signs in does not '
+      'preserve the prior user\'s stale context',
+      () async {
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        expect(establishedContext!.userId, 'user-A');
+
+        // User B signs in on the same device. The org lookup then fails
+        // (connectivity here -- any of the Tasks 2.2/2.3 failure kinds
+        // reproduces this) while user A's context is still in state.
+        currentSession = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+        organizationReaderState.nextError = AuthRetryableFetchException();
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context?.userId,
+          isNot('user-A'),
+          reason:
+              'user A\'s stale context must never surface once user B has '
+              'signed in, even when the org lookup fails',
+        );
+      },
+    );
+
+    test(
+      // R2 (PR #79 review): the catalog-side counterpart of the planning
+      // identity-wired guard test. The production wiring
+      // (song_catalog_providers.dart) always injects a
+      // lastKnownIdentityReader, and the test above builds the controller
+      // without one. Here LastKnownIdentity still names user A (the
+      // different-user confirmation dialog is pending) while user B is the
+      // live session: after the I3 reset, local-first must resolve B's own
+      // context (none exists), never re-establish A's from the identity, and
+      // never fetch for A.
+      'a different user signing in does not re-establish the prior user\'s '
+      'context from LastKnownIdentity',
+      () async {
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-A', organizationId: 'org-1'),
+        );
+
+        await controller.refreshCatalog();
+        expect(controller.state.context?.userId, 'user-A');
+        final listSongsCallsForA = remoteRepository.listSongsCalls;
+        final summariesForA = await store.readActiveSummaries(
+          userId: 'user-A',
+          organizationId: 'org-1',
+        );
+        expect(summariesForA, isNotEmpty);
+
+        currentSession = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+        organizationReaderState.nextError = AuthRetryableFetchException();
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context?.userId,
+          isNot('user-A'),
+          reason:
+              'LastKnownIdentity names user A, but the live session is user '
+              'B: A\'s context must not be re-established under B\'s session',
+        );
+        expect(
+          remoteRepository.listSongsCalls,
+          listSongsCallsForA,
+          reason: 'no catalog fetch may run on user A\'s behalf under B',
+        );
+        final summariesForAAfter = await store.readActiveSummaries(
+          userId: 'user-A',
+          organizationId: 'org-1',
+        );
+        expect(
+          summariesForAAfter.map((s) => s.id).toList(),
+          summariesForA.map((s) => s.id).toList(),
+          reason: 'user A\'s local snapshot must be untouched',
+        );
+      },
+    );
+
+    test(
+      // Task 2.3 (F-E) regression guard: a genuine AuthException that is
+      // NOT AuthRetryableFetchException must still take the
+      // authorization/expiry path. The fix must not overcorrect and treat
+      // ALL AuthExceptions as connectivity.
+      'a genuine (non-retryable) AuthException via listSongs still takes '
+      'the authorization/expiry path',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        remoteRepository.listSongsError = const AuthException(
+          'session expired',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-F #1): the post-verify sessionStatus == expired branch
+      // used to clearContext: true unconditionally. Fails against old code
+      // (context becomes null, connectionStatus becomes unavailable).
+      'post-verify session-expired result preserves context and reports '
+      'offlineCached when a cached snapshot exists',
+      () async {
+        await store.replaceActiveSnapshot(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          summaries: const [SongSummary(id: 'song-1', title: 'Cached Song')],
+          sources: const [
+            SongSource(id: 'song-1', source: '{title: Cached Song}'),
+          ],
+          refreshedAt: DateTime.utc(2026, 3, 25, 10),
+        );
+
+        var sessionStatus = CatalogSessionStatus.verified;
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => sessionStatus,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+
+        sessionStatus = CatalogSessionStatus.expired;
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.offlineCached,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
+    test(
+      // Task 2.2 (F-F #2): the listSongs() authorization-failure catch
+      // branch used to clearContext: true unconditionally. Fails against
+      // old code (context becomes null).
+      'listSongs authorization failure preserves context and cached '
+      'catalog visibility',
+      () async {
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+        );
+
+        await controller.refreshCatalog();
+        final establishedContext = controller.state.context;
+        expect(establishedContext, isNotNull);
+        final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
+
+        remoteRepository.listSongsError = const AuthApiException(
+          'unauthorized',
+          statusCode: '401',
+        );
+        await controller.refreshCatalog();
+
+        expect(controller.state.context, establishedContext);
+        expect(controller.state.hasCachedCatalog, establishedHasCachedCatalog);
+        expect(controller.state.sessionStatus, CatalogSessionStatus.expired);
+      },
+    );
+
     group('observability instrumentation', () {
       test(
         'a successful refresh records the start and success breadcrumbs',
@@ -1742,6 +2477,22 @@ class _ConfigurableSongRepository implements SongRepository {
 
   @override
   Future<SongSource> getSongSource(String id) async => sources[id]!;
+}
+
+// I1 (Opus adversarial review of Step 1 diff): a thin DriftSongCatalogStore
+// subclass that counts calls to readLatestCachedOrganizationId, so tests can
+// prove the connectivity-failure org fallback reuses local-first's already-
+// established org instead of issuing a second, independent fresh read.
+class _CallCountingSongCatalogStore extends DriftSongCatalogStore {
+  _CallCountingSongCatalogStore(super.database);
+
+  int readLatestCachedOrganizationIdCallCount = 0;
+
+  @override
+  Future<String?> readLatestCachedOrganizationId({required String userId}) {
+    readLatestCachedOrganizationIdCallCount += 1;
+    return super.readLatestCachedOrganizationId(userId: userId);
+  }
 }
 
 class _FakeSongRepository implements SongRepository {

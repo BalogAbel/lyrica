@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 
 class UnifiedManualSyncRunResult {
   const UnifiedManualSyncRunResult({
@@ -8,6 +9,7 @@ class UnifiedManualSyncRunResult {
     required this.songCatalogRefreshFailed,
     required this.planningSyncFailed,
     required this.planningRefreshFailed,
+    this.requiresReauth = false,
   });
 
   const UnifiedManualSyncRunResult.clean()
@@ -16,12 +18,19 @@ class UnifiedManualSyncRunResult {
         songCatalogRefreshFailed: false,
         planningSyncFailed: false,
         planningRefreshFailed: false,
+        requiresReauth: false,
       );
 
   final bool songSyncFailed;
   final bool songCatalogRefreshFailed;
   final bool planningSyncFailed;
   final bool planningRefreshFailed;
+
+  /// True when the run could not even attempt sync because the session is
+  /// expired (`AppAuthStatus.sessionExpired`) despite a preserved local-first
+  /// context. Not a failure of any step -- none were attempted -- so all
+  /// four failure flags stay false alongside this.
+  final bool requiresReauth;
 
   bool get anyFailure =>
       songSyncFailed ||
@@ -47,6 +56,7 @@ typedef UnifiedSyncCatalogRefresh = Future<void> Function();
 typedef UnifiedSyncPlanningStep =
     Future<void> Function(UnifiedSyncActiveContext context);
 typedef UnifiedSyncPlanningRefresh = Future<void> Function();
+typedef AuthStatusReader = AppAuthStatus Function();
 
 class UnifiedManualSyncController extends ChangeNotifier {
   UnifiedManualSyncController({
@@ -55,13 +65,15 @@ class UnifiedManualSyncController extends ChangeNotifier {
     required this._refreshSongCatalog,
     required this._syncPlanningMutations,
     required this._refreshPlanning,
-  });
+    AuthStatusReader? authStatusReader,
+  }) : _authStatusReader = authStatusReader ?? (() => AppAuthStatus.signedIn);
 
   final UnifiedSyncContextReader _activeContextReader;
   final UnifiedSyncSongStep _syncSongMutations;
   final UnifiedSyncCatalogRefresh _refreshSongCatalog;
   final UnifiedSyncPlanningStep _syncPlanningMutations;
   final UnifiedSyncPlanningRefresh _refreshPlanning;
+  final AuthStatusReader _authStatusReader;
 
   bool _running = false;
   bool _queued = false;
@@ -99,6 +111,20 @@ class UnifiedManualSyncController extends ChangeNotifier {
   }
 
   Future<UnifiedManualSyncRunResult> _runOnce() async {
+    // Check sessionExpired FIRST, before context nullness. A null context
+    // under sessionExpired is reachable (empty local-first snapshot, no
+    // organizationId with no store fallback, first refresh never completed
+    // before expiry) and must still surface requiresReauth -- otherwise the
+    // user presses Sync, gets a silent no-op, and has no path to re-auth.
+    if (_authStatusReader() == AppAuthStatus.sessionExpired) {
+      return const UnifiedManualSyncRunResult(
+        songSyncFailed: false,
+        songCatalogRefreshFailed: false,
+        planningSyncFailed: false,
+        planningRefreshFailed: false,
+        requiresReauth: true,
+      );
+    }
     final context = _activeContextReader();
     if (context == null) {
       return const UnifiedManualSyncRunResult.clean();

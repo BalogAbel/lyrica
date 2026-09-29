@@ -266,6 +266,22 @@ This is deliberately redundant with D2: even if a purge path were ever
 reintroduced, or a device arrives in a state this spec did not anticipate, the
 read path itself no longer depends on anything that can expire.
 
+**Status note (2026-09-28).** This paragraph describes the entry path as a
+one-shot gap-filler wired only to the `signedIn → sessionExpired` auth
+*transition* — that was the actual shape shipped. Field investigation found
+this insufficient: an expired-token-plus-bad-network device could still hang
+invisibly for minutes (no HTTP timeout existed yet), and several branches of
+the ordinary network refresh path reset `context` to null on events well
+short of a purge (a lifecycle resume while `sessionExpired`, a single 401, a
+misclassified connectivity error), which this paragraph's "no network call
+and no session check" framing did not anticipate applying only *once*.
+`docs/architecture/decisions/ADR-037-local-first-catalog-visibility.md` and
+`docs/specs/2026-09-28-offline-catalog-local-first-visibility.md` supersede
+this paragraph's scope: the same local-first logic now runs on every refresh
+attempt where `context` is null, and every non-purge, non-sign-out branch of
+the refresh path is corrected to be status-only. D1/D5 purge semantics
+themselves are unchanged.
+
 ### D4 — Snapshot replacement is conditional and organization-scoped
 
 - An empty incoming snapshot **must not** replace a non-empty stored one. The

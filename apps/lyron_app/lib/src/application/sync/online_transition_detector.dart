@@ -25,6 +25,13 @@ class OnlineTransitionDetector {
     final isOnline = _catalogIsOnline(state);
     final previous = _previousCatalogOnline;
     _previousCatalogOnline = isOnline;
+    // `previous == null` (the very first observed state) never fires, so
+    // cold start fires syncNow() at most once, whenever the first refresh
+    // resolves online -- unchanged by local-first catalog visibility, which
+    // only changes what the interim state looks like (offlineCached instead
+    // of unavailable/initial), not whether this first observation fires.
+    // See docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
+    // Step 1 item 4.
     if (previous == null) return;
     if (!previous && isOnline) {
       _maybeFire();

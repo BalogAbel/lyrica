@@ -1050,6 +1050,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(AppStrings.songImportAction), findsOneWidget);
   });
+
+  testWidgets(
+    'does not show unavailable state when context is non-null but refreshing',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          songs: const [
+            SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+          ],
+          catalogState: const CatalogSnapshotState(
+            context: ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            connectionStatus: CatalogConnectionStatus.unavailable,
+            refreshStatus: CatalogRefreshStatus.refreshing,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(AppStrings.songCatalogUnavailableMessage), findsNothing);
+      expect(find.text('Egy út'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'shows unavailable state only when context is null and no cached catalog',
+    (tester) async {
+      await tester.pumpWidget(
+        buildApp(
+          songs: const [],
+          catalogState: const CatalogSnapshotState(
+            context: null,
+            connectionStatus: CatalogConnectionStatus.unavailable,
+            refreshStatus: CatalogRefreshStatus.idle,
+            sessionStatus: CatalogSessionStatus.verified,
+            hasCachedCatalog: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(AppStrings.songCatalogUnavailableMessage),
+        findsOneWidget,
+      );
+      expect(find.text(AppStrings.songListEmptyMessage), findsNothing);
+    },
+  );
 }
 
 class _TestAuthRepository implements AuthRepository {

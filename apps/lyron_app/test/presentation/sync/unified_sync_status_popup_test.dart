@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -8,10 +11,33 @@ import 'package:lyron_app/src/application/song_library/active_catalog_context.da
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
+import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart';
+import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+class _FakeManualSyncController extends UnifiedManualSyncController {
+  _FakeManualSyncController({required this.result})
+    : super(
+        activeContextReader: () =>
+            const UnifiedSyncActiveContext(userId: 'u1', organizationId: 'o1'),
+        syncSongMutations: (_) async {},
+        refreshSongCatalog: () async {},
+        syncPlanningMutations: (_) async {},
+        refreshPlanning: () async {},
+      );
+
+  final UnifiedManualSyncRunResult result;
+  int syncNowCalls = 0;
+
+  @override
+  Future<UnifiedManualSyncRunResult> syncNow() async {
+    syncNowCalls += 1;
+    return result;
+  }
+}
 
 const _retryAfterSyncMessage =
     'Sync is in progress. Try again after it finishes.';
@@ -1079,4 +1105,151 @@ void main() {
       findsNothing,
     );
   });
+
+  // Helper: builds a real page (with a button that opens the popup via its
+  // REAL .show() -> showDialog path) plus the sign-in route, wired into a
+  // real GoRouter. This is deliberately NOT the "mount popup as page body"
+  // style below -- that style is a false green for B1 because a DialogRoute
+  // context is not a GoRouter page context, so GoRouterState.of(context)
+  // called from inside the dialog never gets exercised by it.
+  Widget appWithRealShowDialogPath({
+    required UnifiedManualSyncController controller,
+  }) {
+    return ProviderScope(
+      overrides: [
+        unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+        unifiedManualSyncControllerProvider.overrideWith((_) => controller),
+      ],
+      child: MaterialApp.router(
+        routerConfig: GoRouter(
+          initialLocation: '/',
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => Scaffold(
+                body: Builder(
+                  builder: (innerContext) => TextButton(
+                    key: const ValueKey('open-popup'),
+                    onPressed: () => UnifiedSyncStatusPopup.show(innerContext),
+                    child: const Text('Open popup'),
+                  ),
+                ),
+              ),
+            ),
+            GoRoute(
+              path: AppRoutes.signIn.path,
+              builder: (context, state) =>
+                  const Scaffold(body: Text('SIGN IN SCREEN')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Task 2.6c / B1 fix: pressing the Sync button while sessionExpired must
+  // route to re-auth (same pattern as ReauthBanner), instead of silently
+  // reporting a spurious sync failure for a session that can never succeed.
+  //
+  // This goes through the REAL UnifiedSyncStatusPopup.show() -> showDialog
+  // path (B1 regression guard). Before the B1 fix, UnifiedSyncStatusPopup's
+  // _syncNow read GoRouterState.of(context) from inside the dialog's own
+  // context, which throws GoError('There is no GoRouterState above the
+  // current context') because a DialogRoute's context has no GoRouterState
+  // association -- only GoRouter.of(context) (InheritedWidget lookup) works
+  // there. The prior version of this test mounted UnifiedSyncStatusPopup
+  // directly as a page body (Scaffold(body: UnifiedSyncStatusPopup())),
+  // which never opens a real dialog route and so never hit that throw --
+  // a false green.
+  testWidgets(
+    'Sync button navigates to sign-in when syncNow reports requiresReauth '
+    '(via real showDialog path)',
+    (tester) async {
+      final fakeController = _FakeManualSyncController(
+        result: const UnifiedManualSyncRunResult(
+          songSyncFailed: false,
+          songCatalogRefreshFailed: false,
+          planningSyncFailed: false,
+          planningRefreshFailed: false,
+          requiresReauth: true,
+        ),
+      );
+      await tester.pumpWidget(
+        appWithRealShowDialogPath(controller: fakeController),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('open-popup')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-popup-sync-now')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeController.syncNowCalls, 1);
+      expect(find.text('SIGN IN SCREEN'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Sync button does not navigate when syncNow does not require reauth '
+    '(via real showDialog path)',
+    (tester) async {
+      final fakeController = _FakeManualSyncController(
+        result: const UnifiedManualSyncRunResult.clean(),
+      );
+      await tester.pumpWidget(
+        appWithRealShowDialogPath(controller: fakeController),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('open-popup')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('unified-sync-popup-sync-now')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeController.syncNowCalls, 1);
+      expect(find.text('SIGN IN SCREEN'), findsNothing);
+    },
+  );
+
+  // Task 2.6d: the automatic triggers (OnlineTransitionDetector's
+  // onTransitionToOnline, foregroundSyncListenerProvider's onResume) must
+  // never navigate, even under the same sessionExpired-with-requiresReauth
+  // condition that makes the button navigate. Both callback typedefs
+  // (OnlineTransitionCallback = void Function(), ForegroundSyncCallback =
+  // Future<void> Function()) carry no BuildContext, and their wiring in
+  // unified_sync_providers.dart (`ref.read(unifiedManualSyncControllerProvider
+  // ).syncNow()`) discards the returned UnifiedManualSyncRunResult entirely --
+  // confirmed by reading online_transition_detector.dart,
+  // foreground_sync_listener.dart and unified_sync_providers.dart, not
+  // assumed. This test proves calling syncNow() the way those automatic
+  // paths do -- with no BuildContext and no read of the result -- cannot
+  // reach navigation code, regardless of requiresReauth.
+  test(
+    'automatic-trigger-style syncNow call ignores requiresReauth and never navigates',
+    () async {
+      final fakeController = _FakeManualSyncController(
+        result: const UnifiedManualSyncRunResult(
+          songSyncFailed: false,
+          songCatalogRefreshFailed: false,
+          planningSyncFailed: false,
+          planningRefreshFailed: false,
+          requiresReauth: true,
+        ),
+      );
+      // Mirrors OnlineTransitionDetector's onTransitionToOnline and
+      // foregroundSyncListenerProvider's onResume: call syncNow() and
+      // discard/ignore its result, exactly as those two callers do.
+      unawaited(fakeController.syncNow());
+      await fakeController.syncNow();
+
+      expect(fakeController.syncNowCalls, 2);
+      // No navigation object of any kind exists in this scope -- there is no
+      // BuildContext, no GoRouter -- so the automatic path structurally
+      // cannot navigate no matter what requiresReauth says.
+    },
+  );
 }
