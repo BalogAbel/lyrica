@@ -216,6 +216,18 @@ Signature:
 - **RPC mapping.** `planDelete` calls `delete_plan` with `p_plan_id`,
   `p_base_version`, and `p_base_content_version`. `sessionDelete` now calls
   `delete_session`.
+- **RPC parameters are built per kind from an explicit whitelist.** Today's
+  builder adds `p_slug`, `p_name`, and `p_description` whenever the record
+  carries them. `resolveCancelledCreate` turns a tombstoned create into a
+  delete with `copyWith`, so the converted delete still carries its create's
+  `slug` and `name`.
+  - As a result, a converted `sessionDelete` sends
+    `delete_empty_session(..., p_slug, p_name)`. PostgREST finds no function
+    with that signature (`PGRST202`), the error maps to `unknown`, and the
+    row stays `pending` forever.
+  - That is an existing latent defect. This slice would add the same path
+    for `planDelete`, so it is fixed here.
+  - Each kind sends exactly its RPC's parameters, and nothing else.
 - **`PlanningMutationRecord`** gains:
   - `baseContentVersion` (`int?`, persisted; meaningful for `planDelete`
     only).
@@ -350,8 +362,8 @@ rules, each only on exact contiguity:
    `sessionItemDelete`, `sessionItemReorder`) and
    `synced.acceptedPlanContentVersion == R` for plan P:
    - **a.** If projection plan P has `contentVersion == R − 1`, set it to R.
-   - **b.** If the `plan` row for P is a `planDelete` that is not
-     `cancelling` and has `baseContentVersion == R − 1`, set that to R.
+   - **b.** If the `plan` row for P is a `planDelete` that is not in-flight
+     and has `baseContentVersion == R − 1`, set that to R.
 
    A `planCreate` or `planEdit` response's `content_version` never feeds this
    rule. `planEdit` does not bump `content_version`, so after exactly one
@@ -364,11 +376,21 @@ rules, each only on exact contiguity:
    in-flight `planEdit`.
 3. If `synced.kind` ∈ {`sessionRename`, `sessionItemCreateSong`,
    `sessionItemDelete`, `sessionItemReorder`} and the response session
-   `version == V` for session S: a non-`cancelling` `sessionDelete` row for S
-   with `baseVersion == V − 1` is set to V.
+   `version == V` for session S: a `sessionDelete` row for S that is not
+   in-flight and has `baseVersion == V − 1` is set to V.
 
 Any other value is left untouched, and the delete conflicts, which is correct
 (I2 and I3).
+
+Rules 1–3 run only for a record mapped from an RPC response in the current
+sync run. A crash-resumed `accepted` marker carries no response values: its
+`baseVersion` is still the pre-write base. For such a record only the D8
+purge runs.
+
+The call is best-effort. An `Exception` it throws is swallowed, so the
+`accepted` marker write that follows it is never skipped; an `Error` still
+propagates. Failing to rebase leaves a base stale, which is fail-safe. A
+failed purge runs again at batch conclusion.
 
 **Call sites** in `PlanningMutationSyncController._run`:
 
@@ -379,9 +401,12 @@ Any other value is left untouched, and the delete conflicts, which is correct
 - Again for every entry in `acceptedRecords` before its clear or reconcile
   (idempotent). This covers a delete recorded between the response and the
   end of the batch.
-- The reconciler applies rule 1a for each reconciled child record, in
-  `acceptedRecords` order. So a `planCreate` reconciled at cv=1 followed by
-  its accepted child reaches cv=2 when the post-write refresh fails.
+- At batch conclusion the call runs for each accepted record right before
+  that record's reconcile, in `acceptedRecords` order. So a `planCreate`
+  reconciled at cv=1 followed by its accepted child reaches cv=2 when the
+  post-write refresh fails. The reconciler itself contains no rule-1a code.
+- Whether a record came from a response in this run is carried as an
+  explicit flag next to it, never inferred from object identity.
 
 The method goes through `BudgetedPlanningMutationStore`'s per-context write
 queue, like `saveSyncAttemptResult`. It is not budget-guarded, because it
@@ -554,8 +579,9 @@ sibling contract script wired into `scripts/run-tests.sh`.
   - the purge after `planDelete` / `sessionDelete` success
   - purge idempotence across a simulated crash
 - C5. The reconciler: `planDelete` removes the plan subtree;
-  `upsertSyncedPlan` keeps `contentVersion` on `planEdit`; rule 1a is
-  applied in `acceptedRecords` order.
+  `upsertSyncedPlan` keeps `contentVersion` on `planEdit`. The sync
+  controller applies rule 1a in `acceptedRecords` order, before each
+  reconcile.
 - C6. The overlay hides P for every actionable status, in list, detail, and
   slug reads.
 - C7. Retry rebases both `baseVersion` and `baseContentVersion` from the
@@ -564,6 +590,9 @@ sibling contract script wired into `scripts/run-tests.sh`.
   - `delete_plan` and `delete_session` parameters
   - `plan_content_version` and `content_version` mapping
   - a missing value maps to `null`
+  - a delete converted from a tombstoned create, which still carries the
+    create's `slug`/`name`/`description`, sends exactly its own RPC's
+    parameter set
 - C9. Drift 6 → 7 migration, extending `planning_migration_test.dart`.
 - C10. I7: `fetchPlanningSyncPayload` issues every plan-row read before any
   session read.
