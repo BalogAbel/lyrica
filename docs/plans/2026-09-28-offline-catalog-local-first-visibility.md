@@ -255,29 +255,30 @@ suite after every task, same discipline as Steps 1–2.
   the spec's R1 section explicitly says is insufficient for the DNS/no-route
   case).
 
-### Task R2 — planning cross-user guard (sonnet) — already closed by I3, test strengthened
+### Task R2 — planning cross-user guard, identity-wired (sonnet)
 
-The implementer re-checked commit history before writing a duplicate fix:
-`d3c7165` (the I3 fix) already touched BOTH `SongCatalogController` and
-`PlanningSyncController` in the same commit, and `_refreshPlanning` already
-carries this exact guard (`_state.userId != null && _state.userId !=
-session.userId` -> reset before any fetch/`_replaceProjection`). No new
-guard was written — see the spec's R2 section for the corrected account of
-why this task's original framing ("I3 only touched the catalog side") was
-wrong.
+- Red test first, on the current code: the existing I3 planning test with
+  `lastKnownIdentityReader: () => (userId: 'user-A', organizationId:
+  'org-A')` wired in, session switched to user B. Assert no A context, no
+  second org-A fetch, no second org-A `replaceActiveProjection` (count both).
+  Must fail before the fix (`state.userId == 'user-A'`).
+- Fix: `PlanningSyncController._tryEstablishLocalFirstContext` uses
+  `SongCatalogController`'s rule (`session?.userId ?? identity.userId`;
+  identity org only when `identity.userId == userId`; store fallback for the
+  resolved user; `hasProjection` on the resolved user). `sessionExpired`
+  behaviour unchanged (the `handleOfflineAuthenticated` tests stay green).
+  Do not touch `wipePriorAndProceedFor` / `cancelToPriorUser`.
+- Catalog side: an identity-wired variant of the catalog I3 test that pins
+  the rule; mutation-check it (swap the helper's user resolution, see it
+  fail, restore).
+- Full suite green.
 
-What DID land: the existing regression test only asserted the end state
-(`state.userId` no longer `'user-A'`), weaker than this task originally
-specified (direct fetch/`_replaceProjection` call counts). Strengthened in
-commit `24b4b16` to count both directly by organization id, verified by
-temporarily disabling the guard and confirming both counts regress (1 -> 2
-for org A) — proof the strengthened assertions actually catch what the
-guard prevents.
+Note: an earlier revision of this task concluded "already closed by I3" from
+commit history and only strengthened the identity-less fixture. That was
+wrong; see the spec's R2 section.
 
-**Checkpoint: per-task review (sonnet) on R1 and R2 — both reviewed;
-R1 approved, R2's "already fixed, test strengthened" finding accepted
-without a further review round given the implementer's own
-guard-disable regression proof.**
+**Checkpoint: per-task review (sonnet) on R1 and R2 -- R1 approved; R2
+re-done as above.**
 
 ### Task R3 — offline escape hatch from the sign-in screen (haiku)
 

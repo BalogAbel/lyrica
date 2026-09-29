@@ -422,7 +422,20 @@ class PlanningSyncController extends ChangeNotifier {
     }
 
     final identity = _lastKnownIdentityReader?.call();
-    if (identity == null) {
+    // R2 (PR #79 review, docs/specs/2026-09-28-offline-catalog-local-first
+    // -visibility.md): ownership rule, identical to
+    // SongCatalogController._tryEstablishLocalFirstContext. With a live
+    // session the context is for THAT session's user; the identity's
+    // organizationId is only trusted when the identity belongs to the same
+    // user. Without a live session (sessionExpired) the identity's user is
+    // the only one there is. Using identity.userId unconditionally
+    // re-established the PRIOR user's context after _refreshPlanning's I3
+    // guard had just cleared it, so a different user's refresh fetched the
+    // prior user's org with the new user's token and overwrote the prior
+    // user's projection.
+    final sessionUserId = _authSessionReader()?.userId;
+    final userId = sessionUserId ?? identity?.userId;
+    if (userId == null) {
       return;
     }
     // Item 3 (I2 fix, docs/specs/2026-09-28-offline-catalog-local-first
@@ -433,9 +446,11 @@ class PlanningSyncController extends ChangeNotifier {
     // helper already has via SongCatalogStore.readLatestCachedOrganizationId
     // -- without it, planning's local-first silently gives up in a case the
     // catalog side already recovers from.
-    var organizationId = identity.organizationId;
+    var organizationId = identity?.userId == userId
+        ? identity?.organizationId
+        : null;
     organizationId ??= await _localStore().readLatestCachedOrganizationId(
-      userId: identity.userId,
+      userId: userId,
     );
     if (_isStaleBoundary(boundaryGeneration)) {
       return;
@@ -445,7 +460,7 @@ class PlanningSyncController extends ChangeNotifier {
     }
 
     final hasProjection = await _localStore().hasProjection(
-      userId: identity.userId,
+      userId: userId,
       organizationId: organizationId,
     );
     if (_isStaleBoundary(boundaryGeneration)) {
@@ -463,7 +478,7 @@ class PlanningSyncController extends ChangeNotifier {
 
     _setState(
       _state.copyWith(
-        userId: identity.userId,
+        userId: userId,
         organizationId: organizationId,
         accessStatus: PlanningAccessStatus.signedIn,
         refreshStatus: PlanningRefreshStatus.idle,

@@ -207,6 +207,78 @@ void main() {
       },
     );
 
+    test(
+      // R2 (PR #79 review). Same scenario as above, but with the production
+      // wiring: planning_providers.dart always injects a
+      // lastKnownIdentityReader. The test above builds the controller
+      // WITHOUT one, so it never reaches this path: the I3 guard resets the
+      // stale state, then _tryEstablishLocalFirstContext -- which used
+      // identity.userId with no comparison against the live session --
+      // re-established user A's context from LastKnownIdentity, and the
+      // refresh went on to fetch org A with user B's token and overwrite A's
+      // projection.
+      'a different user signing in does not re-establish the prior user\'s '
+      'context from LastKnownIdentity, fetch org A, or overwrite its '
+      'projection',
+      () async {
+        final countingStore = _CallCountingPlanningLocalStore(database);
+        final countingLifecycle = _lifecycleFor(countingStore);
+        session = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final controller = PlanningSyncController(
+          localStore: () => countingStore,
+          localDataLifecycle: countingLifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-A', organizationId: 'org-A'),
+        );
+
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-A',
+            organizationId: 'org-A',
+          ),
+        );
+        expect(controller.state.userId, 'user-A');
+        expect(remoteRepository.fetchCallsByOrganizationId, ['org-A']);
+        expect(countingStore.replaceActiveProjectionCallCount, 1);
+
+        // User B signs in while A's LastKnownIdentity (the confirmation
+        // dialog for the different-user flow is still pending) and A's
+        // projection are still on the device.
+        session = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+
+        await controller.refreshPlanning();
+
+        expect(
+          controller.state.userId,
+          isNot('user-A'),
+          reason:
+              'LastKnownIdentity names user A, but the live session is user '
+              'B: A\'s context must not be re-established under B\'s session',
+        );
+        expect(
+          remoteRepository.fetchCallsByOrganizationId,
+          ['org-A'],
+          reason: 'org A must never be re-fetched with user B\'s token',
+        );
+        expect(
+          countingStore.replaceActiveProjectionCallCount,
+          1,
+          reason:
+              'user A\'s projection must never be overwritten by B\'s '
+              'refresh',
+        );
+        expect(countingStore.replaceActiveProjectionOrganizationIds, ['org-A']);
+      },
+    );
+
     test('overlapping refreshes do not run concurrently', () async {
       final firstRefresh = Completer<PlanningSyncPayload>();
       remoteRepository.nextPayload = firstRefresh.future;

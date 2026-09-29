@@ -2014,6 +2014,79 @@ void main() {
     );
 
     test(
+      // R2 (PR #79 review): the catalog-side counterpart of the planning
+      // identity-wired guard test. The production wiring
+      // (song_catalog_providers.dart) always injects a
+      // lastKnownIdentityReader, and the test above builds the controller
+      // without one. Here LastKnownIdentity still names user A (the
+      // different-user confirmation dialog is pending) while user B is the
+      // live session: after the I3 reset, local-first must resolve B's own
+      // context (none exists), never re-establish A's from the identity, and
+      // never fetch for A.
+      'a different user signing in does not re-establish the prior user\'s '
+      'context from LastKnownIdentity',
+      () async {
+        AppAuthSession currentSession = const AppAuthSession(
+          userId: 'user-A',
+          email: 'a@lyron.local',
+        );
+        final organizationReaderState = _MutableOrganizationReader('org-1');
+
+        final controller = SongCatalogController(
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () => currentSession,
+          organizationReader: organizationReaderState.read,
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-A', organizationId: 'org-1'),
+        );
+
+        await controller.refreshCatalog();
+        expect(controller.state.context?.userId, 'user-A');
+        final listSongsCallsForA = remoteRepository.listSongsCalls;
+        final summariesForA = await store.readActiveSummaries(
+          userId: 'user-A',
+          organizationId: 'org-1',
+        );
+        expect(summariesForA, isNotEmpty);
+
+        currentSession = const AppAuthSession(
+          userId: 'user-B',
+          email: 'b@lyron.local',
+        );
+        organizationReaderState.nextError = AuthRetryableFetchException();
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.context?.userId,
+          isNot('user-A'),
+          reason:
+              'LastKnownIdentity names user A, but the live session is user '
+              'B: A\'s context must not be re-established under B\'s session',
+        );
+        expect(
+          remoteRepository.listSongsCalls,
+          listSongsCallsForA,
+          reason: 'no catalog fetch may run on user A\'s behalf under B',
+        );
+        final summariesForAAfter = await store.readActiveSummaries(
+          userId: 'user-A',
+          organizationId: 'org-1',
+        );
+        expect(
+          summariesForAAfter.map((s) => s.id).toList(),
+          summariesForA.map((s) => s.id).toList(),
+          reason: 'user A\'s local snapshot must be untouched',
+        );
+      },
+    );
+
+    test(
       // Task 2.3 (F-E) regression guard: a genuine AuthException that is
       // NOT AuthRetryableFetchException must still take the
       // authorization/expiry path. The fix must not overcorrect and treat

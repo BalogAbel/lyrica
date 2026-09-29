@@ -400,39 +400,50 @@ by I1, see below):**
    (distinct from LF-T5's general offline-duration divergence) with its own
    trigger condition.
 
-### R2 — planning cross-user gap: already closed by I3, verified and test strengthened
+### R2 — planning re-established the prior user's context from `LastKnownIdentity`
 
-**Original report's claim** (from the PR review this section responds to):
-`PlanningSyncController._refreshPlanning` never compares the last-known
-identity's `userId` against the live session's `userId`, so during the
-different-user re-auth window (user A's data still present, user B's
-session live, the `wipePriorAndProceedFor` confirmation dialog still
-pending) a `refreshPlanning()` call could establish A's context, fetch org
-A's payload under B's token, and overwrite A's local projection before the
-user's cancel could prevent it — the `PlanningSyncController` analog of the
-catalog-side I3 fix, claimed to be missed because I3 supposedly only
-touched `SongCatalogController`.
+**Problem.** The I3 guard in `PlanningSyncController._refreshPlanning`
+(commit `d3c7165`) is real but incomplete. When a different user signs in
+(user A's data and `LastKnownIdentity` still on the device, user B's session
+live, the `wipePriorAndProceedFor` confirmation dialog still pending), the
+guard resets `_state` to `initial()`. Control then falls into the
+`userId == null` branch, which calls `_tryEstablishLocalFirstContext`, and
+that helper resolved its user from `identity.userId` alone, with no
+comparison against the live session. So it re-established **user A's**
+context from `LastKnownIdentity`, and the refresh went on to fetch org A
+with user B's token and call `_replaceProjection(userId: A, ...)`,
+overwriting A's projection. If the user then cancelled the different-user
+prompt (`cancelToPriorUser`), A's data was already corrupted.
 
-**Verified against the actual commit history: this claim was incorrect.**
-I3 (`d3c7165`) already touched BOTH `SongCatalogController` AND
-`PlanningSyncController` in the same commit — `_refreshPlanning` already
-carries the guard: if `_state.userId != null && _state.userId !=
-session.userId`, state is reset before any fetch or `_replaceProjection`
-call can run under the wrong identity, placed before the null-session
-early return resolves `userId`/`organizationId`, before local-first, and
-before the fetch/replace-projection logic. The implementer assigned to
-"fix" this correctly refused to write a duplicate guard once it re-checked
-the commit history rather than trusting the review's framing at face value.
+**Why the existing test missed it.** The I3 regression test ("a different
+user signing in before a refresh clears the prior user's stale planning
+context") builds the controller without `lastKnownIdentityReader`, so the
+helper returns immediately and the identity-based re-establishment is never
+reached. Production wiring (`planning_providers.dart`) always injects the
+reader. A first attempt at this follow-up wrongly concluded from commit
+history alone that R2 was already closed by I3 and only strengthened that
+same fixture with call counts; it still could not reach the failing path.
 
-**What actually changed for R2**: the guard was already correct, but its
-existing regression test only asserted the end state (`state.userId` no
-longer `'user-A'`), not that the fetch/`_replaceProjection` calls
-themselves never ran for org A — weaker than this section originally
-specified. Strengthened (commit `24b4b16`) to directly count remote-fetch
-and `_replaceProjection` calls by organization id, and verified by
-temporarily disabling the guard: both counts independently go from 1 to 2
-for org A under user B's session, confirming the strengthened assertions
-actually catch the regression the guard prevents.
+**Fix.** `PlanningSyncController._tryEstablishLocalFirstContext` follows
+`SongCatalogController._tryEstablishLocalFirstContext`'s ownership rule:
+
+- `userId = session?.userId ?? identity.userId`
+- `organizationId = identity.userId == userId ? identity.organizationId : null`
+- `organizationId ??= readLatestCachedOrganizationId(userId)`
+- `hasProjection(userId, organizationId)` before establishing anything
+
+`sessionExpired` (`session == null`) behaviour is unchanged: the identity's
+user is the only candidate, exactly as before. With a live session the
+helper can only ever establish that session's user's context, so the I3
+reset can no longer be undone by the identity of a different user.
+`wipePriorAndProceedFor` / `cancelToPriorUser` are not touched.
+
+**Tests.** A planning test with `lastKnownIdentityReader` returning user A
+while the session is user B, red on the pre-fix code (`state.userId ==
+'user-A'`), asserting no A context, no second org-A fetch and no second
+org-A `replaceActiveProjection`. A catalog-side variant with the identity
+wired in pins the (already correct) catalog rule; a mutation of the helper's
+user resolution makes it fail.
 
 ### R3 — sessionExpired users had no way back from the sign-in screen while still offline
 
