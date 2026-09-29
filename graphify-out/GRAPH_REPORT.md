@@ -1,16 +1,16 @@
-# Graph Report - lyrica  (2026-08-24)
+# Graph Report - lyrica  (2026-09-29)
 
 ## Corpus Check
-- 783 files · ~804,693 words
+- 820 files · ~877,377 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 10405 nodes · 14186 edges · 562 communities (486 shown, 76 thin omitted)
+- 11019 nodes · 15008 edges · 588 communities (513 shown, 75 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 81 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `42860c6b`
+- Built from commit: `10118800`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -572,18 +572,44 @@
 - [[_COMMUNITY_Community 559|Community 559]]
 - [[_COMMUNITY_Community 560|Community 560]]
 - [[_COMMUNITY_Community 561|Community 561]]
+- [[_COMMUNITY_Community 562|Community 562]]
+- [[_COMMUNITY_Community 563|Community 563]]
+- [[_COMMUNITY_Community 564|Community 564]]
+- [[_COMMUNITY_Community 565|Community 565]]
+- [[_COMMUNITY_Community 566|Community 566]]
+- [[_COMMUNITY_Community 567|Community 567]]
+- [[_COMMUNITY_Community 568|Community 568]]
+- [[_COMMUNITY_Community 569|Community 569]]
+- [[_COMMUNITY_Community 570|Community 570]]
+- [[_COMMUNITY_Community 571|Community 571]]
+- [[_COMMUNITY_Community 572|Community 572]]
+- [[_COMMUNITY_Community 573|Community 573]]
+- [[_COMMUNITY_Community 574|Community 574]]
+- [[_COMMUNITY_Community 575|Community 575]]
+- [[_COMMUNITY_Community 576|Community 576]]
+- [[_COMMUNITY_Community 577|Community 577]]
+- [[_COMMUNITY_Community 578|Community 578]]
+- [[_COMMUNITY_Community 579|Community 579]]
+- [[_COMMUNITY_Community 580|Community 580]]
+- [[_COMMUNITY_Community 581|Community 581]]
+- [[_COMMUNITY_Community 582|Community 582]]
+- [[_COMMUNITY_Community 583|Community 583]]
+- [[_COMMUNITY_Community 584|Community 584]]
+- [[_COMMUNITY_Community 585|Community 585]]
+- [[_COMMUNITY_Community 586|Community 586]]
+- [[_COMMUNITY_Community 587|Community 587]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `_` - 255 edges
+1. `_` - 256 edges
 2. `_` - 107 edges
 3. `_` - 81 edges
 4. `_` - 49 edges
 5. `_` - 49 edges
-6. `activePlanningContextProvider` - 24 edges
-7. `PlanningMutationStore` - 23 edges
-8. `LocalDataEventsRecorder` - 23 edges
-9. `Phase 4 Closeout Review Remediation — Implementation Plan` - 22 edges
-10. `_completer` - 21 edges
+6. `LocalDataEventsRecorder` - 25 edges
+7. `activePlanningContextProvider` - 24 edges
+8. `_completer` - 23 edges
+9. `PlanningMutationStore` - 23 edges
+10. `Phase 4 Closeout Review Remediation — Implementation Plan` - 22 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `ADR-014: Planning Write Projection-Mutation Boundary` --semantically_similar_to--> `ADR-013: Song Write Sync Boundary`  [INFERRED] [semantically similar]
@@ -607,7 +633,7 @@
 - **Three resolution flavors of ActiveOrganizationResolver via provider seams** — application_auth_providers_activeorganizationresolutionprovider, application_auth_providers_membershipresolutionprovider, application_auth_providers_activeorganizationreaderprovider, application_active_organization_resolver_activeorganizationresolver [EXTRACTED 0.90]
 - **Mutation-facing readers watching planningMutationRevisionProvider** — planning_planning_data_revision_planningmutationrevisionprovider, planning_planning_providers_planningmutationentriesprovider, planning_planning_providers_hasunsyncedplanningmutationsprovider, application_planning_providers_planningwriteserviceprovider [EXTRACTED 0.90]
 
-## Communities (562 total, 76 thin omitted)
+## Communities (588 total, 75 thin omitted)
 
 ### Community 0 - "Planning Projection Cache (Drift)"
 Cohesion: 0.03
@@ -615,7 +641,7 @@ Nodes (81): _, class CachedPlanningMutation extends, class CachedPlanningPlan ex
 
 ### Community 1 - "Song Editor & Unsaved-Changes Guard"
 Cohesion: 0.04
-Nodes (49): package:lyron_app/src/presentation/song_editor/browser_unsaved_changes_guard.dart, package:lyron_app/src/presentation/song_editor/song_editor_controller.dart, package:lyron_app/src/presentation/song_editor/song_editor_projection.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_body.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_dialogs.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_summary_list.dart, AppRoutes.home, main (+41 more)
+Nodes (51): activeCatalogContextProvider, catalogStateProvider, mutableCatalogStateProvider, mutablePlanningContextProvider, package:lyron_app/src/presentation/song_editor/browser_unsaved_changes_guard.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_body.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_dialogs.dart, main (+43 more)
 
 ### Community 2 - "Song Reader Fit/Layout"
 Cohesion: 0.02
@@ -634,7 +660,7 @@ Nodes (47): PlanningIdGenerator, _activeContextReader, addSongSessionItem, creat
 
 ### Community 5 - "Song Reader Screen Tests/Widgets"
 Cohesion: 0.03
-Nodes (64): _accountant, allocateAvailableSongSlug, baseVersion, clearSongMutation, _database, deleteCatalog, _deleteCatalogRows, deleteCatalogsForUser (+56 more)
+Nodes (62): _accountant, allocateAvailableSongSlug, baseVersion, clearSongMutation, _database, deleteCatalog, _deleteCatalogRows, deleteCatalogsForUser (+54 more)
 
 ### Community 6 - "Offline Song Catalog Store"
 Cohesion: 0.04
@@ -642,15 +668,15 @@ Nodes (51): activity, aggregateId, aggregateType, _buildPlanRows, _buildSongRows
 
 ### Community 7 - "Unified Sync Overview"
 Cohesion: 0.04
-Nodes (51): Offset?, ScaleGestureRecognizer, _activePointer, areControlsVisible, build, contentColumnCount, _contentConstraints, contentPadding (+43 more)
+Nodes (49): Offset?, _activePointer, areControlsVisible, build, contentColumnCount, _contentConstraints, contentPadding, _contentPaddingH (+41 more)
 
 ### Community 8 - "Song Reader Compact Surface"
 Cohesion: 0.04
-Nodes (44): cancelButton, canonicalPanel, canonicalPanelTitle, canonicalSwitches, capoDownButton, capoUpButton, capoValue, derivedArtist (+36 more)
+Nodes (65): adjustDirective(), applyCanonicalView(), applyScreen(), applyState(), cancelButton, canonicalPanel, canonicalPanelTitle, canonicalSwitches (+57 more)
 
 ### Community 9 - "Song Editing Mockup (prototype)"
 Cohesion: 0.04
-Nodes (57): id ??, package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart, _FakeSongLibraryService, allocateUniqueSlug, _BlockingSongLibraryService, buildApp, buildErrorApp, buildResult (+49 more)
+Nodes (52): id ??, package:lyron_app/src/presentation/song_reader/widgets/song_reader_title_bar.dart, allocateUniqueSlug, buildApp, buildErrorApp, buildResult, buildRoutedApp, buildRoutedErrorApp (+44 more)
 
 ### Community 10 - "Architecture Decisions (ADRs)"
 Cohesion: 0.22
@@ -665,8 +691,8 @@ Cohesion: 0.06
 Nodes (30): Background you need before touching anything, Commands, COMMIT 1 — inert plumbing, COMMIT 2 — the new values, File structure, Reader Type Scale Implementation Plan, Self-review notes, Task 10: Charge the chip's width in the estimator (+22 more)
 
 ### Community 13 - "Song Editor Routing/Tests"
-Cohesion: 0.03
-Nodes (64): package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart, package:lyron_app/src/presentation/song_reader/song_reader_commands.dart, package:lyron_app/src/presentation/song_reader/song_reader_controller.dart, package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart, package:lyron_app/src/presentation/song_reader/song_reader_providers.dart, package:lyron_app/src/presentation/song_reader/song_reader_scoped_navigation.dart, package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart, package:lyron_app/src/presentation/song_reader/song_reader_zoom_persistence.dart (+56 more)
+Cohesion: 0.05
+Nodes (39): package:lyron_app/src/presentation/song_reader/song_reader_commands.dart, package:lyron_app/src/presentation/song_reader/song_reader_providers.dart, package:lyron_app/src/presentation/song_reader/song_reader_scoped_navigation.dart, package:lyron_app/src/presentation/song_reader/song_reader_song_actions.dart, package:lyron_app/src/presentation/song_reader/song_reader_zoom_persistence.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_app_bar.dart, slug ??, song_reader_providers.dart (+31 more)
 
 ### Community 14 - "Song Reader Screen"
 Cohesion: 0.04
@@ -685,29 +711,28 @@ Cohesion: 0.04
 Nodes (46): _actionable, allocatePlanSlug, allocateSessionSlug, clearMutation, countSongReferences, deletePlanningData, deletePlanningDataForUser, deleteSyncedSession (+38 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.03
-Nodes (92): BackButtonIcon, main, IconButton, Material, package:flutter_test/flutter_test.dart, package:lyron_app/src/application/song_library/song_reader_result.dart, package:lyron_app/src/domain/song/parsed_song.dart, package:lyron_app/src/infrastructure/song_library/chord_transposer.dart (+84 more)
+Cohesion: 0.05
+Nodes (51): main, package:flutter_test/flutter_test.dart, package:lyron_app/src/domain/song/parsed_song.dart, package:lyron_app/src/presentation/song_reader/song_reader_projection.dart, package:lyron_app/src/presentation/song_reader/song_reader_state.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_surface.dart (+43 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.06
-Nodes (31): EdgeInsets, Opacity, package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_shell.dart, required Size size,
-  EdgeInsets, Size, main, size (+23 more)
+Cohesion: 0.05
+Nodes (39): EdgeInsets, Opacity, package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart, package:lyron_app/src/presentation/song_reader/song_reader_layout.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_tools_panel.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_shell.dart (+31 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.04
-Nodes (75): main, main, calls, entered, failFirstWith, _firstCallSeen, gate, _GatedPlanningRemote (+67 more)
+Nodes (55): calls, entered, failFirstWith, _firstCallSeen, gate, _GatedPlanningRemote, main, syncMutation (+47 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.07
-Nodes (39): package:lyron_app/src/application/planning/planning_sync_state.dart, package:lyron_app/src/application/song_library/active_catalog_context.dart, package:lyron_app/src/application/song_library/catalog_connection_status.dart, package:lyron_app/src/application/song_library/catalog_refresh_status.dart, package:lyron_app/src/application/song_library/catalog_session_status.dart, package:lyron_app/src/application/song_library/catalog_snapshot_state.dart, package:lyron_app/src/application/sync/online_transition_detector.dart, package:lyron_app/src/application/sync/unified_discard_controller.dart (+31 more)
+Cohesion: 0.06
+Nodes (46): Map, package:lyron_app/src/application/planning/planning_sync_state.dart, package:lyron_app/src/application/song_library/active_catalog_context.dart, package:lyron_app/src/application/song_library/catalog_connection_status.dart, package:lyron_app/src/application/song_library/catalog_refresh_status.dart, package:lyron_app/src/application/song_library/catalog_session_status.dart, package:lyron_app/src/application/song_library/catalog_snapshot_state.dart, package:lyron_app/src/application/sync/online_transition_detector.dart (+38 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.05
-Nodes (37): UnifiedSyncHeaderStatus, allocateUniqueSlug, clearSongMutation, countReferencingSessionItems, deleteSong, discardAll, discardAllCalls, discardCalls (+29 more)
+Cohesion: 0.03
+Nodes (58): package:lyron_app/src/application/sync/unified_manual_sync_controller.dart, acquireSongDiscardLease, _activeContextReader, discardAll, _discardPlanning, discardSongsWhileOwned, organizationId, UnifiedDiscardContext (+50 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.04
-Nodes (65): _StubRepo, _controller, countSongReferences, _DelayedAuthRepository, deleteAccount, deletePlanningData, deletePlanningDataForUser, deleteSyncedSession (+57 more)
+Cohesion: 0.05
+Nodes (41): _controller, countSongReferences, deleteAccount, deletePlanningData, deletePlanningDataForUser, deleteSyncedSession, deleteSyncedSessionItem, dispose (+33 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.04
@@ -718,65 +743,65 @@ Cohesion: 0.06
 Nodes (33): ActivateIntent, _state, FutureOr, _Body, build, buildCompact, buildWide, compact (+25 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.04
-Nodes (43): package:lyron_app/src/application/song_library/chordpro_import_types.dart, package:lyron_app/src/presentation/auth/reauth_banner.dart, package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart, package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart, package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart, DuplicateResolution, ImportBatchResult, _dup1 (+35 more)
+Cohesion: 0.02
+Nodes (82): 0, after, _authorizationPairPattern, _benignTokenKeys, _Budget, chars, colon, contains (+74 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.06
-Nodes (43): activePlanningContextProvider, planningMutationSyncControllerProvider, ConsumerWidget, package:lyron_app/src/presentation/planning/widgets/plan_session_card.dart, build, context, _createSession, createState (+35 more)
+Cohesion: 0.03
+Nodes (73): add, after, _atPaths, before, _benign, _benignText, body, byProperty (+65 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.12
 Nodes (13): DeepLinkListener, dispose, _handle, _pendingTokens, start, _stream, _sub, main (+5 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.05
-Nodes (41): main, normalizer, _StaticSongRepository, package:lyron_app/src/application/song_library/song_library_service.dart, package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart, package:lyron_app/src/presentation/song_library/song_library_browse_controller.dart, _NoopSongRepository, _TestSongCatalogReadRepository (+33 more)
+Cohesion: 0.08
+Nodes (24): package:lyron_app/src/infrastructure/song_library/chord_transposer.dart, package:lyron_app/src/presentation/song_library/song_library_browse_controller.dart, package:lyron_app/src/presentation/song_library/song_library_browse_row.dart, main, chordProImportServiceProvider, context, hasUnsyncedSongMutationsProvider, localFirstSongRepositoryProvider (+16 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.06
-Nodes (35): capoDirectiveText, capoOffset, diagnostics, displayChord, effectiveCapo, effectiveCapoValue, effectiveKey, effectiveTranspose (+27 more)
+Cohesion: 0.05
+Nodes (39): capoDirectiveText, capoOffset, diagnostics, displayChord, effectiveCapo, effectiveCapoValue, effectiveKey, effectiveTranspose (+31 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.09
-Nodes (25): ../../application/auth/capability_resolver.dart, capabilityResolverProvider, ../../application/providers.dart, Capability, ../../domain/core/capability.dart, build, capability, child (+17 more)
+Cohesion: 0.06
+Nodes (40): ../../application/auth/capability_resolver.dart, capabilityResolverProvider, ../../application/providers.dart, songCatalogControllerProvider, Capability, ../../domain/core/capability.dart, package:lyron_app/src/presentation/auth/reauth_banner.dart, package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart (+32 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.06
-Nodes (30): _activeContextReader, anyFailure, clean, _inFlight, isRunning, _lastResult, organizationId, planningRefreshFailed (+22 more)
+Nodes (34): _activeContextReader, anyFailure, AuthStatusReader, clean, _inFlight, isRunning, _lastResult, organizationId (+26 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.13
-Nodes (17): class _ConflictingEditorSongLibraryService extends, class _RecordingEditorSongLibraryService extends, class _RecordingEditorUpdateSongLibraryService extends, Line one
-Line, _ConflictingEditorSongLibraryService, createSong, Fake, main (+9 more)
+Cohesion: 0.11
+Nodes (22): class _ConflictingEditorSongLibraryService extends, class _RecordingEditorSongLibraryService extends, class _RecordingEditorUpdateSongLibraryService extends, Line one
+Line, _FakeSongLibraryService, _ConflictingEditorSongLibraryService, createSong, Fake (+14 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.07
-Nodes (21): openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, last_known_identity_database_connection_stub.dart, local_data_events_database_connection_stub.dart, openInMemoryLocalDataEventsConnection, openLocalDataEventsConnection (+13 more)
+Cohesion: 0.06
+Nodes (27): openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, last_known_identity_database_connection_stub.dart, local_data_events_database_connection_stub.dart, openInMemoryLocalDataEventsConnection, openLocalDataEventsConnection (+19 more)
 
 ### Community 35 - "Community 35"
 Cohesion: 0.02
 Nodes (85): _RecordingLocalDataEventsRecorder, _RecordingPlanningLocalStore, abortOnDelete, allocateAvailableSongSlug, callLog, clear, clearMembershipRevocation, clearSongMutation (+77 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.06
-Nodes (33): _accountant, _admitAndWrite, allocatePlanSlug, allocateSessionSlug, _budget, clearMutation, _collapsesPendingCreate, _delegate (+25 more)
+Cohesion: 0.05
+Nodes (41): package:lyron_app/src/application/storage/local_storage_write_recovery.dart, _accountant, _admitAndWrite, allocatePlanSlug, allocateSessionSlug, _budget, clearMutation, _collapsesPendingCreate (+33 more)
 
 ### Community 37 - "Community 37"
 Cohesion: 0.06
 Nodes (36): applyPickerRowsFromSearch(), applyPickerState(), applySongRowsFromControls(), applySongState(), applyState(), filterChips, hidePickerStateCard(), hideSongStateCard() (+28 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.09
-Nodes (27): Instrument Display Menu (Guitar/Piano), applyScale(), capoDirective, chordLines, clampScale(), fitChip, instrumentGuitarButton, instrumentPianoButton (+19 more)
+Cohesion: 0.07
+Nodes (36): Instrument Display Menu (Guitar/Piano), applyScale(), capoDirective, chordLines, clampCapo(), clampScale(), effectiveCapo(), effectiveTranspose() (+28 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.06
-Nodes (40): InvitationError, invitationErrorFromStatus, main, InvitationRepository, redeem, error, organizationId, redeem (+32 more)
+Cohesion: 0.10
+Nodes (22): main, InvitationRepository, redeem, _FakeInv, lastToken, main, redeem, _result (+14 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.06
-Nodes (32): AssetBundle, package:lyron_app/src/domain/song/song_access_denied_exception.dart, package:lyron_app/src/domain/song/song_not_found_exception.dart, package:lyron_app/src/domain/song/song_repository.dart, package:lyron_app/src/infrastructure/song_library/asset_song_repository.dart, package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart, assetPath, _AssetSong (+24 more)
+Cohesion: 0.07
+Nodes (24): package:lyron_app/src/domain/song/song_access_denied_exception.dart, package:lyron_app/src/domain/song/song_not_found_exception.dart, package:lyron_app/src/infrastructure/song_library/asset_song_repository.dart, package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart, expectedTitleHeaders, main, GetSongRow, _getSongRowOrThrow (+16 more)
 
 ### Community 41 - "Community 41"
 Cohesion: 0.05
@@ -788,55 +813,55 @@ Nodes (28): aggregateId, aggregateType, baseVersion, description, errorCode, err
 
 ### Community 43 - "Community 43"
 Cohesion: 0.05
-Nodes (43): _MutableSongRepository, _StaticSongRepository, _ThrowingSongRepository, _NoopSongRepository, package:fake_async/fake_async.dart, AssetSongRepository, completeRequest, completeWith (+35 more)
+Nodes (37): CatalogSessionStatus, addBreadcrumb, breadcrumbMessages, completeRequest, completeWith, _controller, failWith, getSongSource (+29 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.01
-Nodes (253): _, accountTitle, appName, AppStrings, cancelAction, continueWithApple, continueWithGoogle, deleteAccountAction (+245 more)
+Nodes (254): _, accountTitle, appName, AppStrings, cancelAction, continueOfflineAction, continueWithApple, continueWithGoogle (+246 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.03
-Nodes (70): base, buildDarkTheme, buildLightTheme, copyWith, _darkPage, _lightPage, localize, _localized (+62 more)
+Cohesion: 0.04
+Nodes (52): main, lightBase, main, container, package:lyron_app/src/app/app_theme.dart, package:lyron_app/src/app/reader_theme.dart, package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart, package:lyron_app/src/presentation/song_reader/widgets/comment_line_view.dart (+44 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.07
-Nodes (29): allocateUniqueSlug, clearedSongMutationId, clearSongMutation, countReferencingSessionItems, deletedSongId, deleteSong, fetchCalls, fetchSong (+21 more)
+Cohesion: 0.06
+Nodes (31): SongSyncStatus, SongSyncStatusX, allocateUniqueSlug, clearedSongMutationId, clearSongMutation, countReferencingSessionItems, deletedSongId, deleteSong (+23 more)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.20
 Nodes (12): ADR-007 RBAC + RLS, create_invitation RPC, delete_account RPC, Identity vs authorization separation, `invitations` table, pg_cron orphan auth.users cleanup, redeem_invitation RPC, Single-use token invite (email not a gate) (+4 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.05
-Nodes (43): ActiveOrganizationResolution get, ActiveMembershipController, _last, update, CapabilityResolver, _RecordingReauthPromptController, capture, clear (+35 more)
+Cohesion: 0.09
+Nodes (21): ActiveOrganizationResolution get, ActiveMembershipController, _last, update, CapabilityResolver, capture, clear, _current (+13 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.10
-Nodes (24): pendingInviteTokenControllerProvider, redeemControllerProvider, build, _controller, createState, dispose, _extractToken, InviteRequiredScreen (+16 more)
+Cohesion: 0.04
+Nodes (63): LyronApp, pendingInviteTokenControllerProvider, redeemControllerProvider, build, _controller, createState, dispose, _extractToken (+55 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.20
-Nodes (8): count, PendingLocalWorkCounter, PlanningPendingWorkCountReader, _readPlanningPendingWorkCount, _readSongPendingWorkCount, SongPendingWorkCountReader, LocalStorageFootprintChanged, typedef
+Cohesion: 0.05
+Nodes (37): OutlinedButton, package:lyron_app/src/presentation/song_editor/song_editor_controller.dart, package:lyron_app/src/presentation/song_editor/song_editor_projection.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_stepper.dart, package:lyron_app/src/presentation/song_editor/widgets/song_editor_summary_list.dart, main, SongEditorProjection, main (+29 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.07
 Nodes (27): allocatedSlugs, allocateUniqueSlug, clearSongMutation, _context, countReferencingSessionItems, createdTitles, deleteSong, getSongSource (+19 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.04
-Nodes (46): StorageQuotaSimulatedException, Exception, PlanningProjectionAbortedException, LocalPlanningSlugConflictException, PlanningMutationBudgetExceededException, PlanningSongUnavailableException, SessionDeleteBlockedException, LocalSongSlugConflictException (+38 more)
+Cohesion: 0.07
+Nodes (27): allocatedSlugs, allocateUniqueSlug, clearSongMutation, countReferencingSessionItems, deletedSongId, deleteSong, getSongSource, getSongSummaryById (+19 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.08
-Nodes (24): CatalogSnapshotState? catalog,
+Cohesion: 0.07
+Nodes (26): CatalogSnapshotState? catalog,
   List, PlanningSyncState? planning,
   List, required String aggregateId,
   PlanningMutationKind, required String title,
-  SongSyncStatus, _catalog, _compute, computeUnifiedSyncOverview, connection (+16 more)
+  SongSyncStatus, CatalogConnectionStatus, CatalogRefreshStatus, _catalog, _compute (+18 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.14
-Nodes (13): acquireSongDiscardLease, _activeContextReader, discardAll, _discardPlanning, discardSongsWhileOwned, organizationId, UnifiedDiscardContext, UnifiedDiscardContextReader (+5 more)
+Cohesion: 0.05
+Nodes (36): asSupabaseSongRepository, call, clear, clearMembershipRevocation, _controller, deleteAccount, _email, emitSession (+28 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.08
@@ -851,28 +876,28 @@ Cohesion: 0.08
 Nodes (25): context, failure, hashCode, itemCount, nextItem, operator, planId, planSlug (+17 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.06
-Nodes (33): _NoopSongCatalogStoreForLifecycle, _NoopSongCatalogStore, _FailingDeleteSongCatalogStore, _NoopSongCatalogStore, _NoopSongCatalogStore, _DeleteCountingSongCatalogStore, _NoopSongCatalogStore, _NoopSongCatalogStore (+25 more)
+Cohesion: 0.07
+Nodes (25): count, PendingLocalWorkCounter, PlanningPendingWorkCountReader, _readPlanningPendingWorkCount, _readSongPendingWorkCount, SongPendingWorkCountReader, allocateUniqueSlug, clearSongMutation (+17 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.13
-Nodes (21): dart:convert, package:file_picker/file_picker.dart, package:lyron_app/src/application/song_library/chordpro_import_service.dart, ChordProImportController, ChordProImportState, _commit, commitWithResolutions, ImportAnalysing (+13 more)
+Nodes (21): package:file_picker/file_picker.dart, package:lyron_app/src/application/song_library/chordpro_import_service.dart, ChordProImportController, ChordProImportState, _commit, commitWithResolutions, ImportAnalysing, ImportAwaitingDuplicateResolution (+13 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.04
-Nodes (61): @visibleForTesting, Object?, package:collection/collection.dart, package:lyron_app/src/domain/planning/plan_detail.dart, package:lyron_app/src/domain/planning/plan_summary.dart, package:lyron_app/src/domain/planning/planning_repository.dart, package:lyron_app/src/domain/planning/session_item_summary.dart, package:lyron_app/src/domain/planning/session_summary.dart (+53 more)
+Cohesion: 0.05
+Nodes (50): package:collection/collection.dart, package:lyron_app/src/domain/planning/plan_detail.dart, package:lyron_app/src/domain/planning/plan_summary.dart, package:lyron_app/src/domain/planning/planning_repository.dart, package:lyron_app/src/domain/planning/session_item_summary.dart, package:lyron_app/src/domain/planning/session_summary.dart, package:lyron_app/src/domain/song/song_summary.dart, package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart (+42 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.18
-Nodes (10): package:sqlite3/wasm.dart, delayed, fileSystem, _loadSqlite3, _openInMemoryConnection, openInMemoryPlanningLocalConnection, _openPersistentConnection, openPlanningLocalConnection (+2 more)
+Cohesion: 0.05
+Nodes (40): delayed, fileSystem, _loadSqlite3, _openInMemoryConnection, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, _openPersistentConnection, sqlite3 (+32 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.05
-Nodes (46): package:lyron_app/src/application/sync/unified_manual_sync_controller.dart, package:lyron_app/src/application/sync/unified_row_recovery_controller.dart, UnifiedDiscardController, _ctx, main, build, _UnifiedSyncHeaderControlBody, UnifiedSyncOverview (+38 more)
+Nodes (43): package:lyron_app/src/application/sync/unified_row_recovery_controller.dart, build, _UnifiedSyncHeaderControlBody, UnifiedSyncOverview, UnifiedSyncPlanRow, UnifiedSyncReasonCode, UnifiedSyncSongRow, base (+35 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.07
-Nodes (29): createState, dispose, _emailController, _isSending, _kRedirectUrl, SignInScreen, _SignInScreenState, bassNoteName (+21 more)
+Cohesion: 0.09
+Nodes (21): bassNoteName, bassPitchClass, ChordSymbol, hashCode, isParenthesized, _noteNames, operator, parse (+13 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.10
@@ -892,11 +917,11 @@ Nodes (20): lyric_segment.dart, package:lyron_app/src/domain/song/parse_diagnost
 
 ### Community 68 - "Community 68"
 Cohesion: 0.03
-Nodes (69): SongEditorProjection, StatelessWidget, VoidCallback, build, message, onRetry, RetryableErrorState, build (+61 more)
+Nodes (72): package:lyron_app/src/presentation/song_reader/widgets/song_reader_header.dart, SongReaderProjection, StatelessWidget, VoidCallback, build, message, onRetry, RetryableErrorState (+64 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.04
-Nodes (51): class, _currentSessionReader, _demoOrganizationId, _error, fetchPlanningSyncPayload, _lifecycleFor, main, _multiSessionPlanId (+43 more)
+Cohesion: 0.07
+Nodes (26): _NoopPlanningRemoteRepository, _FailingPlanningRemoteRefreshRepository, _StaticPlanningRemoteRefreshRepository, _ThrowingPlanningRemoteRepository, _EmptyPlanningRemoteRepository, package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart, package:lyron_app/src/application/planning/planning_sync_payload.dart, fetchPlanningSyncPayload (+18 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.11
@@ -911,24 +936,24 @@ Cohesion: 0.03
 Nodes (67): allocateAvailableSongSlug, baseStore, clear, clearMembershipRevocation, clearSongMutation, clearSongMutationCalls, _controller, countingStore (+59 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.11
-Nodes (18): description, id, items, name, planId, PlanningSyncPlan, PlanningSyncSession, PlanningSyncSessionItem (+10 more)
+Cohesion: 0.08
+Nodes (23): DateTime, database, main, store, package:lyron_app/src/offline/local_data_events/local_data_events_database.dart, description, id, items (+15 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.07
 Nodes (29): Accept the current sync-wins discard race, Add proactive threshold eviction now, Close only the documentation and tests, Compensate remotely after a racing discard, D1 — destructive-work detection matches the wipe scope, D2 — auth edges invalidate stale work synchronously, D3 — prompt delivery is current-value aware and exactly once, D4 — sync and discard are mutually exclusive below the widget layer (+21 more)
 
 ### Community 75 - "Community 75"
-Cohesion: 0.09
-Nodes (23): ConsumerState, ConsumerStatefulWidget, PlanEditorDialog, _PlanEditorDialog, _PlanEditorDialogState, SongListScreen, SongReaderScreen, build (+15 more)
+Cohesion: 0.07
+Nodes (28): package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart, TextEditingController, createState, _descriptionController, dispose, initialDescription, initialName, initialScheduledFor (+20 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.09
-Nodes (21): appendTabLine, build, ChordproParser, _ensurePreambleOrCurrentSection, _ensureSection, _isSameSection, kind, label (+13 more)
+Cohesion: 0.07
+Nodes (28): appendTabLine, build, ChordproParser, _ensurePreambleOrCurrentSection, _ensureSection, _isSameSection, kind, label (+20 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.08
-Nodes (27): CachedPlanningMutations, CachedPlanningPlans, CachedPlanningSessionItems, CachedPlanningSessions, PlanningProjectionOwners, baseVersion, CachedCatalogSnapshots, CachedCatalogSongMutations (+19 more)
+Cohesion: 0.11
+Nodes (17): baseVersion, localRevision, organizationId, pendingEmptyConfirmationAt, primaryKey, refreshedAt, slug, snapshotVersion (+9 more)
 
 ### Community 78 - "Community 78"
 Cohesion: 0.29
@@ -964,19 +989,19 @@ Nodes (71): aggregateId, aggregateType, allocatePlanSlug, allocateSessionSlug, b
 
 ### Community 86 - "Community 86"
 Cohesion: 0.03
-Nodes (70): calls, close, context, entered, failFirstWith, fetchSong, _firstCallSeen, gate (+62 more)
+Nodes (65): calls, close, context, entered, failFirstWith, fetchSong, _firstCallSeen, gate (+57 more)
 
 ### Community 87 - "Community 87"
-Cohesion: 0.13
-Nodes (16): answer, dispose, email, MembershipRevocationPurgePrompt, _nextRequestId, _pending, pendingCount, _publish (+8 more)
+Cohesion: 0.12
+Nodes (18): _RecordingReauthPromptController, answer, dispose, email, MembershipRevocationPurgePrompt, _nextRequestId, _pending, pendingCount (+10 more)
 
 ### Community 88 - "Community 88"
 Cohesion: 0.14
 Nodes (14): ChordproLine, ChordproLineKind, ChordproLineScanner, _Directive, directiveName, directiveValue, isDirective, kind (+6 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.06
-Nodes (37): package:lyron_app/src/application/storage/catalog_storage_accountant.dart, package:lyron_app/src/application/storage/local_storage_budget.dart, package:lyron_app/src/application/storage/local_storage_footprint.dart, package:lyron_app/src/application/storage/local_storage_footprint_revision.dart, package:lyron_app/src/application/storage/local_storage_monitor.dart, package:lyron_app/src/application/storage/planning_storage_accountant.dart, _FakeBudgetAccountant, SongCatalogDatabase (+29 more)
+Cohesion: 0.11
+Nodes (19): package:lyron_app/src/application/storage/catalog_storage_accountant.dart, package:lyron_app/src/application/storage/local_storage_budget.dart, package:lyron_app/src/application/storage/local_storage_footprint.dart, package:lyron_app/src/application/storage/local_storage_monitor.dart, package:lyron_app/src/application/storage/planning_storage_accountant.dart, classify, LocalStorageBudget, mutationRefuseBytes (+11 more)
 
 ### Community 90 - "Community 90"
 Cohesion: 0.03
@@ -996,8 +1021,8 @@ Cohesion: 0.10
 Nodes (20): 1. Bypass sync-owner rejection, 2. Snapshot before discard-owned completion, Baseline, Commit, Commit, Concerns, Concerns, Falsification (+12 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.04
-Nodes (63): build, createState, initState, LyronApp, _LyronAppState, _router, themeModeControllerProvider, deepLinkListenerProvider (+55 more)
+Cohesion: 0.11
+Nodes (18): _controller, deleteAccount, expireSession, getSongSource, getSongSummaryById, getSongSummaryBySlug, listSongs, main (+10 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.19
@@ -1008,20 +1033,20 @@ Cohesion: 0.15
 Nodes (10): Any, Bool, Flutter, FlutterAppDelegate, AppDelegate, RunnerTests, UIApplication, UIKit (+2 more)
 
 ### Community 97 - "Community 97"
-Cohesion: 0.04
-Nodes (49): deleteAccount, deleted, main, _RecordingController, restoreSession, sendMagicLink, signedOut, signInWithOAuth (+41 more)
+Cohesion: 0.07
+Nodes (26): deleteAccount, deleted, main, restoreSession, sendMagicLink, signedOut, signInWithOAuth, signOut (+18 more)
 
 ### Community 98 - "Community 98"
 Cohesion: 0.14
 Nodes (13): D1 — The sync durably marks a record before it sends, D2 — Deleting an in-flight create leaves a cancellation tombstone, D3 — The in-flight create's outcome decides what the tombstone becomes, D4 — A missing record is not a programming error, Decisions, Documentation, Goal, Implementation (+5 more)
 
 ### Community 99 - "Community 99"
-Cohesion: 0.07
-Nodes (28): _currentSessionReader, deadline, _delegate, _demoOrganizationId, _error, _eventually, getSongSource, isForeground (+20 more)
+Cohesion: 0.05
+Nodes (39): _currentSessionReader, deadline, _delegate, _demoOrganizationId, _error, _eventually, getSongSource, isForeground (+31 more)
 
 ### Community 100 - "Community 100"
-Cohesion: 0.05
-Nodes (41): allocatePlanSlug, allocateSessionSlug, allocateUniqueSlug, clearMutation, clearSongMutation, countReferencingSessionItems, deleteSong, discardMine (+33 more)
+Cohesion: 0.04
+Nodes (44): SongMutationSyncController, allocatePlanSlug, allocateSessionSlug, allocateUniqueSlug, clearMutation, clearSongMutation, countReferencingSessionItems, deleteSong (+36 more)
 
 ### Community 101 - "Community 101"
 Cohesion: 0.07
@@ -1036,28 +1061,28 @@ Cohesion: 0.16
 Nodes (14): Local-First Planning Create/Edit Implementation Plan, PlanningMutationStore, PlanningMutationSyncController, Projection-Plus-Mutation Boundary (ADR-014), Task 1: Define The Backend Planning Write Contract, Task 2: Add Persisted Planning Mutation Storage In Drift, Task 3: Overlay Mutations Into Merged Local-First Planning Reads, Task 4: Add Planning Mutation Sync And Remote Reconciliation (+6 more)
 
 ### Community 104 - "Community 104"
-Cohesion: 0.04
-Nodes (56): _NoopPlanningLocalStore, _BlockingDeletePlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _RecordingPlanningLocalStore, DriftPlanningLocalStore (+48 more)
+Cohesion: 0.03
+Nodes (61): _NoopPlanningLocalStore, _BlockingDeletePlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _NoopPlanningLocalStore, _RecordingPlanningLocalStore, DriftPlanningLocalStore (+53 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.11
-Nodes (16): package:lyron_app/src/presentation/sync/unified_sync_header_control.dart, package:lyron_app/src/presentation/sync/unified_sync_providers.dart, package:lyron_app/src/presentation/sync/unified_sync_status_popup.dart, _labelAndColor, _secondaryText, activity, freshness, hasUnsyncedWork (+8 more)
+Cohesion: 0.04
+Nodes (43): auth_providers.dart, core_providers.dart, observability/observability_providers.dart, package:flutter_riverpod/flutter_riverpod.dart, package:lyron_app/src/application/planning/planning_data_revision.dart, package:lyron_app/src/application/provider_retry_policy.dart, package:lyron_app/src/presentation/song_library/song_library_providers.dart, package:lyron_app/src/presentation/sync/unified_sync_header_control.dart (+35 more)
 
 ### Community 106 - "Community 106"
 Cohesion: 0.05
 Nodes (36): PlanningWriteContext, SessionItemDeleteDraft, allocatePlanSlug, allocateSessionSlug, clearMutation, deletedContext, deletedDraft, deleteSessionItem (+28 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.15
-Nodes (12): int?, columnNumber, context, hashCode, line, lineNumber, message, operator (+4 more)
+Cohesion: 0.17
+Nodes (11): columnNumber, context, hashCode, line, lineNumber, message, operator, ParseDiagnostic (+3 more)
 
 ### Community 108 - "Community 108"
 Cohesion: 0.05
 Nodes (38): allocatePlanSlug, allocateSessionSlug, clearMutation, deleteAccount, entries, getPlanDetail, getPlanDetailBySlug, getPlanDetailCalls (+30 more)
 
 ### Community 109 - "Community 109"
-Cohesion: 0.09
-Nodes (21): deleteAccount, _longPlanDetailFixture, main, _planDetailFixture, _planSummaryFixture, pump, restoredSession, restoreSession (+13 more)
+Cohesion: 0.08
+Nodes (23): deleteAccount, _longPlanDetailFixture, main, _planDetailFixture, _planSummaryFixture, pump, restoredSession, restoreSession (+15 more)
 
 ### Community 110 - "Community 110"
 Cohesion: 0.04
@@ -1065,7 +1090,7 @@ Nodes (44): ChoiceChip, package:lyron_app/src/presentation/song_editor/widgets/s
 
 ### Community 111 - "Community 111"
 Cohesion: 0.07
-Nodes (27): _UpdateFailingExecutor, _InsertFailingExecutor, InsertFailureBudget, _ScriptedInsertExecutor, QueryExecutor, _CountingInsertExecutor, beginExclusive, beginTransaction (+19 more)
+Nodes (29): main, countPlanningPendingWork, countSongPendingWork, DriftPendingLocalWorkReader, _planningDatabase, _songDatabase, database, _insertPlanningMutation (+21 more)
 
 ### Community 112 - "Community 112"
 Cohesion: 0.06
@@ -1077,7 +1102,7 @@ Nodes (21): Before you start, File Structure, Final verification, Read Boundary 
 
 ### Community 114 - "Community 114"
 Cohesion: 0.05
-Nodes (41): clearIdentity, _clearIdentityLocked, clearMembershipRevocation, _eventsRecorder, hashCode, _identityStore, LocalDataLifecycle, markedAt (+33 more)
+Nodes (39): clearIdentity, _clearIdentityLocked, clearMembershipRevocation, _eventsRecorder, hashCode, _identityStore, LocalDataLifecycle, markedAt (+31 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.22
@@ -1092,28 +1117,28 @@ Cohesion: 0.05
 Nodes (38): BoxConstraints?, double?, EdgeInsetsGeometry, package:lyron_app/src/presentation/song_reader/widgets/two_pointer_scale_recognizer.dart, ScrollController, build, contentColumnCount, _contentConstraints (+30 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.14
-Nodes (13): Pending Delete Soft-Delete, sync_status Mutation Queue, Accepted-Write Reconciliation, Backend-Enforced Authorization, Canonical Write Response Shape, Canonical Response Shape, OCC And Collection Versioning, Remote Delete And Missing-Parent Handling (+5 more)
+Cohesion: 0.22
+Nodes (8): Accepted-Write Reconciliation, Backend-Enforced Authorization, Canonical Response Shape, OCC And Collection Versioning, Remote Delete And Missing-Parent Handling, Synchronization And Reconciliation Expectations, Drift DB Reopen Persistence Coverage, Session-Expiry Cache Policy
 
 ### Community 119 - "Community 119"
-Cohesion: 0.16
-Nodes (15): reauthPromptControllerProvider, _activeRequestId, build, child, _closeOpenDialog, createState, _dialogOpen, dispose (+7 more)
+Cohesion: 0.15
+Nodes (16): reauthPromptControllerProvider, _activeRequestId, build, child, _closeOpenDialog, createState, _dialogOpen, dispose (+8 more)
 
 ### Community 120 - "Community 120"
-Cohesion: 0.06
-Nodes (30): package:lyron_app/src/application/song_library/song_catalog_read_repository.dart, package:lyron_app/src/domain/song/song_source.dart, package:lyron_app/src/domain/song/song_summary.dart, package:lyron_app/src/presentation/song_library/song_library_browse_row.dart, getSongSource, getSongSummaryById, getSongSummaryBySlug, listSongs (+22 more)
+Cohesion: 0.12
+Nodes (15): createSong, deleteSong, getSongSource, getSongSummaryById, getSongSummaryBySlug, _idGenerator, listSongs, _maxCreateSlugRetries (+7 more)
 
 ### Community 121 - "Community 121"
-Cohesion: 0.11
-Nodes (18): _GatedSongRemote, _GatedSongMutationRemoteRepository, _GatedRejectingSongRemote, _FakeSongMutationRemoteRepository, _FakeSongMutationRemoteRepository, SongMutationRemoteRepository, fetchSong, _mapError (+10 more)
+Cohesion: 0.08
+Nodes (24): class, package:lyron_app/src/shared/connectivity_failure.dart, package:lyron_app/src/shared/permanent_authorization_denial.dart, package:supabase_flutter/supabase_flutter.dart, _mapError, _mapRow, SupabasePlanningMutationRepository, syncMutation (+16 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.14
-Nodes (19): _BootstrapScope, _BootstrapScopeState, _Harness, _ReorderHandleHarness, _ReorderHandleHarnessState, SessionSongPicker, _SessionSongPickerRoute, _SessionSongPickerRouteState (+11 more)
+Cohesion: 0.17
+Nodes (15): _Harness, SessionSongPicker, _SessionSongPickerRoute, _SessionSongPickerRouteState, _SessionSongPickerState, State, StatefulWidget, _ImportDuplicateDialog (+7 more)
 
 ### Community 123 - "Community 123"
-Cohesion: 0.04
-Nodes (46): build, _formatOccurredAt, local, LocalDataEventsScreen, main, sampleRecords, twoDigits, localDataEventsRecordsProvider (+38 more)
+Cohesion: 0.03
+Nodes (69): build, _formatOccurredAt, local, LocalDataEventsScreen, main, sampleRecords, twoDigits, localDataEventsRecordsProvider (+61 more)
 
 ### Community 124 - "Community 124"
 Cohesion: 0.08
@@ -1121,7 +1146,7 @@ Nodes (25): all, allocatePlanSlug, allocateSessionSlug, clearedAggregateIds, cle
 
 ### Community 125 - "Community 125"
 Cohesion: 0.05
-Nodes (36): Decision: drop the read-only quarantine UX, keep D5's purge gate, Local Data Durability Contract — Implementation Plan, Non-Goals, restated because this plan invites them, One open item the re-scope must cover, Phase 1 — Offline-authenticated cold start (D2, D3), Phase 2 — `LocalDataLifecycle` gate and audit trail (D7), Phase 3 — Write-path protection (D4, D6), Phase 4 closeout: Tasks 4.1-4.3 superseded, re-scope required (+28 more)
+Nodes (37): Decision: drop the read-only quarantine UX, keep D5's purge gate, Local Data Durability Contract — Implementation Plan, Non-Goals, restated because this plan invites them, One open item the re-scope must cover, Phase 1 — Offline-authenticated cold start (D2, D3), Phase 2 — `LocalDataLifecycle` gate and audit trail (D7), Phase 3 — Write-path protection (D4, D6), Phase 4 closeout: Tasks 4.1-4.3 superseded, re-scope required (+29 more)
 
 ### Community 126 - "Community 126"
 Cohesion: 0.13
@@ -1140,8 +1165,8 @@ Cohesion: 0.03
 Nodes (57): AssertionError, allocatePlanSlug, allocateSessionSlug, beginExclusive, beginTransaction, calls, clearMutation, close (+49 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.05
-Nodes (41): deleteCatalogsForUser, deletePlanningDataForUser, main, _NoopLocalDataEventsRecorder, _NoopPlanningLocalStore, noSuchMethod, recordEviction, recordMembershipRevocationCleared (+33 more)
+Cohesion: 0.04
+Nodes (47): _NoopLocalDataEventsRecorderForLifecycle, deleteCatalogsForUser, deletePlanningDataForUser, main, _NoopLocalDataEventsRecorder, _NoopPlanningLocalStore, _NoopSongCatalogStore, noSuchMethod (+39 more)
 
 ### Community 131 - "Community 131"
 Cohesion: 0.25
@@ -1161,11 +1186,11 @@ Nodes (44): Effective Capo/Transpose Projection, Guitar/Piano Instrument Mode, S
 
 ### Community 135 - "Community 135"
 Cohesion: 0.06
-Nodes (36): _, ColumnFilters, GeneratedColumn, GeneratedDatabase, actualTableName, _alias, aliasedName, allSchemaEntities (+28 more)
+Nodes (36): _, ColumnFilters, GeneratedColumn, actualTableName, _alias, aliasedName, allSchemaEntities, allTables (+28 more)
 
 ### Community 136 - "Community 136"
 Cohesion: 0.06
-Nodes (31): package:lyron_app/src/presentation/song_reader/widgets/song_reader_header.dart, SongReaderProjection, build, onCapoDown, onCapoUp, onDecreaseFontScale, onIncreaseFontScale, onTransposeDown (+23 more)
+Nodes (32): _FakeSongRepository, SentryTransaction, DriftSongCatalogStore, attempted, buildController, createHttpClient, database, deliveredTransaction (+24 more)
 
 ### Community 137 - "Community 137"
 Cohesion: 0.12
@@ -1176,8 +1201,8 @@ Cohesion: 0.18
 Nodes (10): background_color, description, display, icons, name, orientation, prefer_related_applications, short_name (+2 more)
 
 ### Community 139 - "Community 139"
-Cohesion: 0.04
-Nodes (57): beginExclusive, beginTransaction, close, _delegate, dialect, ensureOpen, main, rollback (+49 more)
+Cohesion: 0.03
+Nodes (62): _UpdateFailingExecutor, _UpdateFailingTransactionExecutor, beginExclusive, beginTransaction, _budget, close, _delegate, dialect (+54 more)
 
 ### Community 140 - "Community 140"
 Cohesion: 0.09
@@ -1188,8 +1213,8 @@ Cohesion: 0.09
 Nodes (21): Committed-storage revision seam, Components, D1 — Two ladders, not one, D2 — Content-derived byte accounting, no platform quota API, D3 — Enforcement by decorator, D4 — Protection order, D5 — Native-only verification (the S12 tension, resolved), D6 — Thresholds (+13 more)
 
 ### Community 142 - "Community 142"
-Cohesion: 0.08
-Nodes (27): package:lyron_app/src/application/storage/local_storage_domain_rejection.dart, package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart, package:lyron_app/src/application/storage/song_catalog_evictor.dart, package:sqlite3/common.dart, _RecordingEvictor, _FakeBudgetEvictor, _eventsRecorder, _evictor (+19 more)
+Cohesion: 0.07
+Nodes (28): package:lyron_app/src/application/storage/local_storage_domain_rejection.dart, package:lyron_app/src/application/storage/local_storage_exhaustion_signal.dart, package:lyron_app/src/application/storage/local_storage_write_failure.dart, package:sqlite3/common.dart, _RecordingEvictor, _FakeBudgetEvictor, _eventsRecorder, _evictor (+20 more)
 
 ### Community 143 - "Community 143"
 Cohesion: 0.05
@@ -1204,8 +1229,8 @@ Cohesion: 0.06
 Nodes (31): A vanished record is not a programming error (D4), ADR-030: Sync Snapshot Identity via Local Revision, An abandoned candidate is a failure the caller must hear about, Atomic Revision Write and Stale-Error Clearing Follow-Up (resolved), Context, D1 — Every local mutation row carries a monotonic local revision, D2 — Post-sync writes are conditional on the revision that was sent, D2 (song/catalog) — one combined write, gated as a whole (+23 more)
 
 ### Community 146 - "Community 146"
-Cohesion: 0.05
-Nodes (41): arrowed, _AsyncProviderVisitor, banner, _builderMembers, candidateCount, _chainRootIsAsyncProvider, declarationCount, derived (+33 more)
+Cohesion: 0.04
+Nodes (46): arrowed, _AsyncProviderVisitor, banner, _builderMembers, candidateCount, _chainRootIsAsyncProvider, declarationCount, derived (+38 more)
 
 ### Community 147 - "Community 147"
 Cohesion: 0.11
@@ -1213,19 +1238,19 @@ Nodes (18): ADR-028: Local Storage Budget and Eviction Policy, Consequences, Con
 
 ### Community 148 - "Community 148"
 Cohesion: 0.06
-Nodes (32): AsyncValue, package:lyron_app/src/presentation/song_reader/song_reader_layout.dart, allowTwoColumns, contentColumnCount, expandedShellMinWidth, resolveSongReaderLayout, shell, SongReaderLayout (+24 more)
+Nodes (30): AsyncValue, allowTwoColumns, contentColumnCount, expandedShellMinWidth, resolveSongReaderLayout, shell, SongReaderLayout, SongReaderShell (+22 more)
 
 ### Community 149 - "Community 149"
-Cohesion: 0.06
-Nodes (37): catalogSnapshotStateProvider, FocusNode, package:lyron_app/src/application/planning/planning_reorder_overlay.dart, package:lyron_app/src/presentation/planning/widgets/plan_song_item_row.dart, main, build, SongEditorSlugRouteResolver, SongSlugRouteResolver (+29 more)
+Cohesion: 0.04
+Nodes (73): @visibleForTesting, activePlanningContextProvider, planningMutationSyncControllerProvider, catalogSnapshotStateProvider, ConsumerState, ConsumerWidget, FocusNode, package:lyron_app/src/presentation/planning/plan_detail_screen.dart (+65 more)
 
 ### Community 150 - "Community 150"
-Cohesion: 0.08
-Nodes (25): entered, failure, fetchSong, gate, _GatedFailingKeepMineRemote, main, overwriteSong, syncSong (+17 more)
+Cohesion: 0.07
+Nodes (28): beginExclusive, beginTransaction, close, _delegate, dialect, ensureOpen, main, rollback (+20 more)
 
 ### Community 151 - "Community 151"
-Cohesion: 0.05
-Nodes (40): main, HttpOverrides, _PassthroughHttpOverrides, _PassthroughHttpOverrides, _PassthroughHttpOverrides, _lifecycleFor, main, noSuchMethod (+32 more)
+Cohesion: 0.04
+Nodes (57): main, HttpOverrides, _PassthroughHttpOverrides, _PassthroughHttpOverrides, _currentSessionReader, _demoOrganizationId, _error, fetchPlanningSyncPayload (+49 more)
 
 ### Community 152 - "Community 152"
 Cohesion: 0.10
@@ -1236,8 +1261,8 @@ Cohesion: 0.31
 Nodes (7): ADR-018 Invite-Only Auth with Token Redemption, DeepLinkListener, Identity vs Authorization Separation, pg_cron Orphan auth.users Cleanup, redeem_invitation RPC, Magic Link Custom Scheme for PKCE, Verified Android App Links / iOS Universal Links
 
 ### Community 154 - "Community 154"
-Cohesion: 0.16
-Nodes (11): ChordPro-First Editor (Source Canonical, Derived Summary), Reader Surface (Compact/Expanded), ChordPro Parser Foundation, Layered Architecture (Domain/Application/Infra/Presentation), Recoverable Parse Diagnostics, Song Repository Boundary (SongSummary + SongSource), Auth/Bootstrap Controller (initializing/signedOut/signedIn/sessionExpired), Local Demo Auth Fixture (+3 more)
+Cohesion: 0.25
+Nodes (7): ChordPro-First Editor (Source Canonical, Derived Summary), Reader Surface (Compact/Expanded), ChordPro Parser Foundation, Layered Architecture (Domain/Application/Infra/Presentation), Recoverable Parse Diagnostics, Song Repository Boundary (SongSummary + SongSource), Reader Back Affordance & Fallback Return
 
 ### Community 155 - "Community 155"
 Cohesion: 0.06
@@ -1248,8 +1273,8 @@ Cohesion: 0.10
 Nodes (20): current, _endsWithWhitespace, groups, groupSegmentsIntoWords, index, _isEntirelyBreakableWhitespace, _isGroupBreakChar, _mandatoryBreakChar (+12 more)
 
 ### Community 157 - "Community 157"
-Cohesion: 0.25
-Nodes (8): _GatedSongMutationStore, _RecordingSongMutationStore, DriftSongMutationStore, _FakeSongMutationStore, SongMutationStore, _FakeSongStore, _FakeSongStore, _FakeSongStore
+Cohesion: 0.11
+Nodes (19): _GatedSongMutationStore, _StaticSongRepository, _NoopSongRepository, _RecordingSongMutationStore, _TestSongCatalogReadRepository, _FakeRepo, DriftSongMutationStore, getSongSource (+11 more)
 
 ### Community 158 - "Community 158"
 Cohesion: 0.12
@@ -1272,8 +1297,8 @@ Cohesion: 0.06
 Nodes (34): Application Layer, Architectural Requirements, Chord Handling Requirements, ChordPro Support Boundary, Data Access Requirements, Deferred Decisions, Diagnostic Expectations, Domain Expectations (+26 more)
 
 ### Community 163 - "Community 163"
-Cohesion: 0.12
-Nodes (15): Shared Connectivity Failure Classifier, Cross-Platform Catalog Connectivity Classification Fix, Goal, Non-Goals, OfflineCached Catalog State, Problem, Required Behavior, Scope (+7 more)
+Cohesion: 0.13
+Nodes (13): Shared Connectivity Failure Classifier, Cross-Platform Catalog Connectivity Classification Fix, Goal, Non-Goals, OfflineCached Catalog State, Problem, Required Behavior, Scope (+5 more)
 
 ### Community 164 - "Community 164"
 Cohesion: 0.29
@@ -1320,20 +1345,20 @@ Cohesion: 0.47
 Nodes (4): cache_supabase_env(), load_cached_supabase_env(), validate_supabase_env(), _supabase_env.sh script
 
 ### Community 175 - "Community 175"
-Cohesion: 0.11
-Nodes (17): chordCharWidth, _chordMeasureSample, chordStyle, headerCharWidth, _headerMeasureSample, headerStyle, lyricCharWidth, _lyricMeasureSample (+9 more)
+Cohesion: 0.06
+Nodes (34): package:lyron_app/src/presentation/song_reader/song_reader_fit.dart, package:lyron_app/src/presentation/song_reader/song_reader_metrics.dart, chordCharWidth, _chordMeasureSample, chordStyle, headerCharWidth, _headerMeasureSample, headerStyle (+26 more)
 
 ### Community 176 - "Community 176"
 Cohesion: 0.08
 Nodes (25): Acceptance Criteria, Active Organization Membership Revocation Policy Implementation Plan, Assumptions, Escalation Points, Exact Validation Commands, Plan, Recommended Policy, Active-Organization Resolution Result Type (+17 more)
 
 ### Community 177 - "Community 177"
-Cohesion: 0.06
-Nodes (32): After Local Mutation Recording, Aggregate And Field Rules, Backend-Owned Authorization, Backend Verification, Before Synchronization Success, Canonical Write Boundary, Core Product Rules, Current Architectural Context (+24 more)
+Cohesion: 0.08
+Nodes (25): After Local Mutation Recording, Backend-Owned Authorization, Backend Verification, Before Synchronization Success, Canonical Write Boundary, Core Product Rules, Current Architectural Context, Documentation Impact (+17 more)
 
 ### Community 178 - "Community 178"
-Cohesion: 0.09
-Nodes (23): Keep Mine / Discard Mine Conflict Resolution, Optimistic Concurrency Control (base_version), Foreground Mutation Sync, Local-First View Model Requirements, Merged Local-First Views, Mutation Compaction And Dependency Rules, Mutation Persistence Requirements, Persisted Planning Mutation Store (+15 more)
+Cohesion: 0.16
+Nodes (11): Local-First View Model Requirements, Merged Local-First Views, Projection-Plus-Mutation Model, Projection Plus Mutation Model, Canonical Write Response Shape, Session And Session-Item Reorder, ADR-014 Planning Write Projection-Mutation Boundary, Native Drag-And-Drop Reorder (+3 more)
 
 ### Community 179 - "Community 179"
 Cohesion: 0.33
@@ -1357,7 +1382,7 @@ Nodes (15): Overflow-Menu Edit/Delete Actions, Scoped-Only Bottom Context Bar, S
 
 ### Community 184 - "Community 184"
 Cohesion: 0.06
-Nodes (29): package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart, PreferredSizeWidget, Size get, main, build, canEditSongs, effectiveKey (+21 more)
+Nodes (31): PreferredSizeWidget, Size get, SongReaderViewMode, build, canEditSongs, effectiveKey, hasRecoverableWarnings, isDarkActive (+23 more)
 
 ### Community 185 - "Community 185"
 Cohesion: 0.40
@@ -1368,28 +1393,28 @@ Cohesion: 0.12
 Nodes (16): Background the implementer needs, File Structure, Post-implementation amendment (2026-07-30), SEC-1 Invitation Redemption Hardening Implementation Plan, Task 10: Documentation, Task 11: Slice verification, Task 1: Contract test harness with a failing contract-shape assertion, Task 2: Audit schema migration (+8 more)
 
 ### Community 188 - "Community 188"
-Cohesion: 0.50
-Nodes (3): bootstrap, main, package:lyron_app/src/bootstrap/bootstrap.dart
+Cohesion: 0.11
+Nodes (16): main, attempted, createHttpClient, events, _FailingHttpOverrides, httpAttempts, initSentry, main (+8 more)
 
 ### Community 189 - "Community 189"
-Cohesion: 0.05
-Nodes (38): acquired, acquireDiscardLease, _applySuccessfulSync, _contextKey, discardMine, _discardMineOwned, future, hashCode (+30 more)
+Cohesion: 0.06
+Nodes (35): acquired, acquireDiscardLease, _applySuccessfulSync, _contextKey, discardMine, _discardMineOwned, future, hashCode (+27 more)
 
 ### Community 190 - "Community 190"
 Cohesion: 0.15
 Nodes (11): Self-Bootstrapping check-migrations.sh, CI Migration Lint Local Supabase Bootstrap Implementation Plan, Task 1: Lock The Desired Script Contract With A Failing Test, Task 2: Make The Migration Entrypoint Self-Bootstrapping, Task 3: Refresh Durable Repository Guidance, Task 4: Verify The End-To-End Change, Local CI Entrypoint Implementation Plan, run-ci-locally.sh Wrapper (+3 more)
 
 ### Community 191 - "Community 191"
-Cohesion: 0.10
-Nodes (19): Same-Id Recreation Convergence, Song Sync Convergence Hardening Implementation Plan, Task 1: Extend The Backend Song Write Contract For Remote-Deleted Convergence, Task 2: Add Explicit Remote-Deletion Classification In Song Sync Types And Mapping, Task 3: Implement Store And Sync-Controller Convergence Rules, Task 4: Add Planning And Reader Tombstone-Style Reference Handling, Task 5: Prove End-To-End Remote-Deleted Convergence, Task 6: Close Documentation And Deferred-State Loop (+11 more)
+Cohesion: 0.20
+Nodes (9): Same-Id Recreation Convergence, Song Sync Convergence Hardening Implementation Plan, Task 1: Extend The Backend Song Write Contract For Remote-Deleted Convergence, Task 2: Add Explicit Remote-Deletion Classification In Song Sync Types And Mapping, Task 3: Implement Store And Sync-Controller Convergence Rules, Task 4: Add Planning And Reader Tombstone-Style Reference Handling, Task 5: Prove End-To-End Remote-Deleted Convergence, Task 6: Close Documentation And Deferred-State Loop (+1 more)
 
 ### Community 192 - "Community 192"
-Cohesion: 0.05
-Nodes (35): clear, clearMembershipRevocation, _controller, currentSession, deleteAccount, deleteCalled, emit, emitNullOnSignOut (+27 more)
+Cohesion: 0.07
+Nodes (26): clear, clearMembershipRevocation, _controller, currentSession, deleteAccount, deleteCalled, emit, emitNullOnSignOut (+18 more)
 
 ### Community 193 - "Community 193"
-Cohesion: 0.07
-Nodes (29): Active Organization Context, Architecture Requirements, Atomic Snapshot Replacement, Backend And Workflow Verification, Backend Boundary, Core Product Rules, First Signed-In Use With No Cached Catalog, Fixed-Interval Refresh (+21 more)
+Cohesion: 0.08
+Nodes (24): Active Organization Context, Architecture Requirements, Atomic Snapshot Replacement, Backend And Workflow Verification, Backend Boundary, Core Product Rules, Fixed-Interval Refresh, Goal (+16 more)
 
 ### Community 195 - "Community 195"
 Cohesion: 0.25
@@ -1400,8 +1425,8 @@ Cohesion: 0.22
 Nodes (8): Reader UI Compact/Expanded Shells, Current Behavior Notes, Lyron Chords, Purpose, Reader UI Behavior, Structure, Verification, Web Index HTML
 
 ### Community 199 - "Community 199"
-Cohesion: 0.06
-Nodes (35): After At Least One Successful Refresh, Architecture Requirements, Atomic Replacement, Authorization And Backend Boundary, Before The First Successful Refresh, Core Product Rules, Documentation Requirements, Eager Full Active-Organization Refresh (+27 more)
+Cohesion: 0.08
+Nodes (24): After At Least One Successful Refresh, Architecture Requirements, Authorization And Backend Boundary, Before The First Successful Refresh, Core Product Rules, Documentation Requirements, Failure Rules, Goal (+16 more)
 
 ### Community 200 - "Community 200"
 Cohesion: 0.12
@@ -1420,9 +1445,9 @@ Cohesion: 0.13
 Nodes (14): Audit table, Client, Current State, Decisions (from brainstorm), Documentation & Deferred Resolution, Goal, Non-Goals, Problem (+6 more)
 
 ### Community 204 - "Community 204"
-Cohesion: 0.10
-Nodes (20): _TestAppForegroundState, _TestAppForegroundState, class WidgetsBindingAppForegroundState
-    with, _StaticForegroundState, _StaticForegroundState, _StaticForegroundState, _TestAppForegroundState, AppForegroundState (+12 more)
+Cohesion: 0.20
+Nodes (10): class WidgetsBindingAppForegroundState
+    with, didChangeAppLifecycleState, dispose, _foregroundController, isForeground, _isForegroundLifecycleState, watchForeground, WidgetsBindingAppForegroundState (+2 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 1.00
@@ -1442,7 +1467,7 @@ Nodes (9): Commit Guidance, Definition Of Done, Development Workflow, Local Tool
 
 ### Community 211 - "Community 211"
 Cohesion: 0.04
-Nodes (61): ActiveOrganizationResolutionReader, ActiveOrganizationResolver, resolveOrganizationId, resolveRaw, _resolveRawReader, resolveWithCachedFallback, buildResolver, cacheThrows (+53 more)
+Nodes (48): activeMembershipControllerProvider, activeOrganizationReaderProvider, activeOrganizationResolutionProvider, activeOrganizationResolverProvider, appAuthListenableProvider, authController, authListener, authRepositoryProvider (+40 more)
 
 ### Community 213 - "Community 213"
 Cohesion: 0.29
@@ -1477,12 +1502,12 @@ Cohesion: 0.25
 Nodes (7): Compile-Time Dart-Define Credentials, File Map, Local Environment via Dart Defines Implementation Plan, Self-Review Notes, Task 1: Replace hardcoded credentials with dart-define constants, Task 2: Extend run-authenticated-app.sh with demo credential dart-defines, Task 3: Delete run-app.sh and remove its documentation references
 
 ### Community 227 - "Community 227"
-Cohesion: 0.07
-Nodes (29): Acceptance Criteria, Auth Boundary Rules, Backend Verification, Core Product Rules, Current Architectural Context, Documentation Impact, Domain Behavior, Failure Handling (+21 more)
+Cohesion: 0.08
+Nodes (24): Acceptance Criteria, Auth Boundary Rules, Backend Verification, Core Product Rules, Current Architectural Context, Documentation Impact, Failure Handling, Goal (+16 more)
 
 ### Community 228 - "Community 228"
-Cohesion: 0.08
-Nodes (28): planningSyncControllerProvider, activeCatalogContextProvider, songCatalogControllerProvider, catalogStateProvider, mutableCatalogStateProvider, mutablePlanningContextProvider, main, rebuildTickProvider (+20 more)
+Cohesion: 0.14
+Nodes (17): build, createState, initState, _LyronAppState, _router, themeModeControllerProvider, deepLinkListenerProvider, membershipRefreshEffectProvider (+9 more)
 
 ### Community 241 - "Community 241"
 Cohesion: 0.08
@@ -1505,16 +1530,16 @@ Cohesion: 0.10
 Nodes (20): Authentication, Conflict Recovery Rules, Cross-Domain Reference Rules, Dimensions, Discard Actions, Entity Mapping, Invitation, Item Lifecycle (+12 more)
 
 ### Community 260 - "Community 260"
-Cohesion: 0.06
-Nodes (32): App Auth And Routing Requirements, Auth Bootstrap Ownership, Auth State Contract, Authorization And Failure Semantics, Authorization Boundary, Backend Catalog Parity, Backend Verification, Data Access Boundary (+24 more)
+Cohesion: 0.10
+Nodes (21): Authorization And Failure Semantics, Authorization Boundary, Backend Catalog Parity, Data Access Boundary, Demo Auth Fixture, Executable Local Supabase Authenticated Song Reading Spec, Executable Repository Workflow, Failure Mapping (+13 more)
 
 ### Community 261 - "Community 261"
 Cohesion: 0.14
 Nodes (14): Accessibility And Input Notes, Current UX Snapshot, Decisions Carried Into Spec, Empty And Failure States, Low-Fi Flow, Persistence, Plan Session Song Pick, Purpose (+6 more)
 
 ### Community 264 - "Community 264"
-Cohesion: 0.04
-Nodes (51): @internal, catalogStorageAccountantProvider, closeSharedDatabases, defaultLocalStoreContract, defaultSyncPolicy, invalidate, isCurrent, LastKnownIdentityPersistenceEpoch (+43 more)
+Cohesion: 0.05
+Nodes (41): @internal, catalogStorageAccountantProvider, closeSharedDatabases, defaultLocalStoreContract, defaultSyncPolicy, invalidate, isCurrent, LastKnownIdentityPersistenceEpoch (+33 more)
 
 ### Community 267 - "Community 267"
 Cohesion: 0.10
@@ -1525,20 +1550,20 @@ Cohesion: 0.10
 Nodes (19): ActivePlanningReadContextReader, _compareScheduledFor, _contextReader, getPlanDetail, getPlanDetailBySlug, _getPlanDetailWithMutations, getPlanSummaryBySlug, hashCode (+11 more)
 
 ### Community 269 - "Community 269"
-Cohesion: 0.07
-Nodes (29): AppAuthState get, _authGeneration, cancelReauthToPriorSession, deleteAccount, dispose, _handleSessionUpdate, _identity, _identityLoaded (+21 more)
+Cohesion: 0.04
+Nodes (56): _RecordingController, AppAuthState get, AppAuthController, _authGeneration, cancelReauthToPriorSession, deleteAccount, dispose, _handleSessionUpdate (+48 more)
 
 ### Community 270 - "Community 270"
 Cohesion: 0.10
 Nodes (20): 3a: Write failing tests, 3b: Implement ChordProImportService, 5a: Write failing widget test, 5b: Implement ImportDuplicateDialog, 6a: Write failing widget test, 6b: Implement ImportSummaryDialog, ChordPro File Import Implementation Plan, File Map (+12 more)
 
 ### Community 271 - "Community 271"
-Cohesion: 0.08
-Nodes (26): Atomic Full Snapshot, Auth And Offline Read Semantics, Backend-Backed Verification, Catalog Snapshot Policy, Connectivity And Refresh Visibility, Connectivity Restored, Core Product Rules, Data Access Boundary (+18 more)
+Cohesion: 0.10
+Nodes (20): Atomic Full Snapshot, Auth And Offline Read Semantics, Backend-Backed Verification, Catalog Snapshot Policy, Connectivity And Refresh Visibility, Core Product Rules, Data Access Boundary, Failure Semantics (+12 more)
 
 ### Community 273 - "Community 273"
-Cohesion: 0.33
-Nodes (5): auth_providers.dart, core_providers.dart, package:lyron_app/src/presentation/song_library/song_library_providers.dart, planning_providers.dart, song_catalog_providers.dart
+Cohesion: 0.07
+Nodes (30): _NullTransport, attempted, clear, collector, createHttpClient, envelopes, events, failWith (+22 more)
 
 ### Community 274 - "Community 274"
 Cohesion: 0.10
@@ -1553,8 +1578,8 @@ Cohesion: 0.15
 Nodes (12): count, delta, index, mapOffset, maxLength, nextChangedEnd, prefixLength, preserveSelectionAfterSourceRewrite (+4 more)
 
 ### Community 277 - "Community 277"
-Cohesion: 0.02
-Nodes (96): _NoopPlanningRemoteRepository, allocatePlanSlug, allocateSessionSlug, clear, clearMembershipRevocation, clearMutation, _controller, countSongReferences (+88 more)
+Cohesion: 0.03
+Nodes (77): allocatePlanSlug, allocateSessionSlug, clear, clearMembershipRevocation, clearMutation, _controller, countSongReferences, _delegate (+69 more)
 
 ### Community 278 - "Community 278"
 Cohesion: 0.09
@@ -1565,16 +1590,16 @@ Cohesion: 0.20
 Nodes (9): Commit, Concerns, Files, Review fix round 1/5, Seam design, Self-review, Status, Task 3 Report — Pin Prompt Identity and Auth Supersession (RED) (+1 more)
 
 ### Community 280 - "Community 280"
-Cohesion: 0.05
-Nodes (43): CatalogSnapshotState get, AppAuthSessionReader, _authSessionReader, _defaultRefreshInterval, dispose, _disposed, _foregroundState, _foregroundSubscription (+35 more)
+Cohesion: 0.04
+Nodes (46): CatalogSnapshotState get, AppAuthSessionReader, _authSessionReader, _defaultRefreshInterval, dispose, _disposed, _foregroundState, _foregroundSubscription (+38 more)
 
 ### Community 281 - "Community 281"
 Cohesion: 0.11
 Nodes (18): Affected Files, ChordPro Parser & Rendering Improvements, `{comment:}` directive — full behaviour, CommentLine widget, Context, DirectiveLine widget, Goals, New directives (+10 more)
 
 ### Community 282 - "Community 282"
-Cohesion: 0.12
-Nodes (17): Architecture And Boundary Requirements, Core Product Rules, Current Context, Data Resolution And Failure Rules, Data Source Boundary, Explicit Failure Handling, Goal, Invalid Session Context (+9 more)
+Cohesion: 0.09
+Nodes (22): Architecture And Boundary Requirements, Back Behavior, Core Product Rules, Current Context, Data Resolution And Failure Rules, Data Source Boundary, Explicit Failure Handling, Goal (+14 more)
 
 ### Community 283 - "Community 283"
 Cohesion: 0.12
@@ -1582,7 +1607,7 @@ Nodes (17): Compact Reader, Context Model, Core Reader Principle, Expanded Reade
 
 ### Community 284 - "Community 284"
 Cohesion: 0.06
-Nodes (37): _, actualTableName, _alias, aliasedName, allSchemaEntities, allTables, attachedDatabase, copyWith (+29 more)
+Nodes (36): _, actualTableName, _alias, aliasedName, allSchemaEntities, allTables, attachedDatabase, copyWith (+28 more)
 
 ### Community 285 - "Community 285"
 Cohesion: 0.12
@@ -1593,8 +1618,8 @@ Cohesion: 0.12
 Nodes (14): Adapter Boundary, ADR-010: FreeShow As Future Adapter Boundary, Consequences, Context, Decision, Status, Current Boundary, Design Constraint (+6 more)
 
 ### Community 287 - "Community 287"
-Cohesion: 0.12
-Nodes (16): discardMutation, _inFlight, _mutationStore, PlanningAcceptedMutationGuard, PlanningAcceptedMutationReconciler, PlanningMutationFailureObserver, PlanningMutationRemoteRepositoryReader, PlanningMutationStoreReader (+8 more)
+Cohesion: 0.10
+Nodes (18): discardMutation, _inFlight, _mutationStore, PlanningAcceptedMutationGuard, PlanningAcceptedMutationReconciler, PlanningMutationFailureObserver, PlanningMutationRemoteRepositoryReader, PlanningMutationStoreReader (+10 more)
 
 ### Community 288 - "Community 288"
 Cohesion: 0.12
@@ -1614,11 +1639,11 @@ Nodes (14): scripts/check-migrations.sh Self-Bootstrap, CI Migration Lint Local 
 
 ### Community 292 - "Community 292"
 Cohesion: 0.03
-Nodes (62): allocateAvailableSongSlug, authController, authRepository, blockNextClear, callLog, clear, clearCount, _clearGate (+54 more)
+Nodes (61): allocateAvailableSongSlug, authController, authRepository, blockNextClear, callLog, clear, clearCount, _clearGate (+53 more)
 
 ### Community 293 - "Community 293"
 Cohesion: 0.03
-Nodes (70): Focus, addSongCompleter, addSongException, addSongSessionItem, allocatePlanSlug, allocateSessionSlug, base, build (+62 more)
+Nodes (74): _FakePlanningWriteService, Focus, addSongCompleter, addSongException, addSongSessionItem, allocatePlanSlug, allocateSessionSlug, base (+66 more)
 
 ### Community 294 - "Community 294"
 Cohesion: 0.13
@@ -1630,7 +1655,7 @@ Nodes (16): Acceptance Criteria, Documentation Impact, Freshness And Sync Trigge
 
 ### Community 296 - "Community 296"
 Cohesion: 0.10
-Nodes (19): Color?, package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart, SongReaderSegmentProjection, main, _segment, TextStyle?, build, chordChipColor (+11 more)
+Nodes (18): package:lyron_app/src/presentation/song_reader/song_reader_word_groups.dart, SongReaderSegmentProjection, main, _segment, TextStyle?, build, chordChipColor, chordChipHorizontalPadding (+10 more)
 
 ### Community 297 - "Community 297"
 Cohesion: 0.14
@@ -1662,7 +1687,7 @@ Nodes (15): Capability-Name Drift, Drift Schema Vs Supabase Schema Mismatch, Fai
 
 ### Community 304 - "Community 304"
 Cohesion: 0.07
-Nodes (25): groupId, organizationId, TenantScope, DateTime, description, hashCode, id, name (+17 more)
+Nodes (25): AuthRetryableFetchException, BaseRequest?, http.BaseClient, createTracingBaseHttpClient, connectTimeout, createBaseHttpClient, createConnectTimeoutHttpClient, createBaseHttpClient (+17 more)
 
 ### Community 305 - "Community 305"
 Cohesion: 0.13
@@ -1694,7 +1719,7 @@ Nodes (14): `ActiveOrganizationResolver`, Commits, Constraints, Design, Document
 
 ### Community 313 - "Community 313"
 Cohesion: 0.10
-Nodes (20): _NoopLastKnownIdentityStoreForLifecycle, _FakeLastKnownIdentityStore, _FakeLastKnownIdentityStore, _RecordingLastKnownIdentityStore, _FakeLastKnownIdentityStore, _NoopLastKnownIdentityStore, _NoopLastKnownIdentityStore, _NoopLastKnownIdentityStore (+12 more)
+Nodes (20): _NoopLastKnownIdentityStoreForLifecycle, _FakeLastKnownIdentityStore, _FakeLastKnownIdentityStore, _RecordingLastKnownIdentityStore, _SeededIdentityStore, _FakeLastKnownIdentityStore, _NoopLastKnownIdentityStore, _NoopLastKnownIdentityStore (+12 more)
 
 ### Community 314 - "Community 314"
 Cohesion: 0.24
@@ -1709,12 +1734,12 @@ Cohesion: 0.14
 Nodes (14): 10. Sync/Retry/Reconciliation Behavior, 11. Drift Schema And Migrations, 12. Supabase Schema, SQL Functions, RLS Policies, 13. Verification Scripts And CI Gates, 1. Auth/session Handling, 2. Organization Membership And Active-Organization Scoping, 3. Song Catalog Local-First Read Path, 4. Song CRUD/write Path (+6 more)
 
 ### Community 317 - "Community 317"
-Cohesion: 0.06
-Nodes (36): main, memory, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, dart:io, memory, openInMemoryLocalDataEventsConnection, openLocalDataEventsConnection (+28 more)
+Cohesion: 0.08
+Nodes (25): main, memory, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, dart:io, memory, openInMemoryLocalDataEventsConnection, openLocalDataEventsConnection (+17 more)
 
 ### Community 318 - "Community 318"
-Cohesion: 0.08
-Nodes (24): _NoopPlanningSyncController, activePlanningContextControllerProvider, addHandler, _handlers, handleVerifiedEmptyMembership, _localDataLifecycle, planningLocalReadRepositoryProvider, planningMutationRemoteRepositoryProvider (+16 more)
+Cohesion: 0.06
+Nodes (32): _NoopPlanningSyncController, activePlanningContextControllerProvider, addHandler, _handlers, handleVerifiedEmptyMembership, _localDataLifecycle, planningLocalReadRepositoryProvider, planningMutationRemoteRepositoryProvider (+24 more)
 
 ### Community 319 - "Community 319"
 Cohesion: 0.14
@@ -1734,7 +1759,7 @@ Nodes (13): Approach: layered, native-only, Current State, Design, Documentation
 
 ### Community 323 - "Community 323"
 Cohesion: 0.11
-Nodes (18): A 60-second cooldown separates the two confirmations, ADR-035: Local Data Purge Contract, Consequences, Context, Decided, not yet implemented, Decision, Implemented in Phase 1 (this slice), Implemented in Phase 2 (this slice) (+10 more)
+Nodes (18): A 60-second cooldown separates the two confirmations, ADR-035: Local Data Purge Contract, Consequences, Context, Decision, Implemented in Phase 1 (this slice), Implemented in Phase 2 (this slice), Implemented in Phase 3 (this slice) (+10 more)
 
 ### Community 324 - "Community 324"
 Cohesion: 0.14
@@ -1753,12 +1778,12 @@ Cohesion: 0.15
 Nodes (12): File Structure, Planning Backend Write-Contract Hardening Implementation Plan, Reference: conventions an executor must know, Self-Review (completed by plan author), Task 1: Pin slug-overflow as a failing backend contract (RED), Task 2: Fix slug-suffix overflow (GREEN), Task 3: Pin SEC-5 unique-song invariant as failing contract (RED), Task 4: Add SEC-5 partial unique index + stable RPC contract (GREEN) (+4 more)
 
 ### Community 328 - "Community 328"
-Cohesion: 0.05
-Nodes (37): email, linkedProviders, userId, List, hashCode, operator, plan, PlanDetail (+29 more)
+Cohesion: 0.08
+Nodes (22): package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart, hashCode, operator, plan, PlanDetail, sessions, true, description (+14 more)
 
 ### Community 329 - "Community 329"
-Cohesion: 0.15
-Nodes (13): Acceptance Criteria, Chord Projection Rules, ChordPro Base Values, ChordPro Interpretation Rules, Documentation Impact, Goal, Non-Goals, Problem (+5 more)
+Cohesion: 0.11
+Nodes (18): Acceptance Criteria, Chord Projection Rules, ChordPro Base Values, ChordPro Interpretation Rules, Documentation Impact, Goal, Guitar View, Instrument Switch (+10 more)
 
 ### Community 330 - "Community 330"
 Cohesion: 0.17
@@ -1809,12 +1834,12 @@ Cohesion: 0.17
 Nodes (12): A. Song auth/session lifecycle coverage, Acceptance Criteria, B. Planning accepted-write fallback coverage, C. Song pending mutation persistence across Drift DB reopen, Context, Documentation Requirements, Escalation Rule, Goal (+4 more)
 
 ### Community 342 - "Community 342"
-Cohesion: 0.18
-Nodes (10): Architectural Layers, Architecture, Backend, Client, Data Flow, Delivery Constraints, Multi-Tenancy, Offline Strategy (+2 more)
+Cohesion: 0.17
+Nodes (11): Architectural Layers, Architecture, Backend, Client, Data Flow, Delivery Constraints, Multi-Tenancy, Observability (+3 more)
 
 ### Community 343 - "Community 343"
-Cohesion: 0.06
-Nodes (35): LastKnownIdentityReader?, _advanceAuthGeneration, _advanceBoundaryGeneration, _authGeneration, _authSessionReader, _boundaryGeneration, dispose, _disposed (+27 more)
+Cohesion: 0.04
+Nodes (47): LastKnownIdentityReader?, _advanceAuthGeneration, _advanceBoundaryGeneration, _authGeneration, _authSessionReader, _boundaryGeneration, dispose, _disposed (+39 more)
 
 ### Community 344 - "Community 344"
 Cohesion: 0.12
@@ -1853,8 +1878,8 @@ Cohesion: 0.20
 Nodes (11): Editor & Reader Sync-Control Exclusion, Header Presentation, Header Status Popup, Header Sync Control, Inline Status Responsibility, Manual Sync Contract, Recovery Actions, Status Colors (+3 more)
 
 ### Community 354 - "Community 354"
-Cohesion: 0.25
-Nodes (6): package:flutter/services.dart, package:lyron_app/src/presentation/song_editor/song_editor_selection.dart, main, apply, _lastApplied, SongReaderImmersiveMode
+Cohesion: 0.17
+Nodes (9): package:flutter/services.dart, package:lyron_app/src/presentation/song_editor/song_editor_selection.dart, package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart, main, apply, _lastApplied, SongReaderImmersiveMode, main (+1 more)
 
 ### Community 355 - "Community 355"
 Cohesion: 0.18
@@ -1862,7 +1887,7 @@ Nodes (11): Core Rules, Documentation Requirements, Goal, Integration Coverage, 
 
 ### Community 356 - "Community 356"
 Cohesion: 0.06
-Nodes (30): addSongSessionItem, allocatePlanSlug, allocateSessionSlug, clearMutation, getPlanDetail, getPlanDetailBySlug, getPlanSummaryBySlug, hasUnsyncedMutations (+22 more)
+Nodes (35): addSongSessionItem, allocatePlanSlug, allocateSessionSlug, clearMutation, getPlanDetail, getPlanDetailBySlug, getPlanSummaryBySlug, hasUnsyncedMutations (+27 more)
 
 ### Community 357 - "Community 357"
 Cohesion: 0.14
@@ -1873,16 +1898,16 @@ Cohesion: 0.18
 Nodes (11): 1. Popup recovery actions (new), 2. Global "Discard mine" (new), 3. Per-screen surfaces removed, 4. Browse filter removed entirely, Decision, Documentation, Out of Scope, Problem (+3 more)
 
 ### Community 359 - "Community 359"
-Cohesion: 0.18
-Nodes (10): Adversarial Offline/Sync Validation, AI-Assisted Development Rules, Backend Verification, Integration Tests, Pre-Merge Quality Gates, Principles, Test Layers, Testing Strategy (+2 more)
+Cohesion: 0.17
+Nodes (11): Adversarial Offline/Sync Validation, AI-Assisted Development Rules, Backend Verification, Integration Tests, Offline soak pattern (local-first visibility), Pre-Merge Quality Gates, Principles, Test Layers (+3 more)
 
 ### Community 360 - "Community 360"
-Cohesion: 0.18
-Nodes (10): delayed, fileSystem, _loadSqlite3, _openInMemoryConnection, openInMemoryLastKnownIdentityConnection, openLastKnownIdentityConnection, _openPersistentConnection, sqlite3 (+2 more)
+Cohesion: 0.07
+Nodes (26): bootstrap, _BootstrapScope, _BootstrapScopeState, build, captureError, captureEvent, _captureUnhandledZoneError, child (+18 more)
 
 ### Community 361 - "Community 361"
-Cohesion: 0.11
-Nodes (15): int get, ParsedSong, hashCode, operator, organizationId, userId, hashCode, operator (+7 more)
+Cohesion: 0.33
+Nodes (5): hashCode, leadingChord, LyricSegment, operator, text
 
 ### Community 363 - "Community 363"
 Cohesion: 0.22
@@ -1909,12 +1934,12 @@ Cohesion: 0.20
 Nodes (9): ARCH-1 Provider Domain-Split Implementation Plan, Declaration → file map (exact inventory of the 40 public providers + helpers), Done when, File Structure, Self-Review, Task 1: Characterization surface guard (before any move), Task 2: Split `providers.dart` into domain files, Task 3: ADR + architecture.md (+1 more)
 
 ### Community 369 - "Community 369"
-Cohesion: 0.12
-Nodes (14): appForegroundStateProvider, catalogSessionVerifierProvider, client, foregroundState, supabaseSongRepositoryProvider, main, dart:async, package:lyron_app/src/application/core_providers.dart (+6 more)
+Cohesion: 0.13
+Nodes (13): appForegroundStateProvider, catalogSessionVerifierProvider, client, foregroundState, supabaseSongRepositoryProvider, package:flutter_riverpod/legacy.dart, package:lyron_app/src/application/core_providers.dart, package:lyron_app/src/application/song_library/song_catalog_controller.dart (+5 more)
 
 ### Community 370 - "Community 370"
-Cohesion: 0.12
-Nodes (16): _NoopLocalDataEventsRecorderForLifecycle, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder, _NoopLocalDataEventsRecorder (+8 more)
+Cohesion: 0.08
+Nodes (33): main, main, main, main, main, fetchPlanningSyncPayload, _lifecycleFor, main (+25 more)
 
 ### Community 371 - "Community 371"
 Cohesion: 0.20
@@ -1925,12 +1950,12 @@ Cohesion: 0.20
 Nodes (9): Behavior impact, Commits, Design, Done when, Goal, Problem, S0a — UX-3: Non-copyrighted default song body, Scope (+1 more)
 
 ### Community 373 - "Community 373"
-Cohesion: 0.05
-Nodes (43): build, _key, _prefs, read, SharedPreferencesThemeModeStore, main, store, ThemeModeController (+35 more)
+Cohesion: 0.21
+Nodes (12): build, _key, _prefs, read, SharedPreferencesThemeModeStore, ThemeModeController, ThemeModeStore, themeModeStoreProvider (+4 more)
 
 ### Community 374 - "Community 374"
-Cohesion: 0.10
-Nodes (21): >, @DriftDatabase, connect, inMemory, LastKnownIdentityDatabase, local, migration, schemaVersion (+13 more)
+Cohesion: 0.08
+Nodes (28): >, @DriftDatabase, connect, inMemory, LastKnownIdentityDatabase, local, migration, schemaVersion (+20 more)
 
 ### Community 375 - "Community 375"
 Cohesion: 0.22
@@ -1957,8 +1982,8 @@ Cohesion: 0.22
 Nodes (8): MVP Outcomes, Non-Goals For MVP, Operating Constraints, Product Principles, Product Vision, Summary, Sync Contract, UX Direction
 
 ### Community 381 - "Community 381"
-Cohesion: 0.12
-Nodes (12): ActiveCatalogContext, CatalogConnectionStatus, CatalogRefreshStatus, CatalogSessionStatus, CatalogSnapshotState, connectionStatus, context, copyWith (+4 more)
+Cohesion: 0.33
+Nodes (5): ActiveCatalogContext, hashCode, operator, organizationId, userId
 
 ### Community 382 - "Community 382"
 Cohesion: 0.25
@@ -1969,16 +1994,16 @@ Cohesion: 0.25
 Nodes (8): P0, P1-1: Backend SQL Write Contract Tests Are Not In Main Gate, P1-2: Active Organization Is A Sorted First-Organization Fallback, P1-3: Song Cache Session-Expiry Cleanup Differs From Planning, P1-4: Documentation And Verification Drift Around Planning Write Contract, P2-1: Spec/Plan Status Vocabulary Drift, P2-2: Worktree Was On Main During Audit, Phase 7 - Findings Classification
 
 ### Community 384 - "Community 384"
-Cohesion: 0.18
-Nodes (10): _future, delayed, fileSystem, _loadSqlite3, _openInMemoryConnection, openInMemorySongCatalogConnection, _openPersistentConnection, openSongCatalogConnection (+2 more)
+Cohesion: 0.08
+Nodes (25): package:lyron_app/src/application/storage/local_data_lifecycle.dart, package:lyron_app/src/application/storage/local_storage_footprint_revision.dart, _FakeBudgetAccountant, CatalogStorageAccountant, _accountant, _database, _eventsRecorder, evictDroppable (+17 more)
 
 ### Community 385 - "Community 385"
 Cohesion: 0.25
 Nodes (8): Periodic And Manual Song Catalog Refresh Implementation Plan, Task 1: Lock In Refresh Scheduling And Sign-Out Safety With Controller Tests, Task 2: Implement Shared Refresh Scheduling In The Catalog Controller, Task 3: Add A Visible Manual Sync Affordance To The Song List, Task 4: Prove Automatic Refresh State Visibility In Widget And Provider Tests, Task 5: Extend Backend-Backed Integration Coverage For Manual And Periodic Refresh, Task 6: Tighten Repository Verification And CI For The Refresh Slice, Task 7: Run End-To-End Verification For The Slice
 
 ### Community 386 - "Community 386"
-Cohesion: 0.09
-Nodes (21): package:lyron_app/src/presentation/planning/planning_routes.dart, PlanDetail, PlanningRoutes.planSessionSongReaderLocation, buildScopedNeighborNavigationTap, handleBack, isScopedMode, _navigateToScopedSong, planId (+13 more)
+Cohesion: 0.12
+Nodes (26): _StubRepo, _DelayedAuthRepository, _InteractiveAuthRepository, _SignedInAuthRepository, _TestAuthRepository, _ControllableAuthRepository, _SignedInAuthRepository, _ControllableAuthRepository (+18 more)
 
 ### Community 387 - "Community 387"
 Cohesion: 0.33
@@ -2001,8 +2026,8 @@ Cohesion: 0.25
 Nodes (7): Done when, File Structure, SEC-3 Capability `search_path` Hardening Implementation Plan, Self-Review, Task 1: Guard test (failing first) + CI wiring, Task 2: Migration to pin `search_path` (make the guard pass), Task 3: Mark SEC-3 fixed in the repository review
 
 ### Community 396 - "Community 396"
-Cohesion: 0.20
-Nodes (9): SongLibraryBrowseController, copyWith, hashCode, operator, query, SongLibraryBrowseSort, SongLibraryBrowseState, sort (+1 more)
+Cohesion: 0.22
+Nodes (8): SongLibraryBrowseController, copyWith, hashCode, operator, query, SongLibraryBrowseSort, SongLibraryBrowseState, sort
 
 ### Community 397 - "Community 397"
 Cohesion: 0.22
@@ -2073,8 +2098,8 @@ Cohesion: 0.29
 Nodes (6): Done when, File Structure, Self-Review, Task 1: Characterize the non-copyrighted default source, Task 2: Mark UX-3 fixed in the repository review, UX-3 Non-Copyrighted Default Song Implementation Plan
 
 ### Community 414 - "Community 414"
-Cohesion: 0.10
-Nodes (19): 0. Authorization Boundary, 1. Primary Keys & Identifiers, 2. Mutation State Management (Drift), 3. Update And Delete Semantics, 4. Sync Conflicts & Resolution, 5. Slug Generation & Uniqueness, 6. Sign-Out Safety, ADR-013 Song Write Sync Boundary (+11 more)
+Cohesion: 0.17
+Nodes (10): ADR-013 Song Write Sync Boundary, canEditSongs Capability, Documentation Impact, Goal, Non-Goals, Scope, Sign-Out Unsynced Data Warning, Specification: Offline-First Song CRUD (+2 more)
 
 ### Community 415 - "Community 415"
 Cohesion: 0.38
@@ -2105,8 +2130,8 @@ Cohesion: 0.33
 Nodes (5): ADR-022: Active-Organization Resolver, Consequences, Context, Decision, Reauth-Seam Intersection (noted, not closed)
 
 ### Community 422 - "Community 422"
-Cohesion: 0.25
-Nodes (7): dispose, _persistZoomTimer, schedulePersist, _seededZoom, seedFromStorage, SongReaderZoomPersistence, Timer?
+Cohesion: 0.12
+Nodes (13): main, store, package:lyron_app/src/app/theme_mode_store.dart, package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart, package:shared_preferences/shared_preferences.dart, main, dispose, _persistZoomTimer (+5 more)
 
 ### Community 423 - "Community 423"
 Cohesion: 0.25
@@ -2149,21 +2174,21 @@ Cohesion: 0.25
 Nodes (7): Assessment, Critical (Must Fix), Important (Should Fix), Issues, Minor (Nice to Have), Spec Compliance, Strengths
 
 ### Community 433 - "Community 433"
-Cohesion: 0.07
-Nodes (24): package:lyron_app/src/presentation/song_library/song_library_browse_state.dart, hashCode, id, operator, position, SessionItemSummary, slug, song (+16 more)
+Cohesion: 0.09
+Nodes (20): int get, ParsedSong, hashCode, id, operator, position, SessionItemSummary, slug (+12 more)
 
 ### Community 434 - "Community 434"
-Cohesion: 0.15
-Nodes (12): clear, clearMembershipRevocation, _database, DriftLastKnownIdentityStore, hasCurrentMembershipRevocationMarker, inMemory, local, read (+4 more)
+Cohesion: 0.08
+Nodes (23): Docs, Docs (same change, per `AGENTS.md`), Final adversarial review (Opus, whole follow-up diff only), Final steps, Plan: Offline Catalog Local-First Visibility, Review follow-ups R1–R3 (PR #79 review, 2026-09-28), Step 1 — local-first context establishment (closes F-A), Step 2 — invariant on every branch (closes F-B..F-F) (+15 more)
 
 ### Community 435 - "Community 435"
 Cohesion: 0.20
 Nodes (9): Chord Projection (effective capo/transpose), ChordPro key/capo/transpose Directives, Canonical Song Data, ChordPro Canonical Source Editing, Editing Model, Song-Owned Transpose And Capo, Song-Owned Transpose And Capo Settings, Source Relationship (+1 more)
 
 ### Community 436 - "Community 436"
-Cohesion: 0.15
-Nodes (11): package:flutter_riverpod/misc.dart, package:flutter/widgets.dart, package:lyron_app/src/application/song_library/app_foreground_state.dart, required Widget child,
-  List, main, effectivePlanningLocalDatabase, effectiveSongCatalogDatabase, isolatedSongCatalogProviderScope (+3 more)
+Cohesion: 0.09
+Nodes (19): package:flutter_riverpod/misc.dart, package:flutter/widgets.dart, package:lyron_app/src/application/song_library/app_foreground_state.dart, required Widget child,
+  List, main, StreamSubscription, effectivePlanningLocalDatabase, effectiveSongCatalogDatabase (+11 more)
 
 ### Community 437 - "Community 437"
 Cohesion: 0.22
@@ -2206,16 +2231,16 @@ Cohesion: 0.40
 Nodes (5): Native Offline Relaunch Verification Hardening Implementation Plan, Task 1: Add A Persistent Song Catalog Database Test Seam, Task 2: Replace The Weak In-Memory Relaunch Integration Proof, Task 3: Align Repository Verification And Workflow Docs, Task 4: Re-Verify The Quality Gate
 
 ### Community 447 - "Community 447"
-Cohesion: 0.15
-Nodes (12): build, label, nextSegmentKey, nextTitle, onNextTap, onPreviousTap, onTap, _PanelRow (+4 more)
+Cohesion: 0.09
+Nodes (22): authController, authRepository, calls, clearCount, clearUserContext, _controller, currentSession, deleteAccount (+14 more)
 
 ### Community 448 - "Community 448"
-Cohesion: 0.22
-Nodes (9): clampCapo(), effectiveCapo(), effectiveTranspose(), formatSignedNumber(), isGuitarMode(), parseChordParts(), syncInstrumentControls(), transposeChord() (+1 more)
+Cohesion: 0.09
+Nodes (22): Abstraction shape, Architecture, Business ops = root traces, Drift/Supabase = child spans, Documentation impact, Error reporting semantics, Goals, Non-goals (explicit, per direction from product/architecture), Open questions (+14 more)
 
 ### Community 449 - "Community 449"
-Cohesion: 0.05
-Nodes (35): _aliases, _aliasPattern, ChordproNormalizer, normalize, _normalizeLine, static const, build, capoLabel (+27 more)
+Cohesion: 0.04
+Nodes (46): groupId, organizationId, TenantScope, static const, String?, build, capoLabel, _CurrentSongInfo (+38 more)
 
 ### Community 450 - "Community 450"
 Cohesion: 0.40
@@ -2310,8 +2335,8 @@ Cohesion: 0.33
 Nodes (6): Browser Reload Verification, Integration Tests, Regression Coverage, Router Tests, Testing Requirements, Widget Tests
 
 ### Community 480 - "Community 480"
-Cohesion: 0.18
-Nodes (10): delayed, fileSystem, _loadSqlite3, _openInMemoryConnection, openInMemoryLocalDataEventsConnection, openLocalDataEventsConnection, _openPersistentConnection, sqlite3 (+2 more)
+Cohesion: 0.09
+Nodes (20): ISentrySpan, addBreadcrumb, captureException, clearUserContext, currentSpan, _ended, finish, _finishQuietly (+12 more)
 
 ### Community 484 - "Community 484"
 Cohesion: 0.25
@@ -2334,8 +2359,8 @@ Cohesion: 0.25
 Nodes (7): Assessment, Critical (Must Fix), Important (Should Fix), Issues, Minor (Nice to Have), Spec Compliance, Strengths
 
 ### Community 489 - "Community 489"
-Cohesion: 0.20
-Nodes (9): bool get, package:lyron_app/src/application/sync/foreground_sync_listener.dart, close, _controller, emit, _FakeForegroundState, isForeground, main (+1 more)
+Cohesion: 0.22
+Nodes (8): package:lyron_app/src/application/sync/foreground_sync_listener.dart, close, _controller, emit, _FakeForegroundState, isForeground, main, watchForeground
 
 ### Community 490 - "Community 490"
 Cohesion: 0.25
@@ -2346,20 +2371,22 @@ Cohesion: 0.22
 Nodes (8): allowedFiles, _GatedPattern, main, name, regex, _set, File, RegExp
 
 ### Community 492 - "Community 492"
-Cohesion: 0.18
-Nodes (10): actions, body, build, headerSyncControl, leading, maxWidth, PlanningWorkspaceShell, subtitle (+2 more)
+Cohesion: 0.13
+Nodes (17): _RecordingObservability, _disabled, _enabled, main, Observability, NoopObservability, _currentObservability, observabilityProvider (+9 more)
 
 ### Community 493 - "Community 493"
-Cohesion: 0.33
-Nodes (7): applyState(), formatSignedNumber(), renderHighlightedSource(), renderSource(), setStateCard(), syncSourceControls(), updateDerivedSummary()
+Cohesion: 0.11
+Nodes (18): BackButtonIcon, IconButton, Material, package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart, row, ThemeData? theme,
+  Size, VoidCallback? onShowWarnings,
+  bool, baseCapo (+10 more)
 
 ### Community 494 - "Community 494"
-Cohesion: 0.10
-Nodes (18): package:flutter/gestures.dart, build, _buildTallProjection, _controlsVisible, createState, main, onOverflowSelected, onSetFontScale (+10 more)
+Cohesion: 0.08
+Nodes (23): package:flutter/gestures.dart, package:lyron_app/src/presentation/song_reader/widgets/song_reader_overflow_menu.dart, ScaleGestureRecognizer, build, _buildTallProjection, _controlsVisible, createState, main (+15 more)
 
 ### Community 495 - "Community 495"
-Cohesion: 0.22
-Nodes (8): StreamSubscription, dispose, ForegroundSyncCallback, ForegroundSyncListener, _handle, _onResume, _previousIsForeground, _subscription
+Cohesion: 0.11
+Nodes (18): addBreadcrumb, BreadcrumbLevel, captureException, clearUserContext, currentSpan, currentTraceParent, finish, NoopObservabilitySpan (+10 more)
 
 ### Community 496 - "Community 496"
 Cohesion: 0.29
@@ -2378,28 +2405,28 @@ Cohesion: 0.40
 Nodes (4): Checks, Finding Verdict, New Breakage in the Fix Diff, Verdict
 
 ### Community 500 - "Community 500"
-Cohesion: 0.13
-Nodes (14): CapabilityGateway, SupabaseCapabilityGateway, calls, _capabilities, _FakeCapabilityGateway, main, resolve, package:lyron_app/src/application/auth/capability_resolver.dart (+6 more)
+Cohesion: 0.08
+Nodes (25): _cache, capabilitiesFor, CapabilityGateway, _client, _gateway, hasCapability, hasCapabilitySync, invalidate (+17 more)
 
 ### Community 501 - "Community 501"
 Cohesion: 0.40
 Nodes (4): Finding Verdicts, New Breakage in the Fix Diff, Out-of-Scope Observations, Verdict
 
 ### Community 502 - "Community 502"
-Cohesion: 0.07
-Nodes (25): main, package:lyron_app/src/domain/core/capability.dart, package:lyron_app/src/presentation/planning/planning_context_checks.dart, package:lyron_app/src/presentation/planning/widgets/planning_workspace_shell.dart, package:lyron_app/src/presentation/shared/if_capability.dart, createState, _descriptionController, dispose (+17 more)
+Cohesion: 0.04
+Nodes (60): main, package:lyron_app/src/application/planning/planning_reorder_overlay.dart, package:lyron_app/src/application/planning/planning_write_service.dart, package:lyron_app/src/domain/core/capability.dart, package:lyron_app/src/presentation/planning/planning_context_checks.dart, package:lyron_app/src/presentation/planning/planning_routes.dart, package:lyron_app/src/presentation/planning/widgets/plan_editor_dialog.dart, package:lyron_app/src/presentation/planning/widgets/plan_session_card.dart (+52 more)
 
 ### Community 503 - "Community 503"
 Cohesion: 0.33
 Nodes (5): ADR-031: Catalog Refresh Coalescing Is Scoped to Session Identity, Consequences, Context, Decision, Non-Goals
 
 ### Community 504 - "Community 504"
-Cohesion: 0.12
-Nodes (18): AccountScreen, _AccountScreenState, build, createState, _isDeleting, appAuthControllerProvider, build, ReauthBanner (+10 more)
+Cohesion: 0.06
+Nodes (38): AccountScreen, _AccountScreenState, build, createState, _isDeleting, appAuthControllerProvider, build, ReauthBanner (+30 more)
 
 ### Community 505 - "Community 505"
-Cohesion: 0.25
-Nodes (7): planning_local_database_connection.dart, planning_local_tables.dart, connect, inMemory, local, migration, schemaVersion
+Cohesion: 0.10
+Nodes (17): package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart, package:lyron_app/src/presentation/song_reader/song_reader_controller.dart, main, adjustSharedFontScale, capoDown, capoUp, controller, onChanged (+9 more)
 
 ### Community 506 - "Community 506"
 Cohesion: 0.33
@@ -2422,24 +2449,24 @@ Cohesion: 0.67
 Nodes (3): Song Remote-Deletion Convergence, Sync Metadata, sync_status
 
 ### Community 525 - "Community 525"
-Cohesion: 0.40
-Nodes (5): Unified Manual Sync Command, Product Contract, Realtime Subscriptions As Invalidation Triggers, Sync State Vocabulary (fresh/stale/pending_local/conflict), Unified Header Sync Control
+Cohesion: 0.22
+Nodes (9): Pending Delete Soft-Delete, sync_status Mutation Queue, Operational Browse Filter (All/Pending/Conflicts), Generic Item Lifecycle Pattern, Unified Manual Sync Command, Product Contract, Realtime Subscriptions As Invalidation Triggers, Sync State Vocabulary (fresh/stale/pending_local/conflict) (+1 more)
 
 ### Community 526 - "Community 526"
-Cohesion: 0.40
-Nodes (5): _IntegrationPlanningWriteService, _FakePlanningWriteService, _FakePlanningWriteService, PlanningWriteService, _FakePlanningWriteService
+Cohesion: 0.10
+Nodes (19): package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_state.dart, SessionScopedReaderRuntimeState get, capoDown, capoUp, disableAutoFit, enableAutoFit, hideCompactControls, setControlPresentationMode (+11 more)
 
 ### Community 527 - "Community 527"
-Cohesion: 0.40
-Nodes (4): SongReaderDirectiveProjection, build, DirectiveLineView, projection
+Cohesion: 0.11
+Nodes (16): ActiveOrganizationResolutionReader, main, ActiveOrganizationResolver, resolveOrganizationId, resolveRaw, _resolveRawReader, resolveWithCachedFallback, buildResolver (+8 more)
 
 ### Community 528 - "Community 528"
 Cohesion: 0.50
 Nodes (4): Core UX Rules, Plan Song Picker Rules, Shared Rules, Song Library Rules
 
 ### Community 529 - "Community 529"
-Cohesion: 0.40
-Nodes (5): adjustDirective(), normalizeKey(), parseChordPro(), parseIntOrNull(), upsertDirective()
+Cohesion: 0.12
+Nodes (17): dart:collection, dart:convert, Iterable, MapBase, Object?, _ThrowingMap, clear, _Color (+9 more)
 
 ### Community 530 - "Community 530"
 Cohesion: 0.14
@@ -2454,12 +2481,12 @@ Cohesion: 0.14
 Nodes (13): Acceptance criteria, Acceptance criteria, Current state (confirmed by repo audit), Current state (confirmed by repo audit), Debt sweep: ARCH-4 (melos overhead) + SEC-2 (create_invitation null-caller gate), Decision, Decision (user-approved, 2026-08-08), Definition of done (both items) (+5 more)
 
 ### Community 533 - "Community 533"
-Cohesion: 0.40
-Nodes (5): Back Behavior, Reader Entry Modes, Reload Behavior, Routing And Context Requirements, Session-Scoped Route Context
+Cohesion: 0.15
+Nodes (15): StorageQuotaSimulatedException, Exception, PlanningProjectionAbortedException, LocalPlanningSlugConflictException, PlanningMutationBudgetExceededException, PlanningSongUnavailableException, SessionDeleteBlockedException, LocalSongSlugConflictException (+7 more)
 
 ### Community 536 - "Community 536"
-Cohesion: 0.15
-Nodes (12): _cache, capabilitiesFor, _client, _gateway, hasCapability, hasCapabilitySync, invalidate, resolve (+4 more)
+Cohesion: 0.12
+Nodes (15): AssetBundle, package:lyron_app/src/domain/song/song_repository.dart, package:lyron_app/src/domain/song/song_source.dart, assetPath, _AssetSong, AssetSongRepository, _bundle, getSongSource (+7 more)
 
 ### Community 537 - "Community 537"
 Cohesion: 0.50
@@ -2474,40 +2501,40 @@ Cohesion: 0.67
 Nodes (3): Interaction Notes, Plan Song Picker, Song Library
 
 ### Community 540 - "Community 540"
-Cohesion: 0.13
-Nodes (17): clear, clearMembershipRevocation, email, EmptyMembershipResolutionIgnored, EmptyMembershipResolutionMarkerRecorded, EmptyMembershipResolutionOutcome, EmptyMembershipResolutionSecondConfirmationAvailable, hasCurrentMembershipRevocationMarker (+9 more)
+Cohesion: 0.04
+Nodes (59): main, clear, clearMembershipRevocation, _database, DriftLastKnownIdentityStore, hasCurrentMembershipRevocationMarker, inMemory, local (+51 more)
 
 ### Community 541 - "Community 541"
-Cohesion: 0.20
-Nodes (9): package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart, _acceptDatePicker, _cancelDatePicker, _harness, localizations, main, of, pumpAndSettle (+1 more)
+Cohesion: 0.12
+Nodes (16): After this plan, Execution notes / deviations from this plan, Observability Foundation Implementation Plan, Task 10: Instrument `SongCatalogController`, Task 11: Wire `observabilityProvider` into `SongCatalogController`'s provider, Task 12: Sign-in user-context tagging, Task 13: Full verification pass, Task 1: Add dependencies (+8 more)
 
 ### Community 542 - "Community 542"
-Cohesion: 0.20
-Nodes (9): bottomBarHeight, bottomBarHorizontalPadding, bottomBarTitleSubtitleGap, bottomBarVerticalPadding, hashCode, operator, railEdgeInset, resolve (+1 more)
+Cohesion: 0.13
+Nodes (15): @immutable, ReaderTheme, ReaderThemeSet, bottomBarHeight, bottomBarHorizontalPadding, bottomBarTitleSubtitleGap, bottomBarVerticalPadding, hashCode (+7 more)
 
 ### Community 543 - "Community 543"
 Cohesion: 0.22
 Nodes (8): ADR-015: Online-Preferred Local-First Sync Contract, Consequences, Context, Decision, Non-Goals, Product Contract, Refresh-Failure Preservation, Status
 
 ### Community 544 - "Community 544"
-Cohesion: 0.67
-Nodes (3): applyCanonicalView(), applyScreen(), syncControls()
+Cohesion: 0.16
+Nodes (14): InvitationError, invitationErrorFromStatus, error, organizationId, redeem, RedeemState, RedeemStateFailure, RedeemStateIdle (+6 more)
 
 ### Community 545 - "Community 545"
 Cohesion: 0.67
 Nodes (3): Matching, Result Scoping, Search Behavior
 
 ### Community 546 - "Community 546"
-Cohesion: 0.67
-Nodes (3): escapeHtml(), parseSectionLabel(), renderPreviewLines()
+Cohesion: 0.12
+Nodes (15): Acceptance, Decisions, F-A — field symptom: expired token + bad/no network on a long-idle device, F-B — any `inactive → resumed` while `sessionExpired` wipes `context` (reproduced on a scratch harness, not yet seen in the field), Invariant (binding for both steps), Latent bugs (not yet field-observed; found by code reading and confirmed against the pinned library source), Non-Goals, Offline Catalog Local-First Visibility (+7 more)
 
 ### Community 547 - "Community 547"
-Cohesion: 0.67
-Nodes (3): parseChordParts(), transposeChord(), transposeSingleChord()
+Cohesion: 0.18
+Nodes (14): songLibraryReaderProvider, songMutationRecordByIdProvider, sessionScopedReaderContextProvider, sessionScopedReaderRuntimeControllerProvider, SongReaderCommands, songReaderPreferencesStoreProvider, readerUserIdProvider, _adjustSharedFontScale (+6 more)
 
 ### Community 549 - "Community 549"
-Cohesion: 0.25
-Nodes (7): song_catalog_database_connection.dart, connect, inMemory, local, migration, schemaVersion, song_catalog_tables.dart
+Cohesion: 0.14
+Nodes (12): main, normalizer, package:lyron_app/src/application/song_library/song_library_service.dart, package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart, analyse, _catalogReadRepository, ChordProImportService, commitImport (+4 more)
 
 ### Community 550 - "Community 550"
 Cohesion: 0.25
@@ -2518,16 +2545,16 @@ Cohesion: 0.67
 Nodes (3): Optional Second Sort, Required Sort, Sort Behavior
 
 ### Community 552 - "Community 552"
-Cohesion: 0.40
-Nodes (6): @immutable, ReaderTheme, ReaderThemeSet, SongReaderChromeMetrics, SongReaderMetrics, ThemeExtension
+Cohesion: 0.14
+Nodes (13): Active Organization Boundary, Atomic Replacement, Eager Full Active-Organization Refresh, Eager Refresh Trigger, Full Active-Organization Refresh, Future Partial Refresh Compatibility, Local Model Requirements, Normalized Local Read Model (+5 more)
 
 ### Community 553 - "Community 553"
 Cohesion: 0.40
 Nodes (4): ADR-033: Reader Design Token Layer, Consequences, Context, Decision
 
 ### Community 554 - "Community 554"
-Cohesion: 0.40
-Nodes (5): Guitar View, Instrument Switch, Piano View, Transpose Control, UI Decisions
+Cohesion: 0.15
+Nodes (12): ADR-036: Observability foundation via a thin adapter over Sentry, Alternatives considered, Consequences, Context, Decision, Revision 2 (execution and PR review, 2026-09-24), Revision 3 (independent re-review of the scrub, 2026-09-24), Revision 4 (freeze of the URL heuristics, 2026-09-25) (+4 more)
 
 ### Community 555 - "Community 555"
 Cohesion: 0.40
@@ -2545,25 +2572,134 @@ Nodes (4): Header Status Colors, Header Status Popup, Inline Status Responsibili
 Cohesion: 0.67
 Nodes (3): Plan Song Picker, Song Library, State Taxonomy
 
+### Community 559 - "Community 559"
+Cohesion: 0.15
+Nodes (13): Keep Mine / Discard Mine Conflict Resolution, Optimistic Concurrency Control (base_version), Foreground Mutation Sync, Mutation Compaction And Dependency Rules, Mutation Persistence Requirements, Persisted Planning Mutation Store, Mutation Visibility Rules, Persisted Planning Mutation State (+5 more)
+
+### Community 562 - "Community 562"
+Cohesion: 0.17
+Nodes (12): _NoopSongCatalogStoreForLifecycle, _FailingDeleteSongCatalogStore, _NoopSongCatalogStore, _NoopSongCatalogStore, _DeleteCountingSongCatalogStore, _NoopSongCatalogStore, _NoopSongCatalogStore, _FakeSongCatalogStore (+4 more)
+
+### Community 563 - "Community 563"
+Cohesion: 0.18
+Nodes (11): _TestAppForegroundState, _TestAppForegroundState, _StaticForegroundState, _StaticForegroundState, _StaticForegroundState, _TestAppForegroundState, _TestAppForegroundState, AppForegroundState (+3 more)
+
+### Community 564 - "Community 564"
+Cohesion: 0.18
+Nodes (10): package:lyron_app/src/presentation/song_library/song_library_browse_state.dart, buildSongLibraryBrowseRows, filteredRows, filterSongLibraryBrowseRows, filterSongSummariesByQuery, matchesQuery, normalizedQuery, song (+2 more)
+
+### Community 565 - "Community 565"
+Cohesion: 0.18
+Nodes (10): hashCode, id, items, name, operator, position, SessionSummary, slug (+2 more)
+
+### Community 566 - "Community 566"
+Cohesion: 0.20
+Nodes (9): base, buildDarkTheme, buildLightTheme, copyWith, _darkPage, _lightPage, localize, _localized (+1 more)
+
+### Community 567 - "Community 567"
+Cohesion: 0.20
+Nodes (9): Client, close, _inner, _isTokenRefreshRequest, _isWeb, _observability, send, _timeout (+1 more)
+
+### Community 568 - "Community 568"
+Cohesion: 0.20
+Nodes (10): CachedPlanningMutations, CachedPlanningPlans, CachedPlanningSessionItems, CachedPlanningSessions, PlanningProjectionOwners, CachedCatalogSnapshots, CachedCatalogSongMutations, CachedCatalogSources (+2 more)
+
+### Community 569 - "Community 569"
+Cohesion: 0.22
+Nodes (9): SharedPreferences, _key, _prefs, readZoom, SharedPreferencesSongReaderPreferencesStore, SongReaderPreferencesStore, writeZoom, _FakeSongReaderPreferencesStore (+1 more)
+
+### Community 570 - "Community 570"
+Cohesion: 0.20
+Nodes (10): Convergence Model, Delete-Sourced Remote Deletion, `discard mine` for update-sourced remote deletion, Error Persistence, `keep mine` for update-sourced remote deletion, Mutation Queue State, Remote-Deletion Classification, Same-Id Song Recreation (keep mine) (+2 more)
+
+### Community 571 - "Community 571"
+Cohesion: 0.22
+Nodes (8): Context, Declined/deferred review suggestions (PR #78), Deferred instrumentation targets, Deferred: Remaining observability instrumentation, Deferred: upgrade to `sentry_flutter` 9.x, Known gap: stale cross-user `organizationId` in telemetry context, Non-triggers, Trigger
+
+### Community 572 - "Community 572"
+Cohesion: 0.22
+Nodes (9): 0. Authorization Boundary, 1. Primary Keys & Identifiers, 2. Mutation State Management (Drift), 3. Update And Delete Semantics, 4. Sync Conflicts & Resolution, 5. Slug Generation & Uniqueness, 6. Sign-Out Safety, Architecture & Implementation Rules (+1 more)
+
+### Community 573 - "Community 573"
+Cohesion: 0.25
+Nodes (7): local_data_events_database_connection.dart, connect, inMemory, local, migration, schemaVersion, local_data_events_tables.dart
+
+### Community 574 - "Community 574"
+Cohesion: 0.25
+Nodes (7): package:lyron_app/src/application/song_library/song_catalog_read_repository.dart, getSongSource, getSongSummaryById, getSongSummaryBySlug, listSongs, LocalFirstSongRepository, _store
+
+### Community 575 - "Community 575"
+Cohesion: 0.25
+Nodes (7): Purpose, Runbook result, Spike: Sentry ↔ Supabase W3C `traceparent` correlation, Web caveat (must be resolved before lifting the `!kIsWeb` gate), What is validated automatically (this slice, offline), What requires a live project (manual runbook — run this once you have a Sentry DSN), Why this is a spike, not just an implementation detail
+
+### Community 576 - "Community 576"
+Cohesion: 0.29
+Nodes (6): deleteAccount, restoreSession, sendMagicLink, signInWithOAuth, signOut, watchSession
+
+### Community 577 - "Community 577"
+Cohesion: 0.29
+Nodes (6): _FailingHttpClient, HttpClient, _FailingHttpClient, main, package:lyron_app/src/infrastructure/observability/tracing_http_base_client_io.dart, _FailingHttpClient
+
+### Community 578 - "Community 578"
+Cohesion: 0.29
+Nodes (7): Aggregate And Field Rules, Plan Create, Plan Edit, Session Create, Session Delete, Session Rename, Slug Reconciliation
+
+### Community 579 - "Community 579"
+Cohesion: 0.33
+Nodes (5): ADR-037: Local-First Catalog Visibility, Amendment: three-tier HTTP timeout (2026-09-28, PR #79 review), Consequences, Context, Decision
+
+### Community 580 - "Community 580"
+Cohesion: 0.33
+Nodes (5): Client-Abandoned-But-Server-Committed Write (LF-T5b), Deferred Because, Problem, Trigger Condition, What Covers It Instead
+
+### Community 581 - "Community 581"
+Cohesion: 0.33
+Nodes (6): Backend Verification, Integration Tests, Quality Gate Expectation, Testing Requirements, Unit Tests, Widget Tests
+
+### Community 582 - "Community 582"
+Cohesion: 0.33
+Nodes (6): Connectivity Restored, Explicit Sign-Out, First Authenticated Use Without Connectivity, Signed-In Online Launch, Signed-In Relaunch With Poor Or No Connectivity, User Flows
+
+### Community 583 - "Community 583"
+Cohesion: 0.40
+Nodes (4): buildTraceParent, flags, sampled, required String spanId,
+  bool
+
+### Community 584 - "Community 584"
+Cohesion: 0.50
+Nodes (4): Auth/Bootstrap Controller (initializing/signedOut/signedIn/sessionExpired), Local Demo Auth Fixture, Backend-Owned RLS Authorization Boundary, Centralized Router Redirect Hook
+
+### Community 585 - "Community 585"
+Cohesion: 0.40
+Nodes (5): App Auth And Routing Requirements, Auth Bootstrap Ownership, Auth State Contract, Routing Policy, Session Expiry Behavior
+
+### Community 586 - "Community 586"
+Cohesion: 0.40
+Nodes (5): First Signed-In Use With No Cached Catalog, Offline Recovery, Signed-In Periodic Refresh While Active, Signed-In Song List With Manual Refresh, User Flows
+
+### Community 587 - "Community 587"
+Cohesion: 0.40
+Nodes (5): Domain Behavior, Session Item Delete, Session Item Reorder, Session Item Song Add, Session Reorder
+
 ## Knowledge Gaps
-- **7592 isolated node(s):** `SBFrame`, `SBDebugger`, `UIApplication`, `Any`, `Bool` (+7587 more)
+- **8074 isolated node(s):** `SBFrame`, `SBDebugger`, `UIApplication`, `Any`, `Bool` (+8069 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **76 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **75 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `_` connect `Community 44` to `Community 449`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
-- **Why does `_` connect `Planning Projection Cache (Drift)` to `Community 66`, `Catalog Cache Tables (Drift)`, `Community 69`, `Community 135`, `Community 328`, `Community 361`, `Community 107`, `Community 304`, `Community 284`, `Community 63`?**
-  _High betweenness centrality (0.013) - this node is a cross-community bridge._
-- **Why does `TwoPointerScaleRecognizer` connect `Unified Sync Overview` to `Community 494`?**
+  _High betweenness centrality (0.023) - this node is a cross-community bridge._
+- **Why does `_set` connect `Community 491` to `Community 544`, `Community 129`, `Community 161`, `Community 64`, `Community 293`, `Community 42`, `Community 77`, `Community 494`, `Community 15`, `Community 500`, `Community 345`?**
+  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `_` connect `Planning Projection Cache (Drift)` to `Community 449`, `Community 66`, `Catalog Cache Tables (Drift)`, `Community 135`, `Community 73`, `Community 76`, `Community 433`, `Community 529`, `Community 20`, `Community 504`, `Community 121`, `Community 284`?**
   _High betweenness centrality (0.007) - this node is a cross-community bridge._
 - **What connects `SBFrame`, `SBDebugger`, `Intercept NOTIFY_DEBUGGER_ABOUT_RX_PAGES and touch the pages.` to the rest of the system?**
-  _7632 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _8114 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Planning Projection Cache (Drift)` be split into smaller, more focused modules?**
   _Cohesion score 0.025 - nodes in this community are weakly interconnected._
 - **Should `Song Editor & Unsaved-Changes Guard` be split into smaller, more focused modules?**
-  _Cohesion score 0.039133473095737246 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.042232277526395176 - nodes in this community are weakly interconnected._
 - **Should `Song Reader Fit/Layout` be split into smaller, more focused modules?**
   _Cohesion score 0.02040816326530612 - nodes in this community are weakly interconnected._
