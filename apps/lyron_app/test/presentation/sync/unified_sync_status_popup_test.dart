@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -189,6 +190,7 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
       );
 
   final List<String> retryCalls = [];
+  final List<PlanningMutationSyncStatus?> retryExpectedStatuses = [];
   final List<String> discardCalls = [];
 
   @override
@@ -196,8 +198,10 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
     ActivePlanningReadContext context, {
     required String aggregateType,
     required String aggregateId,
+    PlanningMutationSyncStatus? expectedStatus,
   }) async {
     retryCalls.add('$aggregateType:$aggregateId');
+    retryExpectedStatuses.add(expectedStatus);
   }
 
   @override
@@ -1039,10 +1043,12 @@ void main() {
                       UnifiedSyncPlanMutationRef(
                         aggregateType: 'plan',
                         aggregateId: 'p1',
+                        syncStatus: PlanningMutationSyncStatus.conflict,
                       ),
                       UnifiedSyncPlanMutationRef(
                         aggregateType: 'session',
                         aggregateId: 's1',
+                        syncStatus: PlanningMutationSyncStatus.pending,
                       ),
                     ],
                   ),
@@ -1065,6 +1071,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('unified-sync-plan-keep-p1')));
       await tester.pumpAndSettle();
       expect(spy.retryCalls, ['plan:p1', 'session:s1']);
+      // Each retry carries the status the popup showed for its row (review
+      // gate 3 F1), so a row a sibling's sync pass moved is skipped.
+      expect(spy.retryExpectedStatuses, [
+        PlanningMutationSyncStatus.conflict,
+        PlanningMutationSyncStatus.pending,
+      ]);
     },
   );
 

@@ -89,10 +89,17 @@ class UnifiedSyncPlanMutationRef {
   const UnifiedSyncPlanMutationRef({
     required this.aggregateType,
     required this.aggregateId,
+    this.syncStatus,
   });
 
   final String aggregateType;
   final String aggregateId;
+
+  /// The status the row had when the overview was computed, i.e. what the
+  /// popup shows. A group action hands it back with a retry so the retry acts
+  /// on the row as the user saw it (see
+  /// `PlanningMutationSyncController.retryMutation`).
+  final PlanningMutationSyncStatus? syncStatus;
 }
 
 class UnifiedSyncPlanRow {
@@ -289,6 +296,7 @@ List<UnifiedSyncPlanRow> _buildPlanRows({
           (e) => UnifiedSyncPlanMutationRef(
             aggregateType: e.kind.aggregateType,
             aggregateId: e.aggregateId,
+            syncStatus: e.syncStatus,
           ),
         )
         .toList(growable: false);

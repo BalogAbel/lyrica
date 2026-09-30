@@ -130,6 +130,33 @@ void main() {
       );
     });
 
+    test('a plan row\'s mutation refs carry the status each entry had when '
+        'the overview was computed (review gate 3 F1)', () {
+      final overview = _compute(
+        plans: [
+          _plan(
+            aggregateId: 'session-item-1',
+            kind: PlanningMutationKind.sessionItemCreateSong,
+            status: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            planId: 'p1',
+          ),
+          _plan(
+            aggregateId: 'p1',
+            kind: PlanningMutationKind.planDelete,
+            status: PlanningMutationSyncStatus.pending,
+            name: 'Sunday Service',
+          ),
+        ],
+      );
+
+      final refs = overview.planRows.single.mutationRefs;
+      expect(refs.map((r) => (r.aggregateId, r.syncStatus)), [
+        ('session-item-1', PlanningMutationSyncStatus.conflict),
+        ('p1', PlanningMutationSyncStatus.pending),
+      ]);
+    });
+
     test('a conflicted plan removal is titled from its snapshot and explains '
         'the conflict (spec D9)', () {
       final overview = _compute(

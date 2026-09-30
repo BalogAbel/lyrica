@@ -244,6 +244,97 @@ void main() {
     expect(await reads.listPlans(), isEmpty, reason: 'still hidden (D10)');
   });
 
+  test('a group retry does not turn a delete conflict the user never saw into '
+      'a delete-anyway (review gate 3 F1)', () async {
+    // The popup groups a plan's rows and "Keep mine" retries them one by one,
+    // each retry running its own sync pass. The user saw the own session
+    // create in `conflict` and the plan delete as a plain pending "plan
+    // removed". Retrying the create runs a pass that also sends the delete,
+    // which conflicts (a foreign write made the plan newer). The group's
+    // next step must NOT then retry that delete: that would be D9's explicit
+    // "delete anyway" on a conflict nobody looked at, and would delete the
+    // foreign write's content (spec I2).
+    await recordNewSession();
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var sessionCreateCalls = 0;
+    final remote = _ScriptedPlanningRemote((record) async {
+      switch (record.kind) {
+        case PlanningMutationKind.sessionCreate:
+          sessionCreateCalls += 1;
+          if (sessionCreateCalls == 1) {
+            entered.complete();
+            await release.future;
+            throw const PlanningMutationSyncException(
+              PlanningMutationSyncErrorCode.conflict,
+            );
+          }
+          return record.copyWith(baseVersion: 1, acceptedPlanContentVersion: 5);
+        case PlanningMutationKind.planDelete:
+          // Backend truth: a foreign write made the plan newer than the
+          // content version the user saw (3), so only a delete rebased past
+          // it would be accepted.
+          if (record.baseContentVersion == 3) {
+            throw const PlanningMutationSyncException(
+              PlanningMutationSyncErrorCode.conflict,
+            );
+          }
+          return record.copyWith(baseVersion: 2);
+        default:
+          throw StateError('unexpected ${record.kind}');
+      }
+    });
+    final controller = controllerFor(remote);
+
+    // The own create is in flight when the user deletes the plan, so it
+    // survives the cascade and the delete is not part of that sync pass.
+    final firstRun = controller.syncPendingMutations(readContext);
+    await entered.future;
+    await store.recordPlanDelete(
+      context: context,
+      draft: const PlanningPlanDeleteMutationDraft(
+        planId: 'plan-1',
+        baseVersion: 2,
+        baseContentVersion: 3,
+      ),
+    );
+    release.complete();
+    await firstRun;
+    // A refresh brings the foreign write in; the plan stays hidden behind
+    // the pending delete (D10), so the user cannot have seen it.
+    await seedProjection(localStore, contentVersion: 4);
+
+    final shown = await allRows();
+    expect(shown.map((row) => row.syncStatus), [
+      PlanningMutationSyncStatus.conflict,
+      PlanningMutationSyncStatus.pending,
+    ]);
+
+    // The popup's group action, row by row, each acting on the status the
+    // row had when it was shown.
+    for (final row in shown) {
+      await controller.retryMutation(
+        readContext,
+        aggregateType: row.kind.aggregateType,
+        aggregateId: row.aggregateId,
+        expectedStatus: row.syncStatus,
+      );
+    }
+
+    final deleteCalls = remote.calls
+        .where((record) => record.kind == PlanningMutationKind.planDelete)
+        .toList();
+    expect(
+      deleteCalls.map((record) => record.baseContentVersion),
+      [3],
+      reason: 'the delete is only ever sent with the base the user saw',
+    );
+    final plan = await planRow();
+    expect(plan, isNotNull, reason: 'the delete did not absorb the write');
+    expect(plan!.syncStatus, PlanningMutationSyncStatus.conflict);
+    expect(await reads.listPlans(), isEmpty, reason: 'still hidden (D10)');
+  });
+
   test('a crash-resumed accepted child never rebases a pending session '
       'delete (spec D7)', () async {
     await store.recordSessionItemCreateSong(

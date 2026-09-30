@@ -492,10 +492,22 @@ class PlanningMutationSyncController {
     }
   }
 
+  /// Retries the mutation of one aggregate.
+  ///
+  /// [expectedStatus] is the status the caller showed the user for this row.
+  /// When the stored row no longer has it, this returns at once without
+  /// resetting the row, syncing or throwing: the row changed since it was
+  /// shown and stays visible, with its new status, for the user to act on.
+  /// Why: a group action retries its refs one by one, and each retry runs a
+  /// sync pass that can move a later ref -- e.g. send a pending cascade delete
+  /// that then conflicts. Retrying that row would turn a conflict the user
+  /// never saw into D9's explicit "delete anyway" and silently absorb a
+  /// foreign write (spec I2, review gate 3 F1).
   Future<void> retryMutation(
     ActivePlanningReadContext context, {
     required String aggregateType,
     required String aggregateId,
+    PlanningMutationSyncStatus? expectedStatus,
   }) async {
     // spec D5.6 / ADR-035: a mutation the last sync pass classified
     // `failedAuthorization` was permanently rejected -- the server knows
@@ -515,6 +527,9 @@ class PlanningMutationSyncController {
       aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
+    if (expectedStatus != null && existing?.syncStatus != expectedStatus) {
+      return;
+    }
     if (existing != null &&
         existing.syncStatus == PlanningMutationSyncStatus.failedAuthorization) {
       throw PlanningMutationSyncException(

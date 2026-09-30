@@ -297,6 +297,140 @@ void main() {
       },
     );
 
+    test('retryMutation with an expectedStatus that no longer matches the '
+        'stored row does nothing: no reset, no sync, no error (review gate 3 '
+        'F1)', () async {
+      // A plan-group action retries its rows one by one and each retry runs
+      // a sync pass that can move a later row. The popup showed this row as
+      // `pending`; by the time its turn comes the sync pass has turned it
+      // into a `conflict` the user never saw. Retrying it now would be an
+      // unseen "delete anyway", so the retry must leave the row alone.
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.retryMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+        expectedStatus: PlanningMutationSyncStatus.pending,
+      );
+
+      expect(store.retriedAggregateIds, isEmpty);
+      expect(repository.calls, 0);
+      expect(store.clearedAggregateIds, isEmpty);
+    });
+
+    test('retryMutation with an expectedStatus that no longer matches skips '
+        'even a failedAuthorization row instead of throwing', () async {
+      // The status check runs before the terminal-authorization refusal: a
+      // row that changed since it was shown is simply not acted on.
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Revoked Plan',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.failedAuthorization,
+            errorCode: PlanningMutationSyncErrorCode.authorizationDenied,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.retryMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+        expectedStatus: PlanningMutationSyncStatus.pending,
+      );
+
+      expect(store.retriedAggregateIds, isEmpty);
+      expect(repository.calls, 0);
+    });
+
+    test(
+      'retryMutation with a matching expectedStatus retries as before',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              errorMessage: 'base_version_conflict',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.retryMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+          expectedStatus: PlanningMutationSyncStatus.conflict,
+        );
+
+        expect(store.retriedAggregateIds, ['plan-1']);
+        expect(repository.calls, 1);
+        expect(store.clearedAggregateIds, ['plan-1']);
+      },
+    );
+
     test('retrying a conflict works offline and requeues mutation', () async {
       final store = _FakePlanningMutationStore(
         pending: [],
