@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
@@ -1938,6 +1939,228 @@ void main() {
       expect(delete.baseVersion, 1);
       expect(delete.baseContentVersion, 1);
     });
+
+    // Review gate 3 F4.
+    test(
+      'recordPlanCreate stamps the new plan\'s content version (1)',
+      () async {
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'plan-1',
+            name: 'Local',
+          ),
+        );
+
+        final create = (await all()).single;
+        expect(create.kind, PlanningMutationKind.planCreate);
+        expect(create.baseContentVersion, 1);
+      },
+    );
+
+    // Review gate 3 F4.
+    test('(c) an accepted planCreate written before schema 7 (no stamped '
+        'content version) becomes a delete with a null content version, '
+        'not an assumed 1', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+      // Simulate a row an older app wrote before the column existed.
+      await (database.update(
+        database.cachedPlanningMutations,
+      )..where((table) => table.aggregateId.equals('plan-1'))).write(
+        const CachedPlanningMutationsCompanion(
+          baseContentVersion: Value<int?>(null),
+        ),
+      );
+
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 1,
+        ),
+      );
+
+      final delete = (await all()).single;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 1);
+      expect(delete.baseContentVersion, isNull);
+    });
+
+    // Review gate 3 F2.
+    test('(b) a delete over a create tombstone stranded by an interrupted '
+        'sync, once the plan is back in the projection, records a real '
+        'delete from the projection bases', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+      // First delete, made while the create was on the wire: the plan has
+      // no projection bases yet, so the draft carries none.
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+      expect(
+        (await all()).single.syncStatus,
+        PlanningMutationSyncStatus.cancelling,
+      );
+      // A pending child recorded afterwards (as if by another screen).
+      await store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 1,
+        ),
+      );
+      final maxKeyBefore = (await all())
+          .map((record) => record.orderKey)
+          .reduce((a, b) => a > b ? a : b);
+
+      // The sync run was interrupted, the create had committed, and a
+      // refresh brought the plan back: the delete now carries real bases.
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 1,
+          baseContentVersion: 3,
+          originSnapshot: {'name': 'Local'},
+        ),
+      );
+
+      final records = await all();
+      expect(records.map((record) => record.aggregateId), ['plan-1']);
+      final row = records.single;
+      expect(row.kind, PlanningMutationKind.planDelete);
+      expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(row.baseVersion, 1);
+      expect(row.baseContentVersion, 3);
+      expect(row.orderKey, greaterThan(maxKeyBefore));
+      expect(row.errorCode, isNull);
+      expect(row.errorMessage, isNull);
+    });
+
+    // Review gate 3 F2 guard.
+    test('(b) a repeated base-less delete over a live tombstone changes '
+        'nothing', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+      final tombstone = (await all()).single;
+
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+
+      final after = (await all()).single;
+      expect(after.kind, PlanningMutationKind.planCreate);
+      expect(after.syncStatus, PlanningMutationSyncStatus.cancelling);
+      expect(after.localRevision, tombstone.localRevision);
+      expect(after.orderKey, tombstone.orderKey);
+    });
+
+    // Review gate 3 F6.
+    for (final inFlight in [
+      PlanningMutationSyncStatus.sending,
+      PlanningMutationSyncStatus.accepted,
+    ]) {
+      test('(d) repeating a delete that is already ${inFlight.name} leaves '
+          'the row untouched', () async {
+        await store.recordPlanDelete(context: context, draft: draft);
+        await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: inFlight,
+        );
+        // A pending child recorded meanwhile must survive too: the repeat
+        // is a no-op, not a second delete.
+        await store.recordSessionRename(
+          context: context,
+          draft: const PlanningSessionRenameMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            name: 'Renamed',
+            baseVersion: 1,
+          ),
+        );
+        final before = (await all()).firstWhere(
+          (record) => record.aggregateId == 'plan-1',
+        );
+
+        await store.recordPlanDelete(
+          context: context,
+          draft: const PlanningPlanDeleteMutationDraft(
+            planId: 'plan-1',
+            baseVersion: 3,
+            baseContentVersion: 9,
+            originSnapshot: {'name': 'Other'},
+          ),
+        );
+
+        final records = await all();
+        expect(records.map((record) => record.aggregateId).toSet(), {
+          'plan-1',
+          'session-1',
+        });
+        final after = records.firstWhere(
+          (record) => record.aggregateId == 'plan-1',
+        );
+        expect(after.kind, PlanningMutationKind.planDelete);
+        expect(after.syncStatus, inFlight);
+        expect(after.baseVersion, 2);
+        expect(after.baseContentVersion, 5);
+        expect(after.orderKey, before.orderKey);
+        expect(after.localRevision, before.localRevision);
+      });
+    }
 
     test('baseContentVersion persists across a database reopen', () async {
       final directory = await Directory.systemTemp.createTemp(

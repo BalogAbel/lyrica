@@ -50,6 +50,18 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           name: draft.name,
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
+          // Review gate 3 F4: a new plan's content version is 1 (the
+          // backend column default). Stamped on the create row so that
+          // recordPlanDelete branch (c) can base a delete of an accepted-but-
+          // uncleared create on a value that row actually carries, instead
+          // of assuming 1 for every row -- including one an older app wrote
+          // before schema 7, whose plan may already hold other members'
+          // sessions (folded into content version 1 by the backend
+          // migration). `planCreate` never sends p_base_content_version (see
+          // SupabasePlanningMutationRepository._paramsFor), so this value is
+          // local bookkeeping only. There is no fold over an existing create
+          // here: a re-record replaces the row wholesale, as a fresh create.
+          baseContentVersion: 1,
         ),
       );
     });
@@ -155,7 +167,55 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       if (existing?.kind == PlanningMutationKind.planCreate) {
         switch (existing!.syncStatus) {
           case PlanningMutationSyncStatus.cancelling:
-            // Already deleted while its create was in flight; nothing new.
+            if (draft.baseVersion == null) {
+              // Already deleted while its create was in flight, and the
+              // create's own outcome still resolves the tombstone (D5b);
+              // nothing new.
+              return;
+            }
+            // Review gate 3 F2: a draft WITH bases was built from the merged
+            // read of the synced projection, which excludes a tombstone. The
+            // plan can only be there if its create committed -- so this
+            // tombstone is stranded (a sync run interrupted by a crash or an
+            // exception before resolveCancelledCreate ran; nothing sends or
+            // resolves a `cancelling` row), and returning here would make
+            // every further delete of the now-visible plan a silent no-op
+            // forever. Record the delete for real, from the projection bases
+            // the caller captured (never invented here).
+            //
+            // If this races a still-live in-flight create instead (a refresh
+            // landed after the backend committed but before its response
+            // did), the conversion bumps localRevision: the controller's
+            // accepted marker is revision-gated out and its
+            // resolveCancelledCreate(created: true) no-ops on a row that is
+            // no longer `cancelling`, leaving this pending delete to be
+            // sent on the next sync.
+            await _upsertRecord(
+              context: context,
+              aggregateType: 'plan',
+              record: PlanningMutationRecord(
+                aggregateId: draft.planId,
+                organizationId: context.organizationId,
+                kind: PlanningMutationKind.planDelete,
+                syncStatus: PlanningMutationSyncStatus.pending,
+                orderKey: await _nextOrderKey(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                ),
+                updatedAt: now,
+                baseVersion: draft.baseVersion,
+                baseContentVersion: draft.baseContentVersion,
+                originSnapshot:
+                    existing.originSnapshot ??
+                    draft.originSnapshot ??
+                    {'name': existing.name},
+              ),
+            );
+            await _deleteChildMutationsOfPlan(
+              context: context,
+              planId: draft.planId,
+              keepInFlight: true,
+            );
             return;
           case PlanningMutationSyncStatus.sending:
             // D5(b): the create is on the wire. Keep a cancellation
@@ -179,8 +239,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             return;
           case PlanningMutationSyncStatus.accepted:
             // D5(c): the backend already has the plan; delete it for real.
-            // A freshly created plan's versions are both 1 unless the
-            // merged read already knew better.
+            // baseContentVersion: the draft's projection value when the
+            // merged read knew better, else the value stamped on the create
+            // row (1 for a new plan, see recordPlanCreate). Review gate 3
+            // F4: no `?? 1` here -- a create row written before schema 7
+            // carries null, which is sent as null and rejected by the
+            // backend as a conflict (fail-safe; spec D4: null -> conflict ->
+            // retry rebases), rather than silently asserting a 1 that other
+            // members' sessions may already have outgrown.
             await _upsertRecord(
               context: context,
               aggregateType: 'plan',
@@ -195,7 +261,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                 ),
                 updatedAt: now,
                 baseVersion: existing.baseVersion ?? draft.baseVersion,
-                baseContentVersion: draft.baseContentVersion ?? 1,
+                baseContentVersion:
+                    draft.baseContentVersion ?? existing.baseContentVersion,
                 originSnapshot:
                     existing.originSnapshot ??
                     draft.originSnapshot ??
@@ -237,6 +304,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       // not observe a newer remote version. A fresh order key puts the
       // delete after every surviving in-flight child row.
       final repeatsDelete = existing?.kind == PlanningMutationKind.planDelete;
+      if (repeatsDelete &&
+          _inFlightSyncStatuses.contains(existing!.syncStatus)) {
+        // Review gate 3 F6: this delete is already on the wire (`sending`)
+        // or accepted-but-uncleared (`accepted`), e.g. a double tap on
+        // delete. Rewriting it to `pending` would bump localRevision, so the
+        // in-flight send's accepted marker and clear are revision-gated out
+        // and the already-accepted delete is resent -> a spurious
+        // plan-not-found failure. Nothing new to record, and no child rows
+        // to drop: the first delete already dropped them.
+        return;
+      }
       await _upsertRecord(
         context: context,
         aggregateType: 'plan',
