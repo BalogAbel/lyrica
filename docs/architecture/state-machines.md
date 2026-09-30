@@ -130,7 +130,7 @@ Plans use the item lifecycle pattern. Plans also own a reorder lifecycle for the
 
 - `Removed` plan means local intent to delete the plan and its full hierarchy.
 - Backend-accepted plan delete removes the plan, its sessions, and its session items. Songs and attachments are never deleted.
-- A plan delete carries two bases, `version` and `content_version`; a mismatch on either is `RemovedConflict`. Recording the delete drops the plan's not-yet-sent child intents (sessions, session items, and their orders). Discard restores the plan but not the child intents the delete dropped.
+- A plan delete carries two bases, `version` and `content_version`; a mismatch on either is `RemovedConflict`. Recording the delete drops the plan's not-yet-sent child intents (sessions, session items, and their orders). Discard restores the plan but not the child intents the delete dropped. A plan delete is recorded only if the plan still matches the snapshot its confirmation showed (`version` and `content_version`); otherwise nothing is recorded.
 - Retry of a `RemovedConflict` plan delete is the explicit remove: it rebases both bases from the refreshed projection, so it deletes the plan as it now exists. This rebase happens only from `conflict` (see Conflict Recovery Rules). A retry from any other status, such as a connectivity failure, resends the original bases, so a foreign write surfaces as a conflict instead of being silently absorbed.
 - While a plan delete is pending, the client adjusts its bases only for its own accepted writes to the plan, and only when the backend-returned value is exactly one ahead of the base (ADR-038). Any other divergence is left as a conflict.
 - Plan session order uses the reorder lifecycle pattern representing ordering of sessions within one plan.
@@ -141,7 +141,7 @@ Sessions use the item lifecycle pattern. Sessions also own a reorder lifecycle f
 
 - Session create, rename, and delete map to `Created`, `Edited`, and `Removed`.
 - Session item order uses the reorder lifecycle pattern representing ordering of session items within one session.
-- Session delete cascades to the session's items; not-yet-sent item intents of the session are dropped when the delete is recorded.
+- Session delete cascades to the session's items; not-yet-sent item intents of the session are dropped when the delete is recorded. A session delete is recorded only if the session still matches the `version` its confirmation showed; otherwise nothing is recorded.
 - A session delete carries the session `version` as its base. Like a plan delete, it is rebased from the refreshed projection only when it is retried from `conflict`; a retry from any other status resends its original base.
 
 ### Session Item

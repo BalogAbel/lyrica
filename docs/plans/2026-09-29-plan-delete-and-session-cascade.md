@@ -6705,6 +6705,94 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   > contradicts what the delete will actually remove."
 
   Then apply the phase-3 question once more to the full branch.
+
+  **Gate 4 outcome (2026-09-30).** The reviewer asked the gate-4 question and
+  then the phase-3 question over the whole branch, and disproved both claims.
+  Fixed in 3a2eb43, 25b8193, and c016c2e. The spec's D11 and ADR-038 now state
+  the resulting rules, and `docs/architecture/state-machines.md` states the
+  confirmed-snapshot rule for plans and sessions.
+
+  - **F1 (major): a delete removed more than its confirmation showed.** Both
+    delete flows re-read the base after the confirmation dialog. A sync
+    refresh landing while the dialog was open therefore made the delete remove
+    sessions or songs the dialog never listed. The backend accepted it, with no
+    conflict, because the re-read base was current.
+    - Fix (3a2eb43): `PlanDeleteDraft` and `SessionDeleteDraft` carry the
+      snapshot the dialog rendered (`confirmedVersion`, and for a plan also
+      `confirmedContentVersion`).
+    - `PlanningWriteService` re-reads the target and throws
+      `PlanningDeleteTargetChangedException` before it records anything when
+      its version differs from the snapshot, or when the plan or session is
+      gone. Nothing is recorded and no sync is scheduled.
+    - The UI shows a snackbar ("This plan changed while you were deciding.
+      Nothing was deleted; review it and try again.", and the same for a
+      session) and stays on the screen.
+  - **F2 (major): the user was stranded on a not-found scaffold after an
+    online plan delete.** The delete awaits the sync. The sync's refresh hides
+    the plan, the slug route resolver replaces the plan screen with a
+    not-found scaffold at the same location, and the `context.mounted` check
+    then skipped the navigation.
+    - Fix (25b8193): the delete captures the router, the messenger, and the
+      provider container before the await, bumps the revision and invalidates
+      through the container, and navigates to the plan list only when the
+      router location is still the one the delete started from (a user who
+      went elsewhere meanwhile stays there).
+  - **F3 (minor): unhandled errors around the dialogs.** `ref` was read after
+    unmount when the screen was replaced during the dialog, `_deleteSession`
+    lacked the active-context re-check that the plan delete has, and
+    `PlanningWriteContextMismatchException` escaped from both deletes.
+    - Fix (25b8193): a `context.mounted` check before the first `ref` read
+      after the dialog, the active-context re-check in the session delete, and
+      a silent return on a context mismatch.
+  - **F4 (minor): the session dialog's discard line named the plan.** It said
+    "Unsynced changes to this plan will be discarded" although a session
+    delete drops only that session's rows.
+    - Fix (c016c2e): a session-specific line, "Unsynced changes to this
+      session will be discarded."
+  - **F5 (minor, pre-existing mechanism): ACCEPTED, deferred. A read-only
+    member is offered delete after an offline cold start.** `IfCapability` is
+    fail-open when capability resolution fails, and the resolver's cache is
+    in-memory only. The backend rejects the delete (`plan_not_found`, which
+    classifies as `failedRemoteDelete`), so I6 holds. The plan stays hidden
+    (D10) behind "could not find the target item" copy until the member
+    discards the row.
+    - Kept fail-open on purpose. The app is offline-first, so a legitimate
+      editor must be able to delete offline after a cold start, and
+      authorization is backend-enforced (AGENTS.md rule 5).
+    - Follow-up: persist resolved capabilities per user and organization so an
+      offline cold start gates correctly, and/or clearer copy for a rejected
+      delete. See
+      `docs/deferred/2026-09-30-capability-gating-offline-cold-start.md`.
+  - **F6 (minor, narrow): DEFERRED. An org or user switch mid-run leaves the
+    old context's projection without its own accepted write.** D7 rule 1a
+    advances the projection's plan `content_version` right after an accepted
+    child write (`planning_mutation_sync_controller.dart`, the
+    `_applyAcceptedEffects` call right after `syncMutation`). If the context
+    switches during the run, the batch-end refresh refreshes the new context,
+    and the old context's accepted child rows are cleared without a reconcile
+    (the refresh-failed branch, where `_shouldReconcileAcceptedMutation` is
+    false). The old projection then sits at content version R without the
+    write W, and without an overlay row for it, so I7 is broken until its next
+    refresh.
+    - An offline plan delete there under-counts W in the dialog and is
+      accepted. Nothing foreign is absorbed.
+    - Possible fix: apply rule 1a only when the same context will refresh or
+      reconcile, or keep such rows `accepted` for the next run. See
+      `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`.
+
+  Also on the branch:
+  - c34ed1c refreshes `pubspec.lock` (`supabase_flutter` 2.17.2 to 2.18.0).
+    The dependency-audit gate in `verify.sh` and CI fails on a direct
+    dependency locked behind its own constraint, and 2.18.0 was released
+    upstream within `^2.x`. It is unrelated to this slice.
+  - **Phase 4 plan correction.** `_editablePlanDetailFixture()` holds two
+    EMPTY sessions, whereas the Phase 4 tests above assumed that `Warm-Up`
+    held one item. The Phase 4 tests use `_planDetailWithItemsFixture()`
+    (`Warm-Up` holds two items) wherever a non-empty count is needed, and the
+    plan dialog test on the editable fixture expects `songCount: 0`.
+
+  Re-verification: pending (PLACEHOLDER -- the controller replaces this line
+  with the same reviewer's result)
 - [ ] **Step 3:** Push, then open the PR to `main` with a body that:
   - summarizes D1–D12
   - lists the latent param bug fixed in Task 2.3

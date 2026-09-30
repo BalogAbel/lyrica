@@ -9,7 +9,9 @@
 `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`,
 `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`,
 `docs/deferred/2026-09-30-stranded-create-tombstones.md`,
-`docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`
+`docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`,
+`docs/deferred/2026-09-30-capability-gating-offline-cold-start.md`,
+`docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`
 
 ## Implementation
 
@@ -39,14 +41,25 @@ Commits, in landed order (spec, plan, and docs-only commits left out):
 - `fbc343c` fix(planning): never retry an in-flight row or a create tombstone
 - `e00268d` feat(planning): delete plan from the plan detail header
 - `4308b95` feat(planning): delete non-empty sessions with a cascade confirmation
+- `c34ed1c` chore(deps): refresh supabase_flutter lock to 2.18.0 (not part of
+  the slice; see below)
+- `3a2eb43` fix(planning): refuse a delete whose target changed after its confirmation
+- `25b8193` fix(planning): leave a deleted plan's screen and guard both delete dialogs
+- `c016c2e` fix(planning): name the session in the session delete discard line
 
 The backend landed first (migration
 `supabase/migrations/202609290001_plan_content_version_and_cascade_delete.sql`,
 contract tests in `scripts/tests/planning-cascade-delete-contract-test.sh`,
 wired into `scripts/backend-write-contracts.sh`), then the client's
 content-version plumbing with no delete behavior, then the delete semantics,
-then the UI. Each of the first three phases ended with one adversarial review
-gate over the whole phase diff. The decisions are in ADR-038.
+then the UI. Each of the four phases ended with one adversarial review gate:
+the first three over the phase diff, the fourth over the whole branch diff.
+The decisions are in ADR-038.
+
+`c34ed1c` only refreshes `pubspec.lock` (`supabase_flutter` 2.17.2 to 2.18.0).
+The dependency-audit gate in `verify.sh` and CI fails on a direct dependency
+locked behind its own constraint, and 2.18.0 was an upstream release within
+`^2.x`, so it is unrelated to the slice's behavior.
 
 **Deploy order.** Migration `202609290001` must be applied to production
 Supabase before any client build containing this slice ships. There is no
@@ -109,9 +122,50 @@ Accepted: a retry skipped because the row's status changed shows no
 snackbar, and a session delete repeated over an in-flight session delete still
 overwrites it, as before this slice.
 
+**Gate 4: a delete must remove what its confirmation showed (F1-F6).** The
+spec guarded against absorbing foreign writes (I2, I3) but not against the
+confirmation itself going stale. D11 said the dialog lists what the delete
+removes, and the client then re-read the base after the dialog. D11 now
+states the resulting rules.
+
+- **F1 (major).** A sync refresh landing while the dialog was open made the
+  delete remove sessions or songs the dialog never listed. The backend
+  accepted it, because the re-read base was current. The delete drafts now
+  carry the confirmed snapshot, and the write service refuses with
+  `PlanningDeleteTargetChangedException` when it differs or the target is
+  gone (`3a2eb43`).
+- **F2 (major).** After an online plan delete the user was stranded on a
+  not-found scaffold: the awaited sync's refresh hid the plan, the slug route
+  resolver replaced the screen at the same location, and the
+  `context.mounted` check skipped the navigation. The delete now captures the
+  router, messenger, and provider container up front and navigates to the plan
+  list when the location is unchanged (`25b8193`).
+- **F3 (minor).** `ref` was read after unmount when the screen was replaced
+  during the dialog, `_deleteSession` lacked the active-context re-check, and
+  `PlanningWriteContextMismatchException` escaped from both deletes
+  (`25b8193`).
+- **F4 (minor).** The session dialog said "Unsynced changes to this plan will
+  be discarded" although a session delete drops only that session's rows
+  (`c016c2e`).
+- **F5 (minor, pre-existing mechanism), accepted and deferred.**
+  `IfCapability` is fail-open when capability resolution fails, and the
+  resolver's cache is in memory only, so a read-only member is offered delete
+  after an offline cold start. The backend rejects it (I6 holds), but the plan
+  stays hidden (D10) behind "could not find the target item" copy until the
+  member discards the row. Fail-open stays on purpose: offline-first, and
+  authorization is backend-enforced. See
+  `docs/deferred/2026-09-30-capability-gating-offline-cold-start.md`.
+- **F6 (minor, narrow), deferred.** D7 rule 1a advances the projection's plan
+  `content_version` right after an accepted child write. If the org or user
+  context switches mid-run, the old context's accepted child rows are cleared
+  without a reconcile, leaving its projection at content version R without
+  the write (I7 broken until its next refresh). An offline plan delete there
+  under-counts in the dialog; nothing foreign is absorbed. See
+  `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`.
+
 ### Deferred
 
-Six deferred docs came out of this slice:
+Eight deferred docs came out of this slice:
 
 - `docs/deferred/2026-09-29-plan-duplicate.md`: duplicate a plan or use one as
   a template; scoped out because the design choice is non-trivial.
@@ -127,6 +181,13 @@ Six deferred docs came out of this slice:
   conflicted session rename never rebases; found by gate 3, predates the slice.
 - `docs/deferred/2026-09-30-stranded-create-tombstones.md`: create tombstones
   stranded by an interrupted sync run; found by gate 3, becomes its own slice.
+- `docs/deferred/2026-09-30-capability-gating-offline-cold-start.md`:
+  `IfCapability` is fail-open and the resolver cache is in memory only, so a
+  read-only member is offered delete after an offline cold start; found by
+  gate 4, predates the slice.
+- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`: a
+  context switch mid-run leaves the old projection at the advanced content
+  version without the accepted write; found by gate 4, narrow.
 
 ## Problem
 
@@ -690,16 +751,38 @@ session-delete-after-in-flight-item path already has today.
   - When the plan has unsynced local changes, it also says "Unsynced changes
     to this plan will be discarded."
   - Actions: Cancel / Delete, with the destructive action styled as such.
+- **A delete removes exactly what its confirmation showed** (review gate 4
+  F1).
+  - `PlanDeleteDraft` and `SessionDeleteDraft` carry the snapshot the dialog
+    rendered: `confirmedVersion`, and for a plan also
+    `confirmedContentVersion`.
+  - `PlanningWriteService` re-reads the target before recording and throws
+    `PlanningDeleteTargetChangedException` when its version differs from the
+    snapshot, or the plan or session is gone (for example a sync refresh
+    landed while the dialog was open). Nothing is recorded and no sync is
+    scheduled.
+  - The UI shows a snackbar ("This plan changed while you were deciding.
+    Nothing was deleted; review it and try again.", and the same for a
+    session) and stays on the screen.
 - **After a confirmed plan delete** the app navigates to
   `PlanningRoutes.planListPath` and invalidates like plan create.
+  - This holds even when the awaited sync's refresh hid the plan and the slug
+    route resolver already replaced the detail screen with the not-found view
+    at the same location (review gate 4 F2). The delete therefore captures the
+    router, the messenger, and the provider container before the await, and
+    does not depend on the screen still being mounted.
+  - If the user navigated elsewhere meanwhile (the router location no longer
+    equals the one the delete started from), it does not navigate.
 - **Session card.** The delete button shows for every session, gated by
   `Capability.editSessions`.
   - Dialog title "Delete session?".
   - Empty session body: "This removes the session."
   - Non-empty session body: "“{name}” and its {m} songs will be removed
     from this plan. The songs stay in the song library."
-  - When there are unsynced changes, the same discard line as the plan
-    dialog.
+  - When there are unsynced changes, the dialog says "Unsynced changes to
+    this session will be discarded." A session delete drops only that
+    session's rows, so the plan dialog's wording would overstate it (review
+    gate 4 F4).
 - **Strings.** All copy goes in `AppStrings`, in English like the existing
   strings.
 

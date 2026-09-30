@@ -160,6 +160,13 @@ deleting client never saw would silently break the guarantee above.
 - Discarding a conflicted plan delete restores the plan but not the child
   intents dropped when the delete was recorded. The confirmation dialog says
   so up front.
+- A delete is recorded only against the snapshot its confirmation showed
+  (review gate 4 F1). The delete drafts carry the confirmed `version` (and
+  `content_version` for a plan), and `PlanningWriteService` throws
+  `PlanningDeleteTargetChangedException` without recording anything when the
+  target moved or is gone. Without it, a refresh landing while the dialog was
+  open made the delete remove rows the dialog never listed, and the backend
+  accepted it because the re-read base was current.
 
 ## Alternatives considered
 
@@ -203,3 +210,17 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
   create tombstone is never resolved if the sync run that would resolve it is
   interrupted. The in-slice plan case is fixed; the general family (sessions
   and items) becomes its own slice.
+- `docs/deferred/2026-09-30-capability-gating-offline-cold-start.md`:
+  `IfCapability` is fail-open when capability resolution fails and the
+  resolver's cache is in memory only, so a read-only member is offered delete
+  after an offline cold start. The backend rejects it (I6 holds), and the plan
+  stays hidden behind "could not find the target item" copy until the row is
+  discarded. Found by review gate 4 (F5); the mechanism predates this slice and
+  is kept fail-open on purpose for offline editors.
+- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`: D7
+  rule 1a advances the projection's plan `content_version` right after an
+  accepted child write. If the org or user context switches mid-run, the old
+  context's accepted child rows are cleared without a reconcile, so its
+  projection sits at the advanced value without the write until its next
+  refresh. Found by review gate 4 (F6); narrow, and nothing foreign is
+  absorbed.
