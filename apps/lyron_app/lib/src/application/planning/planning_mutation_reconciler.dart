@@ -66,7 +66,21 @@ class PlanningMutationReconciler {
             updatedAt: reconciledAt,
             // version default for a freshly reconciled aggregate.
             version: record.baseVersion ?? 1,
+            // Spec D4: a new plan starts at the response's content version;
+            // an edit never changes it (upsertSyncedPlan keeps an existing
+            // row's value anyway).
+            contentVersion: record.kind == PlanningMutationKind.planCreate
+                ? (record.acceptedPlanContentVersion ?? 1)
+                : null,
           ),
+        );
+        return;
+      case PlanningMutationKind.planDelete:
+        await localStore.deleteSyncedPlan(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          planId: record.aggregateId,
+          refreshedAt: reconciledAt,
         );
         return;
       case PlanningMutationKind.sessionCreate:

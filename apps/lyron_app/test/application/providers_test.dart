@@ -1483,6 +1483,7 @@ class _AcceptedWriteFallbackPlanningMutationRemoteRepository
           description: '${record.description} Accepted',
         );
       case PlanningMutationKind.planEdit:
+      case PlanningMutationKind.planDelete:
         return record.copyWith(
           name: '${record.name} Accepted',
           description: '${record.description} Accepted',

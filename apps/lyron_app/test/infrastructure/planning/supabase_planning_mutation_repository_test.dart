@@ -550,7 +550,7 @@ void main() {
       ),
     );
 
-    expect(rpcName, 'delete_empty_session');
+    expect(rpcName, 'delete_session');
     expect(rpcParams, {
       'p_organization_id': 'org-1',
       'p_session_id': 'session-1',
@@ -624,5 +624,67 @@ void main() {
     expect(itemDelete.baseVersion, 4);
     expect(planEdit.acceptedPlanContentVersion, 1);
     expect(legacyShape.acceptedPlanContentVersion, isNull);
+  });
+
+  test('maps planDelete to delete_plan and sessionDelete to delete_session '
+      '(spec D4)', () async {
+    final calls = <(String, Map<String, dynamic>)>[];
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async {
+        calls.add((name, params ?? const {}));
+        return [
+          {
+            'id': name == 'delete_plan' ? 'plan-1' : 'session-1',
+            'organization_id': 'org-1',
+            'deleted': true,
+            'deleted_version': 2,
+          },
+        ];
+      },
+    );
+
+    await repository.syncMutation(
+      organizationId: 'org-1',
+      record: PlanningMutationRecord(
+        aggregateId: 'plan-1',
+        organizationId: 'org-1',
+        slug: 'kept-from-create',
+        name: 'Kept From Create',
+        description: 'kept',
+        baseVersion: 2,
+        baseContentVersion: 9,
+        kind: PlanningMutationKind.planDelete,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+    await repository.syncMutation(
+      organizationId: 'org-1',
+      record: PlanningMutationRecord(
+        aggregateId: 'session-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        baseVersion: 4,
+        kind: PlanningMutationKind.sessionDelete,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 2,
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+
+    expect(calls[0].$1, 'delete_plan');
+    expect(calls[0].$2, {
+      'p_organization_id': 'org-1',
+      'p_plan_id': 'plan-1',
+      'p_base_version': 2,
+      'p_base_content_version': 9,
+    });
+    expect(calls[1].$1, 'delete_session');
+    expect(calls[1].$2, {
+      'p_organization_id': 'org-1',
+      'p_session_id': 'session-1',
+      'p_base_version': 4,
+    });
   });
 }

@@ -313,6 +313,7 @@ String _planGroupKey(PlanningMutationRecord entry) {
   switch (entry.kind) {
     case PlanningMutationKind.planCreate:
     case PlanningMutationKind.planEdit:
+    case PlanningMutationKind.planDelete:
       return entry.aggregateId;
     default:
       return entry.planId ?? '__orphan_${entry.aggregateId}';
@@ -329,7 +330,8 @@ String _planTitle({
 
   for (final candidate in entries) {
     if (candidate.kind == PlanningMutationKind.planCreate ||
-        candidate.kind == PlanningMutationKind.planEdit) {
+        candidate.kind == PlanningMutationKind.planEdit ||
+        candidate.kind == PlanningMutationKind.planDelete) {
       final name = candidate.name;
       if (name != null && name.isNotEmpty) return name;
       final slug = candidate.slug;
@@ -423,6 +425,11 @@ String _nestedSummaryFor(PlanningMutationRecord entry) {
   return switch (entry.kind) {
     PlanningMutationKind.planCreate => 'plan added',
     PlanningMutationKind.planEdit => 'plan edited',
+    PlanningMutationKind.planDelete =>
+      entry.syncStatus == PlanningMutationSyncStatus.conflict
+          ? 'plan removal conflicts: the plan changed after you deleted it — '
+                'retry deletes it as it is now, discard keeps it'
+          : 'plan removed',
     PlanningMutationKind.sessionCreate => 'session added',
     PlanningMutationKind.sessionRename => 'session renamed',
     PlanningMutationKind.sessionDelete => 'session removed',

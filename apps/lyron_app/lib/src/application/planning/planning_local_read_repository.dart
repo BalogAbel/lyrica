@@ -206,6 +206,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
             version: existing.version,
             contentVersion: existing.contentVersion,
           );
+        case PlanningMutationKind.planDelete:
         case PlanningMutationKind.sessionCreate:
         case PlanningMutationKind.sessionRename:
         case PlanningMutationKind.sessionDelete:
@@ -390,6 +391,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
             itemsBySessionId[sessionId] = reordered;
           case PlanningMutationKind.planCreate:
           case PlanningMutationKind.planEdit:
+          case PlanningMutationKind.planDelete:
             break;
         }
       }

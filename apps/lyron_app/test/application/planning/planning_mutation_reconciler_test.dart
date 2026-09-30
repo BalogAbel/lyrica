@@ -439,5 +439,84 @@ void main() {
         expect(session.items.first.id, 'item-2');
       });
     });
+
+    group('reconcile planDelete and plan content version', () {
+      test('planDelete removes the plan, its sessions and its items', () async {
+        await reconciler.reconcile(
+          testContext,
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: organizationId,
+            kind: PlanningMutationKind.planDelete,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        );
+
+        expect(
+          await localStore.readPlanDetail(
+            userId: userId,
+            organizationId: organizationId,
+            planId: 'plan-1',
+          ),
+          isNull,
+        );
+      });
+
+      test('planCreate seeds contentVersion from the accepted response '
+          '(spec D4)', () async {
+        await reconciler.reconcile(
+          testContext,
+          PlanningMutationRecord(
+            aggregateId: 'plan-2',
+            organizationId: organizationId,
+            kind: PlanningMutationKind.planCreate,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026, 4, 11, 11),
+            slug: 'new-plan',
+            name: 'New Plan',
+            baseVersion: 1,
+            acceptedPlanContentVersion: 1,
+          ),
+        );
+
+        final detail = await localStore.readPlanDetail(
+          userId: userId,
+          organizationId: organizationId,
+          planId: 'plan-2',
+        );
+        expect(detail!.plan.contentVersion, 1);
+      });
+
+      test('planEdit never seeds contentVersion for a plan that is not in '
+          'the projection (review gate 2, I7)', () async {
+        // A planEdit response's content_version can include foreign writes;
+        // upsertSyncedPlan takes the passed value for a brand-new row.
+        await reconciler.reconcile(
+          testContext,
+          PlanningMutationRecord(
+            aggregateId: 'plan-3',
+            organizationId: organizationId,
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026, 4, 11, 11),
+            slug: 'other-plan',
+            name: 'Other Plan',
+            baseVersion: 2,
+            acceptedPlanContentVersion: 9,
+          ),
+        );
+
+        final detail = await localStore.readPlanDetail(
+          userId: userId,
+          organizationId: organizationId,
+          planId: 'plan-3',
+        );
+        expect(detail!.plan.contentVersion, isNull);
+      });
+    });
   });
 }

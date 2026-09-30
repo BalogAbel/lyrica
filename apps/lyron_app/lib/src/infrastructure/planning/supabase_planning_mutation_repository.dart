@@ -23,9 +23,10 @@ class SupabasePlanningMutationRepository
       final rpcName = switch (record.kind) {
         PlanningMutationKind.planCreate => 'create_plan',
         PlanningMutationKind.planEdit => 'update_plan_fields',
+        PlanningMutationKind.planDelete => 'delete_plan',
         PlanningMutationKind.sessionCreate => 'create_session',
         PlanningMutationKind.sessionRename => 'rename_session',
-        PlanningMutationKind.sessionDelete => 'delete_empty_session',
+        PlanningMutationKind.sessionDelete => 'delete_session',
         PlanningMutationKind.sessionReorder => 'reorder_plan_sessions',
         PlanningMutationKind.sessionItemCreateSong =>
           'create_song_session_item',
@@ -80,6 +81,12 @@ class SupabasePlanningMutationRepository
         'p_name': record.name,
         'p_description': record.description,
         'p_scheduled_for': record.scheduledFor?.toIso8601String(),
+      },
+      PlanningMutationKind.planDelete => {
+        ...organization,
+        'p_plan_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+        'p_base_content_version': record.baseContentVersion,
       },
       PlanningMutationKind.sessionCreate => {
         ...organization,

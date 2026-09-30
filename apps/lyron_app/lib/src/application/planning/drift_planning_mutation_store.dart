@@ -1167,6 +1167,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     final sessionId = record.sessionId;
     return switch (record.kind) {
       PlanningMutationKind.planEdit ||
+      PlanningMutationKind.planDelete ||
       PlanningMutationKind.sessionCreate ||
       PlanningMutationKind.sessionReorder => detail?.plan.version,
       PlanningMutationKind.sessionRename ||

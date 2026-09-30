@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/storage/local_storage_domain_rejection
 enum PlanningMutationKind {
   planCreate,
   planEdit,
+  planDelete,
   sessionCreate,
   sessionRename,
   sessionDelete,
@@ -67,6 +68,7 @@ extension PlanningMutationKindX on PlanningMutationKind {
   String get value => switch (this) {
     PlanningMutationKind.planCreate => 'plan_create',
     PlanningMutationKind.planEdit => 'plan_edit',
+    PlanningMutationKind.planDelete => 'plan_delete',
     PlanningMutationKind.sessionCreate => 'session_create',
     PlanningMutationKind.sessionRename => 'session_rename',
     PlanningMutationKind.sessionDelete => 'session_delete',
@@ -77,7 +79,9 @@ extension PlanningMutationKindX on PlanningMutationKind {
   };
 
   String get aggregateType => switch (this) {
-    PlanningMutationKind.planCreate || PlanningMutationKind.planEdit => 'plan',
+    PlanningMutationKind.planCreate ||
+    PlanningMutationKind.planEdit ||
+    PlanningMutationKind.planDelete => 'plan',
     PlanningMutationKind.sessionCreate ||
     PlanningMutationKind.sessionRename ||
     PlanningMutationKind.sessionDelete => 'session',
@@ -85,6 +89,22 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionItemCreateSong ||
     PlanningMutationKind.sessionItemDelete => 'session_item',
     PlanningMutationKind.sessionItemReorder => 'session_item_order',
+  };
+
+  /// Whether this kind's backend RPC bumps `plans.content_version` (spec I4,
+  /// D7 rule 1, docs/specs/2026-09-29-plan-delete-and-session-cascade.md).
+  /// Exhaustive on purpose: a new kind must decide.
+  bool get bumpsPlanContent => switch (this) {
+    PlanningMutationKind.planCreate ||
+    PlanningMutationKind.planEdit ||
+    PlanningMutationKind.planDelete => false,
+    PlanningMutationKind.sessionCreate ||
+    PlanningMutationKind.sessionRename ||
+    PlanningMutationKind.sessionDelete ||
+    PlanningMutationKind.sessionReorder ||
+    PlanningMutationKind.sessionItemCreateSong ||
+    PlanningMutationKind.sessionItemDelete ||
+    PlanningMutationKind.sessionItemReorder => true,
   };
 }
 
@@ -105,6 +125,7 @@ PlanningMutationKind planningMutationKindFromValue(String value) {
   return switch (value) {
     'plan_create' => PlanningMutationKind.planCreate,
     'plan_edit' => PlanningMutationKind.planEdit,
+    'plan_delete' => PlanningMutationKind.planDelete,
     'session_create' => PlanningMutationKind.sessionCreate,
     'session_rename' => PlanningMutationKind.sessionRename,
     'session_delete' => PlanningMutationKind.sessionDelete,
@@ -366,6 +387,20 @@ class PlanningPlanEditMutationDraft {
   final String? description;
   final DateTime? scheduledFor;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
+}
+
+class PlanningPlanDeleteMutationDraft {
+  const PlanningPlanDeleteMutationDraft({
+    required this.planId,
+    this.baseVersion,
+    this.baseContentVersion,
+    this.originSnapshot,
+  });
+
+  final String planId;
+  final int? baseVersion;
+  final int? baseContentVersion;
   final Map<String, Object?>? originSnapshot;
 }
 

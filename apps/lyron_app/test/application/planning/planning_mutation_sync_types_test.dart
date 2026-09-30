@@ -11,4 +11,29 @@ void main() {
       );
     });
   });
+
+  test('planDelete persists as plan_delete on the plan aggregate and does '
+      'not count as plan content (spec D4, D7)', () {
+    expect(PlanningMutationKind.planDelete.value, 'plan_delete');
+    expect(
+      planningMutationKindFromValue('plan_delete'),
+      PlanningMutationKind.planDelete,
+    );
+    expect(PlanningMutationKind.planDelete.aggregateType, 'plan');
+    expect(
+      {
+        for (final kind in PlanningMutationKind.values)
+          if (kind.bumpsPlanContent) kind,
+      },
+      {
+        PlanningMutationKind.sessionCreate,
+        PlanningMutationKind.sessionRename,
+        PlanningMutationKind.sessionDelete,
+        PlanningMutationKind.sessionReorder,
+        PlanningMutationKind.sessionItemCreateSong,
+        PlanningMutationKind.sessionItemDelete,
+        PlanningMutationKind.sessionItemReorder,
+      },
+    );
+  });
 }

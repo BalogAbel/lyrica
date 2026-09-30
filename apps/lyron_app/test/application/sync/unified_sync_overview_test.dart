@@ -130,6 +130,41 @@ void main() {
       );
     });
 
+    test('a conflicted plan removal is titled from its snapshot and explains '
+        'the conflict (spec D9)', () {
+      final overview = _compute(
+        plans: [
+          PlanningMutationRecord(
+            aggregateId: 'session-9',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionRename,
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+            originSnapshot: const {'name': 'A Session Name'},
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            kind: PlanningMutationKind.planDelete,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+            originSnapshot: const {'name': 'Sunday Service'},
+          ),
+        ],
+      );
+
+      final row = overview.planRows.single;
+      expect(row.title, 'Sunday Service');
+      expect(
+        row.nestedSummaries.last,
+        'plan removal conflicts: the plan changed after you deleted it — '
+        'retry deletes it as it is now, discard keeps it',
+      );
+    });
+
     test('red wins over yellow when mixed', () {
       final overview = _compute(
         songs: [_song(id: 's1', title: 'Hymn')],
