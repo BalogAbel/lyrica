@@ -2821,22 +2821,40 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `lib/src/offline/planning/planning_local_store.dart`
-- Modify: the 4 `PlanningLocalStore` fakes without `noSuchMethod`:
-  - `test/application/providers_test.dart`
-  - `test/application/planning/planning_local_read_repository_test.dart`
-    (`_RecordingPlanningLocalStore`)
-  - `test/application/storage/local_data_lifecycle_test.dart`
-  - `test/offline/song_catalog/song_catalog_store_test.dart`
+- Modify: the 8 `PlanningLocalStore` fakes without `noSuchMethod` (counted
+  per class, not per file). The compiler forces all 8 to implement the new
+  methods.
+  - No-op overrides (6):
+    - `test/application/planning/planning_local_read_repository_test.dart`
+      (`_RecordingPlanningLocalStore`)
+    - `test/application/storage/local_data_lifecycle_test.dart`
+      (`_RecordingPlanningLocalStore`)
+    - `test/offline/song_catalog/song_catalog_store_test.dart`
+      (`_NoopPlanningLocalStore`)
+    - `test/app/lyron_app_test.dart` (`_NoopPlanningLocalStore`)
+    - `test/presentation/song_library/song_list_screen_test.dart`
+      (`_NoopPlanningLocalStore`)
+    - `test/application/planning/planning_sync_controller_test.dart`
+      (`_BlockingPlanningLocalStore`)
+  - Forwarding overrides (2). These wrap a real store in a `_delegate` field;
+    a no-op would silently drop a real write passing through them:
+    - `test/application/providers_test.dart`
+      (`_BlockingDeletePlanningLocalStore`)
+    - `test/application/planning/planning_sync_controller_test.dart`
+      (`_BlockingBoundaryDeletePlanningLocalStore`)
 - Test: `test/offline/planning/planning_local_store_test.dart`
 
-Before starting, list the implementers:
+Before starting, list the implementers per class:
 
 ```bash
-grep -rln "implements PlanningLocalStore" apps/lyron_app/lib apps/lyron_app/test
+grep -rn "class .* implements PlanningLocalStore" apps/lyron_app/test
 ```
 
-The list must match the one above, plus files whose fake uses
-`noSuchMethod`. Otherwise apply STOP condition 3.
+Inspect each class body for `noSuchMethod`. A file-level `noSuchMethod` grep
+is misleading: other fakes in the same file may own it. The classes without
+`noSuchMethod` must be exactly the 8 above (`_CallCountingPlanningLocalStore`
+extends `DriftPlanningLocalStore` and needs nothing). Otherwise apply STOP
+condition 3.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -2900,43 +2918,85 @@ The list must match the one above, plus files whose fake uses
         refreshedAt: DateTime.utc(2026, 9, 29),
       );
 
-      Future<int?> contentVersion(String planId) async => (await store
-              .readPlanDetail(
-                userId: 'user-1',
-                organizationId: 'org-1',
-                planId: planId,
-              ))
-          ?.plan
-          .contentVersion;
+      Future<int?> contentVersion(String planId) async =>
+          (await store.readPlanDetail(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: planId,
+          ))?.plan.contentVersion;
 
-      test('advanceSyncedPlanContentVersion moves only a contiguous value',
-          () async {
-        await seed();
+      test(
+        'advanceSyncedPlanContentVersion moves only a contiguous value',
+        () async {
+          await seed();
 
-        await store.advanceSyncedPlanContentVersion(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          planId: 'plan-1',
-          acceptedContentVersion: 6,
-        );
-        expect(await contentVersion('plan-1'), 4, reason: 'gap: foreign write');
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 6,
+          );
+          expect(
+            await contentVersion('plan-1'),
+            4,
+            reason: 'gap: foreign write',
+          );
 
-        await store.advanceSyncedPlanContentVersion(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          planId: 'plan-1',
-          acceptedContentVersion: 5,
-        );
-        expect(await contentVersion('plan-1'), 5);
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 5,
+          );
+          expect(await contentVersion('plan-1'), 5);
 
-        await store.advanceSyncedPlanContentVersion(
-          userId: 'user-1',
-          organizationId: 'org-1',
-          planId: 'plan-1',
-          acceptedContentVersion: 5,
-        );
-        expect(await contentVersion('plan-1'), 5, reason: 'idempotent');
-      });
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 5,
+          );
+          expect(await contentVersion('plan-1'), 5, reason: 'idempotent');
+        },
+      );
+
+      test(
+        'advanceSyncedPlanContentVersion never fills a null value (I7)',
+        () async {
+          await store.replaceActiveProjection(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plans: [
+              CachedPlanRecord(
+                id: 'plan-1',
+                slug: 'plan-1',
+                name: 'Plan',
+                description: null,
+                scheduledFor: null,
+                updatedAt: DateTime.utc(2026, 9, 29),
+                contentVersion: null,
+              ),
+            ],
+            sessions: const [],
+            items: const [],
+            refreshedAt: DateTime.utc(2026, 9, 29),
+          );
+
+          for (final accepted in [0, 1, 2]) {
+            await store.advanceSyncedPlanContentVersion(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              acceptedContentVersion: accepted,
+            );
+            expect(
+              await contentVersion('plan-1'),
+              isNull,
+              reason: 'accepted $accepted: only a full refresh may fill it',
+            );
+          }
+        },
+      );
 
       test('deleteSyncedPlan removes the plan, its sessions and items, and '
           'releases its song references', () async {
@@ -3008,8 +3068,7 @@ Add to the `PlanningLocalStore` interface:
   });
 ```
 
-Implement both in `DriftPlanningLocalStore`, following
-`deleteSyncedSession`'s shape:
+Implement both in `DriftPlanningLocalStore` as plain `async` bodies:
 
 ```dart
   @override
@@ -3018,7 +3077,7 @@ Implement both in `DriftPlanningLocalStore`, following
     required String organizationId,
     required String planId,
     required int acceptedContentVersion,
-  }) => _guarded(() async {
+  }) async {
     final owner = await _readOwner(
       userId: userId,
       organizationId: organizationId,
@@ -3026,7 +3085,7 @@ Implement both in `DriftPlanningLocalStore`, following
     if (owner == null) {
       return;
     }
-    final updated =
+    final updatedRows =
         await (_database.update(_database.cachedPlanningPlans)..where(
               (table) =>
                   table.userId.equals(userId) &
@@ -3040,10 +3099,10 @@ Implement both in `DriftPlanningLocalStore`, following
                 contentVersion: Value(acceptedContentVersion),
               ),
             );
-    if (updated > 0) {
+    if (updatedRows > 0) {
       _onStorageFootprintChanged?.call();
     }
-  });
+  }
 
   @override
   Future<void> deleteSyncedPlan({
@@ -3051,55 +3110,65 @@ Implement both in `DriftPlanningLocalStore`, following
     required String organizationId,
     required String planId,
     required DateTime refreshedAt,
-  }) => _guarded(() async {
+  }) async {
     final changed = await _database.transaction(() async {
       final ensuredOwner = await _ensureOwner(
         userId: userId,
         organizationId: organizationId,
         refreshedAt: refreshedAt,
       );
+      var changed = ensuredOwner.changed;
       final owner = ensuredOwner.owner;
-      var deleted = 0;
-      deleted +=
+      changed =
           await (_database.delete(_database.cachedPlanningSessionItems)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId) &
-                    table.snapshotVersion.equals(owner.snapshotVersion) &
-                    table.planId.equals(planId),
-              ))
-              .go();
-      deleted +=
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
           await (_database.delete(_database.cachedPlanningSessions)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId) &
-                    table.snapshotVersion.equals(owner.snapshotVersion) &
-                    table.planId.equals(planId),
-              ))
-              .go();
-      deleted +=
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
           await (_database.delete(_database.cachedPlanningPlans)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId) &
-                    table.snapshotVersion.equals(owner.snapshotVersion) &
-                    table.planId.equals(planId),
-              ))
-              .go();
-      return ensuredOwner.changed || deleted > 0;
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      return changed;
     });
     if (changed) {
       _onStorageFootprintChanged?.call();
     }
-  });
+  }
 ```
 
-Check `_guarded`'s return type (`Future<T> _guarded<T>(Future<T> Function() write)`)
-and match the existing callers' style. If `deleteSyncedSession` does not use
-`_guarded`, mirror exactly what it does instead.
+Neither method is `_guarded`. In this store `_guarded` is only for
+storage-growing upserts (`replaceActiveProjection`, `upsertSyncedPlan`, and
+the like), not for deletes or in-place version writes.
+`deleteSyncedPlan` mirrors `deleteSyncedSession`.
+`advanceSyncedPlanContentVersion` mirrors `replaceSyncedSessionOrder`'s
+unguarded in-place write, with an early return when there is no owner (no
+owner means no row).
 
-In each of the 4 fakes, add no-op overrides:
+In the 6 no-op fakes, add no-op overrides:
 
 ```dart
   @override
@@ -3117,6 +3186,27 @@ In each of the 4 fakes, add no-op overrides:
     required String planId,
     required DateTime refreshedAt,
   }) async {}
+```
+
+In the 2 delegating fakes, forward to `_delegate` in the file's existing
+forwarding style. Example for `deleteSyncedPlan`; forward
+`advanceSyncedPlanContentVersion` the same way:
+
+```dart
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      refreshedAt: refreshedAt,
+    );
+  }
 ```
 
 - [ ] **Step 4: Run the tests, then full verification.** Expected: green.
@@ -3490,15 +3580,23 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `test/offline/planning/planning_mutation_store_test.dart`
   - `test/application/planning/budgeted_planning_mutation_store_test.dart`
 
-Verify the fake list first:
+Verify the fake list first, per class:
 
 ```bash
-grep -rln "implements PlanningMutationStore" apps/lyron_app/test
+grep -rn "class .* implements PlanningMutationStore" apps/lyron_app/test
 ```
 
-It must print exactly those 13 files; otherwise apply STOP condition 3. Both
-new interface methods (`recordPlanDelete`, `applyAcceptedWriteEffects`) are
-added now, so the fakes change once. `applyAcceptedWriteEffects` gets its
+Inspect each class body for `noSuchMethod`. A file-level `noSuchMethod` grep
+is misleading: other fakes in the same file may own it. The classes without
+`noSuchMethod` must fall in exactly those 13 files; otherwise apply STOP
+condition 3.
+
+Delegation rule: any fake that wraps a real store in a delegate field must
+forward the new methods to it, not no-op or throw. Only pure fakes may no-op
+or throw.
+
+Both new interface methods (`recordPlanDelete`, `applyAcceptedWriteEffects`)
+are added now, so the fakes change once. `applyAcceptedWriteEffects` gets its
 real implementation in Task 3.4 and throws `UnimplementedError` in the Drift
 store until then. Nothing calls it before Task 3.5.
 

@@ -1369,6 +1369,22 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) async {}
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<void> deleteSyncedSession({
     required String userId,
     required String organizationId,
@@ -1485,6 +1501,36 @@ class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
     return _delegate.deletePlanningDataForUser(
       userId: userId,
       shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) {
+    return _delegate.advanceSyncedPlanContentVersion(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      acceptedContentVersion: acceptedContentVersion,
+    );
+  }
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      refreshedAt: refreshedAt,
     );
   }
 

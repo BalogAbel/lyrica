@@ -2749,6 +2749,22 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) async {}
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<void> deleteSyncedSession({
     required String userId,
     required String organizationId,

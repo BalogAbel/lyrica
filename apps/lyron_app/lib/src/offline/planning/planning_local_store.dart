@@ -154,6 +154,27 @@ abstract interface class PlanningLocalStore {
     required DateTime refreshedAt,
   });
 
+  /// Spec D7 rule 1a (docs/specs/2026-09-29-plan-delete-and-session-cascade.md):
+  /// sets the synced plan's contentVersion to [acceptedContentVersion] only
+  /// when it currently equals `acceptedContentVersion - 1`, i.e. the
+  /// accepted write was the only one since the projection's value. No-op
+  /// otherwise (I3: never absorb a foreign write).
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  });
+
+  /// Spec D8: removes a synced plan and all of its sessions and session
+  /// items from the projection, in one transaction.
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  });
+
   Future<void> deleteSyncedSession({
     required String userId,
     required String organizationId,
@@ -737,6 +758,94 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
         session: session,
       );
       return ensuredOwner.changed || rowChanged;
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) async {
+    final owner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (owner == null) {
+      return;
+    }
+    final updatedRows =
+        await (_database.update(_database.cachedPlanningPlans)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.planId.equals(planId) &
+                  table.contentVersion.equals(acceptedContentVersion - 1),
+            ))
+            .write(
+              CachedPlanningPlansCompanion(
+                contentVersion: Value(acceptedContentVersion),
+              ),
+            );
+    if (updatedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) async {
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      var changed = ensuredOwner.changed;
+      final owner = ensuredOwner.owner;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessionItems)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessions)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      return changed;
     });
     if (changed) {
       _onStorageFootprintChanged?.call();
