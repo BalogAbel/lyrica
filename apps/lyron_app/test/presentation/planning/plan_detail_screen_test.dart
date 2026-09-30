@@ -625,7 +625,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      find.text(AppStrings.sessionUnsyncedChangesDiscardedMessage),
       findsNothing,
     );
     await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
@@ -660,9 +660,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // A session delete drops only that session's rows, so the warning names
+    // the session, not the plan.
+    expect(
+      find.text(AppStrings.sessionUnsyncedChangesDiscardedMessage),
+      findsOneWidget,
+    );
     expect(
       find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
@@ -697,8 +703,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      find.text(AppStrings.sessionUnsyncedChangesDiscardedMessage),
       findsOneWidget,
+    );
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsNothing,
     );
   });
 

@@ -525,7 +525,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
             ),
             if (hasDiscardableChanges) ...[
               const SizedBox(height: 12),
-              const Text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+              const Text(AppStrings.sessionUnsyncedChangesDiscardedMessage),
             ],
           ],
         ),

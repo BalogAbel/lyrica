@@ -222,6 +222,8 @@ class AppStrings {
       '“$sessionName” and its ${_count(songCount, 'song', 'songs')} will be '
       'removed from this plan. The songs stay in the song library.';
   static const sessionDeleteConfirmAction = 'Delete session';
+  static const sessionUnsyncedChangesDiscardedMessage =
+      'Unsynced changes to this session will be discarded.';
   static const sessionDeleteTargetChangedMessage =
       'This session changed while you were deciding. Nothing was deleted; '
       'review it and try again.';
