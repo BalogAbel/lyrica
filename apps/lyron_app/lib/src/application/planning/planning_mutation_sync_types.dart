@@ -203,6 +203,8 @@ class PlanningMutationRecord {
     this.orderedSiblingIds,
     this.orderedSiblingPositions,
     this.baseVersion,
+    this.baseContentVersion,
+    this.acceptedPlanContentVersion,
     this.originSnapshot,
     this.errorCode,
     this.errorMessage,
@@ -223,6 +225,15 @@ class PlanningMutationRecord {
   final List<String>? orderedSiblingIds;
   final List<int>? orderedSiblingPositions;
   final int? baseVersion;
+
+  /// The plan content version a `planDelete` was based on (spec D4/D5).
+  /// Persisted; only meaningful for `planDelete` records.
+  final int? baseContentVersion;
+
+  /// In-memory only, never persisted: the backend's `plan_content_version`
+  /// (or a `plans` row's `content_version`) from the RPC response this record
+  /// was mapped from. Spec D4/D7.
+  final int? acceptedPlanContentVersion;
   final Map<String, Object?>? originSnapshot;
   final PlanningMutationSyncErrorCode? errorCode;
   final String? errorMessage;
@@ -265,6 +276,10 @@ class PlanningMutationRecord {
     bool clearOrderedSiblingPositions = false,
     int? baseVersion,
     bool clearBaseVersion = false,
+    int? baseContentVersion,
+    bool clearBaseContentVersion = false,
+    int? acceptedPlanContentVersion,
+    bool clearAcceptedPlanContentVersion = false,
     Map<String, Object?>? originSnapshot,
     bool clearOriginSnapshot = false,
     PlanningMutationSyncErrorCode? errorCode,
@@ -298,6 +313,12 @@ class PlanningMutationRecord {
           ? null
           : (orderedSiblingPositions ?? this.orderedSiblingPositions),
       baseVersion: clearBaseVersion ? null : (baseVersion ?? this.baseVersion),
+      baseContentVersion: clearBaseContentVersion
+          ? null
+          : (baseContentVersion ?? this.baseContentVersion),
+      acceptedPlanContentVersion: clearAcceptedPlanContentVersion
+          ? null
+          : (acceptedPlanContentVersion ?? this.acceptedPlanContentVersion),
       originSnapshot: clearOriginSnapshot
           ? null
           : (originSnapshot ?? this.originSnapshot),

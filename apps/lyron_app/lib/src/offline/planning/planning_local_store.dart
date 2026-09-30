@@ -1250,6 +1250,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       scheduledFor: row.scheduledFor?.toUtc(),
       updatedAt: row.updatedAt.toUtc(),
       version: row.version,
+      contentVersion: row.contentVersion,
     );
   }
 

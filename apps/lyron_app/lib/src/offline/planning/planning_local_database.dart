@@ -67,9 +67,23 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
           cachedPlanningMutations.localRevision,
         );
       }
+      if (from < 7) {
+        // Spec D4 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md):
+        // pre-7 plan rows have no known content version. Null makes a plan
+        // delete recorded before the next full refresh conflict (fail-safe)
+        // instead of guessing a base.
+        await m.addColumn(
+          cachedPlanningPlans,
+          cachedPlanningPlans.contentVersion,
+        );
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.baseContentVersion,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 }

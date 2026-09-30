@@ -1084,6 +1084,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               _encodeJsonValue(record.orderedSiblingIds),
             ),
             baseVersion: Value(record.baseVersion),
+            baseContentVersion: Value(record.baseContentVersion),
             originSnapshotJson: Value(_encodeJsonValue(record.originSnapshot)),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
@@ -1121,6 +1122,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         existing.orderedSiblingIds ==
             _encodeJsonValue(record.orderedSiblingIds) &&
         existing.baseVersion == record.baseVersion &&
+        existing.baseContentVersion == record.baseContentVersion &&
         existing.originSnapshotJson ==
             _encodeJsonValue(record.originSnapshot) &&
         existing.errorCode == record.errorCode?.name &&
@@ -1261,6 +1263,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       songTitle: row.songTitle,
       orderedSiblingIds: _orderedSiblingIdsFromValue(row.orderedSiblingIds),
       baseVersion: row.baseVersion,
+      baseContentVersion: row.baseContentVersion,
       originSnapshot: _originSnapshotFromValue(row.originSnapshotJson),
       errorCode: _errorCodeFromValue(row.errorCode),
       errorMessage: row.errorMessage,
