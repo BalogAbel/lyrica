@@ -821,6 +821,155 @@ void main() {
         expect(sessionMutation!.kind, PlanningMutationKind.sessionDelete);
       },
     );
+
+    test('plan: deleting a plan while its create is in flight survives as a '
+        'pending plan delete once the create succeeds (spec D5b)', () async {
+      final db = PlanningLocalDatabase.inMemory();
+      addTearDown(db.close);
+      final localStore = DriftPlanningLocalStore(db);
+      final store = DriftPlanningMutationStore(
+        database: db,
+        localStore: localStore,
+      );
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const readContext = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-one',
+          name: 'Plan One',
+        ),
+      );
+
+      final remote = _GatedPlanningRemote();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      final syncFuture = controller.syncPendingMutations(readContext);
+      await remote.entered.future;
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+      remote.gate.complete();
+      await syncFuture;
+
+      final afterSync = await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+      expect(afterSync, isNotNull);
+      expect(afterSync!.kind, PlanningMutationKind.planDelete);
+      expect(afterSync.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(afterSync.baseVersion, 1);
+      expect(afterSync.baseContentVersion, 1);
+
+      await controller.syncPendingMutations(readContext);
+      expect(
+        remote.calls.where(
+          (record) => record.kind == PlanningMutationKind.planDelete,
+        ),
+        hasLength(1),
+      );
+    });
+
+    test(
+      'plan: a failed in-flight plan create discards the tombstone and '
+      'every child row, including a crash-stale sending one (spec D5b)',
+      () async {
+        final db = PlanningLocalDatabase.inMemory();
+        addTearDown(db.close);
+        final localStore = DriftPlanningLocalStore(db);
+        final store = DriftPlanningMutationStore(
+          database: db,
+          localStore: localStore,
+        );
+        const context = PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+        const readContext = ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        );
+
+        await store.recordPlanCreate(
+          context: context,
+          draft: const PlanningPlanCreateMutationDraft(
+            planId: 'plan-1',
+            slug: 'plan-one',
+            name: 'Plan One',
+          ),
+        );
+        await store.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'session-one',
+            name: 'Session One',
+            position: 1,
+          ),
+        );
+
+        final remote = _GatedPlanningRemote(
+          failFirstWith: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.dependencyBlocked,
+          ),
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => remote,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final syncFuture = controller.syncPendingMutations(readContext);
+        await remote.entered.future;
+        await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+          syncStatus: PlanningMutationSyncStatus.sending,
+        );
+        await store.recordPlanDelete(
+          context: context,
+          draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+        );
+        remote.gate.complete();
+        await syncFuture;
+
+        expect(
+          await store.readAllMutations(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+        expect(
+          remote.calls.map((record) => record.kind),
+          [PlanningMutationKind.planCreate],
+          reason: 'the vanished child row must not be sent afterwards',
+        );
+      },
+    );
   });
 }
 

@@ -672,7 +672,9 @@ abstract interface class PlanningMutationStore {
   });
 
   /// D3 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): resolves
-  /// the outcome of an in-flight `sessionCreate`/`sessionItemCreateSong`
+  /// the outcome of an in-flight `planCreate`/`sessionCreate`/
+  /// `sessionItemCreateSong` (`planCreate` per
+  /// `docs/specs/2026-09-29-plan-delete-and-session-cascade.md` D5(b))
   /// whose row may have become a D2 cancellation tombstone
   /// (`PlanningMutationSyncStatus.cancelling`) while its remote call was in
   /// flight.
@@ -693,12 +695,14 @@ abstract interface class PlanningMutationStore {
   /// assigned the created row) so the delete RPC's OCC check targets the
   /// content that actually exists remotely. The next sync sends it. The
   /// already-accepted remote create is never undone -- the delete is a
-  /// subsequent operation, which is what the user asked for.
+  /// subsequent operation, which is what the user asked for. A `planCreate`
+  /// tombstone additionally starts its `planDelete` at content version 1.
   ///
   /// When [created] is `false` the create never reached the backend, so the
   /// object never existed remotely: the tombstone is discarded outright,
   /// with no further backend call -- exactly the physical collapse a plain,
-  /// not-in-flight delete would have performed (ADR-028 D10).
+  /// not-in-flight delete would have performed (ADR-028 D10). A `planCreate`
+  /// tombstone also drops every child row of the plan, in any status.
   ///
   /// Returns `true` if a tombstone was found and resolved, `false`
   /// otherwise.

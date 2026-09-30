@@ -1123,6 +1123,18 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   table.aggregateId.equals(aggregateId),
             ))
             .go();
+        // Spec D5(b): a plan whose create never reached the backend has no
+        // children there either; drop every child row left behind.
+        if (existing.kind == PlanningMutationKind.planCreate) {
+          await _deleteChildMutationsOfPlan(
+            context: PlanningMutationContext(
+              userId: userId,
+              organizationId: organizationId,
+            ),
+            planId: aggregateId,
+            keepInFlight: false,
+          );
+        }
         _onStorageFootprintChanged?.call();
         return true;
       }
@@ -1134,6 +1146,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       // backend just assigned the created row, so the delete RPC's OCC
       // check targets content that actually exists.
       final deleteKind = switch (existing.kind) {
+        PlanningMutationKind.planCreate => PlanningMutationKind.planDelete,
         PlanningMutationKind.sessionCreate =>
           PlanningMutationKind.sessionDelete,
         PlanningMutationKind.sessionItemCreateSong =>
@@ -1141,8 +1154,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         _ => throw StateError(
           'resolveCancelledCreate: unexpected tombstone kind '
           '${existing.kind} for $aggregateType/$aggregateId -- only '
-          'sessionCreate/sessionItemCreateSong rows can become cancellation '
-          'tombstones (D2).',
+          'planCreate/sessionCreate/sessionItemCreateSong rows can become '
+          'cancellation tombstones (D2, spec D5(b)).',
         ),
       };
       await _upsertRecord(
@@ -1155,6 +1168,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           kind: deleteKind,
           syncStatus: PlanningMutationSyncStatus.pending,
           baseVersion: acceptedBaseVersion ?? existing.baseVersion,
+          // Spec D5(b): a plan's content version starts at 1, and no child
+          // of it can have reached the backend before this create's own
+          // response (sync is sequential; children sort after the create).
+          baseContentVersion: existing.kind == PlanningMutationKind.planCreate
+              ? 1
+              : existing.baseContentVersion,
           updatedAt: DateTime.now().toUtc(),
           clearErrorCode: true,
           clearErrorMessage: true,

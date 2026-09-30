@@ -1151,6 +1151,86 @@ void main() {
         expect(store.clearedAggregateIds, contains('plan-1'));
       },
     );
+
+    test(
+      'applies accepted-write effects right after the response, before '
+      'the accepted marker, and again before the clear (spec D7/D8)',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'item-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-1',
+              songTitle: 'Song',
+              position: 1,
+              baseVersion: 3,
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(store.events, [
+          'save:sending:item-1',
+          'effects:item-1:true',
+          'save:accepted:item-1',
+          'effects:item-1:true',
+        ]);
+      },
+    );
+
+    test('a crash-resumed accepted marker gets effects with remoteResponse '
+        'false only', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            baseVersion: 2,
+            baseContentVersion: 5,
+            kind: PlanningMutationKind.planDelete,
+            syncStatus: PlanningMutationSyncStatus.accepted,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+        refreshPlanning: () async => false,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.syncPendingMutations(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+
+      expect(store.events, ['effects:plan-1:false']);
+    });
   });
 }
 
