@@ -349,6 +349,67 @@ void main() {
       final detail = await repository.getPlanDetail('plan-4');
       expect(detail.plan.description, isNull);
     });
+
+    test('a pending plan delete hides the plan from list, detail and slug '
+        'reads (spec D10)', () async {
+      await mutationStore.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 2,
+          baseContentVersion: 5,
+        ),
+      );
+
+      expect(await repository.listPlans(), isEmpty);
+      expect(await repository.getPlanSummaryBySlug('team-rehearsal'), isNull);
+      expect(await repository.getPlanDetailBySlug('team-rehearsal'), isNull);
+      await expectLater(repository.getPlanDetail('plan-1'), throwsStateError);
+    });
+
+    test(
+      'a conflicted plan delete keeps hiding the plan (spec D9, D10)',
+      () async {
+        await mutationStore.recordPlanDelete(
+          context: context,
+          draft: const PlanningPlanDeleteMutationDraft(
+            planId: 'plan-1',
+            baseVersion: 2,
+            baseContentVersion: 5,
+          ),
+        );
+        await mutationStore.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+        );
+
+        expect(await repository.listPlans(), isEmpty);
+      },
+    );
+
+    test('discarding the delete brings the plan back', () async {
+      await mutationStore.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 2,
+          baseContentVersion: 5,
+        ),
+      );
+      await mutationStore.clearMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      expect(detail.sessions, hasLength(2));
+    });
   });
 
   group('PlanningLocalReadRepository slug resolution', () {

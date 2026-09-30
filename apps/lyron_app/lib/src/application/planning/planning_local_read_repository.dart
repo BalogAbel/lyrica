@@ -131,19 +131,34 @@ class PlanningLocalReadRepository implements PlanningRepository {
     String planSlug,
     List<PlanningMutationRecord> mutations,
   ) async {
+    String? resolved;
     for (final mutation in mutations) {
       if (mutation.kind == PlanningMutationKind.planCreate &&
           mutation.slug == planSlug) {
-        return mutation.aggregateId;
+        resolved = mutation.aggregateId;
+        break;
       }
     }
 
-    final summary = await _store.readPlanSummaryBySlug(
-      userId: context.userId,
-      organizationId: context.organizationId,
-      planSlug: planSlug,
-    );
-    return summary?.id;
+    if (resolved == null) {
+      final summary = await _store.readPlanSummaryBySlug(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        planSlug: planSlug,
+      );
+      resolved = summary?.id;
+    }
+
+    // Spec D10: a plan with an actionable delete intent does not resolve.
+    if (resolved != null &&
+        mutations.any(
+          (mutation) =>
+              mutation.kind == PlanningMutationKind.planDelete &&
+              mutation.aggregateId == resolved,
+        )) {
+      return null;
+    }
+    return resolved;
   }
 
   Future<ActivePlanningReadContext> _requireContext() async {
@@ -207,6 +222,8 @@ class PlanningLocalReadRepository implements PlanningRepository {
             contentVersion: existing.contentVersion,
           );
         case PlanningMutationKind.planDelete:
+          // Spec D10: any actionable delete intent hides the plan.
+          plansById.remove(mutation.aggregateId);
         case PlanningMutationKind.sessionCreate:
         case PlanningMutationKind.sessionRename:
         case PlanningMutationKind.sessionDelete:
@@ -241,6 +258,16 @@ class PlanningLocalReadRepository implements PlanningRepository {
     String planId,
     List<PlanningMutationRecord> mutations,
   ) {
+    // Spec D10: a plan with an actionable delete intent is gone for every
+    // read, including its children.
+    if (mutations.any(
+      (mutation) =>
+          mutation.kind == PlanningMutationKind.planDelete &&
+          mutation.aggregateId == planId,
+    )) {
+      return null;
+    }
+
     PlanSummary? plan = baseDetail?.plan;
     final sessionsById = {
       for (final session in baseDetail?.sessions ?? const <SessionSummary>[])
