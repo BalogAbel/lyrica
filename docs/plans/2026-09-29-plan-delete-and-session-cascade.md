@@ -6103,12 +6103,14 @@ path. The spec's D5, D8, D9, and C7 now state the resulting rules.
   - Retry now never touches `sending`, `accepted`, or `cancelling` rows
     (re-verification N4). Retrying a tombstone would have re-created the
     deleted plan.
-  - The general family is still open and needs the user's decision:
-    tombstones never resolved after an interrupted run, pre-existing for
-    sessions and items. See
-    `docs/deferred/2026-09-30-stranded-create-tombstones.md`. The
-    reviewer's run-start conversion with base `(1, 1)` would break STOP
-    condition 5.
+  - The general family stays open: tombstones never resolved after an
+    interrupted run, pre-existing for sessions and items. The user decided
+    to fix it in its own slice, not in this PR.
+    - See `docs/deferred/2026-09-30-stranded-create-tombstones.md`, which
+      states two options.
+    - The doc also records the user's clarification that a creation-time
+      `(1, 1)` base keeps I3 and is therefore compatible with STOP
+      condition 5.
 - **F3 (major): a conflicted `sessionDelete` never rebased on retry.**
   `_currentBaseVersionFor` keyed on `sessionId`, which session rows do not
   set.
