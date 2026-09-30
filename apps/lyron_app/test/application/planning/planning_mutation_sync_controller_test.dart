@@ -1365,6 +1365,92 @@ void main() {
 
       expect(store.events, ['effects:plan-1:false']);
     });
+
+    // Spec D8, review gate 3 F5: the delete row is the only thing that makes
+    // the purge re-run, so it must outlive a purge that failed twice.
+    for (final (kind, aggregateId) in [
+      (PlanningMutationKind.planDelete, 'plan-1'),
+      (PlanningMutationKind.sessionDelete, 'session-1'),
+    ]) {
+      for (final refreshed in [true, false]) {
+        test('keeps an accepted ${kind.name} when the batch-end purge failed '
+            '(refreshed: $refreshed)', () async {
+          final store = _FakePlanningMutationStore(
+            pending: [
+              PlanningMutationRecord(
+                aggregateId: aggregateId,
+                organizationId: 'org-1',
+                planId: 'plan-1',
+                baseVersion: 2,
+                baseContentVersion: 5,
+                kind: kind,
+                syncStatus: PlanningMutationSyncStatus.pending,
+                orderKey: 1,
+                updatedAt: DateTime.utc(2026),
+              ),
+            ],
+          )..effectsError = Exception('storage error');
+          final controller = PlanningMutationSyncController(
+            mutationStore: () => store,
+            remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+            refreshPlanning: () async => refreshed,
+            shouldReconcileAcceptedMutation: (_) async => true,
+            reconcileAcceptedMutation: (_, _) async {},
+          );
+
+          await controller.syncPendingMutations(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          );
+
+          expect(store.clearedAggregateIds, isNot(contains(aggregateId)));
+          expect(store.events, contains('save:accepted:$aggregateId'));
+        });
+      }
+    }
+
+    for (final refreshed in [true, false]) {
+      test('still clears an accepted create when the batch-end effects '
+          'failed (refreshed: $refreshed)', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'item-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-1',
+              songTitle: 'Song',
+              position: 1,
+              baseVersion: 3,
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        )..effectsError = Exception('storage error');
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+          refreshPlanning: () async => refreshed,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(store.clearedAggregateIds, ['item-1']);
+        expect(store.events, contains('save:accepted:item-1'));
+      });
+    }
   });
 }
 
@@ -1394,6 +1480,10 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
   final List<String> events = [];
+
+  /// Thrown from [applyAcceptedWriteEffects] after it records its event, to
+  /// model a failing purge/rebase. `null` keeps the call succeeding.
+  Exception? effectsError;
 
   @override
   Future<bool> clearMutation({
@@ -1531,6 +1621,10 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required bool remoteResponse,
   }) async {
     events.add('effects:${accepted.aggregateId}:$remoteResponse');
+    final error = effectsError;
+    if (error != null) {
+      throw error;
+    }
   }
 
   @override

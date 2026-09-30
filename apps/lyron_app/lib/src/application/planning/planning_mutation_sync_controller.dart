@@ -379,11 +379,18 @@ class PlanningMutationSyncController {
     if (refreshed) {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
-        await _applyAcceptedEffects(
+        final effectsApplied = await _applyAcceptedEffects(
           context,
           synced,
           remoteResponse: remoteResponse,
         );
+        if (!effectsApplied && _isCascadeDelete(synced)) {
+          // Spec D8, review gate 3 F5: both purges of this delete failed, and
+          // the row is the only thing that makes one re-run. Left `accepted`,
+          // the next run resumes it like a crash-resumed marker
+          // (`remoteResponse: false`) and purges before clearing.
+          continue;
+        }
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -404,7 +411,7 @@ class PlanningMutationSyncController {
         // content version across a `planCreate` and its accepted children
         // even when the refresh failed. The reconciler needs no rule-1a
         // code of its own.
-        await _applyAcceptedEffects(
+        final effectsApplied = await _applyAcceptedEffects(
           context,
           synced,
           remoteResponse: remoteResponse,
@@ -460,6 +467,12 @@ class PlanningMutationSyncController {
           );
           continue;
         }
+        if (!effectsApplied && _isCascadeDelete(synced)) {
+          // Same as the refreshed branch: the reconcile above is idempotent
+          // and may run again, but the clear waits for a successful purge
+          // (spec D8, review gate 3 F5).
+          continue;
+        }
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -471,11 +484,22 @@ class PlanningMutationSyncController {
     }
   }
 
+  /// Whether [record] is a plan or session delete, whose accepted effects
+  /// include purging the deleted subtree's child rows (spec D8).
+  bool _isCascadeDelete(PlanningMutationRecord record) =>
+      record.kind == PlanningMutationKind.planDelete ||
+      record.kind == PlanningMutationKind.sessionDelete;
+
   /// Spec D7/D8: best-effort by design. Failing to rebase leaves a base
   /// stale (fail-safe: a visible conflict); a failed purge re-runs at batch
   /// conclusion. An Exception here must never skip the accepted marker
   /// (ADR-019 exactly-once); an Error still propagates.
-  Future<void> _applyAcceptedEffects(
+  ///
+  /// Returns `true` when the store call completed and `false` when an
+  /// Exception was swallowed. The batch-end callers use it to keep an accepted
+  /// plan/session delete (whose purge is the retry-less part) instead of
+  /// clearing it; the call right after the response ignores it.
+  Future<bool> _applyAcceptedEffects(
     ActivePlanningReadContext context,
     PlanningMutationRecord accepted, {
     required bool remoteResponse,
@@ -487,8 +511,10 @@ class PlanningMutationSyncController {
         accepted: accepted,
         remoteResponse: remoteResponse,
       );
+      return true;
     } on Exception {
       // Intentionally swallowed -- see the doc comment.
+      return false;
     }
   }
 
