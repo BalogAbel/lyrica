@@ -1022,6 +1022,16 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       userId: userId,
       organizationId: organizationId,
     );
+    // Spec D9: retrying a plan delete is the explicit remove -- it targets
+    // the plan as the projection now shows it, content version included.
+    final rebasedBaseContentVersion =
+        existing.kind == PlanningMutationKind.planDelete
+        ? (await _localStore.readPlanDetail(
+            userId: userId,
+            organizationId: organizationId,
+            planId: existing.aggregateId,
+          ))?.plan.contentVersion
+        : null;
     final changed = await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
@@ -1033,6 +1043,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         clearErrorCode: true,
         clearErrorMessage: true,
         baseVersion: rebasedBaseVersion ?? existing.baseVersion,
+        baseContentVersion:
+            rebasedBaseContentVersion ?? existing.baseContentVersion,
         updatedAt: DateTime.now().toUtc(),
       ),
     );
