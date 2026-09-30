@@ -6791,8 +6791,24 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     (`Warm-Up` holds two items) wherever a non-empty count is needed, and the
     plan dialog test on the editable fixture expects `songCount: 0`.
 
-  Re-verification: pending (PLACEHOLDER -- the controller replaces this line
-  with the same reviewer's result)
+  Re-verification (same reviewer, at c016c2e): F1–F4 closed; the probe tests
+  now fail as intended. Two new minor findings, fixed in 811595c:
+  - **N1: repeated false refusals during a sync batch.** D7 rule 1a advances
+    the projection's content version after each of the client's own accepted
+    child writes, but `planningPlanDetailProvider` re-reads only at the
+    batch-end refresh, so every delete was refused and the re-opened dialog
+    showed the same stale snapshot. A refused delete now invalidates the
+    detail, list, and mutation-entry providers; the one-shot refusal stays.
+  - **N2: the refusal swallowed unrelated state errors.**
+    `_readPlanDetailForDelete` turned every `StateError` (including "Active
+    planning context is unavailable.") into the refusal. The read repository
+    now throws `PlanningPlanNotFoundError extends StateError` for a missing
+    plan, and only that is caught.
+  - Accepted (N3, existing pattern): a store or database error from the
+    post-delete sync propagates after the delete is recorded, with no
+    navigation, as for every other planning write.
+
+  Full suite after the fixes: +1899 ~18.
 - [ ] **Step 3:** Push, then open the PR to `main` with a body that:
   - summarizes D1–D12
   - lists the latent param bug fixed in Task 2.3

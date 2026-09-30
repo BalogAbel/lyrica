@@ -46,6 +46,7 @@ Commits, in landed order (spec, plan, and docs-only commits left out):
 - `3a2eb43` fix(planning): refuse a delete whose target changed after its confirmation
 - `25b8193` fix(planning): leave a deleted plan's screen and guard both delete dialogs
 - `c016c2e` fix(planning): name the session in the session delete discard line
+- `811595c` fix(planning): re-read a refused delete target and refuse only a missing plan
 
 The backend landed first (migration
 `supabase/migrations/202609290001_plan_content_version_and_cascade_delete.sql`,
@@ -162,6 +163,25 @@ states the resulting rules.
   the write (I7 broken until its next refresh). An offline plan delete there
   under-counts in the dialog; nothing foreign is absorbed. See
   `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`.
+
+The same reviewer re-verified the fixes: F1-F4 closed, plus two new minor
+findings, both fixed in `811595c`.
+
+- **N1.** D7 rule 1a advances the projection's content version after each of
+  the client's own accepted child writes, but the detail provider re-reads only
+  at the batch-end refresh. During a long sync batch every plan delete was
+  refused, and re-opening the dialog showed the same stale snapshot. A refused
+  delete now invalidates the detail, list, and mutation-entry providers, so the
+  re-opened dialog shows the current target. The one-shot refusal stays: the
+  user reviews the current counts before deleting.
+- **N2.** The delete read converted every `StateError` into the refusal,
+  including "Active planning context is unavailable." The read repository now
+  throws `PlanningPlanNotFoundError` (a `StateError` subclass) for a missing
+  plan, and only that is a refusal.
+
+Accepted: a store or database error thrown by the post-delete sync propagates
+after the delete is recorded, without navigation, like every other planning
+write.
 
 ### Deferred
 
