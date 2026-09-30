@@ -127,6 +127,11 @@ the projection's `contentVersion` behind its children, which gives a false
 conflict (safe). It can never leave `contentVersion` ahead of its children,
 which would give a false acceptance.
 
+Known limit: the pull's top-level reads are unpaged. PostgREST's `max_rows`
+cap (1000) could truncate the session list of a plan with more than 1000
+sessions, which would put `contentVersion` ahead of the projected sessions.
+See `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`.
+
 ## Decisions
 
 ### D1 — Backend: `plans.content_version`
@@ -259,8 +264,11 @@ Signature:
   - `fetchPlanningSyncPayload` keeps reading all plan rows before any
     session or item row, as it does today. This order is now a correctness
     requirement (I7), pinned by a test.
-  - A null `contentVersion`, whether from a pre-migration row or an older
-    backend, sends `p_base_content_version = null`. The backend rejects
+  - The plan selects name `content_version`, so this client needs a backend
+    with migration `202609290001`. Against an older backend the whole
+    refresh fails; it does not yield a null value. Deploy the backend first.
+  - A null `contentVersion` from a pre-migration row sends
+    `p_base_content_version = null`. The backend rejects
     that as a conflict, which is fail-safe. The next refresh fills the
     value, and a retry rebases onto it (D9).
 - **`upsertSyncedPlan`.** A `planCreate` reconcile inserts the row with the

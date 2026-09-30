@@ -3229,6 +3229,47 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 > whose parameter set now differs from its SQL signature in
 > `202609290001`/earlier migrations."
 
+**Gate 2 outcome (2026-09-30).**
+
+- RPC parameters: every kind's parameter set matches the latest SQL
+  signature. No function has a leftover overload.
+- `replaceActiveProjection`, `upsertSyncedPlan`,
+  `advanceSyncedPlanContentVersion`, and the pull order have no I7 path.
+- The reviewer ruled out several cases:
+  - old-snapshot rows sharing a primary key (every delete removes all
+    snapshots together with the owner);
+  - an advance racing a refresh;
+  - a pre-7 null row;
+  - a stale payload landing after an advance (it can only lower the value).
+
+Found, not fixed in code:
+- **Unpaged pull reads (minor).** PostgREST's `max_rows` cap (1000)
+  truncates top-level reads silently. A plan with more than 1000 sessions
+  would get its full `content_version` next to a truncated session list,
+  which breaks I7.
+  - Deferred as `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`,
+    because it depends on data volume.
+  - The spec (I7) and the pull's I7 comment name the limit.
+- **New-row value comes from the caller (minor, latent).**
+  `upsertSyncedPlan` stores the passed `contentVersion` for a brand-new row
+  whatever the mutation kind. Today no caller passes a `planEdit` response
+  value.
+  - The interface doc now states the caller rule.
+  - Task 3.1 gains a reconciler test that pins `null` for a `planEdit` of a
+    plan absent from the projection.
+- **Deploy order (spec correction).** Spec D4 said an older backend yields a
+  null `content_version`. In fact, selecting the column against a backend
+  without `202609290001` fails the whole refresh.
+  - D4 now says to deploy the backend first.
+  - Task 4.4 Step 3 already puts the deploy order in the PR body. It is a
+    hard requirement, not a preference: a client deployed first fails
+    every planning refresh.
+
+Accepted as-is:
+- `_mapRow` keeps a record's `acceptedPlanContentVersion` when the response
+  has none. The field is never persisted, so records read from the store
+  always carry `null`, and there is no stale carry-over.
+
 ---
 
 ## Phase 3 — Delete semantics
@@ -3378,6 +3419,12 @@ fake, assert `deleteSyncedPlan` was called with `planId: 'plan-1'`.
 Add a second test: reconciling a `planCreate` record with
 `acceptedPlanContentVersion: 1` for a plan not in the projection yields
 `contentVersion == 1`.
+
+Add a third test (review gate 2): reconciling a `planEdit` record with
+`acceptedPlanContentVersion: 9` for a plan not in the projection yields
+`contentVersion == null`. A `planEdit` response's `content_version` can
+include foreign writes, and `upsertSyncedPlan` takes the passed value for a
+brand-new row (I7).
 
 `unified_sync_overview_test.dart`: use the file's existing `_compute`
 helper, inside `group('computeUnifiedSyncOverview', ...)`.

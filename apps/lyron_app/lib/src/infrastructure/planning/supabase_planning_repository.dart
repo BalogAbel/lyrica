@@ -208,7 +208,9 @@ class SupabasePlanningRepository
     // I7 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md): every
     // plan row, including content_version, is read before any session row,
     // so a race can only leave contentVersion behind its children, never
-    // ahead.
+    // ahead. Known limit: these top-level reads are unpaged, so PostgREST's
+    // max_rows cap could truncate a plan's session list; see
+    // docs/deferred/2026-09-30-planning-pull-unpaged-reads.md.
     for (final plan in plans) {
       final sessionRows = await _listSessionRows(plan.id);
       final sessions =

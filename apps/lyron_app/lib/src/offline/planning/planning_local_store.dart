@@ -140,6 +140,10 @@ abstract interface class PlanningLocalStore {
     bool Function()? shouldContinue,
   });
 
+  /// Keeps an existing row's `contentVersion` and takes
+  /// `plan.contentVersion` only for a brand-new row (spec D4, I7). Callers
+  /// therefore pass a non-null value only from a `planCreate` response: a
+  /// `planEdit` response's `content_version` can include foreign writes.
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,
