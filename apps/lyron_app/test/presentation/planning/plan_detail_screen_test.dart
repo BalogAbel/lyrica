@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
@@ -32,11 +33,13 @@ import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/presentation/planning/plan_detail_screen.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/planning/planning_routes.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/scheduled_for_field.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_screen.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
+import 'package:lyron_app/src/router/slug_route_resolvers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 void main() {
@@ -52,37 +55,42 @@ void main() {
     StateProvider<ActivePlanningReadContext?>? mutablePlanningContextProvider,
     CatalogSnapshotState? catalogSnapshotState,
     CapabilityResolver? capabilityResolver,
+    GoRouter? router,
+    List<Override> extraOverrides = const [],
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
 
-    final router = GoRouter(
-      initialLocation: AppRoutes.planDetail.path.replaceFirst(
-        ':planSlug',
-        'team-rehearsal',
-      ),
-      routes: [
-        GoRoute(
-          path: AppRoutes.planDetail.path,
-          builder: (context, state) => const PlanDetailScreen(planId: 'plan-1'),
-        ),
-        GoRoute(
-          path: AppRoutes.planList.path,
-          builder: (context, state) => const Text('plan-list-placeholder'),
-        ),
-        GoRoute(
-          path: AppRoutes.planSessionSongReader.path,
-          builder: (context, state) => SongReaderScreen(
-            songId: 'song-1',
-            planId: 'plan-1',
-            sessionId: 'session-1',
-            sessionItemId: 'item-1',
-            warmPlanDetail: state.extra is PlanDetail
-                ? state.extra! as PlanDetail
-                : null,
+    final appRouter =
+        router ??
+        GoRouter(
+          initialLocation: AppRoutes.planDetail.path.replaceFirst(
+            ':planSlug',
+            'team-rehearsal',
           ),
-        ),
-      ],
-    );
+          routes: [
+            GoRoute(
+              path: AppRoutes.planDetail.path,
+              builder: (context, state) =>
+                  const PlanDetailScreen(planId: 'plan-1'),
+            ),
+            GoRoute(
+              path: AppRoutes.planList.path,
+              builder: (context, state) => const Text('plan-list-placeholder'),
+            ),
+            GoRoute(
+              path: AppRoutes.planSessionSongReader.path,
+              builder: (context, state) => SongReaderScreen(
+                songId: 'song-1',
+                planId: 'plan-1',
+                sessionId: 'session-1',
+                sessionItemId: 'item-1',
+                warmPlanDetail: state.extra is PlanDetail
+                    ? state.extra! as PlanDetail
+                    : null,
+              ),
+            ),
+          ],
+        );
 
     return ProviderScope(
       overrides: [
@@ -167,8 +175,9 @@ void main() {
                 ),
               ),
         ),
+        ...extraOverrides,
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(routerConfig: appRouter),
     );
   }
 
@@ -3250,6 +3259,239 @@ void main() {
       expect(find.text('plan-list-placeholder'), findsOneWidget);
     });
   });
+
+  group('a plan screen whose plan the delete hid (slug route resolver)', () {
+    late bool hidden;
+    late GoRouter router;
+    late ProviderContainer container;
+
+    // What the local read does once the plan delete is recorded, and again
+    // when the sync refresh lands: the plan is gone from the list and the
+    // detail, so the slug resolver swaps the screen for a not-found
+    // scaffold at the very same location.
+    void refreshPlanningData({required bool planHidden}) {
+      hidden = planHidden;
+      container.read(planningDataRevisionProvider.notifier).state += 1;
+    }
+
+    Future<void> pumpPlanViaResolver(
+      WidgetTester tester,
+      PlanningWriteService writeService,
+    ) async {
+      hidden = false;
+      router = GoRouter(
+        initialLocation: PlanningRoutes.planListPath,
+        routes: [
+          GoRoute(
+            path: PlanningRoutes.planListPath,
+            builder: (context, state) => const Text('plan-list-placeholder'),
+          ),
+          GoRoute(
+            path: PlanningRoutes.planDetailPath,
+            builder: (context, state) => PlanSlugRouteResolver(
+              planSlug: state.pathParameters['planSlug']!,
+            ),
+          ),
+          GoRoute(
+            path: '/elsewhere',
+            builder: (context, state) => const Text('elsewhere-placeholder'),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        buildApp(
+          router: router,
+          writeService: writeService,
+          planDetailValue: () => hidden
+              ? Future<PlanDetail>.error(StateError('plan not found'))
+              : Future.value(_editablePlanDetailFixture()),
+          extraOverrides: [
+            planningPlanListProvider.overrideWith((ref) {
+              ref.watch(planningDataRevisionProvider);
+              return Future.value(
+                hidden ? <PlanSummary>[] : [_editablePlanDetailFixture().plan],
+              );
+            }),
+          ],
+        ),
+      );
+      container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+      );
+      await tester.pumpAndSettle();
+      router.push(PlanningRoutes.planDetailLocation('team-rehearsal'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PlanDetailScreen), findsOneWidget);
+    }
+
+    Future<void> confirmPlanDelete(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an online delete lands the user on the plan list instead of '
+        'a dead not-found screen', (tester) async {
+      final writeService = _ScriptedDeleteWriteService(
+        onDeletePlan: () async {
+          refreshPlanningData(planHidden: true); // recordPlanDelete
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          refreshPlanningData(planHidden: true); // sync refresh lands
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        },
+      );
+      await pumpPlanViaResolver(tester, writeService);
+
+      await confirmPlanDelete(tester);
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+
+      expect(writeService.deletedPlanDraft?.planId, 'plan-1');
+      expect(find.text('plan-list-placeholder'), findsOneWidget);
+      expect(find.text(AppStrings.routeNotFoundMessage), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a user who navigated elsewhere while the delete ran is not '
+        'pulled back to the plan list', (tester) async {
+      final writeService = _ScriptedDeleteWriteService(
+        onDeletePlan: () async {
+          refreshPlanningData(planHidden: true);
+          router.go('/elsewhere');
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        },
+      );
+      await pumpPlanViaResolver(tester, writeService);
+
+      await confirmPlanDelete(tester);
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('elsewhere-placeholder'), findsOneWidget);
+      expect(find.text('plan-list-placeholder'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a plan screen replaced while its delete dialog is open drops '
+        'the delete quietly', (tester) async {
+      final writeService = _FakePlanningWriteService();
+      await pumpPlanViaResolver(tester, writeService);
+
+      await confirmPlanDelete(tester);
+      refreshPlanningData(planHidden: true);
+      await tester.pumpAndSettle();
+      // The screen is gone, the dialog is still up.
+      expect(find.byType(PlanDetailScreen), findsNothing);
+      expect(find.text(AppStrings.planDeleteConfirmAction), findsOneWidget);
+
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(writeService.deletedPlanDraft, isNull);
+    });
+  });
+
+  group('a delete refused because the planning context changed', () {
+    testWidgets('a context mismatch from the plan delete is swallowed', (
+      tester,
+    ) async {
+      final writeService = _ScriptedDeleteWriteService(
+        onDeletePlan: () async =>
+            throw const PlanningWriteContextMismatchException(),
+      );
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.text('plan-list-placeholder'), findsNothing);
+      expect(find.byType(PlanDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('a context mismatch from the session delete is swallowed', (
+      tester,
+    ) async {
+      final writeService = _ScriptedDeleteWriteService(
+        onDeleteSession: () async =>
+            throw const PlanningWriteContextMismatchException(),
+      );
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('switching the active context while the session delete '
+        'dialog is open cancels the delete', (tester) async {
+      final planningContextProvider = StateProvider<ActivePlanningReadContext?>(
+        (ref) => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      final writeService = _FakePlanningWriteService();
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: _editablePlanDetailFixture(),
+          writeService: writeService,
+          mutablePlanningContextProvider: planningContextProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      );
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+      );
+      await tester.pumpAndSettle();
+      container
+          .read(planningContextProvider.notifier)
+          .state = const ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-2',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(writeService.deletedSessionDraft, isNull);
+    });
+  });
 }
 
 PlanDetail _editablePlanDetailFixture() {
@@ -3610,6 +3852,33 @@ class _FakePlanningWriteService extends PlanningWriteService {
     }
     reorderedSessionItemDraft = draft;
     reorderedSessionItemDrafts.add(draft);
+  }
+}
+
+/// Runs a scripted body in place of the delete write, to model a slow online
+/// delete or a delete the service refuses.
+class _ScriptedDeleteWriteService extends _FakePlanningWriteService {
+  _ScriptedDeleteWriteService({this.onDeletePlan, this.onDeleteSession});
+
+  final Future<void> Function()? onDeletePlan;
+  final Future<void> Function()? onDeleteSession;
+
+  @override
+  Future<void> deletePlan({
+    required PlanningWriteContext context,
+    required PlanDeleteDraft draft,
+  }) async {
+    deletedPlanDraft = draft;
+    await onDeletePlan?.call();
+  }
+
+  @override
+  Future<void> deleteSession({
+    required PlanningWriteContext context,
+    required SessionDeleteDraft draft,
+  }) async {
+    deletedSessionDraft = draft;
+    await onDeleteSession?.call();
   }
 }
 

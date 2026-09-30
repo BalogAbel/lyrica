@@ -366,13 +366,23 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       return;
     }
 
+    // The dialog can outlive this screen: a refresh landing while it was open
+    // may have replaced the screen, and a disposed ref must not be read.
+    if (!context.mounted) return;
     final currentContext = ref.read(activePlanningContextProvider);
     if (currentContext == null ||
         !samePlanningContext(activeContext, currentContext)) {
       return;
     }
-    if (!context.mounted) return;
+
+    // An online delete awaits the sync, and the sync's refresh makes the
+    // plan vanish from the list: the slug route resolver then swaps this
+    // screen for a not-found scaffold at the SAME location, unmounting it
+    // before the write returns. Capture what must outlive the screen.
+    final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final location = router.routerDelegate.currentConfiguration.uri.toString();
     try {
       await ref
           .read(planningWriteServiceProvider)
@@ -395,16 +405,21 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
         ),
       );
       return;
+    } on PlanningWriteContextMismatchException {
+      // The organization or user switched mid-flight; nothing to report.
+      return;
     }
 
-    if (!context.mounted) return;
     // Plan-set change (ARCH-2): aggregate signal, like plan create/edit.
-    // Navigate in the same frame so this screen never rebuilds against the
-    // now-hidden plan.
-    ref.read(planningDataRevisionProvider.notifier).state += 1;
-    ref.invalidate(planningMutationEntriesProvider);
-    ref.invalidate(planningPlanListProvider);
-    context.go(PlanningRoutes.planListPath);
+    // Through the captured container: this screen may already be gone.
+    container.read(planningDataRevisionProvider.notifier).state += 1;
+    container.invalidate(planningMutationEntriesProvider);
+    container.invalidate(planningPlanListProvider);
+    // Leave the deleted plan -- unless the user already went somewhere else
+    // while the delete ran (the not-found replacement keeps the location).
+    if (router.routerDelegate.currentConfiguration.uri.toString() == location) {
+      router.go(PlanningRoutes.planListPath);
+    }
   }
 
   Future<void> _createSession(BuildContext context, WidgetRef ref) async {

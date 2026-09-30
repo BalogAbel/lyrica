@@ -549,15 +549,23 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
       return;
     }
 
+    // The dialog can outlive this card: a refresh landing while it was open
+    // may have removed the session, and a disposed ref must not be read.
     if (!context.mounted) return;
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        !samePlanningContext(activeContext, currentContext)) {
+      return;
+    }
+
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref
           .read(planningWriteServiceProvider)
           .deleteSession(
             context: PlanningWriteContext(
-              userId: activeContext.userId,
-              organizationId: activeContext.organizationId,
+              userId: currentContext.userId,
+              organizationId: currentContext.organizationId,
             ),
             // The snapshot the dialog above rendered (spec D11).
             draft: SessionDeleteDraft(
@@ -572,6 +580,9 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
           content: Text(AppStrings.sessionDeleteTargetChangedMessage),
         ),
       );
+      return;
+    } on PlanningWriteContextMismatchException {
+      // The organization or user switched mid-flight; nothing to report.
       return;
     }
 
