@@ -203,10 +203,13 @@ def capture_error(sql: str, user_id: str | None = None) -> tuple[str, str, str]:
 
 # ---------------------------------------------------------------------------
 # Plan content version + cascading delete contract
-# docs/specs/2026-09-29-plan-delete-and-session-cascade.md, tests B1-B7.
+# docs/specs/2026-09-29-plan-delete-and-session-cascade.md, tests B1-B8.
 # Runs after planning-write-contract-test.sh on the same database, so every
 # id here uses its own c1/c2 prefix.
 # ---------------------------------------------------------------------------
+
+import threading
+import time
 
 seed_song_id = "33333333-3333-3333-3333-333333333333"
 plan_p = "c1000000-0000-0000-0000-000000000001"
@@ -257,6 +260,116 @@ def plan_content_version(plan_id: str) -> int:
 
 def row_count(sql: str) -> int:
     return int(run_psql(sql))
+
+
+def race(tag: str, holder_sql: str, waiter_sql: str) -> tuple[str, str, str]:
+    """Run holder_sql as the demo user inside an open transaction (it takes the
+    plan row lock), start waiter_sql (a `perform public.x(...);` statement) via
+    capture_error in a thread, wait until the waiter blocks on a lock, commit
+    the holder, and return the waiter's (sqlstate, message, detail)."""
+    holder = subprocess.Popen(
+        [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "postgres",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-X",
+            "-qAt",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    result: list = []
+
+    def run_waiter() -> None:
+        try:
+            result.append(
+                capture_error(
+                    waiter_sql + f"\n-- race-waiter-{tag}", user_id=demo_user_id
+                )
+            )
+        except BaseException as error:  # SystemExit included
+            result.append(error)
+
+    waiter = threading.Thread(target=run_waiter)
+    try:
+        assert holder.stdin is not None
+        for statement in (
+            "begin;",
+            f"select set_config('request.jwt.claim.sub', {sql_quote(demo_user_id)}, true);",
+            "select set_config('request.jwt.claim.role', 'authenticated', true);",
+            holder_sql,
+            f"select 'race-holder-{tag}';",
+        ):
+            holder.stdin.write(statement + "\n")
+        holder.stdin.flush()
+
+        deadline = time.monotonic() + 30
+        while True:
+            if holder.poll() is not None:
+                raise SystemExit(
+                    f"race {tag}: holder exited early:\n{holder.stderr.read()}"
+                )
+            ready = run_psql(
+                "select count(*) from pg_stat_activity "
+                "where state = 'idle in transaction' "
+                f"and query like '%race-holder-{tag}%' "
+                "and pid <> pg_backend_pid();"
+            )
+            if ready == "1":
+                break
+            if time.monotonic() > deadline:
+                raise SystemExit(f"race {tag}: holder never became ready")
+            time.sleep(0.1)
+
+        waiter.start()
+
+        deadline = time.monotonic() + 30
+        while True:
+            if not waiter.is_alive():
+                raise SystemExit(
+                    f"race {tag}: waiter finished without blocking: {result!r}"
+                )
+            blocked = run_psql(
+                "select count(*) from pg_stat_activity "
+                "where wait_event_type = 'Lock' "
+                f"and query like '%race-waiter-{tag}%' "
+                "and pid <> pg_backend_pid();"
+            )
+            if blocked == "1":
+                break
+            if time.monotonic() > deadline:
+                raise SystemExit(f"race {tag}: waiter never blocked on a lock")
+            time.sleep(0.1)
+
+        holder.stdin.write("commit;\n")
+        holder.stdin.close()
+        holder.wait(timeout=30)
+        if holder.returncode != 0:
+            raise SystemExit(
+                f"race {tag}: holder failed:\n{holder.stderr.read()}"
+            )
+        waiter.join(timeout=30)
+        if waiter.is_alive():
+            raise SystemExit(f"race {tag}: waiter did not finish after commit")
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.wait()
+
+    outcome = result[0]
+    if isinstance(outcome, BaseException):
+        raise outcome
+    return outcome
 
 
 # --- B2: every child RPC bumps plans.content_version by exactly one -------
@@ -477,6 +590,46 @@ assert row_count(
     f"select count(*) from public.plans where id = {sql_quote(plan_p)}::uuid;"
 ) == 1
 assert plan_content_version(plan_p) == 10
+
+# B3 (cont.): a foreign create_session makes p_base_content_version stale.
+plan_r = "c3000000-0000-0000-0000-000000000001"
+session_r = "c3000000-0000-0000-0000-00000000000a"
+
+created_r = call(
+    "create_plan",
+    f"""
+    p_organization_id => {org},
+    p_plan_id => {sql_quote(plan_r)}::uuid,
+    p_slug => 'cascade-foreign-write',
+    p_name => 'Cascade Foreign Write',
+    p_description => null,
+    p_scheduled_for => null
+    """,
+)
+assert created_r["version"] == 1, created_r
+assert created_r["content_version"] == 1, created_r
+call(
+    "create_session",
+    f"""
+    p_organization_id => {org},
+    p_plan_id => {sql_quote(plan_r)}::uuid,
+    p_session_id => {sql_quote(session_r)}::uuid,
+    p_slug => 'cascade-r',
+    p_name => 'Cascade R'
+    """,
+)
+assert call_error(
+    "delete_plan",
+    f"""
+    p_organization_id => {org},
+    p_plan_id => {sql_quote(plan_r)}::uuid,
+    p_base_version => 1,
+    p_base_content_version => 1
+    """,
+) == ("P0001", "plan_version_conflict")
+assert row_count(
+    f"select count(*) from public.plans where id = {sql_quote(plan_r)}::uuid;"
+) == 1
 
 # --- B4: authorization -----------------------------------------------------
 
@@ -711,6 +864,212 @@ assert row_count(
     f"where id = {sql_quote(seed_song_id)}::uuid;"
 ) == 1
 assert call_error("delete_plan", delete_p_args) == ("P0002", "plan_not_found")
+
+# --- B8: races under the plan lock yield the sequential error ------------
+# Every function reads its session or plan before it waits on the plan lock
+# (I5). When another write commits during that wait, the pre-lock read is
+# stale, and the outcome must still be the error a sequential call would give.
+
+
+def setup_race_plan(n: int, with_item: bool = False) -> tuple[str, str, str]:
+    plan_id = f"c4000000-0000-0000-0000-0000000000{n}1"
+    session_id = f"c4000000-0000-0000-0000-0000000000{n}2"
+    item_id = f"c4000000-0000-0000-0000-0000000000{n}3"
+
+    created = call(
+        "create_plan",
+        f"""
+        p_organization_id => {org},
+        p_plan_id => {sql_quote(plan_id)}::uuid,
+        p_slug => 'race-r{n}',
+        p_name => 'Race R{n}',
+        p_description => null,
+        p_scheduled_for => null
+        """,
+    )
+    assert created["version"] == 1, created
+    assert created["content_version"] == 1, created
+
+    created_session = call(
+        "create_session",
+        f"""
+        p_organization_id => {org},
+        p_plan_id => {sql_quote(plan_id)}::uuid,
+        p_session_id => {sql_quote(session_id)}::uuid,
+        p_slug => 'race-r{n}-s',
+        p_name => 'Race R{n} S'
+        """,
+    )
+    assert created_session["version"] == 1, created_session
+    assert created_session["plan_content_version"] == 2, created_session
+
+    if with_item:
+        added = call(
+            "create_song_session_item",
+            f"""
+            p_organization_id => {org},
+            p_session_id => {sql_quote(session_id)}::uuid,
+            p_session_item_id => {sql_quote(item_id)}::uuid,
+            p_song_id => {sql_quote(seed_song_id)}::uuid,
+            p_base_version => 1,
+            p_position => null
+            """,
+        )
+        assert added["version"] == 2, added
+        assert added["plan_content_version"] == 3, added
+
+    return plan_id, session_id, item_id
+
+
+def session_version(session_id: str) -> int:
+    return int(
+        run_psql(
+            "select version from public.sessions "
+            f"where id = {sql_quote(session_id)}::uuid;"
+        )
+    )
+
+
+def create_item_args(session_id: str, item_id: str, base_version: int) -> str:
+    return f"""
+        p_organization_id => {org},
+        p_session_id => {sql_quote(session_id)}::uuid,
+        p_session_item_id => {sql_quote(item_id)}::uuid,
+        p_song_id => {sql_quote(seed_song_id)}::uuid,
+        p_base_version => {base_version},
+        p_position => null
+    """
+
+
+# R1: a rename commits while delete_empty_session waits -> version conflict.
+plan_1, session_1, item_1 = setup_race_plan(1)
+outcome = race(
+    "r1",
+    f"""select public.rename_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_1)}::uuid,
+      p_base_version => 1,
+      p_name => 'Race renamed'
+    );""",
+    f"""perform public.delete_empty_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_1)}::uuid,
+      p_base_version => 1
+    );""",
+)
+assert outcome == (
+    "P0001",
+    "session_version_conflict",
+    "expected base_version 1 but found current version 2",
+), outcome
+assert session_version(session_1) == 2
+assert plan_content_version(plan_1) == 3
+
+# R2: an item create commits while delete_empty_session waits -> version
+# conflict, not session_delete_blocked_not_empty.
+plan_2, session_2, item_2 = setup_race_plan(2)
+outcome = race(
+    "r2",
+    f"select public.create_song_session_item({create_item_args(session_2, item_2, 1)});",
+    f"""perform public.delete_empty_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_2)}::uuid,
+      p_base_version => 1
+    );""",
+)
+assert outcome == (
+    "P0001",
+    "session_version_conflict",
+    "expected base_version 1 but found current version 2",
+), outcome
+assert session_version(session_2) == 2
+assert plan_content_version(plan_2) == 3
+
+# R3: the session is deleted while rename_session waits -> session_not_found.
+plan_3, session_3, item_3 = setup_race_plan(3)
+outcome = race(
+    "r3",
+    f"""select public.delete_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_3)}::uuid,
+      p_base_version => 1
+    );""",
+    f"""perform public.rename_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_3)}::uuid,
+      p_base_version => 1,
+      p_name => 'Too late'
+    );""",
+)
+assert outcome[:2] == ("P0002", "session_not_found"), outcome
+
+# R4: the session is deleted while delete_session_item waits.
+plan_4, session_4, item_4 = setup_race_plan(4, with_item=True)
+outcome = race(
+    "r4",
+    f"""select public.delete_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_4)}::uuid,
+      p_base_version => 2
+    );""",
+    f"""perform public.delete_session_item(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_4)}::uuid,
+      p_session_item_id => {sql_quote(item_4)}::uuid,
+      p_base_version => 2
+    );""",
+)
+assert outcome[:2] == ("P0002", "session_not_found"), outcome
+
+# R5: the plan is deleted while reorder_plan_sessions waits -> plan_not_found.
+plan_5, session_5, item_5 = setup_race_plan(5)
+outcome = race(
+    "r5",
+    f"""select public.delete_plan(
+      p_organization_id => {org},
+      p_plan_id => {sql_quote(plan_5)}::uuid,
+      p_base_version => 1,
+      p_base_content_version => 2
+    );""",
+    f"""perform public.reorder_plan_sessions(
+      p_organization_id => {org},
+      p_plan_id => {sql_quote(plan_5)}::uuid,
+      p_base_version => 1,
+      p_session_ids => array[{sql_quote(session_5)}::uuid]
+    );""",
+)
+assert outcome[:2] == ("P0002", "plan_not_found"), outcome
+
+# R6: the session is deleted while create_song_session_item waits.
+plan_6, session_6, item_6 = setup_race_plan(6)
+outcome = race(
+    "r6",
+    f"""select public.delete_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_6)}::uuid,
+      p_base_version => 1
+    );""",
+    f"perform public.create_song_session_item({create_item_args(session_6, item_6, 1)});",
+)
+assert outcome[:2] == ("P0002", "session_not_found"), outcome
+
+# R7: the session is deleted while reorder_session_items waits.
+plan_7, session_7, item_7 = setup_race_plan(7, with_item=True)
+outcome = race(
+    "r7",
+    f"""select public.delete_session(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_7)}::uuid,
+      p_base_version => 2
+    );""",
+    f"""perform public.reorder_session_items(
+      p_organization_id => {org},
+      p_session_id => {sql_quote(session_7)}::uuid,
+      p_base_version => 2,
+      p_session_item_ids => array[{sql_quote(item_7)}::uuid]
+    );""",
+)
+assert outcome[:2] == ("P0002", "session_not_found"), outcome
 
 # --- B7: hardening of every new or recreated function ---------------------
 
