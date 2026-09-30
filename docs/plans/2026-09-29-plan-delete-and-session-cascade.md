@@ -6079,6 +6079,65 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 > leaves a mutation row stranded (never sent, never visible) or a child row
 > of a deleted plan alive after acceptance."
 
+**Gate 3 outcome (2026-09-30).** Phase 3 landed as 1656755..333818d (Tasks
+3.1–3.9). The reviewer disproved the claim, proving each finding with a
+throwaway test. Fixed in 2bbfc82, d3b0b78, e02c16f, f83e6fe, and fbc343c.
+A re-verification by the same reviewer confirmed the fixes and found no new
+path. The spec's D5, D8, D9, and C7 now state the resulting rules.
+
+- **F1 (critical): a retry silently absorbed foreign writes.**
+  `retryMutation` rebased a `planDelete` onto the projection in any status.
+  A connectivity-failed delete retried after a refresh therefore deleted
+  content the user never saw, because the plan stays hidden (D10). A group
+  keep-mine did the same: retrying an earlier row ran a sync, the pending
+  delete conflicted inside it, and the loop then retried that unseen
+  conflict.
+  - Fix: a cascade delete rebases only when its status is `conflict`.
+  - Group retries carry the status the popup showed
+    (`UnifiedSyncPlanMutationRef.syncStatus` → `retryMutation(expectedStatus:)`)
+    and skip a row whose status has changed since.
+- **F2 (major): a create tombstone stranded by an interrupted run.** The
+  in-slice part is fixed: a delete over a stranded plan-create tombstone,
+  once the plan is back in the projection, records a real delete from the
+  projection bases. Before, it was a permanent no-op.
+  - Retry now never touches `sending`, `accepted`, or `cancelling` rows
+    (re-verification N4). Retrying a tombstone would have re-created the
+    deleted plan.
+  - The general family is still open and needs the user's decision:
+    tombstones never resolved after an interrupted run, pre-existing for
+    sessions and items. See
+    `docs/deferred/2026-09-30-stranded-create-tombstones.md`. The
+    reviewer's run-start conversion with base `(1, 1)` would break STOP
+    condition 5.
+- **F3 (major): a conflicted `sessionDelete` never rebased on retry.**
+  `_currentBaseVersionFor` keyed on `sessionId`, which session rows do not
+  set.
+  - Fixed for `sessionDelete`, conflict-only, with popup copy that says the
+    session changed.
+  - The same bug for `sessionRename` predates the slice and is deferred:
+    `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`.
+- **F4 (minor): branch (c) assumed a content version of 1.**
+  `recordPlanCreate` now stamps 1, and branch (c) inherits the create row's
+  value. A pre-schema-7 row fails safe as a conflict.
+- **F5 (minor): a failed purge left child rows behind.** When the purge at
+  batch end fails, the delete stays `accepted` and the next run purges again
+  before clearing it.
+- **F6 (minor): a repeated delete reset an in-flight delete.** A delete
+  over an in-flight `planDelete` is now a no-op.
+
+Accepted:
+- A retry skipped because the row's status changed is silent. No snackbar
+  is shown, and the row stays visible in its new state.
+- A session delete repeated over an in-flight session delete still
+  overwrites it, as it did before this slice. The UI hides the session, so
+  only a race reaches it.
+
+For Task 4.3: ADR-038 and `docs/architecture/state-machines.md` must state
+the conflict-only rebase, the shown-status retry guard, and the rule that
+in-flight rows are never retried.
+
+Full suite after the fixes: +1870 ~18.
+
 ---
 
 ## Phase 4 — UI and documentation

@@ -5,7 +5,9 @@
 **Branch:** `feat/plan-delete-session-cascade`
 **ADR:** ADR-038 (to be written with the implementation; see D12)
 **Deferred siblings:** `docs/deferred/2026-09-29-session-item-move.md`,
-`docs/deferred/2026-09-29-plan-duplicate.md`
+`docs/deferred/2026-09-29-plan-duplicate.md`,
+`docs/deferred/2026-09-30-stranded-create-tombstones.md`,
+`docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`
 
 ## Problem
 
@@ -324,14 +326,33 @@ branches on the existing `plan` row for P:
     cancellable create in `PlanningMutationSyncController._run`.
   - `resolveCancelledCreate` maps `planCreate` to `planDelete`, with:
     - `baseVersion = acceptedBaseVersion` (response `version`)
-    - `baseContentVersion = acceptedPlanContentVersion ?? 1`
+    - `baseContentVersion = 1`, a new plan's content version
+      (`resolveCancelledCreate` keeps its signature)
   - A failed create discards the tombstone, exactly as today. Because the
     plan then never existed on the backend, the store also deletes every
     remaining child row of P in the same transaction.
+  - **A delete over an existing `cancelling` tombstone** (review gate 3
+    F2):
+    - With no projection bases in the draft, it changes nothing. The
+      tombstone is live, and its create's own outcome resolves it.
+    - With projection bases, the plan is in the projection. The tombstone
+      is excluded from merged reads, so the create must have committed and
+      the tombstone was stranded by an interrupted sync run. The delete is
+      recorded as in (d), from the draft's bases, with a fresh `orderKey`.
+    - If that races a still-live create, the create's accepted write is
+      revision-gated out, and `resolveCancelledCreate` no-ops on the
+      non-`cancelling` row.
 - **(c) `planCreate` `accepted`** (accepted but not yet cleared). Convert to
   a real pending `planDelete` with:
   - `baseVersion = existing.baseVersion ?? draft.baseVersion`
-  - `baseContentVersion = draft.baseContentVersion ?? 1`
+  - `baseContentVersion = draft.baseContentVersion ??
+    existing.baseContentVersion`
+    - `recordPlanCreate` stamps 1 on the create row, a new plan's content
+      version. The field is never sent with a create.
+    - A create row written before schema 7 holds `null`. The delete then
+      sends `null`, and the backend rejects it as a conflict (fail-safe,
+      review gate 3 F4). Assuming 1 there could fold other members'
+      pre-migration sessions into the base.
   - Drop non-in-flight child rows.
 - **(d) Anything else** (no row, or `planEdit` in any status including
   in-flight). Upsert a pending `planDelete` on the `plan` row with:
@@ -341,6 +362,10 @@ branches on the existing `plan` row for P:
   - Drop non-in-flight child rows.
   - An overwritten `sending` `planEdit` is handled by D7 rule 2 plus the
     existing ADR-030 D3 revision gate.
+  - An existing `planDelete` that is in flight (`sending` or `accepted`) is
+    left untouched (review gate 3 F6). Rewriting it to `pending` would
+    revision-gate out its accepted marker, resend an accepted delete, and
+    surface a spurious not-found failure.
 
 Order key: branches (c) and (d) take a fresh `orderKey` (after every
 existing row), so any surviving in-flight child row, including a `sending`
@@ -432,9 +457,9 @@ queue, like `saveSyncAttemptResult`. It is not budget-guarded, because it
 never grows a row.
 
 **Residual windows (accepted, fail-safe).** In the cases below the delete
-surfaces as a visible `conflict`, and "retry" resolves it (D9). This is the
-same class the existing session-delete-after-in-flight-item path already has
-today.
+surfaces as a visible `conflict`, and "retry" resolves it (D9), for plan and
+session deletes alike. This is the same class the existing
+session-delete-after-in-flight-item path already has today.
 
 - A crash between an RPC response and its rebase.
 - A crash-resumed `accepted` marker, which carries no response values.
@@ -459,6 +484,12 @@ today.
     Its in-memory reconcile still runs, ahead of the delete's because
     `acceptedRecords` keeps send order, and its revision-gated clear becomes
     a no-op.
+  - If the purge at batch conclusion fails (an `Exception` swallowed by the
+    best-effort call), the delete row is not cleared in that run (review
+    gate 3 F5).
+    - It stays `accepted`, so the next run treats it as a crash-resumed
+      marker and purges again before clearing it.
+    - The plan stays hidden meanwhile.
 - **Reconciler, when the refresh fails.** `planDelete` calls a new
   `PlanningLocalStore.deleteSyncedPlan`, which removes the plan, its
   sessions, and its items from the projection in one transaction.
@@ -474,8 +505,8 @@ today.
   - `plan_not_found` → `remoteMissing` → `failedRemoteDelete`
   - permanent authorization denial → `failedAuthorization`
   - connectivity → `pending`
-- **Retry** is the explicit remove (the state machine's
-  `RemovedConflict → explicit remove`). `retryMutation` rebases
+- **Retry of a conflicted delete** is the explicit remove (the state
+  machine's `RemovedConflict → explicit remove`). `retryMutation` rebases
   `baseVersion` from the projection plan `version`, as
   `_currentBaseVersionFor` gains a `planDelete` case. It also rebases
   `baseContentVersion` from the projection `contentVersion`.
@@ -483,6 +514,29 @@ today.
     changed after it was deleted.
   - The keep-mine / retry action deletes the plan as it now exists,
     including those changes. Discard keeps the plan.
+  - A conflicted `sessionDelete` works the same way. Its base is the
+    projection session's `version`, resolved from the row's `aggregateId`.
+    The popup copy says the session changed after it was deleted.
+- **Only a visible conflict rebases** (review gate 3 F1/F3).
+  - Retrying a `planDelete` or `sessionDelete` in any other status resets
+    it to `pending` with its bases unchanged. Other statuses include pending
+    with a connectivity error, `failedDependency`, and `failedRemoteDelete`.
+  - The plan stays hidden behind its delete (D10), so a refresh can bring
+    in someone else's writes the user never sees. A non-conflict retry that
+    rebased would absorb them (I2).
+  - Resending the old bases turns such a write into a visible conflict.
+- **A retry acts on the row as it was shown** (review gate 3 F1).
+  - A plan-group action (keep-mine or retry) retries its rows one by one,
+    and each retry runs a sync pass. That pass can send a pending delete
+    that then conflicts before the loop reaches it.
+  - Each `UnifiedSyncPlanMutationRef` therefore carries the `syncStatus`
+    the popup showed. `PlanningMutationSyncController.retryMutation(...,
+    expectedStatus:)` does nothing for a row whose status has changed
+    since. The row stays visible in its new status for the user to decide.
+- **In-flight rows are never retried.** `retryMutation` leaves a
+  `sending`, `accepted`, or `cancelling` row untouched. Resetting a create
+  tombstone to `pending` would re-create what the user deleted. Resetting an
+  in-flight write would resend something the backend may already hold.
 - **Discard** clears the `planDelete` row, and the plan reappears. Child
   intents dropped at record time (D5) are not restored. The confirmation
   dialog says so up front (D11).
@@ -603,8 +657,11 @@ sibling contract script wired into `scripts/run-tests.sh`.
   reconcile.
 - C6. The overlay hides P for every actionable status, in list, detail, and
   slug reads.
-- C7. Retry rebases both `baseVersion` and `baseContentVersion` from the
-  projection.
+- C7. Retry of a conflicted `planDelete` rebases both `baseVersion` and
+  `baseContentVersion` from the projection. A conflicted `sessionDelete`
+  rebases its session version. A delete retried in any other status keeps
+  its bases. A retry whose shown status is stale does nothing, and an
+  in-flight or tombstone row is never retried.
 - C8. `SupabasePlanningMutationRepository`:
   - `delete_plan` and `delete_session` parameters
   - `plan_content_version` and `content_version` mapping

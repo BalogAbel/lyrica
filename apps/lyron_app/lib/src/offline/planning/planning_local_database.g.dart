@@ -2826,7 +2826,9 @@ class CachedPlanningMutation extends DataClass
   final int? baseVersion;
 
   /// The plan content version a `planDelete` was based on (spec D4/D5).
-  /// Only meaningful for `planDelete` rows.
+  /// A `planCreate` row carries 1, a new plan's content version, which a
+  /// delete of its accepted-but-uncleared create inherits (spec D5(c)).
+  /// Unused by every other kind.
   final int? baseContentVersion;
   final String? originSnapshotJson;
   final String? errorCode;
