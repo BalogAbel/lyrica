@@ -2140,6 +2140,210 @@ void main() {
     });
   });
 
+  group('retry of cascade deletes (review gate 3 F1/F3)', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+    const context = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<void> seedProjection({
+      required int planVersion,
+      required int contentVersion,
+      required int sessionVersion,
+      required DateTime refreshedAt,
+    }) => localStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          slug: 'plan-1',
+          name: 'Plan',
+          description: null,
+          scheduledFor: null,
+          updatedAt: refreshedAt,
+          version: planVersion,
+          contentVersion: contentVersion,
+        ),
+      ],
+      sessions: [
+        CachedSessionRecord(
+          id: 'session-1',
+          planId: 'plan-1',
+          position: 1,
+          name: 'S',
+          version: sessionVersion,
+        ),
+      ],
+      items: const [],
+      refreshedAt: refreshedAt,
+    );
+
+    Future<PlanningMutationRecord> read(String aggregateType, String id) async {
+      return (await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: aggregateType,
+        aggregateId: id,
+      ))!;
+    }
+
+    Future<void> retry(String aggregateType, String id) => store.retryMutation(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: aggregateType,
+      aggregateId: id,
+    );
+
+    Future<void> recordPlanDeleteWithStatus(
+      PlanningMutationSyncStatus status,
+      PlanningMutationSyncErrorCode errorCode,
+    ) async {
+      await seedProjection(
+        planVersion: 2,
+        contentVersion: 5,
+        sessionVersion: 2,
+        refreshedAt: DateTime.utc(2026),
+      );
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 2,
+          baseContentVersion: 5,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: status,
+        errorCode: errorCode,
+      );
+      // A later refresh saw someone else's changes.
+      await seedProjection(
+        planVersion: 3,
+        contentVersion: 8,
+        sessionVersion: 3,
+        refreshedAt: DateTime.utc(2026, 1, 2),
+      );
+    }
+
+    test('a plan delete that failed on connectivity keeps the bases the user '
+        'saw on retry (F1)', () async {
+      await recordPlanDeleteWithStatus(
+        PlanningMutationSyncStatus.pending,
+        PlanningMutationSyncErrorCode.connectivityFailure,
+      );
+
+      await retry('plan', 'plan-1');
+
+      final retried = await read('plan', 'plan-1');
+      expect(retried.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(retried.errorCode, isNull);
+      expect(retried.baseVersion, 2);
+      expect(retried.baseContentVersion, 5);
+    });
+
+    test(
+      'a failed-dependency plan delete keeps its bases on retry (F1)',
+      () async {
+        await recordPlanDeleteWithStatus(
+          PlanningMutationSyncStatus.failedDependency,
+          PlanningMutationSyncErrorCode.dependencyBlocked,
+        );
+
+        await retry('plan', 'plan-1');
+
+        final retried = await read('plan', 'plan-1');
+        expect(retried.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(retried.baseVersion, 2);
+        expect(retried.baseContentVersion, 5);
+      },
+    );
+
+    Future<void> recordSessionDeleteWithStatus(
+      PlanningMutationSyncStatus status,
+      PlanningMutationSyncErrorCode errorCode,
+    ) async {
+      await seedProjection(
+        planVersion: 2,
+        contentVersion: 5,
+        sessionVersion: 2,
+        refreshedAt: DateTime.utc(2026),
+      );
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          baseVersion: 2,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: status,
+        errorCode: errorCode,
+      );
+      await seedProjection(
+        planVersion: 3,
+        contentVersion: 8,
+        sessionVersion: 3,
+        refreshedAt: DateTime.utc(2026, 1, 2),
+      );
+    }
+
+    test('a conflicted session delete rebases onto the projection session '
+        'version on retry (F3, spec D9)', () async {
+      await recordSessionDeleteWithStatus(
+        PlanningMutationSyncStatus.conflict,
+        PlanningMutationSyncErrorCode.conflict,
+      );
+
+      await retry('session', 'session-1');
+
+      final retried = await read('session', 'session-1');
+      expect(retried.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(retried.errorCode, isNull);
+      expect(retried.baseVersion, 3);
+    });
+
+    test('a session delete that failed on connectivity keeps its base version '
+        'on retry (F1)', () async {
+      await recordSessionDeleteWithStatus(
+        PlanningMutationSyncStatus.pending,
+        PlanningMutationSyncErrorCode.connectivityFailure,
+      );
+
+      await retry('session', 'session-1');
+
+      final retried = await read('session', 'session-1');
+      expect(retried.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(retried.errorCode, isNull);
+      expect(retried.baseVersion, 2);
+    });
+  });
+
   group('applyAcceptedWriteEffects (spec D7, D8)', () {
     late PlanningLocalDatabase database;
     late DriftPlanningLocalStore localStore;

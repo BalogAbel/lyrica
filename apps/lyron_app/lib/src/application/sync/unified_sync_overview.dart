@@ -432,7 +432,11 @@ String _nestedSummaryFor(PlanningMutationRecord entry) {
           : 'plan removed',
     PlanningMutationKind.sessionCreate => 'session added',
     PlanningMutationKind.sessionRename => 'session renamed',
-    PlanningMutationKind.sessionDelete => 'session removed',
+    PlanningMutationKind.sessionDelete =>
+      entry.syncStatus == PlanningMutationSyncStatus.conflict
+          ? 'session removal conflicts: the session changed after you deleted '
+                'it — retry deletes it as it is now, discard keeps it'
+          : 'session removed',
     PlanningMutationKind.sessionReorder => 'session order changed',
     PlanningMutationKind.sessionItemCreateSong => 'song added',
     PlanningMutationKind.sessionItemDelete => 'song removed',

@@ -165,6 +165,34 @@ void main() {
       );
     });
 
+    test('a conflicted session removal explains the conflict, a pending one '
+        'just says removed (review gate 3 F3)', () {
+      String summaryFor(PlanningMutationSyncStatus status) {
+        final overview = _compute(
+          planTitles: const {'plan-1': 'Sunday Service'},
+          plans: [
+            PlanningMutationRecord(
+              aggregateId: 'session-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              kind: PlanningMutationKind.sessionDelete,
+              syncStatus: status,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        return overview.planRows.single.nestedSummaries.single;
+      }
+
+      expect(
+        summaryFor(PlanningMutationSyncStatus.conflict),
+        'session removal conflicts: the session changed after you deleted '
+        'it — retry deletes it as it is now, discard keeps it',
+      );
+      expect(summaryFor(PlanningMutationSyncStatus.pending), 'session removed');
+    });
+
     test('red wins over yellow when mixed', () {
       final overview = _compute(
         songs: [_song(id: 's1', title: 'Hymn')],

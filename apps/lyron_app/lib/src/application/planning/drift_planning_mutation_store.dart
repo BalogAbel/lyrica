@@ -1017,15 +1017,32 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return false;
     }
 
-    final rebasedBaseVersion = await _currentBaseVersionFor(
-      existing,
-      userId: userId,
-      organizationId: organizationId,
-    );
-    // Spec D9: retrying a plan delete is the explicit remove -- it targets
-    // the plan as the projection now shows it, content version included.
+    // Spec I2/I3, D9 (review gate 3 F1/F3): a cascade delete removes content
+    // the user may never have seen, and the plan it targets stays hidden
+    // behind the pending delete (D10), so a later refresh can bring in
+    // someone else's writes unseen. Only the explicit retry of a visible
+    // CONFLICT is the "delete anyway" remove and so rebases onto the
+    // projection. Any other retry (connectivity error, failed dependency,
+    // ...) resends the bases the user saw: a foreign write in between must
+    // surface as a conflict, never be absorbed by a silent rebase.
+    final isCascadeDelete =
+        existing.kind == PlanningMutationKind.planDelete ||
+        existing.kind == PlanningMutationKind.sessionDelete;
+    final rebases =
+        !isCascadeDelete ||
+        existing.syncStatus == PlanningMutationSyncStatus.conflict;
+    final rebasedBaseVersion = rebases
+        ? await _currentBaseVersionFor(
+            existing,
+            userId: userId,
+            organizationId: organizationId,
+          )
+        : null;
+    // Spec D9: retrying a conflicted plan delete is the explicit remove -- it
+    // targets the plan as the projection now shows it, content version
+    // included.
     final rebasedBaseContentVersion =
-        existing.kind == PlanningMutationKind.planDelete
+        rebases && existing.kind == PlanningMutationKind.planDelete
         ? (await _localStore.readPlanDetail(
             userId: userId,
             organizationId: organizationId,
@@ -1478,7 +1495,14 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       planId: planId,
     );
 
-    final sessionId = record.sessionId;
+    // A session delete is a session aggregate row: the session id is its
+    // aggregateId and `sessionId` is null (review gate 3 F3). The other
+    // session kinds are deliberately left as they were.
+    final sessionId =
+        record.sessionId ??
+        (record.kind == PlanningMutationKind.sessionDelete
+            ? record.aggregateId
+            : null);
     return switch (record.kind) {
       PlanningMutationKind.planEdit ||
       PlanningMutationKind.planDelete ||

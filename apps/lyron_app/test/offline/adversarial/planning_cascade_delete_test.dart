@@ -191,6 +191,59 @@ void main() {
     expect(await allRows(), isEmpty);
   });
 
+  test('a connectivity-failed plan delete retried after a foreign write '
+      'conflicts visibly instead of absorbing it (review gate 3 F1)', () async {
+    var backendContentVersion = 3;
+    final remote = _ScriptedPlanningRemote((record) async {
+      if (record.kind != PlanningMutationKind.planDelete) {
+        throw StateError('unexpected ${record.kind}');
+      }
+      if (backendContentVersion == 3) {
+        throw const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        );
+      }
+      // Someone else added content after the user's view; only a delete
+      // based on the new content version would be accepted.
+      if (record.baseContentVersion != backendContentVersion) {
+        throw const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.conflict,
+        );
+      }
+      return record.copyWith(baseVersion: 2);
+    });
+    final controller = controllerFor(remote);
+    await store.recordPlanDelete(
+      context: context,
+      draft: const PlanningPlanDeleteMutationDraft(
+        planId: 'plan-1',
+        baseVersion: 2,
+        baseContentVersion: 3,
+      ),
+    );
+
+    await controller.syncPendingMutations(readContext);
+    expect(
+      (await planRow())!.errorCode,
+      PlanningMutationSyncErrorCode.connectivityFailure,
+    );
+
+    // The foreign write lands and a refresh brings it in; the plan stays
+    // hidden behind the pending delete (D10), so the user never sees it.
+    backendContentVersion = 4;
+    await seedProjection(localStore, contentVersion: 4);
+    await controller.retryMutation(
+      readContext,
+      aggregateType: 'plan',
+      aggregateId: 'plan-1',
+    );
+
+    expect(remote.calls.last.kind, PlanningMutationKind.planDelete);
+    expect(remote.calls.last.baseContentVersion, 3);
+    expect((await planRow())!.syncStatus, PlanningMutationSyncStatus.conflict);
+    expect(await reads.listPlans(), isEmpty, reason: 'still hidden (D10)');
+  });
+
   test('a crash-resumed accepted child never rebases a pending session '
       'delete (spec D7)', () async {
     await store.recordSessionItemCreateSong(
