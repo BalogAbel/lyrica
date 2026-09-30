@@ -33,48 +33,7 @@ class SupabasePlanningMutationRepository
         PlanningMutationKind.sessionItemReorder => 'reorder_session_items',
       };
 
-      final params = <String, dynamic>{
-        'p_organization_id': organizationId,
-        if (record.kind == PlanningMutationKind.planCreate ||
-            record.kind == PlanningMutationKind.planEdit)
-          'p_plan_id': record.aggregateId,
-        if (record.kind == PlanningMutationKind.sessionCreate)
-          'p_plan_id': record.planId,
-        if (record.kind == PlanningMutationKind.sessionReorder)
-          'p_plan_id': record.planId ?? record.aggregateId,
-        if (record.kind == PlanningMutationKind.sessionRename ||
-            record.kind == PlanningMutationKind.sessionDelete)
-          'p_session_id': record.aggregateId,
-        if (record.kind == PlanningMutationKind.sessionItemCreateSong ||
-            record.kind == PlanningMutationKind.sessionItemDelete ||
-            record.kind == PlanningMutationKind.sessionItemReorder)
-          'p_session_id': record.sessionId,
-        if (record.kind == PlanningMutationKind.sessionCreate)
-          'p_session_id': record.aggregateId,
-        if (record.kind == PlanningMutationKind.sessionReorder)
-          'p_session_ids': record.orderedSiblingIds,
-        if (record.kind == PlanningMutationKind.sessionItemReorder)
-          'p_session_item_ids': record.orderedSiblingIds,
-        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
-          'p_session_item_id': record.aggregateId,
-        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
-          'p_song_id': record.songId,
-        if (record.kind == PlanningMutationKind.sessionItemCreateSong)
-          'p_position': record.position,
-        if (record.kind == PlanningMutationKind.sessionItemDelete)
-          'p_session_item_id': record.aggregateId,
-        if (record.slug != null) 'p_slug': record.slug,
-        if (record.name != null) 'p_name': record.name,
-        if (record.description != null ||
-            record.kind == PlanningMutationKind.planCreate ||
-            record.kind == PlanningMutationKind.planEdit)
-          'p_description': record.description,
-        if (record.scheduledFor != null ||
-            record.kind == PlanningMutationKind.planCreate ||
-            record.kind == PlanningMutationKind.planEdit)
-          'p_scheduled_for': record.scheduledFor?.toIso8601String(),
-        if (record.baseVersion != null) 'p_base_version': record.baseVersion,
-      };
+      final params = _paramsFor(record, organizationId: organizationId);
 
       final response = await _rpc(rpcName, params: params);
       final responseMap = switch (response) {
@@ -91,6 +50,82 @@ class SupabasePlanningMutationRepository
     } on Object catch (error) {
       throw _mapError(error);
     }
+  }
+
+  // Spec D4 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md):
+  // each kind sends exactly its RPC's parameters. A delete converted from a
+  // tombstoned create (resolveCancelledCreate uses copyWith) still carries
+  // the create's slug/name; sending those made PostgREST find no matching
+  // function (PGRST202), which mapped to `unknown` and left the row pending
+  // forever. Parameters a function declares are always sent, null included,
+  // so a missing base surfaces as the RPC's own conflict instead.
+  Map<String, dynamic> _paramsFor(
+    PlanningMutationRecord record, {
+    required String organizationId,
+  }) {
+    final organization = <String, dynamic>{'p_organization_id': organizationId};
+    return switch (record.kind) {
+      PlanningMutationKind.planCreate => {
+        ...organization,
+        'p_plan_id': record.aggregateId,
+        'p_slug': record.slug,
+        'p_name': record.name,
+        'p_description': record.description,
+        'p_scheduled_for': record.scheduledFor?.toIso8601String(),
+      },
+      PlanningMutationKind.planEdit => {
+        ...organization,
+        'p_plan_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+        'p_name': record.name,
+        'p_description': record.description,
+        'p_scheduled_for': record.scheduledFor?.toIso8601String(),
+      },
+      PlanningMutationKind.sessionCreate => {
+        ...organization,
+        'p_plan_id': record.planId,
+        'p_session_id': record.aggregateId,
+        'p_slug': record.slug,
+        'p_name': record.name,
+      },
+      PlanningMutationKind.sessionRename => {
+        ...organization,
+        'p_session_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+        'p_name': record.name,
+      },
+      PlanningMutationKind.sessionDelete => {
+        ...organization,
+        'p_session_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+      },
+      PlanningMutationKind.sessionReorder => {
+        ...organization,
+        'p_plan_id': record.planId ?? record.aggregateId,
+        'p_base_version': record.baseVersion,
+        'p_session_ids': record.orderedSiblingIds,
+      },
+      PlanningMutationKind.sessionItemCreateSong => {
+        ...organization,
+        'p_session_id': record.sessionId,
+        'p_session_item_id': record.aggregateId,
+        'p_song_id': record.songId,
+        'p_base_version': record.baseVersion,
+        'p_position': record.position,
+      },
+      PlanningMutationKind.sessionItemDelete => {
+        ...organization,
+        'p_session_id': record.sessionId,
+        'p_session_item_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+      },
+      PlanningMutationKind.sessionItemReorder => {
+        ...organization,
+        'p_session_id': record.sessionId,
+        'p_base_version': record.baseVersion,
+        'p_session_item_ids': record.orderedSiblingIds,
+      },
+    };
   }
 
   PlanningMutationRecord _mapRow(
@@ -124,6 +159,9 @@ class SupabasePlanningMutationRepository
           : original.orderedSiblingPositions,
       baseVersion: ((row['version'] ?? row['deleted_version']) as num?)
           ?.toInt(),
+      acceptedPlanContentVersion:
+          ((row['plan_content_version'] ?? row['content_version']) as num?)
+              ?.toInt(),
       clearErrorCode: true,
       clearErrorMessage: true,
       syncStatus: PlanningMutationSyncStatus.pending,

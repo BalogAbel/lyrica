@@ -510,4 +510,119 @@ void main() {
       ),
     );
   });
+
+  test('a session delete converted from a tombstoned create sends only '
+      'its own parameters (spec D4)', () async {
+    late String rpcName;
+    late Map<String, dynamic> rpcParams;
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async {
+        rpcName = name;
+        rpcParams = params ?? const {};
+        return [
+          {
+            'id': 'session-1',
+            'plan_id': 'plan-1',
+            'organization_id': 'org-1',
+            'deleted': true,
+            'deleted_version': 1,
+          },
+        ];
+      },
+    );
+
+    // resolveCancelledCreate builds the delete with copyWith, so the
+    // create's slug/name/position are still on the record.
+    await repository.syncMutation(
+      organizationId: 'org-1',
+      record: PlanningMutationRecord(
+        aggregateId: 'session-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        slug: 'warm-up',
+        name: 'Warm-Up',
+        position: 3,
+        baseVersion: 1,
+        kind: PlanningMutationKind.sessionDelete,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026),
+      ),
+    );
+
+    expect(rpcName, 'delete_empty_session');
+    expect(rpcParams, {
+      'p_organization_id': 'org-1',
+      'p_session_id': 'session-1',
+      'p_base_version': 1,
+    });
+  });
+
+  test('maps plan_content_version and a plans row content_version into '
+      'acceptedPlanContentVersion (spec D4)', () async {
+    final responses = <Object>[
+      [
+        {
+          'id': 'item-1',
+          'plan_id': 'plan-1',
+          'session_id': 'session-1',
+          'organization_id': 'org-1',
+          'version': 4,
+          'plan_content_version': 12,
+        },
+      ],
+      {
+        'id': 'plan-1',
+        'organization_id': 'org-1',
+        'version': 2,
+        'content_version': 1,
+      },
+      [
+        {
+          'id': 'item-1',
+          'plan_id': 'plan-1',
+          'session_id': 'session-1',
+          'organization_id': 'org-1',
+          'version': 5,
+        },
+      ],
+    ];
+    var call = 0;
+    final repository = SupabasePlanningMutationRepository.testing(
+      rpc: (name, {params}) async => responses[call++],
+    );
+    PlanningMutationRecord record(PlanningMutationKind kind) =>
+        PlanningMutationRecord(
+          aggregateId: kind == PlanningMutationKind.planEdit
+              ? 'plan-1'
+              : 'item-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+          sessionId: 'session-1',
+          name: 'Plan',
+          baseVersion: 3,
+          kind: kind,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+        );
+
+    final itemDelete = await repository.syncMutation(
+      organizationId: 'org-1',
+      record: record(PlanningMutationKind.sessionItemDelete),
+    );
+    final planEdit = await repository.syncMutation(
+      organizationId: 'org-1',
+      record: record(PlanningMutationKind.planEdit),
+    );
+    final legacyShape = await repository.syncMutation(
+      organizationId: 'org-1',
+      record: record(PlanningMutationKind.sessionItemDelete),
+    );
+
+    expect(itemDelete.acceptedPlanContentVersion, 12);
+    expect(itemDelete.baseVersion, 4);
+    expect(planEdit.acceptedPlanContentVersion, 1);
+    expect(legacyShape.acceptedPlanContentVersion, isNull);
+  });
 }
