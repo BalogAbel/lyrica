@@ -1170,7 +1170,147 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) => throw UnimplementedError('Task 3.4');
+  }) async {
+    final context = PlanningMutationContext(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    final planId = accepted.kind.aggregateType == 'plan'
+        ? accepted.aggregateId
+        : accepted.planId;
+    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
+
+    // D7 rule 1a -- the projection, in the local store's own transaction.
+    if (remoteResponse &&
+        accepted.kind.bumpsPlanContent &&
+        planId != null &&
+        acceptedContentVersion != null) {
+      await _localStore.advanceSyncedPlanContentVersion(
+        userId: userId,
+        organizationId: organizationId,
+        planId: planId,
+        acceptedContentVersion: acceptedContentVersion,
+      );
+    }
+
+    var changed = false;
+    await _database.transaction(() async {
+      if (remoteResponse && planId != null) {
+        changed =
+            await _rebasePendingPlanDelete(
+              context: context,
+              planId: planId,
+              accepted: accepted,
+            ) ||
+            changed;
+      }
+      if (remoteResponse) {
+        changed =
+            await _rebasePendingSessionDelete(
+              context: context,
+              accepted: accepted,
+            ) ||
+            changed;
+      }
+      if (accepted.kind == PlanningMutationKind.planDelete) {
+        changed =
+            await _deleteChildMutationsOfPlan(
+                  context: context,
+                  planId: accepted.aggregateId,
+                  keepInFlight: false,
+                ) >
+                0 ||
+            changed;
+      }
+      if (accepted.kind == PlanningMutationKind.sessionDelete) {
+        changed =
+            await _deleteChildMutationsOfSession(
+                  context: context,
+                  sessionId: accepted.aggregateId,
+                  keepInFlight: false,
+                ) >
+                0 ||
+            changed;
+      }
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  // D7 rules 1b and 2. Only exact contiguity with the backend-returned
+  // value ever moves a base (I3): anything else leaves it stale, and a
+  // stale base conflicts -- the fail-safe direction.
+  Future<bool> _rebasePendingPlanDelete({
+    required PlanningMutationContext context,
+    required String planId,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final row = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'plan',
+      aggregateId: planId,
+    );
+    if (row == null ||
+        row.kind != PlanningMutationKind.planDelete ||
+        _inFlightSyncStatuses.contains(row.syncStatus)) {
+      return false;
+    }
+    var next = row;
+    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
+    if (accepted.kind.bumpsPlanContent &&
+        acceptedContentVersion != null &&
+        row.baseContentVersion == acceptedContentVersion - 1) {
+      next = next.copyWith(baseContentVersion: acceptedContentVersion);
+    }
+    final acceptedPlanVersion = accepted.baseVersion;
+    if ((accepted.kind == PlanningMutationKind.planEdit ||
+            accepted.kind == PlanningMutationKind.sessionReorder) &&
+        acceptedPlanVersion != null &&
+        row.baseVersion == acceptedPlanVersion - 1) {
+      next = next.copyWith(baseVersion: acceptedPlanVersion);
+    }
+    if (identical(next, row)) {
+      return false;
+    }
+    return _upsertRecord(context: context, aggregateType: 'plan', record: next);
+  }
+
+  // D7 rule 3.
+  Future<bool> _rebasePendingSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final sessionId = switch (accepted.kind) {
+      PlanningMutationKind.sessionRename => accepted.aggregateId,
+      PlanningMutationKind.sessionItemCreateSong ||
+      PlanningMutationKind.sessionItemDelete ||
+      PlanningMutationKind.sessionItemReorder => accepted.sessionId,
+      _ => null,
+    };
+    final acceptedSessionVersion = accepted.baseVersion;
+    if (sessionId == null || acceptedSessionVersion == null) {
+      return false;
+    }
+    final row = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'session',
+      aggregateId: sessionId,
+    );
+    if (row == null ||
+        row.kind != PlanningMutationKind.sessionDelete ||
+        _inFlightSyncStatuses.contains(row.syncStatus) ||
+        row.baseVersion != acceptedSessionVersion - 1) {
+      return false;
+    }
+    return _upsertRecord(
+      context: context,
+      aggregateType: 'session',
+      record: row.copyWith(baseVersion: acceptedSessionVersion),
+    );
+  }
 
   Future<bool> _upsertRecord({
     required PlanningMutationContext context,
