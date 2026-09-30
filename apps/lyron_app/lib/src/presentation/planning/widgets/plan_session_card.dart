@@ -550,18 +550,30 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     }
 
     if (!context.mounted) return;
-    await ref
-        .read(planningWriteServiceProvider)
-        .deleteSession(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionDeleteDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-          ),
-        );
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .deleteSession(
+            context: PlanningWriteContext(
+              userId: activeContext.userId,
+              organizationId: activeContext.organizationId,
+            ),
+            // The snapshot the dialog above rendered (spec D11).
+            draft: SessionDeleteDraft(
+              sessionId: session.id,
+              planId: planDetail.plan.id,
+              confirmedVersion: session.version,
+            ),
+          );
+    } on PlanningDeleteTargetChangedException {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.sessionDeleteTargetChangedMessage),
+        ),
+      );
+      return;
+    }
 
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);

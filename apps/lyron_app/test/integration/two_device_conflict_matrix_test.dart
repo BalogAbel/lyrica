@@ -352,12 +352,17 @@ void main() {
           orElse: () => ownerDetail.sessions.first,
         );
 
-        // Device A deletes the (empty) scratch session...
+        // Device A deletes the (empty) scratch session, confirming exactly
+        // the version its own projection holds...
+        final scratchSessionOnA =
+            (await deviceA.repository.getPlanDetail(_planId)).sessions
+                .firstWhere((candidate) => candidate.id == scratchSession.id);
         await deviceA.writeService.deleteSession(
           context: deviceA.writeContext,
           draft: SessionDeleteDraft(
             sessionId: scratchSession.id,
             planId: _planId,
+            confirmedVersion: scratchSessionOnA.version,
           ),
         );
         // ...while device B, unaware, renames the same session from its

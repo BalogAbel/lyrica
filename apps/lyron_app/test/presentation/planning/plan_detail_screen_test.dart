@@ -3139,6 +3139,117 @@ void main() {
 
     expect(writeService.deletedPlanDraft, isNull);
   });
+
+  group('a refresh landing while a delete dialog is open', () {
+    late _MutablePlanDetailRepository repository;
+    late _PlanDetailTestPlanningMutationStore store;
+
+    Future<void> pumpRaceApp(WidgetTester tester) async {
+      repository = _MutablePlanDetailRepository(
+        _deleteRaceDetailAtConfirmation(),
+      );
+      store = _PlanDetailTestPlanningMutationStore();
+      await tester.pumpWidget(
+        buildApp(
+          planDetailValue: () => repository.getPlanDetail('plan-1'),
+          writeService: PlanningWriteService(
+            repository,
+            mutationStore: store,
+            activeContextReader: () async => const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> landRefreshMidDialog(WidgetTester tester) async {
+      repository.current = _deleteRaceDetailAfterRefresh();
+      ProviderScope.containerOf(
+        tester.element(find.byType(PlanDetailScreen)),
+      ).read(planningDataRevisionProvider.notifier).state += 1;
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('refuses the plan delete instead of widening it', (
+      tester,
+    ) async {
+      await pumpRaceApp(tester);
+
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+      final shown = AppStrings.planDeleteConfirmMessage(
+        planName: 'Team Rehearsal',
+        sessionCount: 2,
+        songCount: 2,
+      );
+      expect(find.text(shown), findsOneWidget);
+
+      await landRefreshMidDialog(tester);
+      // The dialog still lists what the user is about to confirm.
+      expect(find.text(shown), findsOneWidget);
+
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(store.recordedPlanDelete, isNull);
+      expect(
+        find.text(AppStrings.planDeleteTargetChangedMessage),
+        findsOneWidget,
+      );
+      // No navigation: the user stays on the (refreshed) plan.
+      expect(find.text('plan-list-placeholder'), findsNothing);
+      expect(find.byType(PlanDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('refuses the session delete instead of widening it', (
+      tester,
+    ) async {
+      await pumpRaceApp(tester);
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+      );
+      await tester.pumpAndSettle();
+      final shown = AppStrings.sessionDeleteConfirmMessage(
+        sessionName: 'Warm-Up',
+        songCount: 2,
+      );
+      expect(find.text(shown), findsOneWidget);
+
+      await landRefreshMidDialog(tester);
+      expect(find.text(shown), findsOneWidget);
+
+      await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(store.recordedSessionDelete, isNull);
+      expect(
+        find.text(AppStrings.sessionDeleteTargetChangedMessage),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an unchanged plan still deletes through the real write '
+        'service', (tester) async {
+      await pumpRaceApp(tester);
+
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(store.recordedPlanDelete?.baseVersion, 3);
+      expect(store.recordedPlanDelete?.baseContentVersion, 5);
+      expect(find.text('plan-list-placeholder'), findsOneWidget);
+    });
+  });
 }
 
 PlanDetail _editablePlanDetailFixture() {
@@ -3517,6 +3628,103 @@ class _DelayedPlanningWriteService extends _FakePlanningWriteService {
   }
 }
 
+/// A repository whose plan can be swapped while a dialog is open, to model a
+/// sync refresh landing between the confirmation and the delete.
+class _MutablePlanDetailRepository implements PlanningRepository {
+  _MutablePlanDetailRepository(this.current);
+
+  PlanDetail current;
+
+  @override
+  Future<PlanDetail> getPlanDetail(String planId) async => current;
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async => current;
+
+  @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async =>
+      current.plan;
+
+  @override
+  Future<List<PlanSummary>> listPlans() async => [current.plan];
+}
+
+SessionItemSummary _deleteRaceItem(String n) => SessionItemSummary(
+  id: 'item-$n',
+  position: int.parse(n),
+  song: SongSummary(id: 'song-$n', slug: 's$n', title: 'Song $n'),
+);
+
+/// What the user sees when the delete dialog opens: Warm-Up holds 2 songs.
+PlanDetail _deleteRaceDetailAtConfirmation() => PlanDetail(
+  plan: PlanSummary(
+    id: 'plan-1',
+    slug: 'team-rehearsal',
+    name: 'Team Rehearsal',
+    description: null,
+    scheduledFor: null,
+    updatedAt: DateTime(2026),
+    version: 3,
+    contentVersion: 5,
+  ),
+  sessions: [
+    SessionSummary(
+      id: 'session-1',
+      slug: 'warm-up',
+      name: 'Warm-Up',
+      position: 1,
+      version: 4,
+      items: [_deleteRaceItem('1'), _deleteRaceItem('2')],
+    ),
+    const SessionSummary(
+      id: 'session-2',
+      slug: 'closing',
+      name: 'Closing',
+      position: 2,
+      items: [],
+    ),
+  ],
+);
+
+/// After a refresh carrying another member's writes: a third song in Warm-Up
+/// and a whole new "Encore" session with three songs.
+PlanDetail _deleteRaceDetailAfterRefresh() => PlanDetail(
+  plan: PlanSummary(
+    id: 'plan-1',
+    slug: 'team-rehearsal',
+    name: 'Team Rehearsal',
+    description: null,
+    scheduledFor: null,
+    updatedAt: DateTime(2026),
+    version: 3,
+    contentVersion: 8,
+  ),
+  sessions: [
+    SessionSummary(
+      id: 'session-1',
+      slug: 'warm-up',
+      name: 'Warm-Up',
+      position: 1,
+      version: 5,
+      items: [_deleteRaceItem('1'), _deleteRaceItem('2'), _deleteRaceItem('9')],
+    ),
+    const SessionSummary(
+      id: 'session-2',
+      slug: 'closing',
+      name: 'Closing',
+      position: 2,
+      items: [],
+    ),
+    SessionSummary(
+      id: 'session-3',
+      slug: 'encore',
+      name: 'Encore',
+      position: 3,
+      items: [_deleteRaceItem('5'), _deleteRaceItem('6'), _deleteRaceItem('7')],
+    ),
+  ],
+);
+
 class _PlanDetailTestPlanningRepository implements PlanningRepository {
   @override
   Future<PlanDetail> getPlanDetail(String planId) async =>
@@ -3537,6 +3745,9 @@ class _PlanDetailTestPlanningRepository implements PlanningRepository {
 }
 
 class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
+  PlanningPlanDeleteMutationDraft? recordedPlanDelete;
+  PlanningSessionDeleteMutationDraft? recordedSessionDelete;
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -3614,7 +3825,9 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<void> recordPlanDelete({
     required PlanningMutationContext context,
     required PlanningPlanDeleteMutationDraft draft,
-  }) async {}
+  }) async {
+    recordedPlanDelete = draft;
+  }
 
   @override
   Future<void> applyAcceptedWriteEffects({
@@ -3640,7 +3853,9 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   Future<void> recordSessionDelete({
     required PlanningMutationContext context,
     required PlanningSessionDeleteMutationDraft draft,
-  }) async {}
+  }) async {
+    recordedSessionDelete = draft;
+  }
 
   @override
   Future<void> recordSessionItemCreateSong({

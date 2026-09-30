@@ -1,5 +1,6 @@
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
@@ -43,9 +44,20 @@ class PlanEditDraft {
 }
 
 class PlanDeleteDraft {
-  const PlanDeleteDraft({required this.planId});
+  const PlanDeleteDraft({
+    required this.planId,
+    required this.confirmedVersion,
+    required this.confirmedContentVersion,
+  });
 
   final String planId;
+
+  /// `PlanSummary.version` of the plan the user confirmed deleting.
+  final int confirmedVersion;
+
+  /// `PlanSummary.contentVersion` of the plan the user confirmed deleting.
+  /// Null while the local projection does not know the backend value.
+  final int? confirmedContentVersion;
 }
 
 class SessionCreateDraft {
@@ -68,10 +80,17 @@ class SessionRenameDraft {
 }
 
 class SessionDeleteDraft {
-  const SessionDeleteDraft({required this.sessionId, required this.planId});
+  const SessionDeleteDraft({
+    required this.sessionId,
+    required this.planId,
+    required this.confirmedVersion,
+  });
 
   final String sessionId;
   final String planId;
+
+  /// `SessionSummary.version` of the session the user confirmed deleting.
+  final int confirmedVersion;
 }
 
 class SessionReorderDraft {
@@ -135,6 +154,16 @@ class PlanningSongUnavailableException implements Exception {
 
 class PlanningWriteContextMismatchException implements Exception {
   const PlanningWriteContextMismatchException();
+}
+
+/// A delete removes exactly what its confirmation showed (spec D11). Thrown
+/// when the plan or session changed -- or is gone -- between the moment the
+/// user saw the confirmation dialog and the moment the delete is recorded
+/// (for example a sync refresh that landed while the dialog was open). The
+/// delete is refused and nothing is recorded, instead of silently widening
+/// it to rows the confirmation never listed.
+class PlanningDeleteTargetChangedException implements Exception {
+  const PlanningDeleteTargetChangedException();
 }
 
 typedef PlanningWriteActiveContextReader =
@@ -218,7 +247,11 @@ class PlanningWriteService {
     required PlanDeleteDraft draft,
   }) async {
     await _requireMatchingContext(context);
-    final detail = await _repository.getPlanDetail(draft.planId);
+    final detail = await _readPlanDetailForDelete(draft.planId);
+    if (detail.plan.version != draft.confirmedVersion ||
+        detail.plan.contentVersion != draft.confirmedContentVersion) {
+      throw const PlanningDeleteTargetChangedException();
+    }
     await _mutationStore.recordPlanDelete(
       context: PlanningMutationContext(
         userId: context.userId,
@@ -278,10 +311,13 @@ class PlanningWriteService {
     required SessionDeleteDraft draft,
   }) async {
     await _requireMatchingContext(context);
-    final detail = await _repository.getPlanDetail(draft.planId);
-    final session = detail.sessions.firstWhere(
-      (candidate) => candidate.id == draft.sessionId,
-    );
+    final detail = await _readPlanDetailForDelete(draft.planId);
+    final session = detail.sessions
+        .where((candidate) => candidate.id == draft.sessionId)
+        .firstOrNull;
+    if (session == null || session.version != draft.confirmedVersion) {
+      throw const PlanningDeleteTargetChangedException();
+    }
 
     await _mutationStore.recordSessionDelete(
       context: PlanningMutationContext(
@@ -473,6 +509,19 @@ class PlanningWriteService {
         activeContext.userId != context.userId ||
         activeContext.organizationId != context.organizationId) {
       throw const PlanningWriteContextMismatchException();
+    }
+  }
+
+  // Reads the plan a delete is about to act on. The local read repository
+  // reports a plan that is missing or hidden from the projection -- the
+  // plan was deleted or refreshed away while the confirmation dialog was
+  // open -- as a StateError; for a delete that is the same refusal as any
+  // other change of the target (spec D11), not an unexpected failure.
+  Future<PlanDetail> _readPlanDetailForDelete(String planId) async {
+    try {
+      return await _repository.getPlanDetail(planId);
+    } on StateError {
+      throw const PlanningDeleteTargetChangedException();
     }
   }
 

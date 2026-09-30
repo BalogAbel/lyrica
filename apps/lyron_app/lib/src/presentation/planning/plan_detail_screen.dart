@@ -372,15 +372,30 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
       return;
     }
     if (!context.mounted) return;
-    await ref
-        .read(planningWriteServiceProvider)
-        .deletePlan(
-          context: PlanningWriteContext(
-            userId: currentContext.userId,
-            organizationId: currentContext.organizationId,
-          ),
-          draft: PlanDeleteDraft(planId: planId),
-        );
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .deletePlan(
+            context: PlanningWriteContext(
+              userId: currentContext.userId,
+              organizationId: currentContext.organizationId,
+            ),
+            // The snapshot the dialog above rendered (spec D11).
+            draft: PlanDeleteDraft(
+              planId: planId,
+              confirmedVersion: detail.plan.version,
+              confirmedContentVersion: detail.plan.contentVersion,
+            ),
+          );
+    } on PlanningDeleteTargetChangedException {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.planDeleteTargetChangedMessage),
+        ),
+      );
+      return;
+    }
 
     if (!context.mounted) return;
     // Plan-set change (ARCH-2): aggregate signal, like plan create/edit.

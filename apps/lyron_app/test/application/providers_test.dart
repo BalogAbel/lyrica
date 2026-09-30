@@ -1176,9 +1176,12 @@ void main() {
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        draft: const SessionDeleteDraft(
+        draft: SessionDeleteDraft(
           sessionId: 'session-a',
           planId: 'plan-1',
+          confirmedVersion: detail.sessions
+              .singleWhere((session) => session.id == 'session-a')
+              .version,
         ),
       );
 

@@ -187,6 +187,9 @@ class AppStrings {
       'The songs stay in the song library.';
   static const planningUnsyncedChangesDiscardedMessage =
       'Unsynced changes to this plan will be discarded.';
+  static const planDeleteTargetChangedMessage =
+      'This plan changed while you were deciding. Nothing was deleted; '
+      'review it and try again.';
 
   static String _count(int count, String one, String other) =>
       count == 1 ? '$count $one' : '$count $other';
@@ -219,6 +222,9 @@ class AppStrings {
       '“$sessionName” and its ${_count(songCount, 'song', 'songs')} will be '
       'removed from this plan. The songs stay in the song library.';
   static const sessionDeleteConfirmAction = 'Delete session';
+  static const sessionDeleteTargetChangedMessage =
+      'This session changed while you were deciding. Nothing was deleted; '
+      'review it and try again.';
   static const sessionNameLabel = 'Session name';
   static const sessionEditorTitleCreate = 'Add session';
   static const sessionEditorTitleRename = 'Rename session';
