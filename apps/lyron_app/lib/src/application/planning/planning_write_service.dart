@@ -42,6 +42,12 @@ class PlanEditDraft {
   final DateTime? scheduledFor;
 }
 
+class PlanDeleteDraft {
+  const PlanDeleteDraft({required this.planId});
+
+  final String planId;
+}
+
 class SessionCreateDraft {
   const SessionCreateDraft({required this.planId, required this.name});
 
@@ -112,12 +118,6 @@ class SessionItemReorderDraft {
   final String sessionId;
   final String planId;
   final List<String> orderedSessionItemIds;
-}
-
-class SessionDeleteBlockedException implements Exception {
-  const SessionDeleteBlockedException(this.sessionId);
-
-  final String sessionId;
 }
 
 class DuplicateSessionSongException implements Exception {
@@ -213,6 +213,27 @@ class PlanningWriteService {
     return _editPlanInternal(context: context, draft: draft);
   }
 
+  Future<void> deletePlan({
+    required PlanningWriteContext context,
+    required PlanDeleteDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    await _mutationStore.recordPlanDelete(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningPlanDeleteMutationDraft(
+        planId: draft.planId,
+        baseVersion: detail.plan.version,
+        baseContentVersion: detail.plan.contentVersion,
+        originSnapshot: _planSnapshot(detail.plan),
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
   Future<void> createSession({
     required PlanningWriteContext context,
     required SessionCreateDraft draft,
@@ -261,9 +282,6 @@ class PlanningWriteService {
     final session = detail.sessions.firstWhere(
       (candidate) => candidate.id == draft.sessionId,
     );
-    if (session.items.isNotEmpty) {
-      throw SessionDeleteBlockedException(draft.sessionId);
-    }
 
     await _mutationStore.recordSessionDelete(
       context: PlanningMutationContext(

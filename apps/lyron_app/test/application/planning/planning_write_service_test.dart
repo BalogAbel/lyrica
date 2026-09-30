@@ -535,4 +535,154 @@ void main() {
       },
     );
   });
+
+  group('PlanningWriteService plan delete and cascade', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore mutationStore;
+    late PlanningLocalReadRepository repository;
+    late PlanningWriteService service;
+
+    setUp(() async {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      mutationStore = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+      repository = PlanningLocalReadRepository(
+        store: localStore,
+        mutationStore: mutationStore,
+        contextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      service = PlanningWriteService(
+        repository,
+        mutationStore: mutationStore,
+        activeContextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            version: 2,
+            contentVersion: 5,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 10,
+            name: 'Session one',
+          ),
+          CachedSessionRecord(
+            id: 'session-2',
+            planId: 'plan-1',
+            position: 20,
+            name: 'Session two',
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 10,
+            songId: 'song-1',
+            songTitle: 'Alpha',
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026, 9, 29),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('deletePlan records a delete based on the projection versions and '
+        'hides the plan (spec D5)', () async {
+      await service.deletePlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanDeleteDraft(planId: 'plan-1'),
+      );
+
+      final delete = (await mutationStore.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      ))!;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.baseVersion, 2);
+      expect(delete.baseContentVersion, 5);
+      expect(delete.originSnapshot?['name'], 'Plan');
+      expect(await repository.listPlans(), isEmpty);
+    });
+
+    test('a song stays delete-blocked until the plan delete is reconciled '
+        '(spec I1)', () async {
+      await service.deletePlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanDeleteDraft(planId: 'plan-1'),
+      );
+      expect(
+        await localStore.countSongReferences(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        1,
+      );
+
+      await localStore.deleteSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        refreshedAt: DateTime.utc(2026, 9, 30),
+      );
+      expect(
+        await localStore.countSongReferences(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        0,
+      );
+    });
+
+    test('deleteSession accepts a non-empty session (spec D6)', () async {
+      await service.deleteSession(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const SessionDeleteDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      expect(detail.sessions.map((session) => session.id), ['session-2']);
+    });
+  });
 }
