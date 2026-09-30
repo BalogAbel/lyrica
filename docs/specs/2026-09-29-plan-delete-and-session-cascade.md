@@ -1,13 +1,132 @@
 # Plan Delete and Cascading Session Delete
 
-> Status: Proposed (design agreed 2026-09-29; implementation plan pending)
+> Status: Implemented
 
 **Branch:** `feat/plan-delete-session-cascade`
-**ADR:** ADR-038 (to be written with the implementation; see D12)
+**ADR:** ADR-038, `docs/architecture/decisions/ADR-038-plan-content-version.md`
 **Deferred siblings:** `docs/deferred/2026-09-29-session-item-move.md`,
 `docs/deferred/2026-09-29-plan-duplicate.md`,
+`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`,
+`docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`,
 `docs/deferred/2026-09-30-stranded-create-tombstones.md`,
 `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`
+
+## Implementation
+
+Commits, in landed order (spec, plan, and docs-only commits left out):
+
+- `8cdcad8` test(planning): red -- content version and cascade delete contract
+- `5213517` feat(planning): plan content version and cascading delete RPCs
+- `04a8e8c` test(planning): red -- race outcomes under the plan lock
+- `37a19d9` fix(planning): re-read under the plan lock so races yield sequential errors
+- `8711bee` feat(planning): local schema 7 with plan content version columns
+- `7cc9e3f` feat(planning): carry plan content version through pull and projection
+- `261c9d2` fix(planning): send each RPC exactly its own parameters
+- `1f41d5a` feat(planning): projection ops for contiguous content version and plan removal
+- `1656755` feat(planning): planDelete mutation kind, RPC mapping and reconcile
+- `3fedc51` feat(planning): record plan deletes in the mutation store
+- `37f63e0` feat(planning): cascade session delete drops unsent child writes
+- `7882543` feat(planning): contiguous own-write rebase and post-delete purge
+- `cd4d5b4` feat(planning): wire accepted-write effects into sync, cancel in-flight plan creates
+- `7504385` feat(planning): hide plans with a pending delete from merged reads
+- `d3b0496` feat(planning): retry of a plan delete rebases content version
+- `9ce7c21` feat(planning): write service plan delete and cascading session delete
+- `333818d` test(planning): adversarial cascade delete scenarios
+- `2bbfc82` fix(planning): rebase a cascade delete on retry only after a visible conflict
+- `d3b0b78` fix(sync): retry a planning row only in the status it was shown in
+- `e02c16f` fix(planning): close plan delete edge cases around creates and resends
+- `f83e6fe` fix(planning): keep an accepted delete until its purge succeeds
+- `fbc343c` fix(planning): never retry an in-flight row or a create tombstone
+- `e00268d` feat(planning): delete plan from the plan detail header
+- `4308b95` feat(planning): delete non-empty sessions with a cascade confirmation
+
+The backend landed first (migration
+`supabase/migrations/202609290001_plan_content_version_and_cascade_delete.sql`,
+contract tests in `scripts/tests/planning-cascade-delete-contract-test.sh`,
+wired into `scripts/backend-write-contracts.sh`), then the client's
+content-version plumbing with no delete behavior, then the delete semantics,
+then the UI. Each of the first three phases ended with one adversarial review
+gate over the whole phase diff. The decisions are in ADR-038.
+
+**Deploy order.** Migration `202609290001` must be applied to production
+Supabase before any client build containing this slice ships. There is no
+deploy pipeline, so this is a manual step. The client's plan selects name
+`content_version`, so against a backend without the migration every planning
+refresh fails (D4). The other direction is safe: installed older clients keep
+working against the migrated backend (Acceptance 6).
+
+### What the spec did not anticipate
+
+**Gate 1: re-read under the plan lock.** I5 says each function locks the plan
+row first, but the first design did not say that a function must then re-read
+what its checks depend on. Without the re-read, a write or delete that
+committed while a function waited on the plan lock produced the wrong error:
+`delete_empty_session` raised `session_not_found` or
+`session_delete_blocked_not_empty` instead of `session_version_conflict`. Now
+every conditional-update miss re-selects the row and raises `*_not_found` for
+a deleted row, and otherwise reports the current version. I5 states this, and
+the race contract tests R1-R7 (B8) pin it (`04a8e8c`, `37a19d9`). The same
+gate found the direct-DML gap, which predates the slice.
+
+**Gate 2: the backend must deploy before clients.** D4 first said an older
+backend yields a null `content_version`. In fact, selecting the column
+against a backend without the migration fails the whole refresh. The deploy
+order above is a hard requirement. The gate also found the unpaged pull reads
+(I7's known limit) and that `upsertSyncedPlan` takes a new row's content
+version from its caller; the interface doc now states the caller rule.
+
+**Gate 3: retry could absorb unseen writes (F1-F6).** A rebase is where a
+delete can pick up content its user never saw, and the retry paths did not
+respect that. D5, D8, D9, and C7 now state the resulting rules.
+
+- **F1 (critical).** `retryMutation` rebased a `planDelete` in any status, so a
+  connectivity-failed delete retried after a refresh deleted foreign writes
+  the hidden plan never showed. A group keep-mine did the same. Now a cascade
+  delete rebases only from `conflict`, and a grouped retry carries the shown
+  status (`UnifiedSyncPlanMutationRef.syncStatus` to
+  `retryMutation(expectedStatus:)`) and skips a row that has moved on,
+  silently (`2bbfc82`, `d3b0b78`).
+- **F2 (major).** A create tombstone stranded by an interrupted run made a
+  later delete a permanent no-op. The in-slice part is fixed: a delete over a
+  stranded plan-create tombstone records a real delete from the projection
+  bases. Retry now never touches `sending`, `accepted`, or `cancelling` rows,
+  because retrying a tombstone would re-create the deleted plan (`e02c16f`,
+  `fbc343c`). The general family stays open, see
+  `docs/deferred/2026-09-30-stranded-create-tombstones.md`.
+- **F3 (major).** A conflicted `sessionDelete` never rebased on retry, because
+  `_currentBaseVersionFor` keyed on `sessionId`, which session rows do not set.
+  Fixed for `sessionDelete`, conflict-only (`2bbfc82`). The same bug for
+  `sessionRename` predates the slice and is deferred.
+- **F4 (minor).** Branch (c) of D5 assumed a content version of 1.
+  `recordPlanCreate` now stamps it, and a pre-schema-7 row fails safe as a
+  conflict (`e02c16f`).
+- **F5 (minor).** A failed purge at batch end left child rows behind. The
+  delete now stays `accepted` and the next run purges again first (`f83e6fe`).
+- **F6 (minor).** A repeated delete reset an in-flight `planDelete`. It is now
+  a no-op (`e02c16f`).
+
+Accepted: a retry skipped because the row's status changed shows no
+snackbar, and a session delete repeated over an in-flight session delete still
+overwrites it, as before this slice.
+
+### Deferred
+
+Six deferred docs came out of this slice:
+
+- `docs/deferred/2026-09-29-plan-duplicate.md`: duplicate a plan or use one as
+  a template; scoped out because the design choice is non-trivial.
+- `docs/deferred/2026-09-29-session-item-move.md`: move a session item to
+  another session; scoped out because a move touches two session aggregates.
+- `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`: direct table DML
+  under the `for all` RLS policies bypasses the RPC contract (I2, I4, I5);
+  found by gate 1, predates the slice.
+- `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`: the pull's
+  unpaged reads can be truncated at PostgREST's `max_rows`, which would break
+  I7 for a plan with over 1000 sessions; found by gate 2.
+- `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`: a retried
+  conflicted session rename never rebases; found by gate 3, predates the slice.
+- `docs/deferred/2026-09-30-stranded-create-tombstones.md`: create tombstones
+  stranded by an interrupted sync run; found by gate 3, becomes its own slice.
 
 ## Problem
 
@@ -603,7 +722,8 @@ session-delete-after-in-flight-item path already has today.
     a client-sent content fingerprint; folding content into `version`)
   - the contiguity rule (I3)
   - the lock order (I5)
-- Both deferred entries listed at the top (written with this spec).
+- The deferred entries listed at the top (the first two written with this
+  spec, the rest added by the review gates).
 
 ## Testing (TDD; each red test before its green change)
 

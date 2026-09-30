@@ -78,6 +78,10 @@ stateDiagram-v2
 - **Create conflicts**: resolved by editing the conflicted draft into a new `Created` intent or discarding the local create. No explicit overwrite path exists for create conflicts because no backend-accepted item exists yet.
 - **Edit conflicts**: resolved by editing the conflicted item into a new `Edited` intent, discarding the edit, or using an explicit backend-authorized overwrite path. The item only returns to `Synced` through explicit overwrite after the backend accepts that overwrite.
 - **Remove conflicts**: resolved by discarding the remove intent or using an explicit backend-authorized remove path. The record only leaves local state after the backend accepts the explicit remove.
+- **Retry guards for planning writes**: three rules keep an explicit retry from acting on a row the user has not seen in that state.
+  - **Conflict-only rebase.** A cascade delete (`planDelete`, `sessionDelete`) is rebased onto the refreshed projection on retry only when its status is `conflict`, that is, after the user saw a visible conflict. The plan or session stays hidden behind its pending delete, so a refresh can bring in foreign writes the user never saw; a retry from any other status resends the original bases so those writes surface as a conflict.
+  - **Shown-status guard.** A grouped retry (the sync popup's keep-mine over a plan group) carries the status each row had when the popup showed it (`UnifiedSyncPlanMutationRef.syncStatus`, passed to `retryMutation(expectedStatus:)`) and skips a row whose status has changed since. The skip is silent: the row stays visible in its new state for the user to decide.
+  - **In-flight rows are never retried.** `retryMutation` leaves a `sending`, `accepted`, or `cancelling` row untouched. Retrying a create tombstone (`cancelling`) would re-create the object the user deleted.
 
 ## Reorder Lifecycle
 
@@ -125,7 +129,10 @@ Songs use the item lifecycle pattern.
 Plans use the item lifecycle pattern. Plans also own a reorder lifecycle for their session order.
 
 - `Removed` plan means local intent to delete the plan and its full hierarchy.
-- Backend-accepted plan delete removes the plan, its sessions, and its session items.
+- Backend-accepted plan delete removes the plan, its sessions, and its session items. Songs and attachments are never deleted.
+- A plan delete carries two bases, `version` and `content_version`; a mismatch on either is `RemovedConflict`. Recording the delete drops the plan's not-yet-sent child intents (sessions, session items, and their orders). Discard restores the plan but not the child intents the delete dropped.
+- Retry of a `RemovedConflict` plan delete is the explicit remove: it rebases both bases from the refreshed projection, so it deletes the plan as it now exists. This rebase happens only from `conflict` (see Conflict Recovery Rules). A retry from any other status, such as a connectivity failure, resends the original bases, so a foreign write surfaces as a conflict instead of being silently absorbed.
+- While a plan delete is pending, the client adjusts its bases only for its own accepted writes to the plan, and only when the backend-returned value is exactly one ahead of the base (ADR-038). Any other divergence is left as a conflict.
 - Plan session order uses the reorder lifecycle pattern representing ordering of sessions within one plan.
 
 ### Session
@@ -134,7 +141,8 @@ Sessions use the item lifecycle pattern. Sessions also own a reorder lifecycle f
 
 - Session create, rename, and delete map to `Created`, `Edited`, and `Removed`.
 - Session item order uses the reorder lifecycle pattern representing ordering of session items within one session.
-- Session delete is allowed only for locally empty sessions; backend re-checks the invariant before accepting.
+- Session delete cascades to the session's items; not-yet-sent item intents of the session are dropped when the delete is recorded.
+- A session delete carries the session `version` as its base. Like a plan delete, it is rebased from the refreshed projection only when it is retried from `conflict`; a retry from any other status resends its original base.
 
 ### Session Item
 
