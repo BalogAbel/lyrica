@@ -204,6 +204,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
             scheduledFor: mutation.scheduledFor,
             updatedAt: mutation.updatedAt,
             version: existing.version,
+            contentVersion: existing.contentVersion,
           );
         case PlanningMutationKind.sessionCreate:
         case PlanningMutationKind.sessionRename:
@@ -276,6 +277,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
           scheduledFor: mutation.scheduledFor,
           updatedAt: mutation.updatedAt,
           version: plan.version,
+          contentVersion: plan.contentVersion,
         );
       } else if (mutation.planId == planId) {
         switch (mutation.kind) {

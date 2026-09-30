@@ -31,6 +31,7 @@ class CachedPlanRecord {
     required this.updatedAt,
     int? version,
     String? slug,
+    this.contentVersion,
   }) : slug = slug ?? id,
        version = version ?? 1;
 
@@ -41,6 +42,7 @@ class CachedPlanRecord {
   final DateTime? scheduledFor;
   final DateTime updatedAt;
   final int version;
+  final int? contentVersion;
 }
 
 class CachedSessionRecord {
@@ -298,6 +300,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   scheduledFor: Value(plan.scheduledFor?.toUtc()),
                   updatedAt: plan.updatedAt.toUtc(),
                   version: plan.version,
+                  contentVersion: Value(plan.contentVersion),
                 ),
               )
               .toList(growable: false),
@@ -1046,6 +1049,13 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             scheduledFor: Value(plan.scheduledFor?.toUtc()),
             updatedAt: plan.updatedAt.toUtc(),
             version: plan.version,
+            // Spec D4/I7: only a full refresh (replaceActiveProjection) or
+            // the contiguous own-write rule (advanceSyncedPlanContentVersion)
+            // may change an existing row's content version. A reconcile
+            // upsert keeps it; a brand-new row takes the reconciled value.
+            contentVersion: Value(
+              existing != null ? existing.contentVersion : plan.contentVersion,
+            ),
           ),
         );
     return true;

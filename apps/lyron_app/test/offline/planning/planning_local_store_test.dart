@@ -833,6 +833,86 @@ void main() {
         expect(item.songId, 'song-1');
       },
     );
+
+    test('a full refresh stores contentVersion and a reconcile upsert never '
+        'overwrites an existing row\'s value (spec D4, I7)', () async {
+      await store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            version: 3,
+            contentVersion: 7,
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 9, 29),
+      );
+      expect(
+        (await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        )).single.contentVersion,
+        7,
+      );
+
+      for (final incoming in [null, 1, 99]) {
+        await store.upsertSyncedPlan(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          refreshedAt: DateTime.utc(2026, 9, 29, 1),
+          plan: CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Renamed',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29, 1),
+            version: 4,
+            contentVersion: incoming,
+          ),
+        );
+        final detail = await store.readPlanDetail(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+        );
+        expect(detail!.plan.name, 'Renamed');
+        expect(detail.plan.contentVersion, 7, reason: 'incoming $incoming');
+      }
+    });
+
+    test('a reconcile upsert of a plan not yet in the projection stores its '
+        'contentVersion', () async {
+      await store.upsertSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 9, 29),
+        plan: CachedPlanRecord(
+          id: 'plan-new',
+          slug: 'plan-new',
+          name: 'New',
+          description: null,
+          scheduledFor: null,
+          updatedAt: DateTime.utc(2026, 9, 29),
+          version: 1,
+          contentVersion: 1,
+        ),
+      );
+      final detail = await store.readPlanDetail(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        planId: 'plan-new',
+      );
+      expect(detail!.plan.contentVersion, 1);
+    });
   });
 
   group('DriftPlanningLocalStore storage recovery (D1)', () {

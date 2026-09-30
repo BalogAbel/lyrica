@@ -50,6 +50,8 @@ void main() {
             description: null,
             scheduledFor: null,
             updatedAt: DateTime.utc(2026, 4, 11, 10),
+            version: 2,
+            contentVersion: 5,
           ),
         ],
         sessions: const [
@@ -161,6 +163,25 @@ void main() {
         expect(session.items.first.song.title, 'Gamma');
       },
     );
+
+    test('a pending plan edit keeps the projection contentVersion in merged '
+        'reads (spec D4)', () async {
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 2,
+        ),
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      final summary = (await repository.listPlans()).single;
+
+      expect(detail.plan.name, 'Renamed');
+      expect(detail.plan.contentVersion, 5);
+      expect(summary.contentVersion, 5);
+    });
 
     test('merge keeps a failed planEdit visible instead of reverting', () async {
       // arrange: projection has plan P (name "Server Name"); mutation store has a planEdit on P
