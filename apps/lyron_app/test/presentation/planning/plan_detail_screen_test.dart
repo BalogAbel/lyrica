@@ -66,6 +66,10 @@ void main() {
           builder: (context, state) => const PlanDetailScreen(planId: 'plan-1'),
         ),
         GoRoute(
+          path: AppRoutes.planList.path,
+          builder: (context, state) => const Text('plan-list-placeholder'),
+        ),
+        GoRoute(
           path: AppRoutes.planSessionSongReader.path,
           builder: (context, state) => SongReaderScreen(
             songId: 'song-1',
@@ -2884,6 +2888,148 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('plan delete lives in the overflow menu and needs both '
+      'managePlans and editSessions (spec D11)', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        capabilityResolver: CapabilityResolver(
+          gateway: _PlanDetailStaticCapabilityGateway({Capability.managePlans}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('plan-overflow-menu-button')), findsNothing);
+
+    // Unmount first: a second pumpWidget would reuse the ProviderScope and
+    // keep the first capability resolver override.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _editablePlanDetailFixture()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.planDeleteAction), findsOneWidget);
+  });
+
+  testWidgets('deletes the plan after confirmation and returns to the plan '
+      'list', (tester) async {
+    final writeService = _FakePlanningWriteService();
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.planDeleteAction));
+    await tester.pumpAndSettle();
+
+    // _editablePlanDetailFixture(): two sessions, both without items.
+    expect(
+      find.text(
+        AppStrings.planDeleteConfirmMessage(
+          planName: 'Team Rehearsal',
+          sessionCount: 2,
+          songCount: 0,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsNothing,
+    );
+
+    await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.deletedPlanDraft?.planId, 'plan-1');
+    expect(find.text('plan-list-placeholder'), findsOneWidget);
+  });
+
+  testWidgets('the plan delete confirmation counts the songs of every '
+      'session', (tester) async {
+    await tester.pumpWidget(
+      buildApp(planDetailValue: _planDetailWithItemsFixture()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.planDeleteAction));
+    await tester.pumpAndSettle();
+
+    // _planDetailWithItemsFixture(): Warm-Up holds 2 items, Closing none.
+    expect(
+      find.text(
+        AppStrings.planDeleteConfirmMessage(
+          planName: 'Team Rehearsal',
+          sessionCount: 2,
+          songCount: 2,
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the plan delete dialog warns about unsynced plan changes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'item-9',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            kind: PlanningMutationKind.sessionItemCreateSong,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.planDeleteAction));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('cancelling the plan delete dialog does not delete', (
+    tester,
+  ) async {
+    final writeService = _FakePlanningWriteService();
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.planDeleteAction));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.deletedPlanDraft, isNull);
+  });
 }
 
 PlanDetail _editablePlanDetailFixture() {
@@ -3140,6 +3286,7 @@ class _FakePlanningWriteService extends PlanningWriteService {
   PlanEditDraft? editedDraft;
   SessionCreateDraft? createdSessionDraft;
   SessionRenameDraft? renamedSessionDraft;
+  PlanDeleteDraft? deletedPlanDraft;
   SessionDeleteDraft? deletedSessionDraft;
   SessionReorderDraft? reorderedSessionDraft;
   var reorderSessionsCallCount = 0;
@@ -3157,6 +3304,14 @@ class _FakePlanningWriteService extends PlanningWriteService {
     required PlanEditDraft draft,
   }) async {
     editedDraft = draft;
+  }
+
+  @override
+  Future<void> deletePlan({
+    required PlanningWriteContext context,
+    required PlanDeleteDraft draft,
+  }) async {
+    deletedPlanDraft = draft;
   }
 
   @override

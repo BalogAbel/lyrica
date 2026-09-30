@@ -173,6 +173,23 @@ class AppStrings {
       'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
+  static const planMoreActions = 'More plan actions';
+  static const planDeleteAction = 'Delete plan';
+  static const planDeleteConfirmTitle = 'Delete plan?';
+  static const planDeleteConfirmAction = 'Delete';
+  static String planDeleteConfirmMessage({
+    required String planName,
+    required int sessionCount,
+    required int songCount,
+  }) =>
+      '“$planName” and its ${_count(sessionCount, 'session', 'sessions')} '
+      '(${_count(songCount, 'song', 'songs')}) will be deleted. '
+      'The songs stay in the song library.';
+  static const planningUnsyncedChangesDiscardedMessage =
+      'Unsynced changes to this plan will be discarded.';
+
+  static String _count(int count, String one, String other) =>
+      count == 1 ? '$count $one' : '$count $other';
   static const sessionEditAction = 'Edit session';
   static const sessionCreateAction = 'Add session';
   static const sessionReorderAction = 'Reorder session';
