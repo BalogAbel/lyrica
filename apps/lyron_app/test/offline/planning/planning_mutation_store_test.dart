@@ -2565,6 +2565,103 @@ void main() {
       expect(retried.errorCode, isNull);
       expect(retried.baseVersion, 2);
     });
+
+    // Review gate 3 re-verification (N4): an in-flight row or a cancellation
+    // tombstone is not a failed write, so the popup's Retry / Keep mine must
+    // leave it to its own sync conclusion.
+    Future<void> expectRetryLeavesRowUntouched(
+      String aggregateType,
+      String id,
+    ) async {
+      final before = await read(aggregateType, id);
+
+      final retried = await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: aggregateType,
+        aggregateId: id,
+      );
+
+      expect(retried, isFalse);
+      final after = await read(aggregateType, id);
+      expect(after.kind, before.kind);
+      expect(after.syncStatus, before.syncStatus);
+      expect(after.localRevision, before.localRevision);
+      expect(after.baseVersion, before.baseVersion);
+      expect(after.updatedAt, before.updatedAt);
+    }
+
+    test('retrying a cancelling planCreate tombstone does not resurrect the '
+        'create the user deleted (N4)', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+      final tombstone = await read('plan', 'plan-1');
+      expect(tombstone.kind, PlanningMutationKind.planCreate);
+      expect(tombstone.syncStatus, PlanningMutationSyncStatus.cancelling);
+
+      await expectRetryLeavesRowUntouched('plan', 'plan-1');
+
+      final after = await read('plan', 'plan-1');
+      expect(after.kind, PlanningMutationKind.planCreate);
+      expect(after.syncStatus, PlanningMutationSyncStatus.cancelling);
+    });
+
+    test('retrying a sending row leaves it alone (N4)', () async {
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Edited',
+          baseVersion: 2,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+
+      await expectRetryLeavesRowUntouched('plan', 'plan-1');
+    });
+
+    test('retrying an accepted row leaves it alone (N4)', () async {
+      await store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Edited',
+          baseVersion: 2,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      await expectRetryLeavesRowUntouched('plan', 'plan-1');
+    });
   });
 
   group('applyAcceptedWriteEffects (spec D7, D8)', () {

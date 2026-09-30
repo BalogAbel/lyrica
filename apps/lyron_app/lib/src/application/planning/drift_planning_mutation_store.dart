@@ -1094,6 +1094,13 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       // left to retry.
       return false;
     }
+    // An in-flight row (or a cancellation tombstone) is not a failed write:
+    // its own sync conclusion (or resolveCancelledCreate) owns it. Resetting
+    // it to pending would resend a create the user deleted, or a write the
+    // backend may already hold (review gate 3 re-verification, N4).
+    if (_inFlightSyncStatuses.contains(existing.syncStatus)) {
+      return false;
+    }
 
     // Spec I2/I3, D9 (review gate 3 F1/F3): a cascade delete removes content
     // the user may never have seen, and the plan it targets stays hidden
