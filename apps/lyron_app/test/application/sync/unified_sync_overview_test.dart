@@ -130,6 +130,96 @@ void main() {
       );
     });
 
+    test('a plan row\'s mutation refs carry the status each entry had when '
+        'the overview was computed (review gate 3 F1)', () {
+      final overview = _compute(
+        plans: [
+          _plan(
+            aggregateId: 'session-item-1',
+            kind: PlanningMutationKind.sessionItemCreateSong,
+            status: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            planId: 'p1',
+          ),
+          _plan(
+            aggregateId: 'p1',
+            kind: PlanningMutationKind.planDelete,
+            status: PlanningMutationSyncStatus.pending,
+            name: 'Sunday Service',
+          ),
+        ],
+      );
+
+      final refs = overview.planRows.single.mutationRefs;
+      expect(refs.map((r) => (r.aggregateId, r.syncStatus)), [
+        ('session-item-1', PlanningMutationSyncStatus.conflict),
+        ('p1', PlanningMutationSyncStatus.pending),
+      ]);
+    });
+
+    test('a conflicted plan removal is titled from its snapshot and explains '
+        'the conflict (spec D9)', () {
+      final overview = _compute(
+        plans: [
+          PlanningMutationRecord(
+            aggregateId: 'session-9',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionRename,
+            syncStatus: PlanningMutationSyncStatus.failedDependency,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+            originSnapshot: const {'name': 'A Session Name'},
+          ),
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            kind: PlanningMutationKind.planDelete,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            orderKey: 2,
+            updatedAt: DateTime.utc(2026),
+            originSnapshot: const {'name': 'Sunday Service'},
+          ),
+        ],
+      );
+
+      final row = overview.planRows.single;
+      expect(row.title, 'Sunday Service');
+      expect(
+        row.nestedSummaries.last,
+        'plan removal conflicts: the plan changed after you deleted it — '
+        'retry deletes it as it is now, discard keeps it',
+      );
+    });
+
+    test('a conflicted session removal explains the conflict, a pending one '
+        'just says removed (review gate 3 F3)', () {
+      String summaryFor(PlanningMutationSyncStatus status) {
+        final overview = _compute(
+          planTitles: const {'plan-1': 'Sunday Service'},
+          plans: [
+            PlanningMutationRecord(
+              aggregateId: 'session-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              kind: PlanningMutationKind.sessionDelete,
+              syncStatus: status,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        return overview.planRows.single.nestedSummaries.single;
+      }
+
+      expect(
+        summaryFor(PlanningMutationSyncStatus.conflict),
+        'session removal conflicts: the session changed after you deleted '
+        'it — retry deletes it as it is now, discard keeps it',
+      );
+      expect(summaryFor(PlanningMutationSyncStatus.pending), 'session removed');
+    });
+
     test('red wins over yellow when mixed', () {
       final overview = _compute(
         songs: [_song(id: 's1', title: 'Hymn')],

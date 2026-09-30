@@ -89,10 +89,17 @@ class UnifiedSyncPlanMutationRef {
   const UnifiedSyncPlanMutationRef({
     required this.aggregateType,
     required this.aggregateId,
+    this.syncStatus,
   });
 
   final String aggregateType;
   final String aggregateId;
+
+  /// The status the row had when the overview was computed, i.e. what the
+  /// popup shows. A group action hands it back with a retry so the retry acts
+  /// on the row as the user saw it (see
+  /// `PlanningMutationSyncController.retryMutation`).
+  final PlanningMutationSyncStatus? syncStatus;
 }
 
 class UnifiedSyncPlanRow {
@@ -289,6 +296,7 @@ List<UnifiedSyncPlanRow> _buildPlanRows({
           (e) => UnifiedSyncPlanMutationRef(
             aggregateType: e.kind.aggregateType,
             aggregateId: e.aggregateId,
+            syncStatus: e.syncStatus,
           ),
         )
         .toList(growable: false);
@@ -313,6 +321,7 @@ String _planGroupKey(PlanningMutationRecord entry) {
   switch (entry.kind) {
     case PlanningMutationKind.planCreate:
     case PlanningMutationKind.planEdit:
+    case PlanningMutationKind.planDelete:
       return entry.aggregateId;
     default:
       return entry.planId ?? '__orphan_${entry.aggregateId}';
@@ -329,7 +338,8 @@ String _planTitle({
 
   for (final candidate in entries) {
     if (candidate.kind == PlanningMutationKind.planCreate ||
-        candidate.kind == PlanningMutationKind.planEdit) {
+        candidate.kind == PlanningMutationKind.planEdit ||
+        candidate.kind == PlanningMutationKind.planDelete) {
       final name = candidate.name;
       if (name != null && name.isNotEmpty) return name;
       final slug = candidate.slug;
@@ -423,9 +433,18 @@ String _nestedSummaryFor(PlanningMutationRecord entry) {
   return switch (entry.kind) {
     PlanningMutationKind.planCreate => 'plan added',
     PlanningMutationKind.planEdit => 'plan edited',
+    PlanningMutationKind.planDelete =>
+      entry.syncStatus == PlanningMutationSyncStatus.conflict
+          ? 'plan removal conflicts: the plan changed after you deleted it — '
+                'retry deletes it as it is now, discard keeps it'
+          : 'plan removed',
     PlanningMutationKind.sessionCreate => 'session added',
     PlanningMutationKind.sessionRename => 'session renamed',
-    PlanningMutationKind.sessionDelete => 'session removed',
+    PlanningMutationKind.sessionDelete =>
+      entry.syncStatus == PlanningMutationSyncStatus.conflict
+          ? 'session removal conflicts: the session changed after you deleted '
+                'it — retry deletes it as it is now, discard keeps it'
+          : 'session removed',
     PlanningMutationKind.sessionReorder => 'session order changed',
     PlanningMutationKind.sessionItemCreateSong => 'song added',
     PlanningMutationKind.sessionItemDelete => 'song removed',

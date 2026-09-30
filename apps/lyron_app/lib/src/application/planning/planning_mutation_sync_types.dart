@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/storage/local_storage_domain_rejection
 enum PlanningMutationKind {
   planCreate,
   planEdit,
+  planDelete,
   sessionCreate,
   sessionRename,
   sessionDelete,
@@ -67,6 +68,7 @@ extension PlanningMutationKindX on PlanningMutationKind {
   String get value => switch (this) {
     PlanningMutationKind.planCreate => 'plan_create',
     PlanningMutationKind.planEdit => 'plan_edit',
+    PlanningMutationKind.planDelete => 'plan_delete',
     PlanningMutationKind.sessionCreate => 'session_create',
     PlanningMutationKind.sessionRename => 'session_rename',
     PlanningMutationKind.sessionDelete => 'session_delete',
@@ -77,7 +79,9 @@ extension PlanningMutationKindX on PlanningMutationKind {
   };
 
   String get aggregateType => switch (this) {
-    PlanningMutationKind.planCreate || PlanningMutationKind.planEdit => 'plan',
+    PlanningMutationKind.planCreate ||
+    PlanningMutationKind.planEdit ||
+    PlanningMutationKind.planDelete => 'plan',
     PlanningMutationKind.sessionCreate ||
     PlanningMutationKind.sessionRename ||
     PlanningMutationKind.sessionDelete => 'session',
@@ -85,6 +89,22 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionItemCreateSong ||
     PlanningMutationKind.sessionItemDelete => 'session_item',
     PlanningMutationKind.sessionItemReorder => 'session_item_order',
+  };
+
+  /// Whether this kind's backend RPC bumps `plans.content_version` (spec I4,
+  /// D7 rule 1, docs/specs/2026-09-29-plan-delete-and-session-cascade.md).
+  /// Exhaustive on purpose: a new kind must decide.
+  bool get bumpsPlanContent => switch (this) {
+    PlanningMutationKind.planCreate ||
+    PlanningMutationKind.planEdit ||
+    PlanningMutationKind.planDelete => false,
+    PlanningMutationKind.sessionCreate ||
+    PlanningMutationKind.sessionRename ||
+    PlanningMutationKind.sessionDelete ||
+    PlanningMutationKind.sessionReorder ||
+    PlanningMutationKind.sessionItemCreateSong ||
+    PlanningMutationKind.sessionItemDelete ||
+    PlanningMutationKind.sessionItemReorder => true,
   };
 }
 
@@ -105,6 +125,7 @@ PlanningMutationKind planningMutationKindFromValue(String value) {
   return switch (value) {
     'plan_create' => PlanningMutationKind.planCreate,
     'plan_edit' => PlanningMutationKind.planEdit,
+    'plan_delete' => PlanningMutationKind.planDelete,
     'session_create' => PlanningMutationKind.sessionCreate,
     'session_rename' => PlanningMutationKind.sessionRename,
     'session_delete' => PlanningMutationKind.sessionDelete,
@@ -203,6 +224,8 @@ class PlanningMutationRecord {
     this.orderedSiblingIds,
     this.orderedSiblingPositions,
     this.baseVersion,
+    this.baseContentVersion,
+    this.acceptedPlanContentVersion,
     this.originSnapshot,
     this.errorCode,
     this.errorMessage,
@@ -223,6 +246,15 @@ class PlanningMutationRecord {
   final List<String>? orderedSiblingIds;
   final List<int>? orderedSiblingPositions;
   final int? baseVersion;
+
+  /// The plan content version a `planDelete` was based on (spec D4/D5).
+  /// Persisted; only meaningful for `planDelete` records.
+  final int? baseContentVersion;
+
+  /// In-memory only, never persisted: the backend's `plan_content_version`
+  /// (or a `plans` row's `content_version`) from the RPC response this record
+  /// was mapped from. Spec D4/D7.
+  final int? acceptedPlanContentVersion;
   final Map<String, Object?>? originSnapshot;
   final PlanningMutationSyncErrorCode? errorCode;
   final String? errorMessage;
@@ -265,6 +297,10 @@ class PlanningMutationRecord {
     bool clearOrderedSiblingPositions = false,
     int? baseVersion,
     bool clearBaseVersion = false,
+    int? baseContentVersion,
+    bool clearBaseContentVersion = false,
+    int? acceptedPlanContentVersion,
+    bool clearAcceptedPlanContentVersion = false,
     Map<String, Object?>? originSnapshot,
     bool clearOriginSnapshot = false,
     PlanningMutationSyncErrorCode? errorCode,
@@ -298,6 +334,12 @@ class PlanningMutationRecord {
           ? null
           : (orderedSiblingPositions ?? this.orderedSiblingPositions),
       baseVersion: clearBaseVersion ? null : (baseVersion ?? this.baseVersion),
+      baseContentVersion: clearBaseContentVersion
+          ? null
+          : (baseContentVersion ?? this.baseContentVersion),
+      acceptedPlanContentVersion: clearAcceptedPlanContentVersion
+          ? null
+          : (acceptedPlanContentVersion ?? this.acceptedPlanContentVersion),
       originSnapshot: clearOriginSnapshot
           ? null
           : (originSnapshot ?? this.originSnapshot),
@@ -345,6 +387,20 @@ class PlanningPlanEditMutationDraft {
   final String? description;
   final DateTime? scheduledFor;
   final int? baseVersion;
+  final Map<String, Object?>? originSnapshot;
+}
+
+class PlanningPlanDeleteMutationDraft {
+  const PlanningPlanDeleteMutationDraft({
+    required this.planId,
+    this.baseVersion,
+    this.baseContentVersion,
+    this.originSnapshot,
+  });
+
+  final String planId;
+  final int? baseVersion;
+  final int? baseContentVersion;
   final Map<String, Object?>? originSnapshot;
 }
 
@@ -471,6 +527,12 @@ abstract interface class PlanningMutationStore {
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
+  });
+
+  /// Spec D5 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md).
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
   });
 
   Future<void> recordSessionCreate({
@@ -610,7 +672,9 @@ abstract interface class PlanningMutationStore {
   });
 
   /// D3 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): resolves
-  /// the outcome of an in-flight `sessionCreate`/`sessionItemCreateSong`
+  /// the outcome of an in-flight `planCreate`/`sessionCreate`/
+  /// `sessionItemCreateSong` (`planCreate` per
+  /// `docs/specs/2026-09-29-plan-delete-and-session-cascade.md` D5(b))
   /// whose row may have become a D2 cancellation tombstone
   /// (`PlanningMutationSyncStatus.cancelling`) while its remote call was in
   /// flight.
@@ -631,12 +695,14 @@ abstract interface class PlanningMutationStore {
   /// assigned the created row) so the delete RPC's OCC check targets the
   /// content that actually exists remotely. The next sync sends it. The
   /// already-accepted remote create is never undone -- the delete is a
-  /// subsequent operation, which is what the user asked for.
+  /// subsequent operation, which is what the user asked for. A `planCreate`
+  /// tombstone additionally starts its `planDelete` at content version 1.
   ///
   /// When [created] is `false` the create never reached the backend, so the
   /// object never existed remotely: the tombstone is discarded outright,
   /// with no further backend call -- exactly the physical collapse a plain,
-  /// not-in-flight delete would have performed (ADR-028 D10).
+  /// not-in-flight delete would have performed (ADR-028 D10). A `planCreate`
+  /// tombstone also drops every child row of the plan, in any status.
   ///
   /// Returns `true` if a tombstone was found and resolved, `false`
   /// otherwise.
@@ -647,6 +713,26 @@ abstract interface class PlanningMutationStore {
     required String aggregateId,
     required bool created,
     int? acceptedBaseVersion,
+  });
+
+  /// Spec D7 + D8: the store-side consequences of a backend-accepted write.
+  ///
+  /// When [remoteResponse] is true, [accepted] was mapped from an RPC
+  /// response in the current sync run, and the D7 contiguity rules may use
+  /// its returned versions to rebase a not-in-flight pending cascade delete
+  /// (and the projection's plan content version). When false (a
+  /// crash-resumed `accepted` marker, whose `baseVersion` is still the
+  /// pre-write base), only the D8 purge runs.
+  ///
+  /// D8: when [accepted] is a `planDelete`/`sessionDelete`, every remaining
+  /// mutation row of the deleted subtree is removed, in any status.
+  ///
+  /// Idempotent. Never grows the store.
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
   });
 }
 

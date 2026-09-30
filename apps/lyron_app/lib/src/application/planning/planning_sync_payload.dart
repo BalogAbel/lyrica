@@ -19,6 +19,7 @@ class PlanningSyncPlan {
     required this.scheduledFor,
     required this.updatedAt,
     required this.version,
+    this.contentVersion,
   });
 
   final String id;
@@ -28,6 +29,7 @@ class PlanningSyncPlan {
   final DateTime? scheduledFor;
   final DateTime updatedAt;
   final int version;
+  final int? contentVersion;
 }
 
 class PlanningSyncSession {

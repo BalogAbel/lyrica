@@ -1176,9 +1176,12 @@ void main() {
           userId: 'user-1',
           organizationId: 'org-1',
         ),
-        draft: const SessionDeleteDraft(
+        draft: SessionDeleteDraft(
           sessionId: 'session-a',
           planId: 'plan-1',
+          confirmedVersion: detail.sessions
+              .singleWhere((session) => session.id == 'session-a')
+              .version,
         ),
       );
 
@@ -1483,6 +1486,7 @@ class _AcceptedWriteFallbackPlanningMutationRemoteRepository
           description: '${record.description} Accepted',
         );
       case PlanningMutationKind.planEdit:
+      case PlanningMutationKind.planDelete:
         return record.copyWith(
           name: '${record.name} Accepted',
           description: '${record.description} Accepted',
@@ -1749,6 +1753,20 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) async {}
+
+  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1908,6 +1926,36 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
     await _delegate.deletePlanningDataForUser(
       userId: userId,
       shouldContinue: shouldContinue,
+    );
+  }
+
+  @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) {
+    return _delegate.advanceSyncedPlanContentVersion(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      acceptedContentVersion: acceptedContentVersion,
+    );
+  }
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) {
+    return _delegate.deleteSyncedPlan(
+      userId: userId,
+      organizationId: organizationId,
+      planId: planId,
+      refreshedAt: refreshedAt,
     );
   }
 

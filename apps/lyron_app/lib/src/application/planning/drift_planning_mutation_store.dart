@@ -50,6 +50,18 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           name: draft.name,
           description: draft.description,
           scheduledFor: draft.scheduledFor?.toUtc(),
+          // Review gate 3 F4: a new plan's content version is 1 (the
+          // backend column default). Stamped on the create row so that
+          // recordPlanDelete branch (c) can base a delete of an accepted-but-
+          // uncleared create on a value that row actually carries, instead
+          // of assuming 1 for every row -- including one an older app wrote
+          // before schema 7, whose plan may already hold other members'
+          // sessions (folded into content version 1 by the backend
+          // migration). `planCreate` never sends p_base_content_version (see
+          // SupabasePlanningMutationRepository._paramsFor), so this value is
+          // local bookkeeping only. There is no fold over an existing create
+          // here: a re-record replaces the row wholesale, as a fresh create.
+          baseContentVersion: 1,
         ),
       );
     });
@@ -133,6 +145,200 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
+      );
+    });
+    _onStorageFootprintChanged?.call();
+  }
+
+  @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'plan',
+        aggregateId: draft.planId,
+      );
+      final now = DateTime.now().toUtc();
+
+      if (existing?.kind == PlanningMutationKind.planCreate) {
+        switch (existing!.syncStatus) {
+          case PlanningMutationSyncStatus.cancelling:
+            if (draft.baseVersion == null) {
+              // Already deleted while its create was in flight, and the
+              // create's own outcome still resolves the tombstone (D5b);
+              // nothing new.
+              return;
+            }
+            // Review gate 3 F2: a draft WITH bases was built from the merged
+            // read of the synced projection, which excludes a tombstone. The
+            // plan can only be there if its create committed -- so this
+            // tombstone is stranded (a sync run interrupted by a crash or an
+            // exception before resolveCancelledCreate ran; nothing sends or
+            // resolves a `cancelling` row), and returning here would make
+            // every further delete of the now-visible plan a silent no-op
+            // forever. Record the delete for real, from the projection bases
+            // the caller captured (never invented here).
+            //
+            // If this races a still-live in-flight create instead (a refresh
+            // landed after the backend committed but before its response
+            // did), the conversion bumps localRevision: the controller's
+            // accepted marker is revision-gated out and its
+            // resolveCancelledCreate(created: true) no-ops on a row that is
+            // no longer `cancelling`, leaving this pending delete to be
+            // sent on the next sync.
+            await _upsertRecord(
+              context: context,
+              aggregateType: 'plan',
+              record: PlanningMutationRecord(
+                aggregateId: draft.planId,
+                organizationId: context.organizationId,
+                kind: PlanningMutationKind.planDelete,
+                syncStatus: PlanningMutationSyncStatus.pending,
+                orderKey: await _nextOrderKey(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                ),
+                updatedAt: now,
+                baseVersion: draft.baseVersion,
+                baseContentVersion: draft.baseContentVersion,
+                originSnapshot:
+                    existing.originSnapshot ??
+                    draft.originSnapshot ??
+                    {'name': existing.name},
+              ),
+            );
+            await _deleteChildMutationsOfPlan(
+              context: context,
+              planId: draft.planId,
+              keepInFlight: true,
+            );
+            return;
+          case PlanningMutationSyncStatus.sending:
+            // D5(b): the create is on the wire. Keep a cancellation
+            // tombstone (in-flight-create-cancellation D2); the sync
+            // controller resolves it once the create concludes.
+            await _upsertRecord(
+              context: context,
+              aggregateType: 'plan',
+              record: existing.copyWith(
+                syncStatus: PlanningMutationSyncStatus.cancelling,
+                updatedAt: now,
+                clearErrorCode: true,
+                clearErrorMessage: true,
+              ),
+            );
+            await _deleteChildMutationsOfPlan(
+              context: context,
+              planId: draft.planId,
+              keepInFlight: true,
+            );
+            return;
+          case PlanningMutationSyncStatus.accepted:
+            // D5(c): the backend already has the plan; delete it for real.
+            // baseContentVersion: the draft's projection value when the
+            // merged read knew better, else the value stamped on the create
+            // row (1 for a new plan, see recordPlanCreate). Review gate 3
+            // F4: no `?? 1` here -- a create row written before schema 7
+            // carries null, which is sent as null and rejected by the
+            // backend as a conflict (fail-safe; spec D4: null -> conflict ->
+            // retry rebases), rather than silently asserting a 1 that other
+            // members' sessions may already have outgrown.
+            await _upsertRecord(
+              context: context,
+              aggregateType: 'plan',
+              record: PlanningMutationRecord(
+                aggregateId: draft.planId,
+                organizationId: context.organizationId,
+                kind: PlanningMutationKind.planDelete,
+                syncStatus: PlanningMutationSyncStatus.pending,
+                orderKey: await _nextOrderKey(
+                  userId: context.userId,
+                  organizationId: context.organizationId,
+                ),
+                updatedAt: now,
+                baseVersion: existing.baseVersion ?? draft.baseVersion,
+                baseContentVersion:
+                    draft.baseContentVersion ?? existing.baseContentVersion,
+                originSnapshot:
+                    existing.originSnapshot ??
+                    draft.originSnapshot ??
+                    {'name': existing.name},
+              ),
+            );
+            await _deleteChildMutationsOfPlan(
+              context: context,
+              planId: draft.planId,
+              keepInFlight: true,
+            );
+            return;
+          case PlanningMutationSyncStatus.pending:
+          case PlanningMutationSyncStatus.failedAuthorization:
+          case PlanningMutationSyncStatus.failedDependency:
+          case PlanningMutationSyncStatus.failedRemoteDelete:
+          case PlanningMutationSyncStatus.conflict:
+            // D5(a): as far as this device knows the plan never reached the
+            // backend, so neither did any child: collapse everything.
+            await (_database.delete(_database.cachedPlanningMutations)..where(
+                  (table) =>
+                      table.userId.equals(context.userId) &
+                      table.organizationId.equals(context.organizationId) &
+                      table.aggregateType.equals('plan') &
+                      table.aggregateId.equals(draft.planId),
+                ))
+                .go();
+            await _deleteChildMutationsOfPlan(
+              context: context,
+              planId: draft.planId,
+              keepInFlight: false,
+            );
+            return;
+        }
+      }
+
+      // D5(d): a synced plan (no row, or a planEdit/planDelete row). Keep
+      // the FIRST local base, like recordPlanEdit: a later local action did
+      // not observe a newer remote version. A fresh order key puts the
+      // delete after every surviving in-flight child row.
+      final repeatsDelete = existing?.kind == PlanningMutationKind.planDelete;
+      if (repeatsDelete &&
+          _inFlightSyncStatuses.contains(existing!.syncStatus)) {
+        // Review gate 3 F6: this delete is already on the wire (`sending`)
+        // or accepted-but-uncleared (`accepted`), e.g. a double tap on
+        // delete. Rewriting it to `pending` would bump localRevision, so the
+        // in-flight send's accepted marker and clear are revision-gated out
+        // and the already-accepted delete is resent -> a spurious
+        // plan-not-found failure. Nothing new to record, and no child rows
+        // to drop: the first delete already dropped them.
+        return;
+      }
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'plan',
+        record: PlanningMutationRecord(
+          aggregateId: draft.planId,
+          organizationId: context.organizationId,
+          kind: PlanningMutationKind.planDelete,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
+          updatedAt: now,
+          baseVersion: existing?.baseVersion ?? draft.baseVersion,
+          baseContentVersion: repeatsDelete
+              ? existing!.baseContentVersion
+              : draft.baseContentVersion,
+          originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
+        ),
+      );
+      await _deleteChildMutationsOfPlan(
+        context: context,
+        planId: draft.planId,
+        keepInFlight: true,
       );
     });
     _onStorageFootprintChanged?.call();
@@ -367,15 +573,22 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
-          orderKey:
-              existing?.orderKey ??
-              await _nextOrderKey(
-                userId: context.userId,
-                organizationId: context.organizationId,
-              ),
+          // Spec D6: a fresh key, after every surviving in-flight child row,
+          // so those conclude before the cascade delete is sent.
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
           updatedAt: DateTime.now().toUtc(),
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
+      );
+      // Spec D6: under cascade a not-yet-sent child write could only bump
+      // the session version and make this delete conflict with itself.
+      await _deleteChildMutationsOfSession(
+        context: context,
+        sessionId: draft.sessionId,
+        keepInFlight: true,
       );
       await _removeSessionFromPendingReorder(
         context: context,
@@ -881,12 +1094,46 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       // left to retry.
       return false;
     }
+    // An in-flight row (or a cancellation tombstone) is not a failed write:
+    // its own sync conclusion (or resolveCancelledCreate) owns it. Resetting
+    // it to pending would resend a create the user deleted, or a write the
+    // backend may already hold (review gate 3 re-verification, N4).
+    if (_inFlightSyncStatuses.contains(existing.syncStatus)) {
+      return false;
+    }
 
-    final rebasedBaseVersion = await _currentBaseVersionFor(
-      existing,
-      userId: userId,
-      organizationId: organizationId,
-    );
+    // Spec I2/I3, D9 (review gate 3 F1/F3): a cascade delete removes content
+    // the user may never have seen, and the plan it targets stays hidden
+    // behind the pending delete (D10), so a later refresh can bring in
+    // someone else's writes unseen. Only the explicit retry of a visible
+    // CONFLICT is the "delete anyway" remove and so rebases onto the
+    // projection. Any other retry (connectivity error, failed dependency,
+    // ...) resends the bases the user saw: a foreign write in between must
+    // surface as a conflict, never be absorbed by a silent rebase.
+    final isCascadeDelete =
+        existing.kind == PlanningMutationKind.planDelete ||
+        existing.kind == PlanningMutationKind.sessionDelete;
+    final rebases =
+        !isCascadeDelete ||
+        existing.syncStatus == PlanningMutationSyncStatus.conflict;
+    final rebasedBaseVersion = rebases
+        ? await _currentBaseVersionFor(
+            existing,
+            userId: userId,
+            organizationId: organizationId,
+          )
+        : null;
+    // Spec D9: retrying a conflicted plan delete is the explicit remove -- it
+    // targets the plan as the projection now shows it, content version
+    // included.
+    final rebasedBaseContentVersion =
+        rebases && existing.kind == PlanningMutationKind.planDelete
+        ? (await _localStore.readPlanDetail(
+            userId: userId,
+            organizationId: organizationId,
+            planId: existing.aggregateId,
+          ))?.plan.contentVersion
+        : null;
     final changed = await _upsertRecord(
       context: PlanningMutationContext(
         userId: userId,
@@ -898,6 +1145,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         clearErrorCode: true,
         clearErrorMessage: true,
         baseVersion: rebasedBaseVersion ?? existing.baseVersion,
+        baseContentVersion:
+            rebasedBaseContentVersion ?? existing.baseContentVersion,
         updatedAt: DateTime.now().toUtc(),
       ),
     );
@@ -988,6 +1237,18 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   table.aggregateId.equals(aggregateId),
             ))
             .go();
+        // Spec D5(b): a plan whose create never reached the backend has no
+        // children there either; drop every child row left behind.
+        if (existing.kind == PlanningMutationKind.planCreate) {
+          await _deleteChildMutationsOfPlan(
+            context: PlanningMutationContext(
+              userId: userId,
+              organizationId: organizationId,
+            ),
+            planId: aggregateId,
+            keepInFlight: false,
+          );
+        }
         _onStorageFootprintChanged?.call();
         return true;
       }
@@ -999,6 +1260,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       // backend just assigned the created row, so the delete RPC's OCC
       // check targets content that actually exists.
       final deleteKind = switch (existing.kind) {
+        PlanningMutationKind.planCreate => PlanningMutationKind.planDelete,
         PlanningMutationKind.sessionCreate =>
           PlanningMutationKind.sessionDelete,
         PlanningMutationKind.sessionItemCreateSong =>
@@ -1006,8 +1268,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         _ => throw StateError(
           'resolveCancelledCreate: unexpected tombstone kind '
           '${existing.kind} for $aggregateType/$aggregateId -- only '
-          'sessionCreate/sessionItemCreateSong rows can become cancellation '
-          'tombstones (D2).',
+          'planCreate/sessionCreate/sessionItemCreateSong rows can become '
+          'cancellation tombstones (D2, spec D5(b)).',
         ),
       };
       await _upsertRecord(
@@ -1020,6 +1282,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           kind: deleteKind,
           syncStatus: PlanningMutationSyncStatus.pending,
           baseVersion: acceptedBaseVersion ?? existing.baseVersion,
+          // Spec D5(b): a plan's content version starts at 1, and no child
+          // of it can have reached the backend before this create's own
+          // response (sync is sequential; children sort after the create).
+          baseContentVersion: existing.kind == PlanningMutationKind.planCreate
+              ? 1
+              : existing.baseContentVersion,
           updatedAt: DateTime.now().toUtc(),
           clearErrorCode: true,
           clearErrorMessage: true,
@@ -1027,6 +1295,154 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       );
       return true;
     });
+  }
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) async {
+    final context = PlanningMutationContext(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    final planId = accepted.kind.aggregateType == 'plan'
+        ? accepted.aggregateId
+        : accepted.planId;
+    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
+
+    // D7 rule 1a -- the projection, in the local store's own transaction.
+    if (remoteResponse &&
+        accepted.kind.bumpsPlanContent &&
+        planId != null &&
+        acceptedContentVersion != null) {
+      await _localStore.advanceSyncedPlanContentVersion(
+        userId: userId,
+        organizationId: organizationId,
+        planId: planId,
+        acceptedContentVersion: acceptedContentVersion,
+      );
+    }
+
+    var changed = false;
+    await _database.transaction(() async {
+      if (remoteResponse && planId != null) {
+        changed =
+            await _rebasePendingPlanDelete(
+              context: context,
+              planId: planId,
+              accepted: accepted,
+            ) ||
+            changed;
+      }
+      if (remoteResponse) {
+        changed =
+            await _rebasePendingSessionDelete(
+              context: context,
+              accepted: accepted,
+            ) ||
+            changed;
+      }
+      if (accepted.kind == PlanningMutationKind.planDelete) {
+        changed =
+            await _deleteChildMutationsOfPlan(
+                  context: context,
+                  planId: accepted.aggregateId,
+                  keepInFlight: false,
+                ) >
+                0 ||
+            changed;
+      }
+      if (accepted.kind == PlanningMutationKind.sessionDelete) {
+        changed =
+            await _deleteChildMutationsOfSession(
+                  context: context,
+                  sessionId: accepted.aggregateId,
+                  keepInFlight: false,
+                ) >
+                0 ||
+            changed;
+      }
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  // D7 rules 1b and 2. Only exact contiguity with the backend-returned
+  // value ever moves a base (I3): anything else leaves it stale, and a
+  // stale base conflicts -- the fail-safe direction.
+  Future<bool> _rebasePendingPlanDelete({
+    required PlanningMutationContext context,
+    required String planId,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final row = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'plan',
+      aggregateId: planId,
+    );
+    if (row == null ||
+        row.kind != PlanningMutationKind.planDelete ||
+        _inFlightSyncStatuses.contains(row.syncStatus)) {
+      return false;
+    }
+    var next = row;
+    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
+    if (accepted.kind.bumpsPlanContent &&
+        acceptedContentVersion != null &&
+        row.baseContentVersion == acceptedContentVersion - 1) {
+      next = next.copyWith(baseContentVersion: acceptedContentVersion);
+    }
+    final acceptedPlanVersion = accepted.baseVersion;
+    if ((accepted.kind == PlanningMutationKind.planEdit ||
+            accepted.kind == PlanningMutationKind.sessionReorder) &&
+        acceptedPlanVersion != null &&
+        row.baseVersion == acceptedPlanVersion - 1) {
+      next = next.copyWith(baseVersion: acceptedPlanVersion);
+    }
+    if (identical(next, row)) {
+      return false;
+    }
+    return _upsertRecord(context: context, aggregateType: 'plan', record: next);
+  }
+
+  // D7 rule 3.
+  Future<bool> _rebasePendingSessionDelete({
+    required PlanningMutationContext context,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final sessionId = switch (accepted.kind) {
+      PlanningMutationKind.sessionRename => accepted.aggregateId,
+      PlanningMutationKind.sessionItemCreateSong ||
+      PlanningMutationKind.sessionItemDelete ||
+      PlanningMutationKind.sessionItemReorder => accepted.sessionId,
+      _ => null,
+    };
+    final acceptedSessionVersion = accepted.baseVersion;
+    if (sessionId == null || acceptedSessionVersion == null) {
+      return false;
+    }
+    final row = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'session',
+      aggregateId: sessionId,
+    );
+    if (row == null ||
+        row.kind != PlanningMutationKind.sessionDelete ||
+        _inFlightSyncStatuses.contains(row.syncStatus) ||
+        row.baseVersion != acceptedSessionVersion - 1) {
+      return false;
+    }
+    return _upsertRecord(
+      context: context,
+      aggregateType: 'session',
+      record: row.copyWith(baseVersion: acceptedSessionVersion),
+    );
   }
 
   Future<bool> _upsertRecord({
@@ -1084,6 +1500,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               _encodeJsonValue(record.orderedSiblingIds),
             ),
             baseVersion: Value(record.baseVersion),
+            baseContentVersion: Value(record.baseContentVersion),
             originSnapshotJson: Value(_encodeJsonValue(record.originSnapshot)),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
@@ -1121,6 +1538,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         existing.orderedSiblingIds ==
             _encodeJsonValue(record.orderedSiblingIds) &&
         existing.baseVersion == record.baseVersion &&
+        existing.baseContentVersion == record.baseContentVersion &&
         existing.originSnapshotJson ==
             _encodeJsonValue(record.originSnapshot) &&
         existing.errorCode == record.errorCode?.name &&
@@ -1162,9 +1580,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       planId: planId,
     );
 
-    final sessionId = record.sessionId;
+    // A session delete is a session aggregate row: the session id is its
+    // aggregateId and `sessionId` is null (review gate 3 F3). The other
+    // session kinds are deliberately left as they were.
+    final sessionId =
+        record.sessionId ??
+        (record.kind == PlanningMutationKind.sessionDelete
+            ? record.aggregateId
+            : null);
     return switch (record.kind) {
       PlanningMutationKind.planEdit ||
+      PlanningMutationKind.planDelete ||
       PlanningMutationKind.sessionCreate ||
       PlanningMutationKind.sessionReorder => detail?.plan.version,
       PlanningMutationKind.sessionRename ||
@@ -1261,6 +1687,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       songTitle: row.songTitle,
       orderedSiblingIds: _orderedSiblingIdsFromValue(row.orderedSiblingIds),
       baseVersion: row.baseVersion,
+      baseContentVersion: row.baseContentVersion,
       originSnapshot: _originSnapshotFromValue(row.originSnapshotJson),
       errorCode: _errorCodeFromValue(row.errorCode),
       errorMessage: row.errorMessage,
@@ -1309,6 +1736,67 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return null;
     }
     return decoded.map((key, value) => MapEntry(key.toString(), value));
+  }
+
+  /// Spec D5: statuses whose row is on its way to, or already on, the
+  /// backend. A cascade delete keeps these child rows; they conclude on
+  /// their own and D8 purges whatever is left once the delete is accepted.
+  static const _inFlightSyncStatuses = <PlanningMutationSyncStatus>{
+    PlanningMutationSyncStatus.sending,
+    PlanningMutationSyncStatus.cancelling,
+    PlanningMutationSyncStatus.accepted,
+  };
+
+  /// Spec D5/D8: every child row of [planId] -- session, session item and
+  /// session-item-order rows carrying the plan id, plus the plan's
+  /// session_order row -- optionally sparing in-flight rows. Returns the
+  /// number of rows deleted.
+  Future<int> _deleteChildMutationsOfPlan({
+    required PlanningMutationContext context,
+    required String planId,
+    required bool keepInFlight,
+  }) {
+    final table = _database.cachedPlanningMutations;
+    var predicate =
+        table.userId.equals(context.userId) &
+        table.organizationId.equals(context.organizationId) &
+        ((table.planId.equals(planId) &
+                table.aggregateType.equals('plan').not()) |
+            (table.aggregateType.equals('session_order') &
+                table.aggregateId.equals(planId)));
+    if (keepInFlight) {
+      predicate =
+          predicate &
+          table.syncStatus.isNotIn(
+            _inFlightSyncStatuses.map((status) => status.value),
+          );
+    }
+    return (_database.delete(table)..where((_) => predicate)).go();
+  }
+
+  /// Spec D6/D8: every session-item and session-item-order row of
+  /// [sessionId], optionally sparing in-flight rows.
+  Future<int> _deleteChildMutationsOfSession({
+    required PlanningMutationContext context,
+    required String sessionId,
+    required bool keepInFlight,
+  }) {
+    final table = _database.cachedPlanningMutations;
+    var predicate =
+        table.userId.equals(context.userId) &
+        table.organizationId.equals(context.organizationId) &
+        ((table.aggregateType.equals('session_item') &
+                table.sessionId.equals(sessionId)) |
+            (table.aggregateType.equals('session_item_order') &
+                table.aggregateId.equals(sessionId)));
+    if (keepInFlight) {
+      predicate =
+          predicate &
+          table.syncStatus.isNotIn(
+            _inFlightSyncStatuses.map((status) => status.value),
+          );
+    }
+    return (_database.delete(table)..where((_) => predicate)).go();
   }
 
   Future<void> _deletePendingMutationsForSession({

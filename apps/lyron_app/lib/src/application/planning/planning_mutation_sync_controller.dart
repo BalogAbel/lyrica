@@ -141,6 +141,7 @@ class PlanningMutationSyncController {
             PlanningMutationRecord original,
             PlanningMutationRecord synced,
             int clearRevision,
+            bool remoteResponse,
           )
         >[];
 
@@ -148,7 +149,15 @@ class PlanningMutationSyncController {
       final mutation = candidates[index];
       if (mutation.syncStatus == PlanningMutationSyncStatus.accepted) {
         // Durable marker: already accepted, skip remote send
-        acceptedRecords.add((mutation, mutation, mutation.localRevision));
+        // `remoteResponse: false` is explicit, never inferred from
+        // identity: this record's versions are still the pre-write base,
+        // not a backend response, so D7's contiguity rules must not use it.
+        acceptedRecords.add((
+          mutation,
+          mutation,
+          mutation.localRevision,
+          false,
+        ));
         continue;
       }
 
@@ -175,6 +184,7 @@ class PlanningMutationSyncController {
       }
 
       final isCancellableCreate =
+          mutation.kind == PlanningMutationKind.planCreate ||
           mutation.kind == PlanningMutationKind.sessionCreate ||
           mutation.kind == PlanningMutationKind.sessionItemCreateSong;
 
@@ -182,6 +192,14 @@ class PlanningMutationSyncController {
         final syncedMutation = await _remoteRepository().syncMutation(
           organizationId: context.organizationId,
           record: mutation,
+        );
+        // Spec D7/D8: before the accepted marker, and regardless of its
+        // revision gate -- a delete may have overwritten this very row
+        // while it was in flight, and that delete is what gets rebased.
+        await _applyAcceptedEffects(
+          context,
+          syncedMutation,
+          remoteResponse: true,
         );
         // Durable marker: save accepted status immediately (survives
         // crash) -- but only if this row is still the exact content that
@@ -217,10 +235,12 @@ class PlanningMutationSyncController {
           //   tombstone would otherwise stay invisible forever --
           //   `cancelling` is excluded from readActionableMutations -- and
           //   the object it names would never be deleted). Resolved only
-          //   for the two kinds that can produce a tombstone (D2 is scoped
-          //   to recordSessionDelete/recordSessionItemDelete); a no-op for
-          //   every other kind, and a no-op even for these two when the row
-          //   was not actually a tombstone (the ordinary-edit case above).
+          //   for the three kinds that can produce a tombstone (D2 is scoped
+          //   to recordSessionDelete/recordSessionItemDelete, and spec D5(b)
+          //   adds recordPlanDelete for an in-flight planCreate); a no-op
+          //   for every other kind, and a no-op even for these three when
+          //   the row was not actually a tombstone (the ordinary-edit case
+          //   above).
           //
           // D4: `newRevision == null` also covers the row having vanished
           // entirely (a delete of a NON-in-flight create racing something
@@ -238,7 +258,7 @@ class PlanningMutationSyncController {
           }
           continue;
         }
-        acceptedRecords.add((mutation, syncedMutation, newRevision));
+        acceptedRecords.add((mutation, syncedMutation, newRevision, true));
       } on PlanningMutationSyncException catch (error) {
         // N3: report the raw outcome of THIS send before anything below
         // decides how (or whether) to persist it -- an explicit retry
@@ -357,7 +377,20 @@ class PlanningMutationSyncController {
 
     final refreshed = await _refreshPlanning();
     if (refreshed) {
-      for (final (original, _, clearRevision) in acceptedRecords) {
+      for (final (original, synced, clearRevision, remoteResponse)
+          in acceptedRecords) {
+        final effectsApplied = await _applyAcceptedEffects(
+          context,
+          synced,
+          remoteResponse: remoteResponse,
+        );
+        if (!effectsApplied && _isCascadeDelete(synced)) {
+          // Spec D8, review gate 3 F5: both purges of this delete failed, and
+          // the row is the only thing that makes one re-run. Left `accepted`,
+          // the next run resumes it like a crash-resumed marker
+          // (`remoteResponse: false`) and purges before clearing.
+          continue;
+        }
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -371,7 +404,18 @@ class PlanningMutationSyncController {
         );
       }
     } else {
-      for (final (original, synced, clearRevision) in acceptedRecords) {
+      for (final (original, synced, clearRevision, remoteResponse)
+          in acceptedRecords) {
+        // Applied before each record's reconcile, in `acceptedRecords`
+        // order: this is what lets D7 rule 1a advance the projection's plan
+        // content version across a `planCreate` and its accepted children
+        // even when the refresh failed. The reconciler needs no rule-1a
+        // code of its own.
+        final effectsApplied = await _applyAcceptedEffects(
+          context,
+          synced,
+          remoteResponse: remoteResponse,
+        );
         try {
           if (await _shouldReconcileAcceptedMutation(context)) {
             await _reconcileAcceptedMutation(context, synced);
@@ -423,6 +467,12 @@ class PlanningMutationSyncController {
           );
           continue;
         }
+        if (!effectsApplied && _isCascadeDelete(synced)) {
+          // Same as the refreshed branch: the reconcile above is idempotent
+          // and may run again, but the clear waits for a successful purge
+          // (spec D8, review gate 3 F5).
+          continue;
+        }
         await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -434,10 +484,56 @@ class PlanningMutationSyncController {
     }
   }
 
+  /// Whether [record] is a plan or session delete, whose accepted effects
+  /// include purging the deleted subtree's child rows (spec D8).
+  bool _isCascadeDelete(PlanningMutationRecord record) =>
+      record.kind == PlanningMutationKind.planDelete ||
+      record.kind == PlanningMutationKind.sessionDelete;
+
+  /// Spec D7/D8: best-effort by design. Failing to rebase leaves a base
+  /// stale (fail-safe: a visible conflict); a failed purge re-runs at batch
+  /// conclusion. An Exception here must never skip the accepted marker
+  /// (ADR-019 exactly-once); an Error still propagates.
+  ///
+  /// Returns `true` when the store call completed and `false` when an
+  /// Exception was swallowed. The batch-end callers use it to keep an accepted
+  /// plan/session delete (whose purge is the retry-less part) instead of
+  /// clearing it; the call right after the response ignores it.
+  Future<bool> _applyAcceptedEffects(
+    ActivePlanningReadContext context,
+    PlanningMutationRecord accepted, {
+    required bool remoteResponse,
+  }) async {
+    try {
+      await _mutationStore().applyAcceptedWriteEffects(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        accepted: accepted,
+        remoteResponse: remoteResponse,
+      );
+      return true;
+    } on Exception {
+      // Intentionally swallowed -- see the doc comment.
+      return false;
+    }
+  }
+
+  /// Retries the mutation of one aggregate.
+  ///
+  /// [expectedStatus] is the status the caller showed the user for this row.
+  /// When the stored row no longer has it, this returns at once without
+  /// resetting the row, syncing or throwing: the row changed since it was
+  /// shown and stays visible, with its new status, for the user to act on.
+  /// Why: a group action retries its refs one by one, and each retry runs a
+  /// sync pass that can move a later ref -- e.g. send a pending cascade delete
+  /// that then conflicts. Retrying that row would turn a conflict the user
+  /// never saw into D9's explicit "delete anyway" and silently absorb a
+  /// foreign write (spec I2, review gate 3 F1).
   Future<void> retryMutation(
     ActivePlanningReadContext context, {
     required String aggregateType,
     required String aggregateId,
+    PlanningMutationSyncStatus? expectedStatus,
   }) async {
     // spec D5.6 / ADR-035: a mutation the last sync pass classified
     // `failedAuthorization` was permanently rejected -- the server knows
@@ -457,6 +553,9 @@ class PlanningMutationSyncController {
       aggregateType: aggregateType,
       aggregateId: aggregateId,
     );
+    if (expectedStatus != null && existing?.syncStatus != expectedStatus) {
+      return;
+    }
     if (existing != null &&
         existing.syncStatus == PlanningMutationSyncStatus.failedAuthorization) {
       throw PlanningMutationSyncException(

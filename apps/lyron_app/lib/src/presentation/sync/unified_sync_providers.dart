@@ -379,6 +379,7 @@ final unifiedRowRecoveryControllerProvider =
                     planningContext,
                     aggregateType: mref.aggregateType,
                     aggregateId: mref.aggregateId,
+                    expectedStatus: mref.syncStatus,
                   );
                 } else {
                   await controller.discardMutation(

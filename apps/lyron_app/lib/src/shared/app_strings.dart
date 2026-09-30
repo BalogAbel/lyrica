@@ -173,6 +173,26 @@ class AppStrings {
       'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
+  static const planMoreActions = 'More plan actions';
+  static const planDeleteAction = 'Delete plan';
+  static const planDeleteConfirmTitle = 'Delete plan?';
+  static const planDeleteConfirmAction = 'Delete';
+  static String planDeleteConfirmMessage({
+    required String planName,
+    required int sessionCount,
+    required int songCount,
+  }) =>
+      '“$planName” and its ${_count(sessionCount, 'session', 'sessions')} '
+      '(${_count(songCount, 'song', 'songs')}) will be deleted. '
+      'The songs stay in the song library.';
+  static const planningUnsyncedChangesDiscardedMessage =
+      'Unsynced changes to this plan will be discarded.';
+  static const planDeleteTargetChangedMessage =
+      'This plan changed while you were deciding. Nothing was deleted; '
+      'review it and try again.';
+
+  static String _count(int count, String one, String other) =>
+      count == 1 ? '$count $one' : '$count $other';
   static const sessionEditAction = 'Edit session';
   static const sessionCreateAction = 'Add session';
   static const sessionReorderAction = 'Reorder session';
@@ -193,12 +213,20 @@ class AppStrings {
   static const sessionListEmptyMessage =
       'No sessions yet. Add a session to start building this plan.';
   static const sessionItemsEmptyMessage = 'No songs in this session yet.';
-  static const sessionDeleteConfirmTitle = 'Delete empty session?';
-  static const sessionDeleteConfirmMessage =
-      'This removes the local session immediately and syncs the delete when possible.';
+  static const sessionDeleteConfirmTitle = 'Delete session?';
+  static const sessionDeleteEmptyConfirmMessage = 'This removes the session.';
+  static String sessionDeleteConfirmMessage({
+    required String sessionName,
+    required int songCount,
+  }) =>
+      '“$sessionName” and its ${_count(songCount, 'song', 'songs')} will be '
+      'removed from this plan. The songs stay in the song library.';
   static const sessionDeleteConfirmAction = 'Delete session';
-  static const sessionDeleteBlockedMessage =
-      'This session cannot be deleted because it is no longer empty.';
+  static const sessionUnsyncedChangesDiscardedMessage =
+      'Unsynced changes to this session will be discarded.';
+  static const sessionDeleteTargetChangedMessage =
+      'This session changed while you were deciding. Nothing was deleted; '
+      'review it and try again.';
   static const sessionNameLabel = 'Session name';
   static const sessionEditorTitleCreate = 'Add session';
   static const sessionEditorTitleRename = 'Rename session';

@@ -25,7 +25,7 @@ class SupabasePlanningRepository
           var query = client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
               );
           if (organizationId != null) {
             query = query.eq('organization_id', organizationId);
@@ -37,7 +37,7 @@ class SupabasePlanningRepository
           final row = await client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
               )
               .eq('id', planId)
               .maybeSingle();
@@ -62,7 +62,7 @@ class SupabasePlanningRepository
           final row = await client
               .from('plans')
               .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version',
+                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
               )
               .eq('slug', planSlug)
               .maybeSingle();
@@ -197,6 +197,7 @@ class SupabasePlanningRepository
             scheduledFor: plan.scheduledFor,
             updatedAt: plan.updatedAt,
             version: plan.version,
+            contentVersion: plan.contentVersion,
           ),
         )
         .toList(growable: false);
@@ -204,6 +205,12 @@ class SupabasePlanningRepository
     final syncSessions = <PlanningSyncSession>[];
     final syncItems = <PlanningSyncSessionItem>[];
 
+    // I7 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md): every
+    // plan row, including content_version, is read before any session row,
+    // so a race can only leave contentVersion behind its children, never
+    // ahead. Known limit: these top-level reads are unpaged, so PostgREST's
+    // max_rows cap could truncate a plan's session list; see
+    // docs/deferred/2026-09-30-planning-pull-unpaged-reads.md.
     for (final plan in plans) {
       final sessionRows = await _listSessionRows(plan.id);
       final sessions =
@@ -269,6 +276,7 @@ class SupabasePlanningRepository
       scheduledFor: _parseNullableDateTime(row['scheduled_for']),
       updatedAt: _parseDateTime(row['updated_at']),
       version: (row['version'] as num?)?.toInt() ?? 1,
+      contentVersion: (row['content_version'] as num?)?.toInt(),
     );
   }
 

@@ -22,6 +22,12 @@ class CachedPlanningPlans extends Table {
   DateTimeColumn get updatedAt => dateTime()();
   IntColumn get version => integer()();
 
+  /// The backend's `plans.content_version` as of this projection row (spec
+  /// D4, docs/specs/2026-09-29-plan-delete-and-session-cascade.md). `null`
+  /// means unknown: a row written before schema 7, until the next full
+  /// refresh.
+  IntColumn get contentVersion => integer().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {userId, organizationId, planId};
 }
@@ -74,6 +80,12 @@ class CachedPlanningMutations extends Table {
   TextColumn get songTitle => text().nullable()();
   TextColumn get orderedSiblingIds => text().nullable()();
   IntColumn get baseVersion => integer().nullable()();
+
+  /// The plan content version a `planDelete` was based on (spec D4/D5).
+  /// A `planCreate` row carries 1, a new plan's content version, which a
+  /// delete of its accepted-but-uncleared create inherits (spec D5(c)).
+  /// Unused by every other kind.
+  IntColumn get baseContentVersion => integer().nullable()();
   TextColumn get originSnapshotJson => text().nullable()();
   TextColumn get errorCode => text().nullable()();
   TextColumn get errorMessage => text().nullable()();

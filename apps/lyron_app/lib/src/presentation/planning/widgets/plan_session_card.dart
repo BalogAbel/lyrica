@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_reorder_overlay.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -190,20 +191,18 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
                         '${AppStrings.sessionRenameAction}: ${session.name}',
                   ),
                 ),
-                if (session.items.isEmpty) ...[
-                  const SizedBox(width: 8),
-                  IfCapability(
-                    key: Key('session-delete-button-${session.id}'),
-                    capability: Capability.editSessions,
-                    organizationId: orgId,
-                    child: IconButton(
-                      onPressed: () => _deleteSession(context, ref),
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip:
-                          '${AppStrings.sessionDeleteAction}: ${session.name}',
-                    ),
+                const SizedBox(width: 8),
+                IfCapability(
+                  key: Key('session-delete-button-${session.id}'),
+                  capability: Capability.editSessions,
+                  organizationId: orgId,
+                  child: IconButton(
+                    onPressed: () => _deleteSession(context, ref),
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip:
+                        '${AppStrings.sessionDeleteAction}: ${session.name}',
                   ),
-                ],
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -489,18 +488,58 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
       return;
     }
 
+    final entries = await ref.read(planningMutationEntriesProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+
+    // Spec D6/D11: the rows a cascade delete drops for this session -- its
+    // child rows, its ordering row, and its own row (a pending rename or
+    // create is overwritten/collapsed by the delete).
+    final hasDiscardableChanges = entries.any(
+      (entry) =>
+          (entry.sessionId == session.id ||
+              ((entry.kind.aggregateType == 'session_item_order' ||
+                      entry.kind.aggregateType == 'session') &&
+                  entry.aggregateId == session.id)) &&
+          entry.syncStatus != PlanningMutationSyncStatus.sending &&
+          entry.syncStatus != PlanningMutationSyncStatus.cancelling &&
+          entry.syncStatus != PlanningMutationSyncStatus.accepted,
+    );
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text(AppStrings.sessionDeleteConfirmTitle),
-        content: const Text(AppStrings.sessionDeleteConfirmMessage),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              session.items.isEmpty
+                  ? AppStrings.sessionDeleteEmptyConfirmMessage
+                  : AppStrings.sessionDeleteConfirmMessage(
+                      sessionName: session.name,
+                      songCount: session.items.length,
+                    ),
+            ),
+            if (hasDiscardableChanges) ...[
+              const SizedBox(height: 12),
+              const Text(AppStrings.sessionUnsyncedChangesDiscardedMessage),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text(AppStrings.songCancelAction),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text(AppStrings.sessionDeleteConfirmAction),
           ),
         ],
@@ -510,19 +549,49 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
       return;
     }
 
+    // The dialog can outlive this card: a refresh landing while it was open
+    // may have removed the session, and a disposed ref must not be read.
     if (!context.mounted) return;
-    await ref
-        .read(planningWriteServiceProvider)
-        .deleteSession(
-          context: PlanningWriteContext(
-            userId: activeContext.userId,
-            organizationId: activeContext.organizationId,
-          ),
-          draft: SessionDeleteDraft(
-            sessionId: session.id,
-            planId: planDetail.plan.id,
-          ),
-        );
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        !samePlanningContext(activeContext, currentContext)) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .deleteSession(
+            context: PlanningWriteContext(
+              userId: currentContext.userId,
+              organizationId: currentContext.organizationId,
+            ),
+            // The snapshot the dialog above rendered (spec D11).
+            draft: SessionDeleteDraft(
+              sessionId: session.id,
+              planId: planDetail.plan.id,
+              confirmedVersion: session.version,
+            ),
+          );
+    } on PlanningDeleteTargetChangedException {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.sessionDeleteTargetChangedMessage),
+        ),
+      );
+      // The snapshot the dialog showed is stale (a sync batch can advance the
+      // projection without the detail provider re-reading). Re-read, so the
+      // next attempt shows the current target instead of being refused again.
+      container.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+      container.invalidate(planningPlanListProvider);
+      container.invalidate(planningMutationEntriesProvider);
+      return;
+    } on PlanningWriteContextMismatchException {
+      // The organization or user switched mid-flight; nothing to report.
+      return;
+    }
 
     if (!context.mounted) return;
     ref.invalidate(planningMutationEntriesProvider);

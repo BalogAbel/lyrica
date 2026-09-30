@@ -5,6 +5,9 @@ import 'package:lyron_app/src/application/planning/drift_planning_mutation_store
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
@@ -270,6 +273,7 @@ void main() {
           draft: const SessionDeleteDraft(
             sessionId: 'session-2',
             planId: 'plan-1',
+            confirmedVersion: 1,
           ),
         );
 
@@ -535,4 +539,405 @@ void main() {
       },
     );
   });
+
+  group('PlanningWriteService plan delete and cascade', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore mutationStore;
+    late PlanningLocalReadRepository repository;
+    late PlanningWriteService service;
+    late int syncCalls;
+
+    setUp(() async {
+      syncCalls = 0;
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      mutationStore = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+      repository = PlanningLocalReadRepository(
+        store: localStore,
+        mutationStore: mutationStore,
+        contextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+      service = PlanningWriteService(
+        repository,
+        mutationStore: mutationStore,
+        activeContextReader: () async => const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        syncScheduler: (_) async {
+          syncCalls += 1;
+        },
+      );
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            version: 2,
+            contentVersion: 5,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 10,
+            name: 'Session one',
+          ),
+          CachedSessionRecord(
+            id: 'session-2',
+            planId: 'plan-1',
+            position: 20,
+            name: 'Session two',
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 10,
+            songId: 'song-1',
+            songTitle: 'Alpha',
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026, 9, 29),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    test('deletePlan records a delete based on the projection versions and '
+        'hides the plan (spec D5)', () async {
+      await service.deletePlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanDeleteDraft(
+          planId: 'plan-1',
+          confirmedVersion: 2,
+          confirmedContentVersion: 5,
+        ),
+      );
+
+      final delete = (await mutationStore.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      ))!;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.baseVersion, 2);
+      expect(delete.baseContentVersion, 5);
+      expect(delete.originSnapshot?['name'], 'Plan');
+      expect(await repository.listPlans(), isEmpty);
+    });
+
+    test('a song stays delete-blocked until the plan delete is reconciled '
+        '(spec I1)', () async {
+      await service.deletePlan(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const PlanDeleteDraft(
+          planId: 'plan-1',
+          confirmedVersion: 2,
+          confirmedContentVersion: 5,
+        ),
+      );
+      expect(
+        await localStore.countSongReferences(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        1,
+      );
+
+      await localStore.deleteSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        refreshedAt: DateTime.utc(2026, 9, 30),
+      );
+      expect(
+        await localStore.countSongReferences(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          songId: 'song-1',
+        ),
+        0,
+      );
+    });
+
+    test('deleteSession accepts a non-empty session (spec D6)', () async {
+      await service.deleteSession(
+        context: const PlanningWriteContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        draft: const SessionDeleteDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          confirmedVersion: 1,
+        ),
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      expect(detail.sessions.map((session) => session.id), ['session-2']);
+    });
+
+    group('refuses a delete whose target changed after its confirmation '
+        '(spec D11)', () {
+      const writeContext = PlanningWriteContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      Future<void> expectNothingRecorded() async {
+        expect(
+          await mutationStore.readAllMutations(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          isEmpty,
+        );
+        expect(syncCalls, 0);
+      }
+
+      test('deletePlan throws when the plan version moved on', () async {
+        await expectLater(
+          service.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-1',
+              confirmedVersion: 1,
+              confirmedContentVersion: 5,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deletePlan throws when the content version moved on', () async {
+        await expectLater(
+          service.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-1',
+              confirmedVersion: 2,
+              confirmedContentVersion: 4,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deletePlan throws when the confirmed content version was unknown '
+          'but the projection now knows it', () async {
+        await expectLater(
+          service.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-1',
+              confirmedVersion: 2,
+              confirmedContentVersion: null,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deletePlan throws when the plan is gone', () async {
+        await expectLater(
+          service.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-gone',
+              confirmedVersion: 2,
+              confirmedContentVersion: 5,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deletePlan records and syncs when the confirmed snapshot still '
+          'matches', () async {
+        await service.deletePlan(
+          context: writeContext,
+          draft: const PlanDeleteDraft(
+            planId: 'plan-1',
+            confirmedVersion: 2,
+            confirmedContentVersion: 5,
+          ),
+        );
+
+        final delete = (await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        ))!;
+        expect(delete.kind, PlanningMutationKind.planDelete);
+        expect(delete.baseVersion, 2);
+        expect(delete.baseContentVersion, 5);
+        expect(syncCalls, 1);
+      });
+
+      test('deleteSession throws when the session version moved on', () async {
+        await expectLater(
+          service.deleteSession(
+            context: writeContext,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              confirmedVersion: 0,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deleteSession throws when the session is gone', () async {
+        await expectLater(
+          service.deleteSession(
+            context: writeContext,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-gone',
+              planId: 'plan-1',
+              confirmedVersion: 1,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deleteSession throws when the whole plan is gone', () async {
+        await expectLater(
+          service.deleteSession(
+            context: writeContext,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-1',
+              planId: 'plan-gone',
+              confirmedVersion: 1,
+            ),
+          ),
+          throwsA(isA<PlanningDeleteTargetChangedException>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('a StateError that is not a missing plan is not reported as a '
+          'changed target', () async {
+        final unavailableContextService = PlanningWriteService(
+          _ThrowingPlanDetailRepository(
+            StateError('Active planning context is unavailable.'),
+          ),
+          mutationStore: mutationStore,
+          activeContextReader: () async => const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          syncScheduler: (_) async {
+            syncCalls += 1;
+          },
+        );
+
+        await expectLater(
+          unavailableContextService.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-1',
+              confirmedVersion: 2,
+              confirmedContentVersion: 5,
+            ),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'Active planning context is unavailable.',
+            ),
+          ),
+        );
+        await expectLater(
+          unavailableContextService.deleteSession(
+            context: writeContext,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              confirmedVersion: 1,
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+        await expectNothingRecorded();
+      });
+
+      test('deleteSession records and syncs when the confirmed snapshot still '
+          'matches', () async {
+        await service.deleteSession(
+          context: writeContext,
+          draft: const SessionDeleteDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            confirmedVersion: 1,
+          ),
+        );
+
+        final delete = (await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        ))!;
+        expect(delete.kind, PlanningMutationKind.sessionDelete);
+        expect(delete.baseVersion, 1);
+        expect(syncCalls, 1);
+      });
+    });
+  });
+}
+
+class _ThrowingPlanDetailRepository implements PlanningRepository {
+  _ThrowingPlanDetailRepository(this._error);
+
+  final Object _error;
+
+  @override
+  Future<PlanDetail> getPlanDetail(String planId) async => throw _error;
+
+  @override
+  Future<List<PlanSummary>> listPlans() async => throw _error;
+
+  @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async =>
+      throw _error;
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async =>
+      throw _error;
 }

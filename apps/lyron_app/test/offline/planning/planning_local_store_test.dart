@@ -833,6 +833,264 @@ void main() {
         expect(item.songId, 'song-1');
       },
     );
+
+    test('a full refresh stores contentVersion and a reconcile upsert never '
+        'overwrites an existing row\'s value (spec D4, I7)', () async {
+      await store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            version: 3,
+            contentVersion: 7,
+          ),
+        ],
+        sessions: const [],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 9, 29),
+      );
+      expect(
+        (await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        )).single.contentVersion,
+        7,
+      );
+
+      for (final incoming in [null, 1, 99]) {
+        await store.upsertSyncedPlan(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          refreshedAt: DateTime.utc(2026, 9, 29, 1),
+          plan: CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Renamed',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29, 1),
+            version: 4,
+            contentVersion: incoming,
+          ),
+        );
+        final detail = await store.readPlanDetail(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+        );
+        expect(detail!.plan.name, 'Renamed');
+        expect(detail.plan.contentVersion, 7, reason: 'incoming $incoming');
+      }
+    });
+
+    test('a reconcile upsert of a plan not yet in the projection stores its '
+        'contentVersion', () async {
+      await store.upsertSyncedPlan(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 9, 29),
+        plan: CachedPlanRecord(
+          id: 'plan-new',
+          slug: 'plan-new',
+          name: 'New',
+          description: null,
+          scheduledFor: null,
+          updatedAt: DateTime.utc(2026, 9, 29),
+          version: 1,
+          contentVersion: 1,
+        ),
+      );
+      final detail = await store.readPlanDetail(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        planId: 'plan-new',
+      );
+      expect(detail!.plan.contentVersion, 1);
+    });
+
+    group('content version and plan removal (spec D7, D8)', () {
+      Future<void> seed() => store.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            contentVersion: 4,
+          ),
+          CachedPlanRecord(
+            id: 'plan-2',
+            slug: 'plan-2',
+            name: 'Other',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 9, 29),
+            contentVersion: 1,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 1,
+            name: 'S',
+          ),
+          CachedSessionRecord(
+            id: 'session-2',
+            planId: 'plan-2',
+            position: 1,
+            name: 'T',
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 1,
+            songId: 'song-1',
+            songTitle: 'Song',
+          ),
+          CachedSessionItemRecord(
+            id: 'item-2',
+            planId: 'plan-2',
+            sessionId: 'session-2',
+            position: 1,
+            songId: 'song-1',
+            songTitle: 'Song',
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026, 9, 29),
+      );
+
+      Future<int?> contentVersion(String planId) async =>
+          (await store.readPlanDetail(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: planId,
+          ))?.plan.contentVersion;
+
+      test(
+        'advanceSyncedPlanContentVersion moves only a contiguous value',
+        () async {
+          await seed();
+
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 6,
+          );
+          expect(
+            await contentVersion('plan-1'),
+            4,
+            reason: 'gap: foreign write',
+          );
+
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 5,
+          );
+          expect(await contentVersion('plan-1'), 5);
+
+          await store.advanceSyncedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            acceptedContentVersion: 5,
+          );
+          expect(await contentVersion('plan-1'), 5, reason: 'idempotent');
+        },
+      );
+
+      test(
+        'advanceSyncedPlanContentVersion never fills a null value (I7)',
+        () async {
+          await store.replaceActiveProjection(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            plans: [
+              CachedPlanRecord(
+                id: 'plan-1',
+                slug: 'plan-1',
+                name: 'Plan',
+                description: null,
+                scheduledFor: null,
+                updatedAt: DateTime.utc(2026, 9, 29),
+                contentVersion: null,
+              ),
+            ],
+            sessions: const [],
+            items: const [],
+            refreshedAt: DateTime.utc(2026, 9, 29),
+          );
+
+          for (final accepted in [0, 1, 2]) {
+            await store.advanceSyncedPlanContentVersion(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              acceptedContentVersion: accepted,
+            );
+            expect(
+              await contentVersion('plan-1'),
+              isNull,
+              reason: 'accepted $accepted: only a full refresh may fill it',
+            );
+          }
+        },
+      );
+
+      test('deleteSyncedPlan removes the plan, its sessions and items, and '
+          'releases its song references', () async {
+        await seed();
+        expect(
+          await store.countSongReferences(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          ),
+          2,
+        );
+
+        await store.deleteSyncedPlan(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+          refreshedAt: DateTime.utc(2026, 9, 29, 1),
+        );
+
+        expect(
+          await store.readPlanDetail(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+          ),
+          isNull,
+        );
+        expect(await contentVersion('plan-2'), 1, reason: 'other plan intact');
+        expect(
+          await store.countSongReferences(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            songId: 'song-1',
+          ),
+          1,
+        );
+      });
+    });
   });
 
   group('DriftPlanningLocalStore storage recovery (D1)', () {

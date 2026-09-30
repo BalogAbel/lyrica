@@ -297,6 +297,140 @@ void main() {
       },
     );
 
+    test('retryMutation with an expectedStatus that no longer matches the '
+        'stored row does nothing: no reset, no sync, no error (review gate 3 '
+        'F1)', () async {
+      // A plan-group action retries its rows one by one and each retry runs
+      // a sync pass that can move a later row. The popup showed this row as
+      // `pending`; by the time its turn comes the sync pass has turned it
+      // into a `conflict` the user never saw. Retrying it now would be an
+      // unseen "delete anyway", so the retry must leave the row alone.
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Plan One',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.conflict,
+            errorCode: PlanningMutationSyncErrorCode.conflict,
+            errorMessage: 'base_version_conflict',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.retryMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+        expectedStatus: PlanningMutationSyncStatus.pending,
+      );
+
+      expect(store.retriedAggregateIds, isEmpty);
+      expect(repository.calls, 0);
+      expect(store.clearedAggregateIds, isEmpty);
+    });
+
+    test('retryMutation with an expectedStatus that no longer matches skips '
+        'even a failedAuthorization row instead of throwing', () async {
+      // The status check runs before the terminal-authorization refusal: a
+      // row that changed since it was shown is simply not acted on.
+      final store = _FakePlanningMutationStore(
+        pending: [],
+        all: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            name: 'Revoked Plan',
+            kind: PlanningMutationKind.planEdit,
+            syncStatus: PlanningMutationSyncStatus.failedAuthorization,
+            errorCode: PlanningMutationSyncErrorCode.authorizationDenied,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final repository = _FakePlanningMutationRemoteRepository();
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: () async => true,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.retryMutation(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        aggregateType: PlanningMutationKind.planEdit.aggregateType,
+        aggregateId: 'plan-1',
+        expectedStatus: PlanningMutationSyncStatus.pending,
+      );
+
+      expect(store.retriedAggregateIds, isEmpty);
+      expect(repository.calls, 0);
+    });
+
+    test(
+      'retryMutation with a matching expectedStatus retries as before',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              errorMessage: 'base_version_conflict',
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.retryMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+          expectedStatus: PlanningMutationSyncStatus.conflict,
+        );
+
+        expect(store.retriedAggregateIds, ['plan-1']);
+        expect(repository.calls, 1);
+        expect(store.clearedAggregateIds, ['plan-1']);
+      },
+    );
+
     test('retrying a conflict works offline and requeues mutation', () async {
       final store = _FakePlanningMutationStore(
         pending: [],
@@ -1151,6 +1285,172 @@ void main() {
         expect(store.clearedAggregateIds, contains('plan-1'));
       },
     );
+
+    test(
+      'applies accepted-write effects right after the response, before '
+      'the accepted marker, and again before the clear (spec D7/D8)',
+      () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'item-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-1',
+              songTitle: 'Song',
+              position: 1,
+              baseVersion: 3,
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+          refreshPlanning: () async => true,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(store.events, [
+          'save:sending:item-1',
+          'effects:item-1:true',
+          'save:accepted:item-1',
+          'effects:item-1:true',
+        ]);
+      },
+    );
+
+    test('a crash-resumed accepted marker gets effects with remoteResponse '
+        'false only', () async {
+      final store = _FakePlanningMutationStore(
+        pending: [
+          PlanningMutationRecord(
+            aggregateId: 'plan-1',
+            organizationId: 'org-1',
+            baseVersion: 2,
+            baseContentVersion: 5,
+            kind: PlanningMutationKind.planDelete,
+            syncStatus: PlanningMutationSyncStatus.accepted,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+        refreshPlanning: () async => false,
+        shouldReconcileAcceptedMutation: (_) async => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      await controller.syncPendingMutations(
+        const ActivePlanningReadContext(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+      );
+
+      expect(store.events, ['effects:plan-1:false']);
+    });
+
+    // Spec D8, review gate 3 F5: the delete row is the only thing that makes
+    // the purge re-run, so it must outlive a purge that failed twice.
+    for (final (kind, aggregateId) in [
+      (PlanningMutationKind.planDelete, 'plan-1'),
+      (PlanningMutationKind.sessionDelete, 'session-1'),
+    ]) {
+      for (final refreshed in [true, false]) {
+        test('keeps an accepted ${kind.name} when the batch-end purge failed '
+            '(refreshed: $refreshed)', () async {
+          final store = _FakePlanningMutationStore(
+            pending: [
+              PlanningMutationRecord(
+                aggregateId: aggregateId,
+                organizationId: 'org-1',
+                planId: 'plan-1',
+                baseVersion: 2,
+                baseContentVersion: 5,
+                kind: kind,
+                syncStatus: PlanningMutationSyncStatus.pending,
+                orderKey: 1,
+                updatedAt: DateTime.utc(2026),
+              ),
+            ],
+          )..effectsError = Exception('storage error');
+          final controller = PlanningMutationSyncController(
+            mutationStore: () => store,
+            remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+            refreshPlanning: () async => refreshed,
+            shouldReconcileAcceptedMutation: (_) async => true,
+            reconcileAcceptedMutation: (_, _) async {},
+          );
+
+          await controller.syncPendingMutations(
+            const ActivePlanningReadContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          );
+
+          expect(store.clearedAggregateIds, isNot(contains(aggregateId)));
+          expect(store.events, contains('save:accepted:$aggregateId'));
+        });
+      }
+    }
+
+    for (final refreshed in [true, false]) {
+      test('still clears an accepted create when the batch-end effects '
+          'failed (refreshed: $refreshed)', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'item-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              songId: 'song-1',
+              songTitle: 'Song',
+              position: 1,
+              baseVersion: 3,
+              kind: PlanningMutationKind.sessionItemCreateSong,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        )..effectsError = Exception('storage error');
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => _FakePlanningMutationRemoteRepository(),
+          refreshPlanning: () async => refreshed,
+          shouldReconcileAcceptedMutation: (_) async => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        expect(store.clearedAggregateIds, ['item-1']);
+        expect(store.events, contains('save:accepted:item-1'));
+      });
+    }
   });
 }
 
@@ -1179,6 +1479,11 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<String> clearedAggregateIds = [];
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
+  final List<String> events = [];
+
+  /// Thrown from [applyAcceptedWriteEffects] after it records its event, to
+  /// model a failing purge/rebase. `null` keeps the call succeeding.
+  Exception? effectsError;
 
   @override
   Future<bool> clearMutation({
@@ -1304,6 +1609,25 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningPlanCreateMutationDraft draft,
   }) async {}
   @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) async {}
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) async {
+    events.add('effects:${accepted.aggregateId}:$remoteResponse');
+    final error = effectsError;
+    if (error != null) {
+      throw error;
+    }
+  }
+
+  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1355,6 +1679,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     String? errorMessage,
     int? expectedRevision,
   }) async {
+    events.add('save:${syncStatus.name}:$aggregateId');
     lastSavedStatus = syncStatus;
     // Mirror the real store: persist the attempt result onto the record so
     // a subsequent readMutation reflects it, the way the Drift-backed store

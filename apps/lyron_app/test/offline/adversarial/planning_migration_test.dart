@@ -239,4 +239,141 @@ void main() {
       openDb = null;
     },
   );
+
+  test('an existing v6 database gains contentVersion / baseContentVersion as '
+      'null on upgrade and keeps its rows (spec D4)', () async {
+    final file = await createRelaunchDbFile('planning-migration-v6-v7');
+    PlanningLocalDatabase? openDb;
+    addTearDown(() async {
+      await openDb?.close();
+      if (await file.parent.exists()) {
+        await file.parent.delete(recursive: true);
+      }
+    });
+
+    final rawDb = sqlite3.sqlite3.open(file.path);
+    rawDb.execute('''
+        CREATE TABLE "planning_projection_owners" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "refreshed_at" INTEGER NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id")
+        );
+        CREATE TABLE "cached_planning_plans" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "plan_id" TEXT NOT NULL,
+          "slug" TEXT NOT NULL,
+          "name" TEXT NOT NULL,
+          "description" TEXT NULL,
+          "scheduled_for" INTEGER NULL,
+          "updated_at" INTEGER NOT NULL,
+          "version" INTEGER NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id", "plan_id")
+        );
+        CREATE TABLE "cached_planning_sessions" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "session_id" TEXT NOT NULL,
+          "plan_id" TEXT NOT NULL,
+          "slug" TEXT NOT NULL,
+          "position" INTEGER NOT NULL,
+          "name" TEXT NOT NULL,
+          "version" INTEGER NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id", "session_id")
+        );
+        CREATE TABLE "cached_planning_session_items" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "snapshot_version" INTEGER NOT NULL,
+          "session_item_id" TEXT NOT NULL,
+          "plan_id" TEXT NOT NULL,
+          "session_id" TEXT NOT NULL,
+          "position" INTEGER NOT NULL,
+          "song_id" TEXT NOT NULL,
+          "song_title" TEXT NOT NULL,
+          PRIMARY KEY ("user_id", "organization_id", "session_item_id")
+        );
+        CREATE TABLE "cached_planning_mutations" (
+          "user_id" TEXT NOT NULL,
+          "organization_id" TEXT NOT NULL,
+          "aggregate_type" TEXT NOT NULL,
+          "aggregate_id" TEXT NOT NULL,
+          "mutation_kind" TEXT NOT NULL,
+          "sync_status" TEXT NOT NULL,
+          "plan_id" TEXT NULL,
+          "session_id" TEXT NULL,
+          "slug" TEXT NULL,
+          "name" TEXT NULL,
+          "description" TEXT NULL,
+          "scheduled_for" INTEGER NULL,
+          "position" INTEGER NULL,
+          "song_id" TEXT NULL,
+          "song_title" TEXT NULL,
+          "ordered_sibling_ids" TEXT NULL,
+          "base_version" INTEGER NULL,
+          "origin_snapshot_json" TEXT NULL,
+          "error_code" TEXT NULL,
+          "error_message" TEXT NULL,
+          "order_key" INTEGER NOT NULL,
+          "updated_at" INTEGER NOT NULL,
+          "local_revision" INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY ("user_id", "organization_id", "aggregate_type", "aggregate_id")
+        );
+      ''');
+    rawDb.execute('''
+        INSERT INTO planning_projection_owners (
+          user_id, organization_id, snapshot_version, refreshed_at
+        ) VALUES ('user-1', 'org-1', 1, 0);
+        INSERT INTO cached_planning_plans (
+          user_id, organization_id, snapshot_version, plan_id, slug, name,
+          updated_at, version
+        ) VALUES ('user-1', 'org-1', 1, 'plan-1', 'plan-one', 'Plan One', 0, 3);
+        INSERT INTO cached_planning_mutations (
+          user_id, organization_id, aggregate_type, aggregate_id,
+          mutation_kind, sync_status, name, base_version, order_key,
+          updated_at, local_revision
+        ) VALUES (
+          'user-1', 'org-1', 'plan', 'plan-1', 'plan_edit', 'pending',
+          'Edited', 3, 1, 0, 1
+        );
+      ''');
+    rawDb.execute('PRAGMA user_version = 6;');
+    rawDb.close();
+
+    final db = PlanningLocalDatabase.connect(openRelaunchExecutor(file));
+    openDb = db;
+    final localStore = DriftPlanningLocalStore(db);
+    final store = DriftPlanningMutationStore(
+      database: db,
+      localStore: localStore,
+    );
+
+    final summaries = await localStore.readPlanSummaries(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+    expect(summaries.single.version, 3);
+    expect(
+      summaries.single.contentVersion,
+      isNull,
+      reason: 'a pre-7 row has no known content version until refresh',
+    );
+
+    final edit = await store.readMutation(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'plan',
+      aggregateId: 'plan-1',
+    );
+    expect(edit!.kind, PlanningMutationKind.planEdit);
+    expect(edit.baseVersion, 3);
+    expect(edit.baseContentVersion, isNull);
+
+    await db.close();
+    openDb = null;
+  });
 }

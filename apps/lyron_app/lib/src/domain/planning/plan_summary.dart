@@ -7,6 +7,7 @@ class PlanSummary {
     required this.updatedAt,
     int? version,
     String? slug,
+    this.contentVersion,
   }) : slug = slug ?? id,
        version = version ?? 1;
 
@@ -18,6 +19,11 @@ class PlanSummary {
   final DateTime updatedAt;
   final int version;
 
+  /// The backend's `plans.content_version` as known to the local projection
+  /// (spec D4). `null` means unknown, e.g. a row cached before schema 7 that
+  /// no refresh has replaced yet.
+  final int? contentVersion;
+
   @override
   bool operator ==(Object other) {
     return other is PlanSummary &&
@@ -27,7 +33,8 @@ class PlanSummary {
         other.description == description &&
         other.scheduledFor == scheduledFor &&
         other.updatedAt == updatedAt &&
-        other.version == version;
+        other.version == version &&
+        other.contentVersion == contentVersion;
   }
 
   @override
@@ -39,5 +46,6 @@ class PlanSummary {
     scheduledFor,
     updatedAt,
     version,
+    contentVersion,
   );
 }

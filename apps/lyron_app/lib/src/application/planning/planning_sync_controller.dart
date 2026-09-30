@@ -506,6 +506,7 @@ class PlanningSyncController extends ChangeNotifier {
               scheduledFor: plan.scheduledFor,
               updatedAt: plan.updatedAt,
               version: plan.version,
+              contentVersion: plan.contentVersion,
             ),
           )
           .toList(growable: false),

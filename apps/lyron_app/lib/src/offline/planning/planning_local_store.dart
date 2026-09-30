@@ -31,6 +31,7 @@ class CachedPlanRecord {
     required this.updatedAt,
     int? version,
     String? slug,
+    this.contentVersion,
   }) : slug = slug ?? id,
        version = version ?? 1;
 
@@ -41,6 +42,7 @@ class CachedPlanRecord {
   final DateTime? scheduledFor;
   final DateTime updatedAt;
   final int version;
+  final int? contentVersion;
 }
 
 class CachedSessionRecord {
@@ -138,6 +140,10 @@ abstract interface class PlanningLocalStore {
     bool Function()? shouldContinue,
   });
 
+  /// Keeps an existing row's `contentVersion` and takes
+  /// `plan.contentVersion` only for a brand-new row (spec D4, I7). Callers
+  /// therefore pass a non-null value only from a `planCreate` response: a
+  /// `planEdit` response's `content_version` can include foreign writes.
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,
@@ -149,6 +155,27 @@ abstract interface class PlanningLocalStore {
     required String userId,
     required String organizationId,
     required CachedSessionRecord session,
+    required DateTime refreshedAt,
+  });
+
+  /// Spec D7 rule 1a (docs/specs/2026-09-29-plan-delete-and-session-cascade.md):
+  /// sets the synced plan's contentVersion to [acceptedContentVersion] only
+  /// when it currently equals `acceptedContentVersion - 1`, i.e. the
+  /// accepted write was the only one since the projection's value. No-op
+  /// otherwise (I3: never absorb a foreign write).
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  });
+
+  /// Spec D8: removes a synced plan and all of its sessions and session
+  /// items from the projection, in one transaction.
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
     required DateTime refreshedAt,
   });
 
@@ -298,6 +325,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   scheduledFor: Value(plan.scheduledFor?.toUtc()),
                   updatedAt: plan.updatedAt.toUtc(),
                   version: plan.version,
+                  contentVersion: Value(plan.contentVersion),
                 ),
               )
               .toList(growable: false),
@@ -741,6 +769,94 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) async {
+    final owner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (owner == null) {
+      return;
+    }
+    final updatedRows =
+        await (_database.update(_database.cachedPlanningPlans)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.planId.equals(planId) &
+                  table.contentVersion.equals(acceptedContentVersion - 1),
+            ))
+            .write(
+              CachedPlanningPlansCompanion(
+                contentVersion: Value(acceptedContentVersion),
+              ),
+            );
+    if (updatedRows > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) async {
+    final changed = await _database.transaction(() async {
+      final ensuredOwner = await _ensureOwner(
+        userId: userId,
+        organizationId: organizationId,
+        refreshedAt: refreshedAt,
+      );
+      var changed = ensuredOwner.changed;
+      final owner = ensuredOwner.owner;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessionItems)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningSessions)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      changed =
+          await (_database.delete(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .go() >
+              0 ||
+          changed;
+      return changed;
+    });
+    if (changed) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
   Future<void> deleteSyncedSession({
     required String userId,
     required String organizationId,
@@ -1046,6 +1162,13 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             scheduledFor: Value(plan.scheduledFor?.toUtc()),
             updatedAt: plan.updatedAt.toUtc(),
             version: plan.version,
+            // Spec D4/I7: only a full refresh (replaceActiveProjection) or
+            // the contiguous own-write rule (advanceSyncedPlanContentVersion)
+            // may change an existing row's content version. A reconcile
+            // upsert keeps it; a brand-new row takes the reconciled value.
+            contentVersion: Value(
+              existing != null ? existing.contentVersion : plan.contentVersion,
+            ),
           ),
         );
     return true;
@@ -1250,6 +1373,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       scheduledFor: row.scheduledFor?.toUtc(),
       updatedAt: row.updatedAt.toUtc(),
       version: row.version,
+      contentVersion: row.contentVersion,
     );
   }
 

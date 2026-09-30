@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
+import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_reorder_overlay.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -22,6 +23,8 @@ import 'package:lyron_app/src/presentation/planning/widgets/session_editor_dialo
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+enum _PlanDetailMenuAction { delete }
 
 class PlanDetailScreen extends ConsumerStatefulWidget {
   const PlanDetailScreen({super.key, required this.planId});
@@ -86,6 +89,32 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
             tooltip: AppStrings.sessionCreateAction,
             icon: const Icon(Icons.playlist_add),
             onPressed: () => _createSession(context, ref),
+          ),
+        ),
+        IfCapability(
+          key: const Key('plan-delete-capability'),
+          capability: Capability.managePlans,
+          organizationId: orgId,
+          child: IfCapability(
+            capability: Capability.editSessions,
+            organizationId: orgId,
+            child: PopupMenuButton<_PlanDetailMenuAction>(
+              key: const Key('plan-overflow-menu-button'),
+              tooltip: AppStrings.planMoreActions,
+              icon: const Icon(Icons.more_vert),
+              onSelected: (action) {
+                switch (action) {
+                  case _PlanDetailMenuAction.delete:
+                    unawaited(_deletePlan(context, ref));
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _PlanDetailMenuAction.delete,
+                  child: Text(AppStrings.planDeleteAction),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -267,6 +296,136 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planId));
+  }
+
+  Future<void> _deletePlan(BuildContext context, WidgetRef ref) async {
+    final activeContext = ref.read(activePlanningContextProvider);
+    if (activeContext == null) {
+      return;
+    }
+    final detail = await ref.read(planningPlanDetailProvider(planId).future);
+    final entries = await ref.read(planningMutationEntriesProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+
+    final songCount = detail.sessions.fold<int>(
+      0,
+      (sum, session) => sum + session.items.length,
+    );
+    // Spec D5/D11: the rows the delete will drop -- this plan's child rows
+    // and plan row that are not already on their way to the backend.
+    final hasDiscardableChanges = entries.any(
+      (entry) =>
+          (entry.planId == planId ||
+              (entry.kind.aggregateType == 'plan' &&
+                  entry.aggregateId == planId)) &&
+          entry.syncStatus != PlanningMutationSyncStatus.sending &&
+          entry.syncStatus != PlanningMutationSyncStatus.cancelling &&
+          entry.syncStatus != PlanningMutationSyncStatus.accepted,
+    );
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(AppStrings.planDeleteConfirmTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              AppStrings.planDeleteConfirmMessage(
+                planName: detail.plan.name,
+                sessionCount: detail.sessions.length,
+                songCount: songCount,
+              ),
+            ),
+            if (hasDiscardableChanges) ...[
+              const SizedBox(height: 12),
+              const Text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text(AppStrings.songCancelAction),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text(AppStrings.planDeleteConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    // The dialog can outlive this screen: a refresh landing while it was open
+    // may have replaced the screen, and a disposed ref must not be read.
+    if (!context.mounted) return;
+    final currentContext = ref.read(activePlanningContextProvider);
+    if (currentContext == null ||
+        !samePlanningContext(activeContext, currentContext)) {
+      return;
+    }
+
+    // An online delete awaits the sync, and the sync's refresh makes the
+    // plan vanish from the list: the slug route resolver then swaps this
+    // screen for a not-found scaffold at the SAME location, unmounting it
+    // before the write returns. Capture what must outlive the screen.
+    final router = GoRouter.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
+    final location = router.routerDelegate.currentConfiguration.uri.toString();
+    try {
+      await ref
+          .read(planningWriteServiceProvider)
+          .deletePlan(
+            context: PlanningWriteContext(
+              userId: currentContext.userId,
+              organizationId: currentContext.organizationId,
+            ),
+            // The snapshot the dialog above rendered (spec D11).
+            draft: PlanDeleteDraft(
+              planId: planId,
+              confirmedVersion: detail.plan.version,
+              confirmedContentVersion: detail.plan.contentVersion,
+            ),
+          );
+    } on PlanningDeleteTargetChangedException {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.planDeleteTargetChangedMessage),
+        ),
+      );
+      // The snapshot the dialog showed is stale (a sync batch can advance the
+      // projection without the detail provider re-reading). Re-read, so the
+      // next attempt shows the current target instead of being refused again.
+      container.invalidate(planningPlanDetailProvider(planId));
+      container.invalidate(planningPlanListProvider);
+      container.invalidate(planningMutationEntriesProvider);
+      return;
+    } on PlanningWriteContextMismatchException {
+      // The organization or user switched mid-flight; nothing to report.
+      return;
+    }
+
+    // Plan-set change (ARCH-2): aggregate signal, like plan create/edit.
+    // Through the captured container: this screen may already be gone.
+    container.read(planningDataRevisionProvider.notifier).state += 1;
+    container.invalidate(planningMutationEntriesProvider);
+    container.invalidate(planningPlanListProvider);
+    // Leave the deleted plan -- unless the user already went somewhere else
+    // while the delete ran (the not-found replacement keeps the location).
+    if (router.routerDelegate.currentConfiguration.uri.toString() == location) {
+      router.go(PlanningRoutes.planListPath);
+    }
   }
 
   Future<void> _createSession(BuildContext context, WidgetRef ref) async {

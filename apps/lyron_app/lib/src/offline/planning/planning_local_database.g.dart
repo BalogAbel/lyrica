@@ -452,6 +452,17 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _contentVersionMeta = const VerificationMeta(
+    'contentVersion',
+  );
+  @override
+  late final GeneratedColumn<int> contentVersion = GeneratedColumn<int>(
+    'content_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -464,6 +475,7 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     scheduledFor,
     updatedAt,
     version,
+    contentVersion,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -565,6 +577,15 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
     } else if (isInserting) {
       context.missing(_versionMeta);
     }
+    if (data.containsKey('content_version')) {
+      context.handle(
+        _contentVersionMeta,
+        contentVersion.isAcceptableOrUnknown(
+          data['content_version']!,
+          _contentVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -614,6 +635,10 @@ class $CachedPlanningPlansTable extends CachedPlanningPlans
         DriftSqlType.int,
         data['${effectivePrefix}version'],
       )!,
+      contentVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}content_version'],
+      ),
     );
   }
 
@@ -635,6 +660,12 @@ class CachedPlanningPlan extends DataClass
   final DateTime? scheduledFor;
   final DateTime updatedAt;
   final int version;
+
+  /// The backend's `plans.content_version` as of this projection row (spec
+  /// D4, docs/specs/2026-09-29-plan-delete-and-session-cascade.md). `null`
+  /// means unknown: a row written before schema 7, until the next full
+  /// refresh.
+  final int? contentVersion;
   const CachedPlanningPlan({
     required this.userId,
     required this.organizationId,
@@ -646,6 +677,7 @@ class CachedPlanningPlan extends DataClass
     this.scheduledFor,
     required this.updatedAt,
     required this.version,
+    this.contentVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -664,6 +696,9 @@ class CachedPlanningPlan extends DataClass
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['version'] = Variable<int>(version);
+    if (!nullToAbsent || contentVersion != null) {
+      map['content_version'] = Variable<int>(contentVersion);
+    }
     return map;
   }
 
@@ -683,6 +718,9 @@ class CachedPlanningPlan extends DataClass
           : Value(scheduledFor),
       updatedAt: Value(updatedAt),
       version: Value(version),
+      contentVersion: contentVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentVersion),
     );
   }
 
@@ -702,6 +740,7 @@ class CachedPlanningPlan extends DataClass
       scheduledFor: serializer.fromJson<DateTime?>(json['scheduledFor']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       version: serializer.fromJson<int>(json['version']),
+      contentVersion: serializer.fromJson<int?>(json['contentVersion']),
     );
   }
   @override
@@ -718,6 +757,7 @@ class CachedPlanningPlan extends DataClass
       'scheduledFor': serializer.toJson<DateTime?>(scheduledFor),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'version': serializer.toJson<int>(version),
+      'contentVersion': serializer.toJson<int?>(contentVersion),
     };
   }
 
@@ -732,6 +772,7 @@ class CachedPlanningPlan extends DataClass
     Value<DateTime?> scheduledFor = const Value.absent(),
     DateTime? updatedAt,
     int? version,
+    Value<int?> contentVersion = const Value.absent(),
   }) => CachedPlanningPlan(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -743,6 +784,9 @@ class CachedPlanningPlan extends DataClass
     scheduledFor: scheduledFor.present ? scheduledFor.value : this.scheduledFor,
     updatedAt: updatedAt ?? this.updatedAt,
     version: version ?? this.version,
+    contentVersion: contentVersion.present
+        ? contentVersion.value
+        : this.contentVersion,
   );
   CachedPlanningPlan copyWithCompanion(CachedPlanningPlansCompanion data) {
     return CachedPlanningPlan(
@@ -764,6 +808,9 @@ class CachedPlanningPlan extends DataClass
           : this.scheduledFor,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       version: data.version.present ? data.version.value : this.version,
+      contentVersion: data.contentVersion.present
+          ? data.contentVersion.value
+          : this.contentVersion,
     );
   }
 
@@ -779,7 +826,8 @@ class CachedPlanningPlan extends DataClass
           ..write('description: $description, ')
           ..write('scheduledFor: $scheduledFor, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('version: $version')
+          ..write('version: $version, ')
+          ..write('contentVersion: $contentVersion')
           ..write(')'))
         .toString();
   }
@@ -796,6 +844,7 @@ class CachedPlanningPlan extends DataClass
     scheduledFor,
     updatedAt,
     version,
+    contentVersion,
   );
   @override
   bool operator ==(Object other) =>
@@ -810,7 +859,8 @@ class CachedPlanningPlan extends DataClass
           other.description == this.description &&
           other.scheduledFor == this.scheduledFor &&
           other.updatedAt == this.updatedAt &&
-          other.version == this.version);
+          other.version == this.version &&
+          other.contentVersion == this.contentVersion);
 }
 
 class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
@@ -824,6 +874,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
   final Value<DateTime?> scheduledFor;
   final Value<DateTime> updatedAt;
   final Value<int> version;
+  final Value<int?> contentVersion;
   final Value<int> rowid;
   const CachedPlanningPlansCompanion({
     this.userId = const Value.absent(),
@@ -836,6 +887,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     this.scheduledFor = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.version = const Value.absent(),
+    this.contentVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningPlansCompanion.insert({
@@ -849,6 +901,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     this.scheduledFor = const Value.absent(),
     required DateTime updatedAt,
     required int version,
+    this.contentVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -869,6 +922,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Expression<DateTime>? scheduledFor,
     Expression<DateTime>? updatedAt,
     Expression<int>? version,
+    Expression<int>? contentVersion,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -882,6 +936,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       if (scheduledFor != null) 'scheduled_for': scheduledFor,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (version != null) 'version': version,
+      if (contentVersion != null) 'content_version': contentVersion,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -897,6 +952,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     Value<DateTime?>? scheduledFor,
     Value<DateTime>? updatedAt,
     Value<int>? version,
+    Value<int?>? contentVersion,
     Value<int>? rowid,
   }) {
     return CachedPlanningPlansCompanion(
@@ -910,6 +966,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
       scheduledFor: scheduledFor ?? this.scheduledFor,
       updatedAt: updatedAt ?? this.updatedAt,
       version: version ?? this.version,
+      contentVersion: contentVersion ?? this.contentVersion,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -947,6 +1004,9 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
     if (version.present) {
       map['version'] = Variable<int>(version.value);
     }
+    if (contentVersion.present) {
+      map['content_version'] = Variable<int>(contentVersion.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -966,6 +1026,7 @@ class CachedPlanningPlansCompanion extends UpdateCompanion<CachedPlanningPlan> {
           ..write('scheduledFor: $scheduledFor, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('version: $version, ')
+          ..write('contentVersion: $contentVersion, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2313,6 +2374,16 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _baseContentVersionMeta =
+      const VerificationMeta('baseContentVersion');
+  @override
+  late final GeneratedColumn<int> baseContentVersion = GeneratedColumn<int>(
+    'base_content_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _originSnapshotJsonMeta =
       const VerificationMeta('originSnapshotJson');
   @override
@@ -2399,6 +2470,7 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    baseContentVersion,
     originSnapshotJson,
     errorCode,
     errorMessage,
@@ -2556,6 +2628,15 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         ),
       );
     }
+    if (data.containsKey('base_content_version')) {
+      context.handle(
+        _baseContentVersionMeta,
+        baseContentVersion.isAcceptableOrUnknown(
+          data['base_content_version']!,
+          _baseContentVersionMeta,
+        ),
+      );
+    }
     if (data.containsKey('origin_snapshot_json')) {
       context.handle(
         _originSnapshotJsonMeta,
@@ -2687,6 +2768,10 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.int,
         data['${effectivePrefix}base_version'],
       ),
+      baseContentVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}base_content_version'],
+      ),
       originSnapshotJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}origin_snapshot_json'],
@@ -2739,6 +2824,12 @@ class CachedPlanningMutation extends DataClass
   final String? songTitle;
   final String? orderedSiblingIds;
   final int? baseVersion;
+
+  /// The plan content version a `planDelete` was based on (spec D4/D5).
+  /// A `planCreate` row carries 1, a new plan's content version, which a
+  /// delete of its accepted-but-uncleared create inherits (spec D5(c)).
+  /// Unused by every other kind.
+  final int? baseContentVersion;
   final String? originSnapshotJson;
   final String? errorCode;
   final String? errorMessage;
@@ -2775,6 +2866,7 @@ class CachedPlanningMutation extends DataClass
     this.songTitle,
     this.orderedSiblingIds,
     this.baseVersion,
+    this.baseContentVersion,
     this.originSnapshotJson,
     this.errorCode,
     this.errorMessage,
@@ -2823,6 +2915,9 @@ class CachedPlanningMutation extends DataClass
     }
     if (!nullToAbsent || baseVersion != null) {
       map['base_version'] = Variable<int>(baseVersion);
+    }
+    if (!nullToAbsent || baseContentVersion != null) {
+      map['base_content_version'] = Variable<int>(baseContentVersion);
     }
     if (!nullToAbsent || originSnapshotJson != null) {
       map['origin_snapshot_json'] = Variable<String>(originSnapshotJson);
@@ -2876,6 +2971,9 @@ class CachedPlanningMutation extends DataClass
       baseVersion: baseVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(baseVersion),
+      baseContentVersion: baseContentVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(baseContentVersion),
       originSnapshotJson: originSnapshotJson == null && nullToAbsent
           ? const Value.absent()
           : Value(originSnapshotJson),
@@ -2916,6 +3014,7 @@ class CachedPlanningMutation extends DataClass
         json['orderedSiblingIds'],
       ),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
+      baseContentVersion: serializer.fromJson<int?>(json['baseContentVersion']),
       originSnapshotJson: serializer.fromJson<String?>(
         json['originSnapshotJson'],
       ),
@@ -2947,6 +3046,7 @@ class CachedPlanningMutation extends DataClass
       'songTitle': serializer.toJson<String?>(songTitle),
       'orderedSiblingIds': serializer.toJson<String?>(orderedSiblingIds),
       'baseVersion': serializer.toJson<int?>(baseVersion),
+      'baseContentVersion': serializer.toJson<int?>(baseContentVersion),
       'originSnapshotJson': serializer.toJson<String?>(originSnapshotJson),
       'errorCode': serializer.toJson<String?>(errorCode),
       'errorMessage': serializer.toJson<String?>(errorMessage),
@@ -2974,6 +3074,7 @@ class CachedPlanningMutation extends DataClass
     Value<String?> songTitle = const Value.absent(),
     Value<String?> orderedSiblingIds = const Value.absent(),
     Value<int?> baseVersion = const Value.absent(),
+    Value<int?> baseContentVersion = const Value.absent(),
     Value<String?> originSnapshotJson = const Value.absent(),
     Value<String?> errorCode = const Value.absent(),
     Value<String?> errorMessage = const Value.absent(),
@@ -3000,6 +3101,9 @@ class CachedPlanningMutation extends DataClass
         ? orderedSiblingIds.value
         : this.orderedSiblingIds,
     baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
+    baseContentVersion: baseContentVersion.present
+        ? baseContentVersion.value
+        : this.baseContentVersion,
     originSnapshotJson: originSnapshotJson.present
         ? originSnapshotJson.value
         : this.originSnapshotJson,
@@ -3048,6 +3152,9 @@ class CachedPlanningMutation extends DataClass
       baseVersion: data.baseVersion.present
           ? data.baseVersion.value
           : this.baseVersion,
+      baseContentVersion: data.baseContentVersion.present
+          ? data.baseContentVersion.value
+          : this.baseContentVersion,
       originSnapshotJson: data.originSnapshotJson.present
           ? data.originSnapshotJson.value
           : this.originSnapshotJson,
@@ -3083,6 +3190,7 @@ class CachedPlanningMutation extends DataClass
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('baseContentVersion: $baseContentVersion, ')
           ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
@@ -3112,6 +3220,7 @@ class CachedPlanningMutation extends DataClass
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    baseContentVersion,
     originSnapshotJson,
     errorCode,
     errorMessage,
@@ -3140,6 +3249,7 @@ class CachedPlanningMutation extends DataClass
           other.songTitle == this.songTitle &&
           other.orderedSiblingIds == this.orderedSiblingIds &&
           other.baseVersion == this.baseVersion &&
+          other.baseContentVersion == this.baseContentVersion &&
           other.originSnapshotJson == this.originSnapshotJson &&
           other.errorCode == this.errorCode &&
           other.errorMessage == this.errorMessage &&
@@ -3167,6 +3277,7 @@ class CachedPlanningMutationsCompanion
   final Value<String?> songTitle;
   final Value<String?> orderedSiblingIds;
   final Value<int?> baseVersion;
+  final Value<int?> baseContentVersion;
   final Value<String?> originSnapshotJson;
   final Value<String?> errorCode;
   final Value<String?> errorMessage;
@@ -3192,6 +3303,7 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.baseContentVersion = const Value.absent(),
     this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
@@ -3218,6 +3330,7 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.baseContentVersion = const Value.absent(),
     this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
     this.errorMessage = const Value.absent(),
@@ -3251,6 +3364,7 @@ class CachedPlanningMutationsCompanion
     Expression<String>? songTitle,
     Expression<String>? orderedSiblingIds,
     Expression<int>? baseVersion,
+    Expression<int>? baseContentVersion,
     Expression<String>? originSnapshotJson,
     Expression<String>? errorCode,
     Expression<String>? errorMessage,
@@ -3277,6 +3391,8 @@ class CachedPlanningMutationsCompanion
       if (songTitle != null) 'song_title': songTitle,
       if (orderedSiblingIds != null) 'ordered_sibling_ids': orderedSiblingIds,
       if (baseVersion != null) 'base_version': baseVersion,
+      if (baseContentVersion != null)
+        'base_content_version': baseContentVersion,
       if (originSnapshotJson != null)
         'origin_snapshot_json': originSnapshotJson,
       if (errorCode != null) 'error_code': errorCode,
@@ -3306,6 +3422,7 @@ class CachedPlanningMutationsCompanion
     Value<String?>? songTitle,
     Value<String?>? orderedSiblingIds,
     Value<int?>? baseVersion,
+    Value<int?>? baseContentVersion,
     Value<String?>? originSnapshotJson,
     Value<String?>? errorCode,
     Value<String?>? errorMessage,
@@ -3332,6 +3449,7 @@ class CachedPlanningMutationsCompanion
       songTitle: songTitle ?? this.songTitle,
       orderedSiblingIds: orderedSiblingIds ?? this.orderedSiblingIds,
       baseVersion: baseVersion ?? this.baseVersion,
+      baseContentVersion: baseContentVersion ?? this.baseContentVersion,
       originSnapshotJson: originSnapshotJson ?? this.originSnapshotJson,
       errorCode: errorCode ?? this.errorCode,
       errorMessage: errorMessage ?? this.errorMessage,
@@ -3396,6 +3514,9 @@ class CachedPlanningMutationsCompanion
     if (baseVersion.present) {
       map['base_version'] = Variable<int>(baseVersion.value);
     }
+    if (baseContentVersion.present) {
+      map['base_content_version'] = Variable<int>(baseContentVersion.value);
+    }
     if (originSnapshotJson.present) {
       map['origin_snapshot_json'] = Variable<String>(originSnapshotJson.value);
     }
@@ -3440,6 +3561,7 @@ class CachedPlanningMutationsCompanion
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('baseContentVersion: $baseContentVersion, ')
           ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
           ..write('errorMessage: $errorMessage, ')
@@ -3697,6 +3819,7 @@ typedef $$CachedPlanningPlansTableCreateCompanionBuilder =
       Value<DateTime?> scheduledFor,
       required DateTime updatedAt,
       required int version,
+      Value<int?> contentVersion,
       Value<int> rowid,
     });
 typedef $$CachedPlanningPlansTableUpdateCompanionBuilder =
@@ -3711,6 +3834,7 @@ typedef $$CachedPlanningPlansTableUpdateCompanionBuilder =
       Value<DateTime?> scheduledFor,
       Value<DateTime> updatedAt,
       Value<int> version,
+      Value<int?> contentVersion,
       Value<int> rowid,
     });
 
@@ -3770,6 +3894,11 @@ class $$CachedPlanningPlansTableFilterComposer
 
   ColumnFilters<int> get version => $composableBuilder(
     column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get contentVersion => $composableBuilder(
+    column: $table.contentVersion,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3832,6 +3961,11 @@ class $$CachedPlanningPlansTableOrderingComposer
     column: $table.version,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get contentVersion => $composableBuilder(
+    column: $table.contentVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningPlansTableAnnotationComposer
@@ -3880,6 +4014,11 @@ class $$CachedPlanningPlansTableAnnotationComposer
 
   GeneratedColumn<int> get version =>
       $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get contentVersion => $composableBuilder(
+    column: $table.contentVersion,
+    builder: (column) => column,
+  );
 }
 
 class $$CachedPlanningPlansTableTableManager
@@ -3935,6 +4074,7 @@ class $$CachedPlanningPlansTableTableManager
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
+                Value<int?> contentVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningPlansCompanion(
                 userId: userId,
@@ -3947,6 +4087,7 @@ class $$CachedPlanningPlansTableTableManager
                 scheduledFor: scheduledFor,
                 updatedAt: updatedAt,
                 version: version,
+                contentVersion: contentVersion,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3961,6 +4102,7 @@ class $$CachedPlanningPlansTableTableManager
                 Value<DateTime?> scheduledFor = const Value.absent(),
                 required DateTime updatedAt,
                 required int version,
+                Value<int?> contentVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningPlansCompanion.insert(
                 userId: userId,
@@ -3973,6 +4115,7 @@ class $$CachedPlanningPlansTableTableManager
                 scheduledFor: scheduledFor,
                 updatedAt: updatedAt,
                 version: version,
+                contentVersion: contentVersion,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -4626,6 +4769,7 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<int?> baseContentVersion,
       Value<String?> originSnapshotJson,
       Value<String?> errorCode,
       Value<String?> errorMessage,
@@ -4653,6 +4797,7 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<int?> baseContentVersion,
       Value<String?> originSnapshotJson,
       Value<String?> errorCode,
       Value<String?> errorMessage,
@@ -4753,6 +4898,11 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<int> get baseVersion => $composableBuilder(
     column: $table.baseVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get baseContentVersion => $composableBuilder(
+    column: $table.baseContentVersion,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4881,6 +5031,11 @@ class $$CachedPlanningMutationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get baseContentVersion => $composableBuilder(
+    column: $table.baseContentVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get originSnapshotJson => $composableBuilder(
     column: $table.originSnapshotJson,
     builder: (column) => ColumnOrderings(column),
@@ -4990,6 +5145,11 @@ class $$CachedPlanningMutationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get baseContentVersion => $composableBuilder(
+    column: $table.baseContentVersion,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get originSnapshotJson => $composableBuilder(
     column: $table.originSnapshotJson,
     builder: (column) => column,
@@ -5078,6 +5238,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<int?> baseContentVersion = const Value.absent(),
                 Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
@@ -5103,6 +5264,7 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                baseContentVersion: baseContentVersion,
                 originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,
                 errorMessage: errorMessage,
@@ -5130,6 +5292,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<int?> baseContentVersion = const Value.absent(),
                 Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
@@ -5155,6 +5318,7 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                baseContentVersion: baseContentVersion,
                 originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,
                 errorMessage: errorMessage,

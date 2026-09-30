@@ -342,6 +342,21 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   );
 
   @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) => _guardedWrite(
+    context,
+    () => _delegate.recordPlanDelete(context: context, draft: draft),
+    isCollapse: () => _collapsesPendingCreate(
+      context: context,
+      aggregateType: PlanningMutationKind.planDelete.aggregateType,
+      aggregateId: draft.planId,
+      pendingCreateKind: PlanningMutationKind.planCreate,
+    ),
+  );
+
+  @override
   Future<void> recordSessionCreate({
     required PlanningMutationContext context,
     required PlanningSessionCreateMutationDraft draft,
@@ -568,6 +583,25 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       aggregateId: aggregateId,
       created: created,
       acceptedBaseVersion: acceptedBaseVersion,
+    ),
+  );
+
+  // Spec D7/D8: queued with every other write for this context (it
+  // rewrites delete rows and purges children), never budget-guarded (it
+  // never grows the store), no recovery boundary (nothing to grow).
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.applyAcceptedWriteEffects(
+      userId: userId,
+      organizationId: organizationId,
+      accepted: accepted,
+      remoteResponse: remoteResponse,
     ),
   );
 }

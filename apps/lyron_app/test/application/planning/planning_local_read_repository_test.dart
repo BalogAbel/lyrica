@@ -50,6 +50,8 @@ void main() {
             description: null,
             scheduledFor: null,
             updatedAt: DateTime.utc(2026, 4, 11, 10),
+            version: 2,
+            contentVersion: 5,
           ),
         ],
         sessions: const [
@@ -161,6 +163,25 @@ void main() {
         expect(session.items.first.song.title, 'Gamma');
       },
     );
+
+    test('a pending plan edit keeps the projection contentVersion in merged '
+        'reads (spec D4)', () async {
+      await mutationStore.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 2,
+        ),
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      final summary = (await repository.listPlans()).single;
+
+      expect(detail.plan.name, 'Renamed');
+      expect(detail.plan.contentVersion, 5);
+      expect(summary.contentVersion, 5);
+    });
 
     test('merge keeps a failed planEdit visible instead of reverting', () async {
       // arrange: projection has plan P (name "Server Name"); mutation store has a planEdit on P
@@ -327,6 +348,67 @@ void main() {
 
       final detail = await repository.getPlanDetail('plan-4');
       expect(detail.plan.description, isNull);
+    });
+
+    test('a pending plan delete hides the plan from list, detail and slug '
+        'reads (spec D10)', () async {
+      await mutationStore.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 2,
+          baseContentVersion: 5,
+        ),
+      );
+
+      expect(await repository.listPlans(), isEmpty);
+      expect(await repository.getPlanSummaryBySlug('team-rehearsal'), isNull);
+      expect(await repository.getPlanDetailBySlug('team-rehearsal'), isNull);
+      await expectLater(repository.getPlanDetail('plan-1'), throwsStateError);
+    });
+
+    test(
+      'a conflicted plan delete keeps hiding the plan (spec D9, D10)',
+      () async {
+        await mutationStore.recordPlanDelete(
+          context: context,
+          draft: const PlanningPlanDeleteMutationDraft(
+            planId: 'plan-1',
+            baseVersion: 2,
+            baseContentVersion: 5,
+          ),
+        );
+        await mutationStore.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+        );
+
+        expect(await repository.listPlans(), isEmpty);
+      },
+    );
+
+    test('discarding the delete brings the plan back', () async {
+      await mutationStore.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 2,
+          baseContentVersion: 5,
+        ),
+      );
+      await mutationStore.clearMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+      );
+
+      final detail = await repository.getPlanDetail('plan-1');
+      expect(detail.sessions, hasLength(2));
     });
   });
 
@@ -551,6 +633,22 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
+  Future<void> advanceSyncedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required int acceptedContentVersion,
+  }) async {}
+
+  @override
+  Future<void> deleteSyncedPlan({
+    required String userId,
+    required String organizationId,
+    required String planId,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<void> deleteSyncedSession({
     required String userId,
     required String organizationId,
@@ -696,6 +794,20 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
   }) async {}
 
   @override

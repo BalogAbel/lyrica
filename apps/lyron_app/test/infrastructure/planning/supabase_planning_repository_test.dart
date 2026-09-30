@@ -363,4 +363,50 @@ void main() {
       );
     },
   );
+
+  test('fetchPlanningSyncPayload reads every plan row before any session row '
+      'and carries content_version (spec I7, D4)', () async {
+    final calls = <String>[];
+    final repository = SupabasePlanningRepository.testing(
+      listPlanRows: ({organizationId}) async {
+        calls.add('plans');
+        return [
+          {
+            'id': 'plan-1',
+            'organization_id': 'org-1',
+            'slug': 'plan-1',
+            'name': 'One',
+            'description': null,
+            'scheduled_for': null,
+            'updated_at': '2026-09-29T00:00:00Z',
+            'version': 1,
+            'content_version': 5,
+          },
+          {
+            'id': 'plan-2',
+            'organization_id': 'org-1',
+            'slug': 'plan-2',
+            'name': 'Two',
+            'description': null,
+            'scheduled_for': null,
+            'updated_at': '2026-09-29T00:00:00Z',
+            'version': 1,
+            'content_version': 2,
+          },
+        ];
+      },
+      getPlanRow: (_) async => null,
+      listSessionRows: (planId) async {
+        calls.add('sessions:$planId');
+        return const [];
+      },
+    );
+
+    final payload = await repository.fetchPlanningSyncPayload(
+      organizationId: 'org-1',
+    );
+
+    expect(calls, ['plans', 'sessions:plan-1', 'sessions:plan-2']);
+    expect(payload.plans.map((plan) => plan.contentVersion), [5, 2]);
+  });
 }

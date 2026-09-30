@@ -153,6 +153,7 @@ Key fields:
 - `description`
 - `scheduled_for`
 - `version`
+- `content_version`
 - `base_version`
 - `sync_status`
 - `updated_at`
@@ -165,13 +166,21 @@ Slug rule:
 - `slug` is required and unique within `(organization_id, slug)`.
 - The slug is the public URL segment for plan routes; the internal plan identifier remains `id`.
 
+Version and delete rules:
+
+- `version` covers the plan's own fields and its session order (`update_plan_fields`, `reorder_plan_sessions`). `content_version` (`bigint`, default 1, always positive) counts accepted writes to the plan's sessions and session items.
+- Every accepted write to a plan's sessions or session items bumps `content_version` by exactly one, with the plan row locked first. A rejected or rolled-back write bumps nothing. Plan field edits are not content writes. Because the existing `updated_at` trigger fires on every bump, `updated_at` now means "last change to the plan or its content".
+- Plan delete is a cascade: the backend deletes the plan, its sessions and their session items only when both `version` and `content_version` still match the deleting client's base; songs and attachments are never deleted. A mismatch on either is a version conflict (`delete_plan`); a missing or invisible plan is `plan_not_found`.
+- A pending plan delete hides the plan from every merged read; until the backend accepts it, referenced songs stay delete-blocked.
+
 Local-first write note:
 
 - Visible plans for the active organization are synchronized into a local normalized planning projection owned by the authenticated user plus active organization boundary.
-- Plan create/edit is implemented through a separate persisted planning mutation store instead of writing directly into projection rows.
+- Plan create/edit/delete is implemented through a separate persisted planning mutation store instead of writing directly into projection rows.
 - New plan creates in the current slice are organization-scoped only and therefore persist `group_id = null`.
 - Local plan edits are limited to `name`, `description`, and `scheduled_for`.
 - Pending local plan creates and edits are merged into normal reads immediately, while failed authorization, dependency, remote-missing, and conflict states move out of the normal overlay path into explicit mutation-status UI.
+- A local plan delete records both the projection `version` and `content_version` as its bases, and drops the plan's not-yet-sent session and session-item intents when it is recorded. Discarding a conflicted delete restores the plan but not those dropped intents.
 - Explicit sign-out removes both the authenticated planning projection and the authenticated planning mutation state.
 
 ### sessions
@@ -207,7 +216,8 @@ Local-first write note:
 - Session create, rename, delete, and reorder are implemented through the persisted planning mutation store and overlaid into plan detail immediately.
 - Session create appends deterministically after the current locally visible last session for the plan.
 - Session rename is limited to `name`.
-- Session delete is allowed only for locally empty sessions, and the backend re-checks that invariant before accepting the delete.
+- Session delete is a cascade that removes the session's items; the backend accepts it only on a matching session `version` (`delete_session`). `delete_empty_session` is deprecated and kept only for installed older clients.
+- Recording a session delete drops the session's not-yet-sent item intents, and a conflicted session delete is retried onto the refreshed session `version`.
 - Session reorder is a plan-scoped collection mutation that captures the owning plan's synchronized `base_version`, compacts to the latest locally intended sibling order, and reconciles canonical accepted order back into the read projection when the immediate post-write refresh fails.
 - Public session-scoped reader URLs use `planSlug`, `sessionSlug`, and `songSlug`; the route layer resolves the matching internal `sessionItemId` before entering the existing id-based reader context.
 
@@ -244,6 +254,7 @@ Read-model note:
 
 - In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, even though the public scoped reader URL resolves through `songSlug` within a session.
 - Song-backed session-item add, delete, and reorder are implemented through the persisted planning mutation store rather than mutating synchronized projection rows directly.
+- Session items are removed by cascade when their session or plan is deleted. The referenced song or attachment is never deleted.
 - Session-item add is currently limited to visible songs from the active organization's locally available song catalog and appends deterministically after the current locally visible last item for the session.
 - Session-item add, delete, and reorder capture the owning session's synchronized `base_version`, keep backend authorization and duplicate-song enforcement on the write RPC boundary, and reconcile accepted canonical order back into the read projection when the immediate refresh fails.
 
@@ -283,9 +294,9 @@ The first real Drift-backed feature must persist this metadata locally together 
 The currently executable slices now cover both sides:
 
 - the app stores an authenticated song-catalog cache plus song write-side sync records for the active organization
-- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit and session create/rename/delete
-- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
-- planning mutation records retain aggregate ownership, provisional slugs, ordering, ordered sibling ids, base-version metadata for optimistic concurrency, and sync failure classification for explicit retry/review flows
+- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit/delete and session create/rename/delete
+- the app stores an authenticated planning projection plus persisted planning mutation records for plan create/edit/delete, session create/rename/delete/reorder, and song-backed session-item add/delete/reorder
+- planning mutation records retain aggregate ownership, provisional slugs, ordering, ordered sibling ids, base-version metadata for optimistic concurrency (a plan delete also carries a base content version), and sync failure classification for explicit retry/review flows
 - song mutation records retain durable sync failure metadata, including remote-deletion classification and original conflict intent, so restart/retry/recovery flows do not lose convergence semantics
 
 ### sync_status
