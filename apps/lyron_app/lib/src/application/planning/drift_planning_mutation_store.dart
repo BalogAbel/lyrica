@@ -495,15 +495,22 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
           kind: PlanningMutationKind.sessionDelete,
           syncStatus: PlanningMutationSyncStatus.pending,
-          orderKey:
-              existing?.orderKey ??
-              await _nextOrderKey(
-                userId: context.userId,
-                organizationId: context.organizationId,
-              ),
+          // Spec D6: a fresh key, after every surviving in-flight child row,
+          // so those conclude before the cascade delete is sent.
+          orderKey: await _nextOrderKey(
+            userId: context.userId,
+            organizationId: context.organizationId,
+          ),
           updatedAt: DateTime.now().toUtc(),
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
+      );
+      // Spec D6: under cascade a not-yet-sent child write could only bump
+      // the session version and make this delete conflict with itself.
+      await _deleteChildMutationsOfSession(
+        context: context,
+        sessionId: draft.sessionId,
+        keepInFlight: true,
       );
       await _removeSessionFromPendingReorder(
         context: context,
@@ -1489,10 +1496,6 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
 
   /// Spec D6/D8: every session-item and session-item-order row of
   /// [sessionId], optionally sparing in-flight rows.
-  ///
-  /// Not referenced until the session-cascade tasks (plan Tasks 3.3/3.4)
-  /// land; the ignore below goes away with the first caller.
-  // ignore: unused_element
   Future<int> _deleteChildMutationsOfSession({
     required PlanningMutationContext context,
     required String sessionId,

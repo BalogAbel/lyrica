@@ -1981,5 +1981,86 @@ void main() {
       expect(pending.single.baseVersion, 2);
       expect(pending.single.baseContentVersion, 5);
     });
+
+    test('deleting a synced session drops its not-yet-sent item rows, keeps '
+        'in-flight ones, and takes a fresh order key (spec D6)', () async {
+      await store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 3,
+        ),
+      );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-pending',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song',
+          position: 1,
+          baseVersion: 3,
+        ),
+      );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-sending',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-2',
+          songTitle: 'Song 2',
+          position: 2,
+          baseVersion: 3,
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item',
+        aggregateId: 'item-sending',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+      await store.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          orderedSessionItemIds: ['item-b', 'item-a'],
+          baseVersion: 3,
+        ),
+      );
+      final renameKey = (await store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      ))!.orderKey;
+
+      await store.recordSessionDelete(
+        context: context,
+        draft: const PlanningSessionDeleteMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          baseVersion: 3,
+        ),
+      );
+
+      final records = await store.readAllMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(records.map((record) => record.aggregateId).toList(), [
+        'item-sending',
+        'session-1',
+      ]);
+      final delete = records.last;
+      expect(delete.kind, PlanningMutationKind.sessionDelete);
+      expect(delete.baseVersion, 3);
+      expect(delete.orderKey, greaterThan(renameKey));
+    });
   });
 }
