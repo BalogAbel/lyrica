@@ -10,6 +10,9 @@
 -- content_version bump, before its version check and its session or item
 -- writes (I5). The session version checks therefore run as conditional
 -- updates after that lock.
+-- After the lock each function re-reads what its checks depend on, so a write
+-- or delete that committed while it waited yields the error a sequential
+-- call would (version conflict for a changed row, not_found for a deleted one).
 
 alter table public.plans
   add column content_version bigint not null default 1;
@@ -224,6 +227,7 @@ declare
   existing_session public.sessions%rowtype;
   updated_session public.sessions%rowtype;
   v_plan_content_version bigint;
+  v_current_version bigint;
 begin
   if p_base_version is null then
     raise exception using
@@ -287,13 +291,26 @@ begin
     return;
   end if;
 
+  select session.version
+  into v_current_version
+  from public.sessions as session
+  where session.organization_id = p_organization_id
+    and session.id = p_session_id;
+
+  if not found then
+    raise exception using
+      errcode = 'P0002',
+      message = 'session_not_found',
+      detail = 'The target session no longer exists in the requested organization';
+  end if;
+
   raise exception using
     errcode = 'P0001',
     message = 'session_version_conflict',
     detail = format(
       'expected base_version %s but found current version %s',
       p_base_version::text,
-      existing_session.version::text
+      v_current_version::text
     );
 end;
 $$;
@@ -327,6 +344,7 @@ declare
   temp_position_offset integer;
   v_version bigint;
   v_plan_content_version bigint;
+  v_current_version bigint;
 begin
   if p_base_version is null then
     raise exception using
@@ -367,13 +385,26 @@ begin
   into v_version, v_plan_content_version;
 
   if not found then
+    select plan.version
+    into v_current_version
+    from public.plans as plan
+    where plan.organization_id = p_organization_id
+      and plan.id = p_plan_id;
+
+    if not found then
+      raise exception using
+        errcode = 'P0002',
+        message = 'plan_not_found',
+        detail = 'The target plan no longer exists in the requested organization';
+    end if;
+
     raise exception using
       errcode = 'P0001',
       message = 'plan_version_conflict',
       detail = format(
         'expected base_version %s but found current version %s',
         p_base_version::text,
-        existing_plan.version::text
+        v_current_version::text
       );
   end if;
 
@@ -484,6 +515,7 @@ declare
   v_constraint_name text;
   v_session_version bigint;
   v_plan_content_version bigint;
+  v_current_version bigint;
 begin
   if p_base_version is null then
     raise exception using
@@ -527,13 +559,26 @@ begin
   returning session.version into v_session_version;
 
   if not found then
+    select session.version
+    into v_current_version
+    from public.sessions as session
+    where session.organization_id = p_organization_id
+      and session.id = p_session_id;
+
+    if not found then
+      raise exception using
+        errcode = 'P0002',
+        message = 'session_not_found',
+        detail = 'The target session no longer exists in the requested organization';
+    end if;
+
     raise exception using
       errcode = 'P0001',
       message = 'session_version_conflict',
       detail = format(
         'expected base_version %s but found current version %s',
         p_base_version::text,
-        existing_session.version::text
+        v_current_version::text
       );
   end if;
 
@@ -670,6 +715,7 @@ declare
   existing_session public.sessions%rowtype;
   v_session_version bigint;
   v_plan_content_version bigint;
+  v_current_version bigint;
 begin
   if p_base_version is null then
     raise exception using
@@ -713,13 +759,26 @@ begin
   returning session.version into v_session_version;
 
   if not found then
+    select session.version
+    into v_current_version
+    from public.sessions as session
+    where session.organization_id = p_organization_id
+      and session.id = p_session_id;
+
+    if not found then
+      raise exception using
+        errcode = 'P0002',
+        message = 'session_not_found',
+        detail = 'The target session no longer exists in the requested organization';
+    end if;
+
     raise exception using
       errcode = 'P0001',
       message = 'session_version_conflict',
       detail = format(
         'expected base_version %s but found current version %s',
         p_base_version::text,
-        existing_session.version::text
+        v_current_version::text
       );
   end if;
 
@@ -790,6 +849,7 @@ declare
   temp_position_offset integer;
   v_session_version bigint;
   v_plan_content_version bigint;
+  v_current_version bigint;
 begin
   if p_base_version is null then
     raise exception using
@@ -833,13 +893,26 @@ begin
   returning session.version into v_session_version;
 
   if not found then
+    select session.version
+    into v_current_version
+    from public.sessions as session
+    where session.organization_id = p_organization_id
+      and session.id = p_session_id;
+
+    if not found then
+      raise exception using
+        errcode = 'P0002',
+        message = 'session_not_found',
+        detail = 'The target session no longer exists in the requested organization';
+    end if;
+
     raise exception using
       errcode = 'P0001',
       message = 'session_version_conflict',
       detail = format(
         'expected base_version %s but found current version %s',
         p_base_version::text,
-        existing_session.version::text
+        v_current_version::text
       );
   end if;
 
@@ -965,6 +1038,21 @@ begin
     p_organization_id,
     existing_session.plan_id
   );
+
+  -- Re-read under the plan lock (I5): the read above can be stale when
+  -- another write on this plan committed while the bump waited.
+  select *
+  into existing_session
+  from public.sessions as session
+  where session.organization_id = p_organization_id
+    and session.id = p_session_id;
+
+  if not found then
+    raise exception using
+      errcode = 'P0002',
+      message = 'session_not_found',
+      detail = 'The target session no longer exists in the requested organization';
+  end if;
 
   if existing_session.version <> p_base_version then
     raise exception using
@@ -1133,7 +1221,6 @@ set search_path = public
 as $$
 #variable_conflict use_column
 declare
-  existing_plan public.plans%rowtype;
   current_plan public.plans%rowtype;
 begin
   if p_base_version is null or p_base_content_version is null then
@@ -1143,8 +1230,7 @@ begin
       detail = 'base_version and base_content_version are required for plan deletes';
   end if;
 
-  select *
-  into existing_plan
+  perform 1
   from public.plans as plan
   where plan.organization_id = p_organization_id
     and plan.id = p_plan_id

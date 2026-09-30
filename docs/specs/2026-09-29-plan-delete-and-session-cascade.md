@@ -99,12 +99,18 @@ would silently break I2 (fail-open), so that is never acceptable.
 by exactly 1, in the same transaction.** A failed or rolled-back write bumps
 nothing. "Child write" means every RPC that creates, renames, deletes, or
 reorders a session or a session item. Plan field edits are not child writes;
-they are covered by `plans.version`.
+they are covered by `plans.version`. The reorder RPCs count as child writes
+even when they move nothing (for example on a plan without sessions); the
+extra bump can only cause a false conflict, never a false acceptance.
 
 **I5. Lock order.** Every planning write RPC locks the owning `plans` row
 (through the `content_version` bump, or through the delete itself) before
 its first write to `sessions` or `session_items`. Planning RPCs therefore
-never acquire plan and session/item row locks in opposite orders.
+never acquire plan and session/item row locks in opposite orders. After
+taking that lock, a function re-reads the rows its checks depend on, so a
+write or delete that committed while it waited produces the same error a
+sequential call would: a version conflict for a changed row, `*_not_found`
+for a deleted one.
 
 **I6. Authorization is backend-enforced.** Flutter capability gating
 (`IfCapability`) only hides affordances.
