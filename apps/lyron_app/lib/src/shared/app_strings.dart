@@ -210,12 +210,15 @@ class AppStrings {
   static const sessionListEmptyMessage =
       'No sessions yet. Add a session to start building this plan.';
   static const sessionItemsEmptyMessage = 'No songs in this session yet.';
-  static const sessionDeleteConfirmTitle = 'Delete empty session?';
-  static const sessionDeleteConfirmMessage =
-      'This removes the local session immediately and syncs the delete when possible.';
+  static const sessionDeleteConfirmTitle = 'Delete session?';
+  static const sessionDeleteEmptyConfirmMessage = 'This removes the session.';
+  static String sessionDeleteConfirmMessage({
+    required String sessionName,
+    required int songCount,
+  }) =>
+      '“$sessionName” and its ${_count(songCount, 'song', 'songs')} will be '
+      'removed from this plan. The songs stay in the song library.';
   static const sessionDeleteConfirmAction = 'Delete session';
-  static const sessionDeleteBlockedMessage =
-      'This session cannot be deleted because it is no longer empty.';
   static const sessionNameLabel = 'Session name';
   static const sessionEditorTitleCreate = 'Add session';
   static const sessionEditorTitleRename = 'Rename session';

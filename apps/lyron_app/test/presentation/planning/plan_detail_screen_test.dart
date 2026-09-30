@@ -335,7 +335,9 @@ void main() {
     expect(find.text(AppStrings.retryAction), findsOneWidget);
   });
 
-  testWidgets('shows delete action only for empty sessions', (tester) async {
+  testWidgets('shows the delete action for every session (spec D6)', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildApp(
         planDetailValue: PlanDetail(
@@ -380,7 +382,7 @@ void main() {
     );
     expect(
       find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
-      findsNothing,
+      findsOneWidget,
     );
   });
 
@@ -578,10 +580,117 @@ void main() {
       find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
     );
     await tester.pumpAndSettle();
+    expect(
+      find.text(AppStrings.sessionDeleteEmptyConfirmMessage),
+      findsOneWidget,
+    );
     await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
     await tester.pumpAndSettle();
 
     expect(writeService.deletedSessionDraft?.sessionId, 'session-2');
+  });
+
+  testWidgets('deletes a non-empty session after a confirmation naming its '
+      'songs', (tester) async {
+    final writeService = _FakePlanningWriteService();
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        writeService: writeService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+    );
+    await tester.pumpAndSettle();
+    // _planDetailWithItemsFixture(): Warm-Up holds 2 items.
+    expect(
+      find.text(
+        AppStrings.sessionDeleteConfirmMessage(
+          sessionName: 'Warm-Up',
+          songCount: 2,
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsNothing,
+    );
+    await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+    await tester.pumpAndSettle();
+
+    expect(writeService.deletedSessionDraft?.sessionId, 'session-1');
+  });
+
+  testWidgets('the session delete dialog warns about unsynced session '
+      'changes', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _planDetailWithItemsFixture(),
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'item-9',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            kind: PlanningMutationKind.sessionItemCreateSong,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the session delete dialog warns about a pending rename of the '
+      'session', (tester) async {
+    await tester.pumpWidget(
+      buildApp(
+        planDetailValue: _editablePlanDetailFixture(),
+        loadMutationEntries: () async => [
+          PlanningMutationRecord(
+            aggregateId: 'session-2',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionRename,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            name: 'Closing',
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byTooltip('${AppStrings.sessionDeleteAction}: Closing'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppStrings.sessionDeleteEmptyConfirmMessage),
+      findsOneWidget,
+    );
+    expect(
+      find.text(AppStrings.planningUnsyncedChangesDiscardedMessage),
+      findsOneWidget,
+    );
   });
 
   testWidgets('cancelling the session delete dialog does not delete', (
