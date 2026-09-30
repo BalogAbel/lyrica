@@ -3253,6 +3253,87 @@ void main() {
       );
     });
 
+    // The projection can move without the detail provider noticing (a sync
+    // batch advances the plan content_version after each accepted write but
+    // the provider only re-reads at the batch-end refresh). A refusal must
+    // therefore re-read the target, or re-opening the dialog would show the
+    // same stale snapshot and be refused forever.
+    testWidgets('a refused plan delete re-reads the plan so the next attempt '
+        'shows and deletes the current target', (tester) async {
+      await pumpRaceApp(tester);
+      repository.current = _deleteRaceDetailAfterRefresh(); // no revision bump
+
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+      expect(store.recordedPlanDelete, isNull);
+      expect(
+        find.text(AppStrings.planDeleteTargetChangedMessage),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('plan-overflow-menu-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.planDeleteAction));
+      await tester.pumpAndSettle();
+      // The refreshed plan: 3 sessions holding 6 songs.
+      expect(
+        find.text(
+          AppStrings.planDeleteConfirmMessage(
+            planName: 'Team Rehearsal',
+            sessionCount: 3,
+            songCount: 6,
+          ),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text(AppStrings.planDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(store.recordedPlanDelete?.baseContentVersion, 8);
+      expect(find.text('plan-list-placeholder'), findsOneWidget);
+    });
+
+    testWidgets('a refused session delete re-reads the plan so the next '
+        'attempt shows and deletes the current session', (tester) async {
+      await pumpRaceApp(tester);
+      repository.current = _deleteRaceDetailAfterRefresh(); // no revision bump
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+      await tester.pumpAndSettle();
+      expect(store.recordedSessionDelete, isNull);
+      expect(
+        find.text(AppStrings.sessionDeleteTargetChangedMessage),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byTooltip('${AppStrings.sessionDeleteAction}: Warm-Up'),
+      );
+      await tester.pumpAndSettle();
+      // The refreshed session holds 3 songs.
+      expect(
+        find.text(
+          AppStrings.sessionDeleteConfirmMessage(
+            sessionName: 'Warm-Up',
+            songCount: 3,
+          ),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text(AppStrings.sessionDeleteConfirmAction));
+      await tester.pumpAndSettle();
+
+      expect(store.recordedSessionDelete?.baseVersion, 5);
+    });
+
     testWidgets('an unchanged plan still deletes through the real write '
         'service', (tester) async {
       await pumpRaceApp(tester);

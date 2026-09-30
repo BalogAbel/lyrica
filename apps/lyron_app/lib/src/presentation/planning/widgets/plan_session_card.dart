@@ -559,6 +559,7 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
     }
 
     final messenger = ScaffoldMessenger.of(context);
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
       await ref
           .read(planningWriteServiceProvider)
@@ -580,6 +581,12 @@ class _PlanSessionCardState extends ConsumerState<PlanSessionCard> {
           content: Text(AppStrings.sessionDeleteTargetChangedMessage),
         ),
       );
+      // The snapshot the dialog showed is stale (a sync batch can advance the
+      // projection without the detail provider re-reading). Re-read, so the
+      // next attempt shows the current target instead of being refused again.
+      container.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+      container.invalidate(planningPlanListProvider);
+      container.invalidate(planningMutationEntriesProvider);
       return;
     } on PlanningWriteContextMismatchException {
       // The organization or user switched mid-flight; nothing to report.

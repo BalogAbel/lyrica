@@ -30,6 +30,18 @@ class ActivePlanningReadContext {
 typedef ActivePlanningReadContextReader =
     Future<ActivePlanningReadContext?> Function();
 
+/// The plan is not in the local planning projection (missing, or hidden by a
+/// pending delete). A [StateError] subclass so existing `on StateError`
+/// handlers keep working; callers that must tell "the plan is gone" apart
+/// from the other state errors of this repository (for example an
+/// unavailable planning context) catch this type.
+class PlanningPlanNotFoundError extends StateError {
+  PlanningPlanNotFoundError(this.planId)
+    : super('Plan not found in local planning projection: $planId');
+
+  final String planId;
+}
+
 class PlanningLocalReadRepository implements PlanningRepository {
   const PlanningLocalReadRepository({
     required this._store,
@@ -110,7 +122,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
     );
     final merged = _mergePlanDetail(detail, planId, mutations);
     if (merged == null) {
-      throw StateError('Plan not found in local planning projection: $planId');
+      throw PlanningPlanNotFoundError(planId);
     }
 
     return merged;

@@ -5,6 +5,9 @@ import 'package:lyron_app/src/application/planning/drift_planning_mutation_store
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/domain/planning/planning_repository.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
@@ -847,6 +850,53 @@ void main() {
         await expectNothingRecorded();
       });
 
+      test('a StateError that is not a missing plan is not reported as a '
+          'changed target', () async {
+        final unavailableContextService = PlanningWriteService(
+          _ThrowingPlanDetailRepository(
+            StateError('Active planning context is unavailable.'),
+          ),
+          mutationStore: mutationStore,
+          activeContextReader: () async => const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          syncScheduler: (_) async {
+            syncCalls += 1;
+          },
+        );
+
+        await expectLater(
+          unavailableContextService.deletePlan(
+            context: writeContext,
+            draft: const PlanDeleteDraft(
+              planId: 'plan-1',
+              confirmedVersion: 2,
+              confirmedContentVersion: 5,
+            ),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'Active planning context is unavailable.',
+            ),
+          ),
+        );
+        await expectLater(
+          unavailableContextService.deleteSession(
+            context: writeContext,
+            draft: const SessionDeleteDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              confirmedVersion: 1,
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+        await expectNothingRecorded();
+      });
+
       test('deleteSession records and syncs when the confirmed snapshot still '
           'matches', () async {
         await service.deleteSession(
@@ -870,4 +920,24 @@ void main() {
       });
     });
   });
+}
+
+class _ThrowingPlanDetailRepository implements PlanningRepository {
+  _ThrowingPlanDetailRepository(this._error);
+
+  final Object _error;
+
+  @override
+  Future<PlanDetail> getPlanDetail(String planId) async => throw _error;
+
+  @override
+  Future<List<PlanSummary>> listPlans() async => throw _error;
+
+  @override
+  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async =>
+      throw _error;
+
+  @override
+  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async =>
+      throw _error;
 }

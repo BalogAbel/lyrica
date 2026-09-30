@@ -404,6 +404,12 @@ class _PlanDetailScreenState extends ConsumerState<PlanDetailScreen> {
           content: Text(AppStrings.planDeleteTargetChangedMessage),
         ),
       );
+      // The snapshot the dialog showed is stale (a sync batch can advance the
+      // projection without the detail provider re-reading). Re-read, so the
+      // next attempt shows the current target instead of being refused again.
+      container.invalidate(planningPlanDetailProvider(planId));
+      container.invalidate(planningPlanListProvider);
+      container.invalidate(planningMutationEntriesProvider);
       return;
     } on PlanningWriteContextMismatchException {
       // The organization or user switched mid-flight; nothing to report.

@@ -515,12 +515,14 @@ class PlanningWriteService {
   // Reads the plan a delete is about to act on. The local read repository
   // reports a plan that is missing or hidden from the projection -- the
   // plan was deleted or refreshed away while the confirmation dialog was
-  // open -- as a StateError; for a delete that is the same refusal as any
-  // other change of the target (spec D11), not an unexpected failure.
+  // open -- as a PlanningPlanNotFoundError; for a delete that is the same
+  // refusal as any other change of the target (spec D11). Every other
+  // failure (for example an unavailable planning context) is unexpected and
+  // propagates.
   Future<PlanDetail> _readPlanDetailForDelete(String planId) async {
     try {
       return await _repository.getPlanDetail(planId);
-    } on StateError {
+    } on PlanningPlanNotFoundError {
       throw const PlanningDeleteTargetChangedException();
     }
   }
