@@ -2051,6 +2051,29 @@ One reviewer, whole Phase 1 diff, one question:
 
 Fix the findings and re-run `./scripts/backend-write-contracts.sh`.
 
+**Gate 1 outcome (2026-09-30).**
+
+Fixed in the migration, with race contract tests R1–R7 (B8) written red
+first:
+- `delete_empty_session` re-reads the session under the plan lock. Before,
+  a write that committed while it waited made it raise `session_not_found`
+  or `session_delete_blocked_not_empty` instead of
+  `session_version_conflict`.
+- Every conditional-update miss re-selects the row. It raises `*_not_found`
+  when the row was deleted during the wait, and otherwise reports the
+  current version in `detail`.
+- `delete_plan` no longer declares a lookup variable it never reads, which
+  clears the lint warning.
+- B3 now also covers a foreign `create_session`.
+
+Accepted as-is: the reorder RPCs bump even when they move nothing. This is
+fail-safe; see spec I4.
+
+Out of scope, pre-existing: `authenticated` can still write `plans`,
+`sessions`, and `session_items` directly under the `for all` RLS policies,
+which bypasses the RPCs. See
+`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`.
+
 ---
 
 ## Phase 2 — Client content-version plumbing (no delete yet)

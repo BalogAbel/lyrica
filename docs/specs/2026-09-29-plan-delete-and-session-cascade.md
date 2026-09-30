@@ -88,6 +88,11 @@ the delete on:
 
 Any interleaved write by anyone else makes the delete a visible `conflict`.
 
+I2, I4, and I5 are guaranteed for writes made through the planning RPCs.
+Direct table DML under the `for all` RLS write policies bypasses them. That
+gap predates this change and is tracked in
+`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`.
+
 **I3. Client base adjustments account only for the client's own accepted
 writes.** Every client-side adjustment of a base version (D7) must be
 verifiable against a backend-returned value by contiguity, and must never

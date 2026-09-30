@@ -71,10 +71,12 @@ Redemption itself is fully backend-enforced and returns a `jsonb` status envelop
 
 The read boundary stays on RLS-protected table reads: the Flutter
 repositories read `songs`, `plans`, and `sessions` directly through the
-Supabase table API, with RLS enforcing tenant visibility on every row. There
-are zero direct table writes — every mutation goes through a `security
-definer` RPC, with RLS denying direct DML as a second layer. See
-[ADR-026](decisions/ADR-026-rls-protected-read-boundary.md).
+Supabase table API, with RLS enforcing tenant visibility on every row. The app
+makes zero direct table writes — every mutation goes through a `security
+definer` RPC. See [ADR-026](decisions/ADR-026-rls-protected-read-boundary.md).
+RLS does not yet deny direct DML as a second layer: `authenticated` keeps
+table DML under `for all` write policies. That known gap is tracked in
+[docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md](../deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md).
 
 Song writes derive their shadow metadata (`title`, `artist`,
 `key_signature`, `tempo_bpm`, `tags`) from canonical `chordpro_source` inside
