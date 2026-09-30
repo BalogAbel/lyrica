@@ -1510,7 +1510,7 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
     required String organizationId,
     required String planId,
     required int acceptedContentVersion,
-  }) async {}
+  }) => throw UnimplementedError();
 
   @override
   Future<void> deleteSyncedPlan({
@@ -1518,7 +1518,7 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
     required String organizationId,
     required String planId,
     required DateTime refreshedAt,
-  }) async {}
+  }) => throw UnimplementedError();
 
   @override
   Future<void> deleteSyncedSession({

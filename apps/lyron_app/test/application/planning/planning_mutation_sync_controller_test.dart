@@ -1179,6 +1179,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<String> clearedAggregateIds = [];
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
+  final List<String> events = [];
 
   @override
   Future<bool> clearMutation({
@@ -1304,6 +1305,21 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningPlanCreateMutationDraft draft,
   }) async {}
   @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) async {}
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) async {
+    events.add('effects:${accepted.aggregateId}:$remoteResponse');
+  }
+
+  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1355,6 +1371,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     String? errorMessage,
     int? expectedRevision,
   }) async {
+    events.add('save:${syncStatus.name}:$aggregateId');
     lastSavedStatus = syncStatus;
     // Mirror the real store: persist the attempt result onto the record so
     // a subsequent readMutation reflects it, the way the Drift-backed store

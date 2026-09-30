@@ -696,6 +696,101 @@ void main() {
       expect(afterDelete.syncStatus, PlanningMutationSyncStatus.pending);
     });
 
+    test('admits a plan delete that collapses a still-pending plan create '
+        'even at an exhausted budget, and removes the plan plus its pending '
+        'child rows (spec D5(a): the delete shrinks the store)', () async {
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+      await permissive.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'session-one',
+          name: 'Session One',
+          position: 0,
+        ),
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      // Must not throw PlanningMutationBudgetExceededException: deleting a
+      // still-pending create shrinks the store, so it is admitted
+      // regardless of budget.
+      await exhausted.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+      );
+
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'plan',
+          aggregateId: 'plan-1',
+        ),
+        isNull,
+      );
+      expect(
+        await exhausted.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session',
+          aggregateId: 'session-1',
+        ),
+        isNull,
+      );
+    });
+
+    test('still refuses a plan delete over a synced plan (no row of its own), '
+        'even though it is the same method as the collapse case', () async {
+      // Seed an UNRELATED pending mutation so the store is genuinely over
+      // budget. The plan targeted below has no local mutation of its own
+      // (as if it is synced and unmodified locally), so deleting it adds a
+      // brand new planDelete row -- it grows the store rather than
+      // shrinking it, and must stay subject to the budget exactly like any
+      // other write. The admission decision has to come from store state
+      // (is there a pending create to collapse?), not from the method name
+      // alone.
+      await storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      ).recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-2',
+          slug: 'midweek-service',
+          name: 'Midweek Service',
+        ),
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+
+      await expectLater(
+        () => exhausted.recordPlanDelete(
+          context: context,
+          draft: const PlanningPlanDeleteMutationDraft(
+            planId: 'plan-1',
+            baseVersion: 1,
+            baseContentVersion: 1,
+          ),
+        ),
+        throwsA(isA<PlanningMutationBudgetExceededException>()),
+      );
+    });
+
     test('saveSyncAttemptResult is never refused for budget reasons, even '
         'with the budget exhausted', () async {
       await storeWithBudget(
@@ -949,6 +1044,20 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) => throw UnimplementedError();
+
+  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1101,6 +1210,20 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
     final hook = onRecordPlanCreate[key];
     if (hook != null) await hook();
   }
+
+  @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
+  }) => throw UnimplementedError();
 
   @override
   Future<void> recordPlanEdit({
@@ -1558,6 +1681,20 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
   }) => throw UnimplementedError();
 
   @override

@@ -1689,4 +1689,297 @@ void main() {
       },
     );
   });
+
+  group('recordPlanDelete (spec D5)', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+    const context = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+    const draft = PlanningPlanDeleteMutationDraft(
+      planId: 'plan-1',
+      baseVersion: 2,
+      baseContentVersion: 5,
+      originSnapshot: {'name': 'Sunday Service'},
+    );
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<List<PlanningMutationRecord>> all() =>
+        store.readAllMutations(userId: 'user-1', organizationId: 'org-1');
+
+    Future<void> seedChildren() async {
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-new',
+          planId: 'plan-1',
+          slug: 'new',
+          name: 'New',
+          position: 3,
+        ),
+      );
+      await store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 1,
+        ),
+      );
+      await store.recordSessionReorder(
+        context: context,
+        draft: const PlanningSessionReorderMutationDraft(
+          planId: 'plan-1',
+          orderedSessionIds: ['session-2', 'session-1'],
+          baseVersion: 2,
+        ),
+      );
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: const PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-new',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song',
+          position: 1,
+          baseVersion: 1,
+        ),
+      );
+      await store.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-2',
+          planId: 'plan-1',
+          orderedSessionItemIds: ['item-b', 'item-a'],
+          baseVersion: 1,
+        ),
+      );
+      // A child of ANOTHER plan must never be touched.
+      await store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-x',
+          planId: 'plan-2',
+          name: 'Other plan',
+          baseVersion: 1,
+        ),
+      );
+    }
+
+    test('(d) a synced plan gets a pending delete with the draft bases, a '
+        'fresh order key, and loses its not-yet-sent child rows', () async {
+      await seedChildren();
+      final maxKeyBefore = (await all())
+          .map((record) => record.orderKey)
+          .reduce((a, b) => a > b ? a : b);
+
+      await store.recordPlanDelete(context: context, draft: draft);
+
+      final records = await all();
+      expect(records.map((record) => record.aggregateId), [
+        'session-x',
+        'plan-1',
+      ]);
+      final delete = records.last;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 2);
+      expect(delete.baseContentVersion, 5);
+      expect(delete.originSnapshot, {'name': 'Sunday Service'});
+      expect(delete.orderKey, greaterThan(maxKeyBefore));
+    });
+
+    test(
+      '(d) in-flight child rows (sending/accepted/cancelling) survive',
+      () async {
+        await seedChildren();
+        await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session',
+          aggregateId: 'session-new',
+          syncStatus: PlanningMutationSyncStatus.sending,
+        );
+        await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item',
+          aggregateId: 'item-new',
+          syncStatus: PlanningMutationSyncStatus.accepted,
+        );
+
+        await store.recordPlanDelete(context: context, draft: draft);
+
+        expect((await all()).map((record) => record.aggregateId).toSet(), {
+          'session-new',
+          'item-new',
+          'session-x',
+          'plan-1',
+        });
+      },
+    );
+
+    test(
+      '(d) over a pending planEdit keeps the edit\'s base version',
+      () async {
+        await store.recordPlanEdit(
+          context: context,
+          draft: const PlanningPlanEditMutationDraft(
+            planId: 'plan-1',
+            name: 'Edited',
+            baseVersion: 1,
+            originSnapshot: {'name': 'Before Edit'},
+          ),
+        );
+
+        await store.recordPlanDelete(context: context, draft: draft);
+
+        final delete = (await all()).single;
+        expect(delete.kind, PlanningMutationKind.planDelete);
+        expect(delete.baseVersion, 1);
+        expect(delete.baseContentVersion, 5);
+        expect(delete.originSnapshot, {'name': 'Before Edit'});
+      },
+    );
+
+    test('(a) a never-sent planCreate collapses with every child row, in '
+        'any status', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await seedChildren();
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-new',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+
+      await store.recordPlanDelete(context: context, draft: draft);
+
+      expect((await all()).map((record) => record.aggregateId), ['session-x']);
+    });
+
+    test('(b) a sending planCreate becomes a cancelling tombstone', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+      );
+
+      await store.recordPlanDelete(context: context, draft: draft);
+
+      final tombstone = (await all()).single;
+      expect(tombstone.kind, PlanningMutationKind.planCreate);
+      expect(tombstone.syncStatus, PlanningMutationSyncStatus.cancelling);
+    });
+
+    test('(c) an accepted planCreate becomes a pending delete based on the '
+        'fresh plan', () async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'plan-1',
+          name: 'Local',
+        ),
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'plan',
+        aggregateId: 'plan-1',
+        syncStatus: PlanningMutationSyncStatus.accepted,
+      );
+
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(
+          planId: 'plan-1',
+          baseVersion: 1,
+        ),
+      );
+
+      final delete = (await all()).single;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 1);
+      expect(delete.baseContentVersion, 1);
+    });
+
+    test('baseContentVersion persists across a database reopen', () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'planning-mutation-store-test-plan-delete',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+
+      final firstDatabase = PlanningLocalDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      final firstStore = DriftPlanningMutationStore(
+        database: firstDatabase,
+        localStore: DriftPlanningLocalStore(firstDatabase),
+      );
+
+      await firstStore.recordPlanDelete(context: context, draft: draft);
+      await firstDatabase.close();
+
+      final secondDatabase = PlanningLocalDatabase.connect(
+        NativeDatabase.createInBackground(dbFile),
+      );
+      addTearDown(secondDatabase.close);
+      final secondStore = DriftPlanningMutationStore(
+        database: secondDatabase,
+        localStore: DriftPlanningLocalStore(secondDatabase),
+      );
+
+      final pending = await secondStore.readPendingMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      expect(pending, hasLength(1));
+      expect(pending.single.aggregateId, 'plan-1');
+      expect(pending.single.kind, PlanningMutationKind.planDelete);
+      expect(pending.single.baseVersion, 2);
+      expect(pending.single.baseContentVersion, 5);
+    });
+  });
 }

@@ -529,6 +529,12 @@ abstract interface class PlanningMutationStore {
     required PlanningPlanEditMutationDraft draft,
   });
 
+  /// Spec D5 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md).
+  Future<void> recordPlanDelete({
+    required PlanningMutationContext context,
+    required PlanningPlanDeleteMutationDraft draft,
+  });
+
   Future<void> recordSessionCreate({
     required PlanningMutationContext context,
     required PlanningSessionCreateMutationDraft draft,
@@ -703,6 +709,26 @@ abstract interface class PlanningMutationStore {
     required String aggregateId,
     required bool created,
     int? acceptedBaseVersion,
+  });
+
+  /// Spec D7 + D8: the store-side consequences of a backend-accepted write.
+  ///
+  /// When [remoteResponse] is true, [accepted] was mapped from an RPC
+  /// response in the current sync run, and the D7 contiguity rules may use
+  /// its returned versions to rebase a not-in-flight pending cascade delete
+  /// (and the projection's plan content version). When false (a
+  /// crash-resumed `accepted` marker, whose `baseVersion` is still the
+  /// pre-write base), only the D8 purge runs.
+  ///
+  /// D8: when [accepted] is a `planDelete`/`sessionDelete`, every remaining
+  /// mutation row of the deleted subtree is removed, in any status.
+  ///
+  /// Idempotent. Never grows the store.
+  Future<void> applyAcceptedWriteEffects({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+    required bool remoteResponse,
   });
 }
 
