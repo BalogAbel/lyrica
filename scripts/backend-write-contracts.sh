@@ -35,6 +35,11 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$slug_parity_test_script"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$planning_write_contract_test_script"
+
+planning_cascade_delete_test_script="${PLANNING_CASCADE_DELETE_TEST_SCRIPT:-./scripts/tests/planning-cascade-delete-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$planning_cascade_delete_test_script"
+
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$song_crud_write_contract_test_script"
 
