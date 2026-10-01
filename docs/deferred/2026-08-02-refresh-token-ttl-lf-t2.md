@@ -1,9 +1,12 @@
 # Refresh-Token TTL Is the Real Offline Ceiling (LF-T2)
 
-**Status:** Closed as a data-durability concern, 2026-08-21. See "Correction"
-and "Update" below — the refresh-token TTL bounds *sync*, never *local data*,
-and the two claims in this document that asserted local-data safety was
-already true are corrected in place. The document otherwise stands.
+**Status:** Closed, 2026-10-01. The hosted project's session settings were
+verified: no refresh-token TTL wall exists. See "Re-evaluation (2026-10-01)"
+below. This entry had already been closed as a data-durability concern on
+2026-08-21: the refresh-token TTL bounds *sync*, never *local data*. See
+"Correction" and "Update" below; the two claims in this document that
+asserted local-data safety was already true are corrected in place. The
+document otherwise stands.
 
 **Slice:** offline-durability-phase4 (S15)
 **Finding:** `LF-T2` (`docs/architecture/repository-review-2026-06-22.md`)
@@ -197,16 +200,24 @@ be used only once. A session ends only when one of these happens:
   enabled.
 
 The "hard wall" this entry describes therefore exists only if the hosted
-project enables one of those three settings. What remains is a check, not a
-code change:
+project enables one of those three settings.
 
-- In the hosted Supabase dashboard, open Auth → Sessions and record the values
-  of three settings here: time-box user sessions, inactivity timeout, and
-  single session per user.
-- If all three are off, or both time limits are at least one week, the wall is
-  outside ADR-008's offline target, and this entry can be closed.
-- Single session per user should stay off. Beyond the offline concern, it
-  signs the user out of every other device, which would break multi-device use
-  of the personal song layer planned in S3.
+**Verified on the hosted project (user, 2026-10-01, Auth → User Sessions):**
 
-`docs/plans/2026-10-01-delivery-roadmap.md` tracks this as a user action.
+| Setting | Value |
+|---|---|
+| Enforce single session per user | off |
+| Time-box user sessions | 0 (never) |
+| Inactivity timeout | 0 (never) |
+
+On the current Free plan these settings cannot be changed; configuring them
+requires the Pro plan. With all three at "never", a session, and with it
+sync, survives an offline span of any length. The wall never existed in this
+deployment, so this entry is **closed**.
+
+**Reopen if** the project moves to a paid plan and any of these settings is
+enabled. Keep them at "never", or at least one week, which is ADR-008's
+offline target. Keep single session per user off: besides the offline
+concern, it signs the user out of every other device, which would break
+multi-device use of the personal song layer planned in S3
+(`docs/plans/2026-10-01-delivery-roadmap.md`).

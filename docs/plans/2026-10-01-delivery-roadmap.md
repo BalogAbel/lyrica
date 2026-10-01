@@ -116,7 +116,9 @@ Found during this analysis. Each one is recorded in `docs/deferred/`.
 5. **Supabase refresh tokens never expire by default.** The LF-T2 "wall"
    exists only if the hosted project enables a session time-box, an
    inactivity timeout, or single session per user. Single session per user
-   would also break multi-device use of the personal layer.
+   would also break multi-device use of the personal layer. The user verified
+   on 2026-10-01 that all three are off ("never"); they cannot be changed on
+   the Free plan. LF-T2 is closed.
    → `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`
 6. **`sentry_flutter` 9.x still does not resolve.** `flutter pub outdated`
    on 2026-10-01 reports resolvable 8.14.2, latest 9.30.1.
@@ -238,9 +240,9 @@ For a single executor:
 9. **S8:** ChordPro modulation.
 10. **S9 remainder:** re-check each trigger before deciding.
 
-**User actions, any time:** the LF-T2 dashboard check, and with S1 the hosted
-"Default privileges for new entities" toggle. Both are under "User Actions
-Outside the Repository".
+**User actions:** with S1, the hosted "Default privileges for new entities"
+toggle (see "User Actions Outside the Repository"). The LF-T2 dashboard check
+is done (2026-10-01).
 
 **With several executors:**
 
@@ -352,7 +354,7 @@ or overrides it with a stated reason.
 
 | Item | Trigger status on 2026-10-01 | Decision |
 |---|---|---|
-| LF-T2, refresh-token TTL | Depends only on hosted Supabase Auth settings | User checks the dashboard; values are recorded; the item closes |
+| LF-T2, refresh-token TTL | Depends only on hosted Supabase Auth settings; verified 2026-10-01: single session off, time-box and inactivity timeout both "never" (not changeable on the Free plan) | **Closed.** Reopen only if a paid plan enables any of these settings |
 | `sentry_flutter` 9.x | Not resolvable (8.14.2) | Stays deferred |
 | Centralized scrub hooks | Met once S6 starts (next observability slice) | Moves into S6 |
 | Remaining instrumentation | "Non-trigger" rule still applies | Only new S3 and S4 sync code gets spans, per ADR-036; nothing else is back-filled |
@@ -393,10 +395,9 @@ practice, S4 starts with a prototype in `docs/prototypes/`.
 
 ## User Actions Outside the Repository
 
-- **LF-T2:** in the hosted Supabase dashboard, open Auth → Sessions and check
-  three settings: time-box user sessions, inactivity timeout, and single
-  session per user. Record the values in
-  `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`.
+- **LF-T2 (done 2026-10-01):** the hosted session settings were checked and
+  recorded in `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. Keep
+  them at "never" if the project ever moves to a paid plan.
 - **With S1:** in the hosted Data API settings, turn off "Default privileges
   for new entities".
 - **Every slice with a migration:** apply it to the hosted project before
