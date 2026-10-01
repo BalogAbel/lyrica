@@ -66,3 +66,7 @@ BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
 create_invitation_service_role_gate_test_script="${CREATE_INVITATION_SERVICE_ROLE_GATE_TEST_SCRIPT:-./scripts/tests/create-invitation-service-role-gate-contract-test.sh}"
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$create_invitation_service_role_gate_test_script"
+
+direct_table_dml_test_script="${DIRECT_TABLE_DML_TEST_SCRIPT:-./scripts/tests/direct-table-dml-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$direct_table_dml_test_script"
