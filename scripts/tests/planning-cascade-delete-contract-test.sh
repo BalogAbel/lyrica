@@ -106,6 +106,7 @@ def run_psql(sql: str, user_id: str | None = None) -> str:
               perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
               perform set_config('request.jwt.claim.role', 'authenticated', true);
             end $$;
+            set local role authenticated;
             {sql}
             """
         )
@@ -290,11 +291,14 @@ def race(tag: str, holder_sql: str, waiter_sql: str) -> tuple[str, str, str]:
     )
     result: list = []
 
+    # pg_stat_activity.query is cut at track_activity_query_size (1 kB
+    # locally), so the tag goes before the statement: its offset is then the
+    # fixed harness preamble, not the preamble plus the statement's length.
     def run_waiter() -> None:
         try:
             result.append(
                 capture_error(
-                    waiter_sql + f"\n-- race-waiter-{tag}", user_id=demo_user_id
+                    f"-- race-waiter-{tag}\n" + waiter_sql, user_id=demo_user_id
                 )
             )
         except BaseException as error:  # SystemExit included
@@ -307,6 +311,7 @@ def race(tag: str, holder_sql: str, waiter_sql: str) -> tuple[str, str, str]:
             "begin;",
             f"select set_config('request.jwt.claim.sub', {sql_quote(demo_user_id)}, true);",
             "select set_config('request.jwt.claim.role', 'authenticated', true);",
+            "set local role authenticated;",
             holder_sql,
             f"select 'race-holder-{tag}';",
         ):

@@ -51,6 +51,7 @@ def run_sql_as_user(sql, user_id):
           perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
           perform set_config('request.jwt.claim.role', 'authenticated', true);
         end $$;
+        set local role authenticated;
         {sql}
     """)
     return run_sql(full_sql)
