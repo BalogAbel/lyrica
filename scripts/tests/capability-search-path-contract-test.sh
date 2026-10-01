@@ -29,11 +29,12 @@ demo_email = "demo@lyron.local"
 required_search_path = ["current_organization_ids", "get_my_capabilities", "has_capability"]
 
 # Helpers that must additionally run as security definer. has_capability and
-# current_organization_ids are read from inside RLS policies on
-# public.memberships (the "memberships are manageable by capability" ALL
-# policy, via can_manage_membership) - without security definer their own
-# read of public.memberships re-enters that same policy and recurses until
-# "stack depth limit exceeded". get_my_capabilities and can_manage_membership
+# current_organization_ids are called from RLS policies and read
+# public.memberships themselves. Until 202610010001 the "memberships are
+# manageable by capability" ALL policy called back into has_capability, so an
+# invoker-rights helper recursed until "stack depth limit exceeded"; that
+# policy is gone, and the pin stays so the helpers never depend on the
+# caller's own memberships RLS. get_my_capabilities and can_manage_membership
 # are intentionally invoker-rights and are not asserted here.
 required_security_definer = ["current_organization_ids", "has_capability"]
 
@@ -97,16 +98,11 @@ for name in required_security_definer:
     if secdef != "t":
         failures.append(f"{name}: prosecdef is not true (got: {secdef!r}) - not security definer")
 
-# Behavioural guard: an authenticated read of public.memberships must not
-# recurse through the "memberships are manageable by capability" policy.
-#
-# That policy only gets evaluated for rows the *other*, non-recursive SELECT
-# policy ("memberships are visible inside organization", driven by
-# current_organization_ids()) does not already make visible - a demo user
-# reading only their own membership row short-circuits before ever calling
-# has_capability. So this probe seeds a second membership row, in an
-# organization the demo user does not belong to, inside the same
-# begin/rollback block used to switch role - it is never committed.
+# Behavioural guard: an authenticated read of public.memberships must succeed.
+# It covers rows outside the caller's organizations too, so the probe seeds a
+# second membership row in an organization the demo user does not belong to,
+# inside the same begin/rollback block used to switch role - it is never
+# committed.
 other_org_id = "11111111-1111-1111-1111-111111111112"
 other_user_id = "99999999-9999-9999-9999-999999999999"
 
