@@ -16,6 +16,8 @@ Commits, in landed order (spec, plan and docs-only commits left out):
 - `0af99cd` test(backend): contract suites impersonate the authenticated role
 - `61d3b85` test(backend): red -- direct table DML is denied to authenticated
 - `085db4a` fix(backend): revoke direct table DML and default privileges
+- `2248f6f` test(backend): guard sequences, ownership and RLS on public objects
+- `b0d05be` fix(backend): revoke table and sequence privileges schema-wide
 
 Execution notes:
 
@@ -42,6 +44,19 @@ Execution notes:
   passed, running as `postgres`.
 - **Lint:** `supabase db lint` reports only the existing warning in
   `get_my_capabilities` (migration `202605280001`, `text` to `text[]`).
+- **Review gate 1** (adversarial whole-diff review, one claim to disprove):
+  - **Held:** grants, policies, read visibility and the RPCs. A containment
+    probe over suspended and invited admins, group-scoped roles and a
+    group-scoped plan found no row visible only through a dropped policy.
+  - **Eight minor findings, all addressed:**
+    - extensions created in `public` (D4, G5);
+    - the `PUBLIC` function default (wording in Goals and ADR-039);
+    - `service_role` `EXECUTE` on new functions (D4);
+    - row locks by `authenticated` (Non-Goals);
+    - the schema-wide revoke (D1);
+    - sequences in G1;
+    - an RLS-enabled guard (G6);
+    - row sets instead of counts in B3.
 
 ## Problem
 
@@ -138,7 +153,8 @@ Checked on 2026-10-01 against a local database at migration `202609290001`
 - No permissive RLS policy in `public` allows a write, so RLS denies direct
   writes even if a grant comes back by mistake.
 - New tables, sequences and functions created by `postgres` in `public` start
-  with no privileges for `anon`, `authenticated` or `service_role`.
+  with no grant to `anon`, `authenticated` or `service_role`. Functions keep
+  `PUBLIC` `EXECUTE` (fact 6), which each function migration revokes itself.
 - Every row each role can read today stays readable, and nothing else becomes
   readable.
 - Every write RPC keeps working when called as the real `authenticated` role.
@@ -155,9 +171,16 @@ Checked on 2026-10-01 against a local database at migration `202609290001`
   in, including extension installs. The per-function convention (fact 10)
   plus guard G4 covers it instead.
 - **Other roles' default privileges.** `supabase_admin` has its own default
-  ACL in `public`. `postgres` is not a member of `supabase_admin` and cannot
-  change it, and this repository creates no objects as `supabase_admin`. Guard
-  G1 catches any table created that way in the local database.
+  ACL in `public`, and `postgres` is not a member of `supabase_admin`, so it
+  cannot change that ACL. A `postgres` migration still creates
+  `supabase_admin`-owned objects through `create extension`. Installed into
+  `public`, they would take that ACL: review gate 1 showed
+  `address_standardizer_data_us` creating tables with RLS off that `anon`
+  could delete from. D4 therefore installs extensions into `extensions`, and
+  G5, G1 and G6 catch a violation.
+- **Row locks by `authenticated`.** `SELECT ... FOR SHARE` and `FOR UPDATE`
+  need `UPDATE` privilege, so `authenticated` can no longer take row locks with
+  direct SQL. PostgREST never issues them, and the app does not use them.
 - **The `storage`, `graphql` and `graphql_public` schemas.** Not application
   tables.
 - **Flutter code.** No change.
@@ -166,17 +189,23 @@ Checked on 2026-10-01 against a local database at migration `202609290001`
 
 ### D1. Table grants
 
-For the ten tables in fact 1:
-
 ```sql
-revoke all on table <ten tables> from anon, authenticated;
-grant select on table <ten tables> to authenticated;
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant select on table <the ten tables of fact 1> to authenticated;
 ```
 
-The table list is explicit, not `all tables in schema public`, so the
-migration grants `SELECT` to nothing it has not named, even on a hosted
-database that has drifted. Guard G1 enumerates every table, so a table missing
-from the list fails the suite.
+- **The revoke is schema-wide.** A drifted hosted database then loses the API
+  roles' privileges on every table, view and sequence in `public`, not only
+  on the ten known tables.
+- **The grant is explicit.** `SELECT` comes back only on tables this migration
+  names.
+- Guard G1 enumerates every relation, so a later table that needs
+  `SELECT` and lacks it fails the suite.
+
+Review gate 1 suggested the schema-wide revoke. In a rolled-back probe, a
+drift table and its sequence kept `INSERT` and `UPDATE` under the
+explicit-list revoke and lost them under the schema-wide one.
 
 ### D2. Write policies
 
@@ -246,6 +275,12 @@ ADR-039 records this, and `docs/architecture/architecture.md` points to it:
   `authenticated` granted.
 - Grants for a sequence the RPCs use are not needed: definer bodies run as the
   owner.
+- A function that operations or tests call as `service_role` grants it
+  `EXECUTE` explicitly. Since D3, `service_role` no longer gets it by default
+  (review gate 1). `create_invitation` already grants it explicitly.
+- Extensions go into the `extensions` schema
+  (`create extension ... with schema extensions`). Their objects are owned by
+  `supabase_admin` and would otherwise take its default ACL in `public`.
 
 ### D5. Contract tests impersonate the real role
 
@@ -277,11 +312,15 @@ Add `scripts/tests/direct-table-dml-contract-test.sh` and run it from
 
 **Structural guards:**
 
-- **G1, grants.** For every relation in `public` (`relkind` in `r`, `p`, `v`,
-  `m`, `f`), `has_table_privilege` is false for `anon` and `authenticated` on
-  `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` and
-  `MAINTAIN`, and false for `anon` on `SELECT`. `authenticated` has `SELECT`
-  on the ten tables of fact 1.
+- **G1, grants.**
+  - For every relation in `public` (`relkind` in `r`, `p`, `v`, `m`, `f`),
+    `has_table_privilege` is false for `anon` and `authenticated` on `INSERT`,
+    `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES`, `TRIGGER` and `MAINTAIN`,
+    and false for `anon` on `SELECT`.
+  - For every sequence in `public`, `has_sequence_privilege` is false for
+    `anon` and `authenticated` on `USAGE`, `SELECT` and `UPDATE`. A negative
+    control grants one probe sequence and asserts that the guard reports it.
+  - `authenticated` has `SELECT` on the ten tables of fact 1.
 - **G2, policies.** No policy in `public` has command `ALL`. Every `INSERT`,
   `UPDATE` or `DELETE` policy in `public` has `USING` and `WITH CHECK`
   expressions that are literally `false` or absent (an insert policy has no
@@ -297,6 +336,12 @@ Add `scripts/tests/direct-table-dml-contract-test.sh` and run it from
   `PUBLIC`). A negative control grants `EXECUTE` on one definer function to
   `anon` inside the rolled-back transaction and asserts the guard query
   reports it.
+- **G5, ownership.** `postgres` owns every relation and function in `public`.
+  An object owned by another role takes that role's default privileges, which
+  G3 does not see. A negative control hands a probe table to `service_role`.
+- **G6, RLS.** Every `public` table (`relkind` `r` or `p`) has RLS enabled, so
+  B2's second layer exists for every table. A negative control disables RLS
+  on a probe table.
 
 **Behaviour, as `authenticated`** (claims set and `set local role
 authenticated`):
@@ -316,11 +361,13 @@ authenticated`):
   affects zero rows, verified by `postgres` re-reading the target rows
   unchanged. The seed has no attachment, so `postgres` inserts one target
   attachment first, inside the same transaction.
-- **B3, read preservation.** For three users, the per-table row count visible
-  as `authenticated` equals the count of rows the select policies define,
-  computed as `postgres`. The users are the demo user, an
-  `organization_read_only` member and an `organization_admin`, the latter two
-  created inside the transaction. The tables are `organizations`, `groups`,
+- **B3, read preservation.** For four users, each table's row set as
+  `authenticated` matches the rows the select policies define, computed as
+  `postgres`. A row set is compared by its count plus an md5 of the sorted ids
+  (review gate 1), so a visible row swapped for a hidden one is caught. The
+  users are the demo user, plus three created inside the transaction: an
+  `organization_read_only` member, an `organization_admin` and a
+  group-scoped `group_member`. The tables are `organizations`, `groups`,
   `memberships`, `songs`, `attachments`, `plans`, `sessions` and
   `session_items`. Run against both the old and the new schema, this proves D2
   changed no visibility.
@@ -333,10 +380,10 @@ authenticated`):
 | Check | Before migration | After |
 |---|---|---|
 | G1, G2, G3, B1, B2 | red | green |
-| G4 (with its negative control), B3, B4 | green | green |
+| G4, G5, G6 (with their negative controls), B3, B4 | green | green |
 
-G4, B3 and B4 are regression guards. G4 proves it can fail through its negative
-control. B3 must stay green on both sides, which is the point of the check.
+G4, G5, G6, B3 and B4 are regression guards. G4, G5 and G6 prove they can fail
+through their negative controls. B3 must stay green on both sides, which is the point of the check.
 
 ### D7. Documentation
 

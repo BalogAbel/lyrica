@@ -7,8 +7,8 @@
 >
 > **S1: implemented** on `fix/direct-dml-write-rpc-bypass` (spec
 > `docs/specs/2026-10-01-direct-table-dml-lockdown.md`, plan
-> `docs/plans/2026-10-01-direct-table-dml-lockdown.md`, ADR-039); awaiting
-> merge. Next: S5a.
+> `docs/plans/2026-10-01-direct-table-dml-lockdown.md`, ADR-039), PR
+> https://github.com/BalogAbel/lyrica/pull/84, awaiting merge. Next: S5a.
 
 ## Purpose
 

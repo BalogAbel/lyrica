@@ -76,9 +76,10 @@ makes zero direct table writes — every mutation goes through a `security
 definer` RPC. See [ADR-026](decisions/ADR-026-rls-protected-read-boundary.md).
 The database enforces that path too: `anon` and `authenticated` hold no
 write privilege on any `public` table and no policy permits a write, so a
-direct write fails on the grant and again on RLS. New `public` objects start
-without privileges for `anon`, `authenticated` or `service_role`, and each
-migration grants what it needs explicitly. See
+direct write fails on the grant and again on RLS. New `public` tables and
+sequences start without privileges for `anon`, `authenticated` or
+`service_role`. New functions keep PostgreSQL's `PUBLIC` `EXECUTE`, which each
+migration revokes. Each migration grants what it needs explicitly. See
 [ADR-039](decisions/ADR-039-rpc-only-writes-and-explicit-grants.md).
 
 Song writes derive their shadow metadata (`title`, `artist`,

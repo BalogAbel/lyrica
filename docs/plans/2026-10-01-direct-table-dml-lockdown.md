@@ -1036,6 +1036,12 @@ git commit -m "docs: RPC-only writes enforced by grants (ADR-039)"
   `./scripts/backend-write-contracts.sh`, and repeat until the reviewer finds
   nothing substantive.
 
+> **Execution note (review gate 1):** the fixes changed the suite (G1
+> sequences, G5, G6, B3 row sets) and the migration (schema-wide revoke) after
+> they were extracted from Tasks 2 and 3. The committed files are canonical;
+> the blocks above show the first version. The spec's Implementation section
+> lists the findings.
+
 ---
 
 ### Task 7: Pull request

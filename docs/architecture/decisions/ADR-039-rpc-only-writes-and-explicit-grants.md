@@ -40,7 +40,10 @@ which owns the tables and has `BYPASSRLS`, and their `search_path` is pinned.
 
 1. **Grants.** `anon` and `authenticated` hold no privilege on the `public`
    tables except `SELECT` for `authenticated`, which is the ADR-026 read
-   boundary. `service_role` keeps its grants on existing tables.
+   boundary. The migration revokes schema-wide, from every table and sequence
+   in `public`, and grants `SELECT` back on the named tables only. A drifted
+   database therefore keeps no stray grant. `service_role` keeps its grants on
+   existing tables.
 2. **Policies.** No permissive policy in `public` allows a write. The six
    `for all` policies are dropped, not narrowed to `for select`. Each was
    already covered by its table's select policy:
@@ -54,7 +57,8 @@ which owns the tables and has `BYPASSRLS`, and their `search_path` is pinned.
    `revoke all` on tables, sequences and functions from `anon`,
    `authenticated` and `service_role`. Local databases then match a hosted
    project whose Data API setting "Default privileges for new entities" is
-   off.
+   off. New tables and sequences start closed. New functions still give
+   `PUBLIC` `EXECUTE` through the PostgreSQL-global default.
 4. **Convention for every new `public` object:**
    - Enable RLS.
    - Grant `SELECT` to `authenticated` only if the client reads the table
@@ -66,10 +70,20 @@ which owns the tables and has `BYPASSRLS`, and their `search_path` is pinned.
      authenticated`, then grant `EXECUTE` to `authenticated`.
    - Grant nothing on sequences the RPCs use, because definer bodies run as
      the owner.
+   - Grant `EXECUTE` to `service_role` explicitly on a function that
+     operations or tests call with the service key. It is no longer a default.
+   - Install extensions with `create extension ... with schema extensions`.
+     Their objects are owned by `supabase_admin`, whose default ACL in `public`
+     this decision cannot change and which leaves them writable by `anon`.
 5. **Guards.** `scripts/tests/direct-table-dml-contract-test.sh` enumerates the
-   catalog. Any new table with a write grant, any write-permitting policy, any
-   default privilege for an API role, and any `security definer` function
-   executable by `anon` fails the backend contract gate.
+   catalog. The backend contract gate fails on any of these:
+   - a table with a write grant, or a sequence with any grant, to `anon` or
+     `authenticated`;
+   - a write-permitting policy;
+   - a default privilege for an API role;
+   - a `security definer` function executable by `anon`;
+   - a `public` object not owned by `postgres`;
+   - a `public` table without RLS.
 
 ## Consequences
 
@@ -78,8 +92,11 @@ which owns the tables and has `BYPASSRLS`, and their `search_path` is pinned.
 - A feature that needs a new write path needs a new RPC. A direct table write
   from Flutter fails with `42501`.
 - A new table is unreadable until its migration grants `SELECT`, and it is
-  unusable by `service_role` until that is granted too. The failure is loud
-  and safe.
+  unusable by `service_role` until that is granted too. The same holds for
+  `service_role` `EXECUTE` on a new function. The failure is loud and safe.
+- `authenticated` can no longer take row locks with direct SQL
+  (`SELECT ... FOR SHARE` or `FOR UPDATE` need `UPDATE`). PostgREST never
+  issues them.
 - The `PUBLIC` function default stays. The per-function revoke is still
   mandatory, and guard G4 checks it for definer functions.
 - Contract suites that call RPCs as a user must `set local role
