@@ -2071,8 +2071,8 @@ fail-safe; see spec I4.
 
 Out of scope, pre-existing: `authenticated` can still write `plans`,
 `sessions`, and `session_items` directly under the `for all` RLS policies,
-which bypasses the RPCs. See
-`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`.
+which bypasses the RPCs. Resolved on 2026-10-01 by
+`docs/specs/2026-10-01-direct-table-dml-lockdown.md`.
 
 ---
 

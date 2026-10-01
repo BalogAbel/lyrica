@@ -95,6 +95,7 @@ def run_psql(sql: str, user_id: str | None = None) -> str:
               perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
               perform set_config('request.jwt.claim.role', 'authenticated', true);
             end $$;
+            set local role authenticated;
             {sql}
             """
         )
@@ -144,6 +145,7 @@ def start_psql(sql: str, user_id: str | None = None) -> subprocess.Popen[str]:
               perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
               perform set_config('request.jwt.claim.role', 'authenticated', true);
             end $$;
+            set local role authenticated;
             {sql}
             """
         )
@@ -529,6 +531,8 @@ remote_deleted_update_target = create_song(
     "write-contract-remote-delete-update",
     user_id=demo_user_id,
 )
+# Simulates a delete made elsewhere; fixture writes run as postgres, since
+# authenticated cannot write the table directly.
 run_psql(
     dedent(
         f"""
@@ -537,7 +541,6 @@ run_psql(
           and id = {sql_quote(remote_deleted_update_target['id'])};
         """
     ),
-    user_id=demo_user_id,
 )
 remote_deleted_update_sql, remote_deleted_update_message, remote_deleted_update_detail = capture_error(
     dedent(
@@ -562,6 +565,8 @@ remote_deleted_delete_target = create_song(
     "write-contract-remote-delete-delete",
     user_id=demo_user_id,
 )
+# Simulates a delete made elsewhere; fixture writes run as postgres, since
+# authenticated cannot write the table directly.
 run_psql(
     dedent(
         f"""
@@ -570,7 +575,6 @@ run_psql(
           and id = {sql_quote(remote_deleted_delete_target['id'])};
         """
     ),
-    user_id=demo_user_id,
 )
 accepted_remote_delete = delete_song(
     remote_deleted_delete_target["id"],
@@ -585,6 +589,8 @@ remote_deleted_recreate_target = create_song(
     "write-contract-remote-delete-recreate",
     user_id=demo_user_id,
 )
+# Simulates a delete made elsewhere; fixture writes run as postgres, since
+# authenticated cannot write the table directly.
 run_psql(
     dedent(
         f"""
@@ -593,7 +599,6 @@ run_psql(
           and id = {sql_quote(remote_deleted_recreate_target['id'])};
         """
     ),
-    user_id=demo_user_id,
 )
 recreate_denied_sql, recreate_denied_message, recreate_denied_detail = capture_error(
     dedent(
@@ -739,6 +744,7 @@ delete_lookup = run_psql(
 assert_equal(delete_lookup, "0", "overwrite delete removal")
 
 attachment_target = create_song("Attachment Target", "write-contract-attachment", user_id=demo_user_id)
+# No attachment RPC exists; the fixture is written as postgres.
 run_psql(
     dedent(
         f"""
@@ -762,7 +768,6 @@ run_psql(
         );
         """
     ),
-    user_id=demo_user_id,
 )
 deleted_attachment_song = delete_song(attachment_target["id"], 1, user_id=demo_user_id)
 assert_equal(

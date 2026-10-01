@@ -106,6 +106,7 @@ def run_psql(sql: str, user_id: str | None = None) -> str:
               perform set_config('request.jwt.claim.sub', {sql_quote(user_id)}, true);
               perform set_config('request.jwt.claim.role', 'authenticated', true);
             end $$;
+            set local role authenticated;
             {sql}
             """
         )
@@ -1078,7 +1079,10 @@ assert boundary_plan_collision["slug"] == "set-2147483648", (
 
 # --- SEC-5: DB-level unique(session_id, song_id) where item_type='song' ---
 # A direct insert bypassing the app-level pre-check must still be rejected by
-# the partial unique index.
+# the partial unique index. It runs as postgres: since 202610010001,
+# authenticated cannot insert into the table at all
+# (direct-table-dml-contract-test.sh), so this pins the index for the writers
+# that remain, the RPCs included.
 sec5_direct_dup = capture_error(
     dedent(
         f"""
@@ -1096,7 +1100,6 @@ sec5_direct_dup = capture_error(
         );
         """
     ),
-    user_id=demo_user_id,
 )
 assert sec5_direct_dup[0] == "23505", sec5_direct_dup
 assert "session_items_unique_song_per_session" in (

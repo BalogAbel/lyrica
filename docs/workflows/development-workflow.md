@@ -64,6 +64,24 @@ When a deferred item touches the same workflow, state machine, or backend contra
   - `./scripts/manual-validation/print-checklist.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
 
+## Hosted Migration Deployment
+
+- No deploy pipeline exists. CI lints migrations and runs the contract suites
+  against local Supabase only.
+- Hosted migrations are applied by hand in the Supabase SQL editor.
+  - Each migration file is wrapped in `begin;` ... `commit;`, so a failing
+    statement leaves nothing half-applied.
+  - Apply a migration before building a client that depends on it.
+- **Never run `supabase db push` against the hosted project.** Its migration
+  history does not match `supabase/migrations/`.
+  - Checked on 2026-10-01 with `./scripts/supabase.sh migration list`: no
+    local version is recorded remotely, and the remote holds 18 unrelated
+    timestamp versions from 2026-05-16 and 2026-05-28.
+  - `db push` would try to re-apply every migration from `202603210001`.
+  - Repairing the history (`migration repair`) is a separate task. Do it only
+    after a schema diff confirms that the hosted schema matches the local
+    migrations.
+
 ## Manual Validation
 
 For the local-first authenticated song-reader slice:

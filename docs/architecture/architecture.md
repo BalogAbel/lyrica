@@ -74,9 +74,13 @@ repositories read `songs`, `plans`, and `sessions` directly through the
 Supabase table API, with RLS enforcing tenant visibility on every row. The app
 makes zero direct table writes — every mutation goes through a `security
 definer` RPC. See [ADR-026](decisions/ADR-026-rls-protected-read-boundary.md).
-RLS does not yet deny direct DML as a second layer: `authenticated` keeps
-table DML under `for all` write policies. That known gap is tracked in
-[docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md](../deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md).
+The database enforces that path too: `anon` and `authenticated` hold no
+write privilege on any `public` table and no policy permits a write, so a
+direct write fails on the grant and again on RLS. New `public` tables and
+sequences start without privileges for `anon`, `authenticated` or
+`service_role`. New functions keep PostgreSQL's `PUBLIC` `EXECUTE`, which each
+migration revokes. Each migration grants what it needs explicitly. See
+[ADR-039](decisions/ADR-039-rpc-only-writes-and-explicit-grants.md).
 
 Song writes derive their shadow metadata (`title`, `artist`,
 `key_signature`, `tempo_bpm`, `tags`) from canonical `chordpro_source` inside
