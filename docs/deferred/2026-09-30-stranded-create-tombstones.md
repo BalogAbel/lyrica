@@ -133,3 +133,14 @@ protects (I3: a base never absorbs a foreign write).
   song side (`pendingCreate` tombstones in the catalog) has the same gap.
 - Red tests first: a tombstone stranded by an aborted run is resolved by the
   next run, for both a committed and an uncommitted create.
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S5b** (`fix/planning-mutation-gaps`) of
+`docs/plans/2026-10-01-delivery-roadmap.md`. The S5b spec confirms or
+overrides the recommended defaults:
+
+- **Option (a).** Option (b) needs idempotent create RPCs, a backend change
+  that would also pull in LF-T5b.
+- **For session items, accept the visible conflict noise** of a creation-time
+  base of 1.

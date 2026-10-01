@@ -217,3 +217,25 @@ no longer supported"). `apps/lyron_app/android/build.gradle.kts` overrides
 the plugin's `languageVersion`/`apiVersion` to 1.8 in a
 `gradle.projectsEvaluated` block; delete that override as part of the 9.x
 upgrade.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+- **`sentry_flutter` 9.x is still blocked.** On 2026-10-01 `flutter pub
+  outdated` reports resolvable 8.14.2 and latest 9.30.1. It stays deferred.
+- **Centralized scrubbing in SDK hooks moves into S6.** No app call site
+  captures an exception yet: only `SentryObservability` calls
+  `Sentry.captureException`, and the app adds breadcrumbs only in
+  `SongCatalogController`. The trigger "the next observability slice" is met
+  by **S6** (`fix/capability-and-telemetry`), because S6 also fixes the org-id
+  leak below.
+- **The stale cross-user `organizationId` stays in S6.** Sentry runs in
+  production (user, 2026-10-01), but the user judged the leak low risk, so it
+  does not ship as a separate quick fix.
+- **The non-trigger rule still applies to the remaining instrumentation.** New
+  sync code in S3 and S4 gets spans from the start, following ADR-036, and
+  must never send personal content, such as annotation or note text, to
+  telemetry. Nothing else is back-filled.
+- **The web `traceparent` gate stays deferred.** It is still tied to the CORS
+  gate.
+
+See slices S6 and S9 in `docs/plans/2026-10-01-delivery-roadmap.md`.

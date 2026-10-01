@@ -114,3 +114,14 @@ Address when either of these holds:
   independent reason (e.g. exactly-once delivery over an unreliable
   transport, or a broader retry-safety hardening pass) — at that point,
   resolving this entry comes largely for free as a side effect.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+The trigger is not met, and this entry stays deferred.
+
+- The roadmap's recommended option for stranded create tombstones (S5b, option
+  (a)) does not add idempotency keys, so it does not resolve this entry as a
+  side effect.
+- The new personal-layer sync (S3) is idempotent by design: its upserts are
+  keyed by a client-generated UUID. It does not add another path with this
+  failure shape.

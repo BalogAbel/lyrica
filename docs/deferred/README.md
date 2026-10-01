@@ -21,3 +21,14 @@ Do not use this directory as a generic idea dump or a replacement for issue trac
 - Keep the durable context in this repository directory.
 - Track execution separately in GitHub issues or pull requests when active work begins.
 - Remove or update the deferred entry in the same change that resolves or supersedes it.
+
+## Current Sequencing
+
+`docs/plans/2026-10-01-delivery-roadmap.md` does three things for the open
+entries:
+
+- orders them into slices;
+- records recommended defaults for their open options;
+- re-evaluates the trigger-gated entries.
+
+Check it before planning a slice that touches an entry here.

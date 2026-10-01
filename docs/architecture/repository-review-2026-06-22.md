@@ -54,7 +54,7 @@ Severity: **Critical** / **High** / **Medium** / **Low**.
 | ID | Area | Finding | Sev |
 |----|------|---------|-----|
 | LF-T1 | Local-first | Session expiry is **destructive**: wipes local catalog + planning data | Critical |
-| LF-T2 | Local-first | No offline token refresh → refresh-token TTL is the real "1 week" ceiling. **Deferred with trigger condition (offline-durability-phase4, S15)** — see `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. | Critical |
+| LF-T2 | Local-first | No offline token refresh → refresh-token TTL is the real "1 week" ceiling. **Deferred with trigger condition (offline-durability-phase4, S15).** **Closed 2026-10-01:** the hosted session settings were verified (single session per user off, time-box and inactivity timeout both "never"; they cannot be changed on the Free plan), and Supabase refresh tokens never expire, so no TTL wall exists. See `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. | Critical |
 | LF-1 | Local-first | At-least-once delivery, no dedup: crash between accept↔clear re-sends | High |
 | LF-2 | Local-first | Per-mutation full refresh inside the sync loop (N refreshes for N mutations) | High |
 | LF-3 | Local-first | No internal single-flight guard on mutation sync | High |

@@ -767,3 +767,10 @@ label is modelled as the uppercased string it is actually drawn as (previously
 the mixed-case source, also an under-estimate risk this PR closed). Where a
 margin above looks unexpectedly tight, it is because the estimate got MORE
 accurate, not because the floor moved.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+Still open, with no trigger. The planned song annotations (S4 in
+`docs/plans/2026-10-01-delivery-roadmap.md`) render as overlays that take no
+layout space. They change no estimated or rendered height, so they stay
+independent of this item.

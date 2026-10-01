@@ -1,9 +1,12 @@
 # Refresh-Token TTL Is the Real Offline Ceiling (LF-T2)
 
-**Status:** Closed as a data-durability concern, 2026-08-21. See "Correction"
-and "Update" below — the refresh-token TTL bounds *sync*, never *local data*,
-and the two claims in this document that asserted local-data safety was
-already true are corrected in place. The document otherwise stands.
+**Status:** Closed, 2026-10-01. The hosted project's session settings were
+verified: no refresh-token TTL wall exists. See "Re-evaluation (2026-10-01)"
+below. This entry had already been closed as a data-durability concern on
+2026-08-21: the refresh-token TTL bounds *sync*, never *local data*. See
+"Correction" and "Update" below; the two claims in this document that
+asserted local-data safety was already true are corrected in place. The
+document otherwise stands.
 
 **Slice:** offline-durability-phase4 (S15)
 **Finding:** `LF-T2` (`docs/architecture/repository-review-2026-06-22.md`)
@@ -181,3 +184,40 @@ Address when either of these holds:
   treats any `null` session, from any cause, as non-destructive — so closing
   this item is purely a backend/project-configuration action plus confirming
   the configured value against the product's stated offline target.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+Supabase's session documentation, checked via Context7 on 2026-10-01, says a
+session lasts indefinitely by default. Refresh tokens never expire; each can
+be used only once. A session ends only when one of these happens:
+
+- the user signs out;
+- the user changes their password or performs another security-sensitive
+  action;
+- a configured **inactivity timeout** passes;
+- a configured **maximum lifetime (time-box)** is reached;
+- the user signs in on another device while **single session per user** is
+  enabled.
+
+The "hard wall" this entry describes therefore exists only if the hosted
+project enables one of those three settings.
+
+**Verified on the hosted project (user, 2026-10-01, Auth → User Sessions):**
+
+| Setting | Value |
+|---|---|
+| Enforce single session per user | off |
+| Time-box user sessions | 0 (never) |
+| Inactivity timeout | 0 (never) |
+
+On the current Free plan these settings cannot be changed; configuring them
+requires the Pro plan. With all three at "never", a session, and with it
+sync, survives an offline span of any length. The wall never existed in this
+deployment, so this entry is **closed**.
+
+**Reopen if** the project moves to a paid plan and any of these settings is
+enabled. Keep them at "never", or at least one week, which is ADR-008's
+offline target. Keep single session per user off: besides the offline
+concern, it signs the user out of every other device, which would break
+multi-device use of the personal song layer planned in S3
+(`docs/plans/2026-10-01-delivery-roadmap.md`).

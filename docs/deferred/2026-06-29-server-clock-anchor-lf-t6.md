@@ -57,3 +57,10 @@ and the injectable `now` clock seam on `PlanningMutationReconciler`
 the probe still injects a skewed clock and asserts the skew flows straight through into
 reconciled timestamps uncorrected, and the seam remains ready for a real anchor to
 attach to whenever the trigger condition is met.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+The trigger is not met: planning still has no trusted server-time source. The
+new personal-layer sync (S3) orders writes and pulls by a server-assigned
+sequence, never by a device clock, so it does not widen this gap. This entry
+stays deferred.

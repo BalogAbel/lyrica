@@ -46,3 +46,18 @@ opposite trade-offs.
   one transaction.
 - Songs are referenced, never copied. The one-song-per-session rule still
   holds for each copied session.
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S7** of `docs/plans/2026-10-01-delivery-roadmap.md`.
+It comes after S5b, which works on the same mutation machinery.
+
+Recommended defaults (the S7 spec confirms or overrides them):
+
+- **Approach:** a server-side `duplicate_plan` RPC.
+- **Offline behavior:** online-only in v1, recorded in an ADR.
+- **Pending changes:** the action is disabled while pending local mutations
+  touch the source plan.
+- **Personal layer:** the duplicate also copies the caller's own plan-scoped
+  personal layer (S3 settings, S4 annotations). It never copies another
+  user's.

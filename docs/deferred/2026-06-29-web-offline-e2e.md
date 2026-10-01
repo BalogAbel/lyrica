@@ -59,3 +59,10 @@ Address before committing to web as a supported production target for offline/re
 use, or before relying on IndexedDB capacity assumptions in `LF-T4` storage-eviction work.
 Any slice that adds a web CI lane or a `chromedriver` harness should fold this suite in
 rather than starting a separate effort.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+The trigger is not met. On 2026-10-01 the user decided that web stays a
+best-effort target, both for offline use and for the planned song annotations
+(S4). Annotations are therefore built for native tablets and phones first.
+Revisit this entry before promoting web to a production target.
