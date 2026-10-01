@@ -44,6 +44,11 @@ Execution notes:
   passed, running as `postgres`.
 - **Lint:** `supabase db lint` reports only the existing warning in
   `get_my_capabilities` (migration `202605280001`, `text` to `text[]`).
+- **Hosted deployment (2026-10-01):**
+  - "Automatically expose new tables" is off.
+  - The migration was applied by hand in the SQL editor, wrapped in
+    `begin;` ... `commit;`, after a pre-check that the six policies exist.
+  - The D8 check and an app smoke test (reads plus RPC writes) passed.
 - **Review gate 1** (adversarial whole-diff review, one claim to disprove):
   - **Held:** grants, policies, read visibility and the RPCs. A containment
     probe over suspended and invited admins, group-scoped roles and a

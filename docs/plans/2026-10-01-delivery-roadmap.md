@@ -245,9 +245,8 @@ For a single executor:
 9. **S8:** ChordPro modulation.
 10. **S9 remainder:** re-check each trigger before deciding.
 
-**User actions:** with S1, the hosted "Default privileges for new entities"
-toggle (see "User Actions Outside the Repository"). The LF-T2 dashboard check
-is done (2026-10-01).
+**User actions:** the S1 hosted actions and the LF-T2 dashboard check are done
+(2026-10-01; see "User Actions Outside the Repository").
 
 **With several executors:**
 
@@ -403,8 +402,14 @@ practice, S4 starts with a prototype in `docs/prototypes/`.
 - **LF-T2 (done 2026-10-01):** the hosted session settings were checked and
   recorded in `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. Keep
   them at "never" if the project ever moves to a paid plan.
-- **With S1:** in the hosted Data API settings, turn off "Default privileges
-  for new entities". Deploy migration `202610010001`, then run the read-only
-  post-deploy check in D8 of `docs/specs/2026-10-01-direct-table-dml-lockdown.md`.
+- **S1 (done 2026-10-01):**
+  - In the Data API settings, "Automatically expose new tables" (formerly
+    "Default privileges for new entities") is off.
+  - Migration `202610010001` was applied by hand in the SQL editor.
+  - The D8 post-deploy check of
+    `docs/specs/2026-10-01-direct-table-dml-lockdown.md` passed, and an app
+    smoke test (reads plus RPC writes) passed.
 - **Every slice with a migration:** apply it to the hosted project before
-  building and releasing a client that depends on it.
+  building and releasing a client that depends on it. Apply it by hand in the
+  SQL editor, never with `supabase db push` (see "Hosted Migration
+  Deployment" in `docs/workflows/development-workflow.md`).
