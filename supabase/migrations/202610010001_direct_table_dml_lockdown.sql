@@ -3,30 +3,22 @@
 --
 -- Writes to the application tables go only through security definer RPCs,
 -- which run as the table owner. This migration removes every other write path:
---   1. anon and authenticated lose every table privilege except SELECT for
---      authenticated (the ADR-026 read boundary). TRUNCATE ignores RLS, so it
---      must go even though no policy allows it.
+--   1. anon and authenticated lose every privilege on every table and
+--      sequence in public, including any a drifted database holds beyond the
+--      ten known tables; authenticated then gets SELECT back on exactly those
+--      ten (the ADR-026 read boundary). TRUNCATE ignores RLS, so it must go
+--      even though no policy allows it.
 --   2. The six permissive `for all` write policies are dropped. Each one is
 --      already covered by its table's select policy: has_capability is true
 --      only for an organization the caller is an active member of, and the
 --      canEditSongs roles are a subset of the canViewSongs roles. No visible
 --      row changes.
---   3. Objects postgres creates in public from now on start with no privileges
---      for anon, authenticated or service_role; each migration grants what it
---      needs explicitly.
+--   3. Objects postgres creates in public from now on start with no grant to
+--      anon, authenticated or service_role (functions keep PUBLIC EXECUTE, see
+--      below); each migration grants what it needs explicitly.
 
-revoke all on table
-  public.organizations,
-  public.groups,
-  public.memberships,
-  public.songs,
-  public.plans,
-  public.sessions,
-  public.session_items,
-  public.attachments,
-  public.invitations,
-  public.invitation_redemption_attempts
-from anon, authenticated;
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
 
 grant select on table
   public.organizations,
