@@ -1010,7 +1010,9 @@ STOP-4.
 - [ ] **Step 8: Verify the links and commit**
 
 Run: `grep -rn "direct-dml-bypasses-write-rpcs" docs apps scripts supabase README.md AGENTS.md`
-Expected: no output.
+Expected: only mentions that mark the entry as resolved or removed (this
+plan, the S1 spec, the roadmap S1 row, the plan-delete spec header); no
+link that treats it as an open entry.
 
 ```bash
 git add -A docs

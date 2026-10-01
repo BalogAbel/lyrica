@@ -4,6 +4,11 @@
 > still gets its own spec in `docs/specs/` and its own implementation plan in
 > `docs/plans/`. Update this note, the slice table and the order whenever a
 > slice merges or the order changes.
+>
+> **S1: implemented** on `fix/direct-dml-write-rpc-bypass` (spec
+> `docs/specs/2026-10-01-direct-table-dml-lockdown.md`, plan
+> `docs/plans/2026-10-01-direct-table-dml-lockdown.md`, ADR-039); awaiting
+> merge. Next: S5a.
 
 ## Purpose
 
@@ -96,13 +101,13 @@ Found during this analysis. Each one is recorded in `docs/deferred/`.
    "memberships are manageable by capability"
    (`202603210001_initial_schema.sql`). Through direct DML, a role change
    bypasses the invitation and audit contracts.
-   → `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`
+   → resolved by S1, `docs/specs/2026-10-01-direct-table-dml-lockdown.md`
 3. **Supabase grants DML on every new `public` table to `authenticated` by
    default.** These are default privileges. If S1 only revokes the grants on
    existing tables, the personal-layer tables added in S3 would reopen the
    bypass. S1 therefore also revokes default privileges, and the hosted
    project turns off "Default privileges for new entities".
-   → `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`
+   → resolved by S1, `docs/specs/2026-10-01-direct-table-dml-lockdown.md`
 4. **An organization switch drops pending planning mutations.** The active
    organization is the smallest organization id
    (`active_organization_resolution.dart`). When a multi-organization user
@@ -135,7 +140,7 @@ Size legend:
 
 | ID | Branch | Scope | Deferred sources | Size | Risk |
 |---|---|---|---|---|---|
-| S1 | `fix/direct-dml-write-rpc-bypass` | Revoke table DML from `authenticated` on `plans`, `sessions`, `session_items`, `songs`, `attachments` and `memberships`. Narrow the `for all` policies to `for select`. Revoke default privileges in `public`. Move any seed, script or integration fixture that writes as `authenticated` to `service_role` or `postgres`. Correct `architecture.md` and add correction notes to ADR-026 and ADR-027 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` | M | medium |
+| S1 | `fix/direct-dml-write-rpc-bypass` | **Implemented, awaiting merge.** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
 | S5a | `fix/paged-remote-pulls` | A shared paging helper: `.range()` pages ordered by a unique key, de-duplication by id, and a `count=exact` completeness check. Applied to the planning plan and session pulls and to the song catalog list | `2026-09-30-planning-pull-unpaged-reads.md` | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | Read base `{transpose}` and `{capo}` consistently before the first lyric or chord line. `{comment}` no longer closes that base boundary. The editor uses the parser-derived base values. Update the parser tests | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX | — (new) | L | medium |
@@ -399,6 +404,7 @@ practice, S4 starts with a prototype in `docs/prototypes/`.
   recorded in `docs/deferred/2026-08-02-refresh-token-ttl-lf-t2.md`. Keep
   them at "never" if the project ever moves to a paid plan.
 - **With S1:** in the hosted Data API settings, turn off "Default privileges
-  for new entities".
+  for new entities". Deploy migration `202610010001`, then run the read-only
+  post-deploy check in D8 of `docs/specs/2026-10-01-direct-table-dml-lockdown.md`.
 - **Every slice with a migration:** apply it to the hosted project before
   building and releasing a client that depends on it.

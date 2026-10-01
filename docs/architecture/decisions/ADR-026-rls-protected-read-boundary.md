@@ -76,3 +76,12 @@ RPC would have to reimplement.
   further should revisit `security_invoker` views first, since it was judged
   the strongest of the rejected alternatives — not because this ADR expects
   that to happen.
+
+## Correction (2026-10-01)
+
+The statement that RLS denies direct DML ("The write half of this question
+is already closed") held only for clients that wrote through the RPCs: `authenticated`
+kept table DML under permissive `for all` policies until migration
+`202610010001_direct_table_dml_lockdown.sql`. Since that migration it holds
+for every writer. See
+[ADR-039](ADR-039-rpc-only-writes-and-explicit-grants.md).

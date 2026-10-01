@@ -6,7 +6,7 @@
 **ADR:** ADR-038, `docs/architecture/decisions/ADR-038-plan-content-version.md`
 **Deferred siblings:** `docs/deferred/2026-09-29-session-item-move.md`,
 `docs/deferred/2026-09-29-plan-duplicate.md`,
-`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`,
+`docs/specs/2026-10-01-direct-table-dml-lockdown.md` (formerly the deferred entry `2026-09-30-direct-dml-bypasses-write-rpcs.md`),
 `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`,
 `docs/deferred/2026-09-30-stranded-create-tombstones.md`,
 `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`,
@@ -191,9 +191,9 @@ Eight deferred docs came out of this slice:
   a template; scoped out because the design choice is non-trivial.
 - `docs/deferred/2026-09-29-session-item-move.md`: move a session item to
   another session; scoped out because a move touches two session aggregates.
-- `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`: direct table DML
-  under the `for all` RLS policies bypasses the RPC contract (I2, I4, I5);
-  found by gate 1, predates the slice.
+- Direct table DML under the `for all` RLS policies bypassed the RPC contract
+  (I2, I4, I5); found by gate 1, predates the slice. Resolved on 2026-10-01 by
+  `docs/specs/2026-10-01-direct-table-dml-lockdown.md`.
 - `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`: the pull's
   unpaged reads can be truncated at PostgREST's `max_rows`, which would break
   I7 for a plan with over 1000 sessions; found by gate 2.
@@ -291,9 +291,9 @@ the delete on:
 Any interleaved write by anyone else makes the delete a visible `conflict`.
 
 I2, I4, and I5 are guaranteed for writes made through the planning RPCs.
-Direct table DML under the `for all` RLS write policies bypasses them. That
-gap predates this change and is tracked in
-`docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`.
+Direct table DML under the `for all` RLS write policies bypassed them. That
+gap predated this change and was closed on 2026-10-01 by
+`docs/specs/2026-10-01-direct-table-dml-lockdown.md`; since then the RPCs are the only writers.
 
 **I3. Client base adjustments account only for the client's own accepted
 writes.** Every client-side adjustment of a base version (D7) must be

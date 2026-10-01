@@ -156,7 +156,8 @@ deleting client never saw would silently break the guarantee above.
   conflict, never a false acceptance.
 - I2, I4 and I5 of the spec hold for writes made through the planning RPCs.
   Direct table DML by `authenticated` under the `for all` RLS write policies
-  bypasses them; that gap predates this change (see Deferred).
+  bypassed them; that gap predated this change and was closed on 2026-10-01
+  by ADR-039, after which the planning RPCs are the only writers.
 - Discarding a conflicted plan delete restores the plan but not the child
   intents dropped when the delete was recorded. The confirmation dialog says
   so up front.
@@ -194,10 +195,9 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
 - `docs/deferred/2026-09-29-session-item-move.md`: move a session item to
   another session. Scoped out because a move touches two session aggregates
   while the mutation store keeps one row per aggregate.
-- `docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md`: `authenticated`
-  can still write `plans`, `sessions` and `session_items` directly under the
-  `for all` RLS policies, bypassing the RPC write contract and therefore I2,
-  I4 and I5. Found by review gate 1; it predates this slice.
+- Direct table DML bypassing the RPC write contract (I2, I4, I5), found by
+  review gate 1; it predated this slice. Resolved on 2026-10-01 by
+  `docs/specs/2026-10-01-direct-table-dml-lockdown.md` and ADR-039.
 - `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`: the pull's
   top-level reads are unpaged, so PostgREST's `max_rows` cap (1000) could
   truncate a plan's session list and put `contentVersion` ahead of the

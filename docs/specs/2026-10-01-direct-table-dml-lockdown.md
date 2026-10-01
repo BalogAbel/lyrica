@@ -1,6 +1,6 @@
 # Direct Table DML Lockdown
 
-> Status: Draft (2026-10-01)
+> Status: Implemented (2026-10-01)
 
 **Branch:** `fix/direct-dml-write-rpc-bypass`
 **Roadmap slice:** S1 in `docs/plans/2026-10-01-delivery-roadmap.md`
@@ -8,6 +8,40 @@
 (resolved and removed by this slice)
 **ADR:** ADR-039, `docs/architecture/decisions/ADR-039-rpc-only-writes-and-explicit-grants.md`
 **Plan:** `docs/plans/2026-10-01-direct-table-dml-lockdown.md`
+
+## Implementation
+
+Commits, in landed order (spec, plan and docs-only commits left out):
+
+- `0af99cd` test(backend): contract suites impersonate the authenticated role
+- `61d3b85` test(backend): red -- direct table DML is denied to authenticated
+- `085db4a` fix(backend): revoke direct table DML and default privileges
+
+Execution notes:
+
+- **D5 found five fixture writes made as the user.** They moved to the
+  `postgres` path with their assertions unchanged:
+  - three simulated remote song deletes and an attachment fixture in
+    `song-crud-write-contract-test.sh`;
+  - the SEC-5 unique-index probe in `planning-write-contract-test.sh`.
+    Under the real role, PostgreSQL omits a unique violation's key `DETAIL`
+    for a user subject to RLS, which is how the probe surfaced.
+- **D5 also broke race R6 of the cascade-delete suite.** That was a harness
+  artifact, not a behaviour change. The race detector finds the waiter in
+  `pg_stat_activity` by a tag comment, and `pg_stat_activity.query` is cut at
+  `track_activity_query_size` (1 kB locally). The tag sat after the
+  statement, at byte offsets 843–1023 across R1–R6. The new
+  `set local role` line pushed R6's tag past the cut. The tag now precedes the
+  statement, so its offset no longer depends on the statement's length.
+- **Before the migration** the new suite failed exactly on G1, G2, G3, B1 and
+  B2, and passed G4, B3 and B4. As `authenticated`, `TRUNCATE` on
+  `session_items` and `memberships` succeeded, bypassing RLS.
+- **Guard check:** with `EXECUTE` on `create_plan` revoked from
+  `authenticated`, the planning suite now fails with
+  `permission denied for function create_plan`. Before D5 it would have
+  passed, running as `postgres`.
+- **Lint:** `supabase db lint` reports only the existing warning in
+  `get_my_capabilities` (migration `202605280001`, `text` to `text[]`).
 
 ## Problem
 
